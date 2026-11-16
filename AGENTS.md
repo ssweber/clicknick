@@ -53,7 +53,7 @@ src/clicknick/
 ├── app.py                 # Main ClickNickApp class
 ├── config.py              # AppSettings with persistence
 ├── data_session.py        # DataSession: current store + Dataview model + editor windows
-├── connection_session.py  # ClickConnection value + ConnectionSession (analysis, Scr watcher, simulation)
+├── connection_session.py  # ClickConnection + ConnectionSession (watch, workspace, analysis, simulation)
 ├── simulation_session.py  # SimulationSession: pyrung DAP + Modbus + simulator settings (no tkinter)
 ├── models/                # Data models and constants
 │   ├── address_row.py     # Frozen dataclass for address data
@@ -122,7 +122,9 @@ outside the store touches `_current_session`):
 5. **Every edit goes through `store.edit_session()`:** write through the session it yields; never touch
    `store._current_session`
 6. **One home per fact:** the current data lives in `ClickNickApp._data` (a `DataSession`), the connected CLICK
-   window in `ClickNickApp._click` (an immutable `ClickConnection`). Consumers take getters, not copies
+   window in `ClickNickApp._session` (a `ConnectionSession`: its `click`, an immutable `ClickConnection`, its
+   workspace `pairing`, connection watch and autocomplete popup; `ClickNickApp._click` reads it). Consumers take
+   getters, not copies
 7. **No compatibility shims:** when an API changes, update its callers; do not keep aliases or wrappers
 
 ### Observer Pattern
@@ -398,15 +400,23 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 
 ### Main Window Refresh
 - The window title and Workspace details are recomputed by `ClickNickApp._refresh_ui()`; never call it by hand
-- Assigning `_click`, `_data`, `_session` or the workspace pairing fields (`_ShownState` attributes)
-  schedules one coalesced idle refresh. `ConnectionSession` events (sync count, analysis progress,
-  staged rungs) call `_request_ui_refresh()`
+- Assigning `_data` or `_session` (`_ShownState` attributes) schedules one coalesced idle refresh.
+  `ConnectionSession` events (sync count, analysis progress, staged rungs) and Workspace setup pairing
+  another workspace call `_request_ui_refresh()`
 - `_refresh_ui` also re-titles the open editor windows, skipping one being destroyed. They take the
   project name and analysis as getters, so they follow a project change
 
 ### Connection and Lifecycle
-- While a CLICK window is connected, `_monitor_task` checks every 100 ms whether it closed or shows
-  another project, and shows autocomplete popups while `monitoring` is on and data is loaded
+- Connecting opens a `ConnectionSession`, before CLICK's database loads; a project change replaces it, and
+  `_close_session` is the one teardown (the database load in flight, the watch, the popup, the simulation,
+  the analysis). Until ClickNick has read the database (`has_database`: while it loads, and after the CSV
+  fallback) the session builds nothing, and Review Changes, Reload from CLICK, the simulation and applying
+  Workspace setup say to connect first (`_project_session`)
+- While a CLICK window is connected, its session's watch (`_monitor_task`) checks every 100 ms whether it
+  closed or shows another project, and shows autocomplete popups while `monitoring` is on and data is loaded
+- The session pairs the durable workspace for the project's PLC name when it opens (`pair_workspace`).
+  The Workspace setup window and its unapplied choice stay on the app: a new session closes the window,
+  and a closed session drops the choice
 - `monitoring` is the user's choice: it starts on, **Stop** turns it off, and only **Start** or a window
   the user picks turns it on again. A project change, the CSV fallback and an automatic connect keep it
 - When the window closes, database data closes without a prompt; CSV data stays loaded. The CSV path
