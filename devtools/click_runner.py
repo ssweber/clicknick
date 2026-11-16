@@ -206,6 +206,9 @@ PLC_SETTLE = 2.0
 # this many seconds. The live runs saw SC_.mdb written before the answer showed; the hold
 # catches a write that comes later
 IMPORT_SETTLE = 1.0
+# How long a file dialog's File name edit must read the path set before it is pressed
+# (``Run.fill_path``)
+FILL_SETTLE = 1.0
 
 EXIT_OK = 0
 EXIT_ABORTED = 1
@@ -1892,9 +1895,7 @@ class Run:
             )
         file_name = self._file_name_edit(controls)
         button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
-        self.desktop.set_text(file_name.hwnd, str(csv))
-        if self.desktop.read_text(file_name.hwnd) != str(csv):
-            raise Aborted("the File name edit did not take the path")
+        self.fill_path(file_name, csv, [OPEN])
         self.wait(
             f"the Open dialog alone, {IMPORT_MODE!r} checked",
             [OPEN],
@@ -2020,9 +2021,7 @@ class Run:
             controls = self.controls(save)
             name = self._file_name_edit(controls)
             button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
-            self.desktop.set_text(name.hwnd, str(dump))
-            if self.desktop.read_text(name.hwnd) != str(dump):
-                raise Aborted("the File name edit did not take the path")
+            self.fill_path(name, dump, [READ_DATA, SAVE_DATA])
             self.press(save, button)
             last: list[int | None] = [None]
             # Polls in a row with the reading over and no file (live run d8 met one: CLICK
@@ -2229,9 +2228,7 @@ class Run:
         controls = self.controls(dialog)
         name = self._file_name_edit(controls)
         button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
-        self.desktop.set_text(name.hwnd, str(ckp))
-        if self.desktop.read_text(name.hwnd) != str(ckp):
-            raise Aborted("the File name edit did not take the path")
+        self.fill_path(name, ckp, [OPEN])
         self.press(dialog, button)
         last: list[object] = [None]
 
@@ -2253,6 +2250,34 @@ class Run:
         )
         self.log(f"opened {ckp}")
         self.record("opened")
+
+    def fill_path(self, edit: Control, path: Path, expected: list[Expect]) -> None:
+        """Set a file dialog's File name *edit* to *path*, and wait until it has read *path*
+        for ``FILL_SETTLE`` seconds, setting it again whenever it reads something else.
+
+        A dialog still opening can put its own name back over the path: CLICK's Read Data
+        Save dialog, filled as soon as it showed, then saved plcdata.csv into the folder it
+        last saved in (live run d8, 2026-11-16, wrote it there; the D2 runs r1 and r1c met
+        that file as "plcdata.csv already exists"). Filled after a ``--record`` dump, it kept
+        the path (d7, d10 to d13).
+        """
+        text = str(path)
+        held: list[float | None] = [None]
+
+        def holds(found: dict[str, Window]) -> bool:
+            now = self.desktop.read_text(edit.hwnd)
+            if now != text:
+                if held[0] is not None:
+                    self.log(f"the File name edit reads {now!r}; setting the path again")
+                held[0] = None
+                self.desktop.set_text(edit.hwnd, text)
+                return False
+            if held[0] is None:
+                held[0] = time.monotonic()
+            return time.monotonic() - held[0] >= FILL_SETTLE
+
+        self.desktop.set_text(edit.hwnd, text)
+        self.wait("the File name edit to keep the path", expected, holds)
 
     def _file_name_edit(self, controls: list[Control]) -> Control:
         """A file dialog's File name edit: the Edit 1148 inside the ComboBox 1148."""
@@ -2296,9 +2321,7 @@ class Run:
         controls = self.controls(dialog)
         name = self._file_name_edit(controls)
         button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
-        self.desktop.set_text(name.hwnd, str(ckp))
-        if self.desktop.read_text(name.hwnd) != str(ckp):
-            raise Aborted("the File name edit did not take the path")
+        self.fill_path(name, ckp, [SAVE_AS])
         self.press(dialog, button)
         last: list[object] = [None]
 

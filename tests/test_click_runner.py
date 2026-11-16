@@ -1244,6 +1244,7 @@ def fast_poll(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(cr, "POLL_INTERVAL", 0.001)
     monkeypatch.setattr(cr, "PLC_SETTLE", 0.02)
     monkeypatch.setattr(cr, "IMPORT_SETTLE", 0.1)
+    monkeypatch.setattr(cr, "FILL_SETTLE", 0.02)
 
 
 def assert_aborted(fake: FakeClick, out: Path, code: int, result: dict, reason: str) -> None:
