@@ -1,7 +1,7 @@
 """Connection session: owns the resources bound to a connected CLICK project.
 
-Created on connect, replaced on project-change, closed on disconnect. The
-address data itself lives in DataSession.
+Created on connect, before CLICK's database loads, replaced on a project change,
+closed on disconnect. The address data itself lives in DataSession.
 """
 
 from __future__ import annotations
@@ -21,12 +21,20 @@ if TYPE_CHECKING:
     from .ladder.program import LegacyEncoding
     from .services.analysis_service import AnalysisService
     from .services.scr_watcher import ScrWatcher
+    from .services.workspace_mirror import ProjectWorkspaceConfig, WorkspacePairing
     from .simulation_session import SimulationSession
 
 # A temporary workspace lives in CLICK's folder for the window, so a session opening
 # another project there writes where the closed session's last build may still be
 # writing. Builds of every session run one at a time.
 _BUILD_GATE = threading.Lock()
+
+# Why a session builds nothing before ClickNick read CLICK's database (has_database)
+NO_DATABASE = (
+    "ClickNick has not read this project's database (SC_.mdb, through Access ODBC "
+    "or Jet). A build reads CLICK's program from its Scr*.tmp files and the "
+    "nicknames from that database."
+)
 
 
 @dataclass(frozen=True)
@@ -36,7 +44,8 @@ class SavedProgram:
     A value different from the last one means a comparison may be out of date.
     """
 
-    # A different session is a different project; None when nothing is connected.
+    # A different session is a different project; None when nothing is connected
+    # or ClickNick has not read the connected project's database.
     session: ConnectionSession | None = None
     generation: int = 0
     # Saves CLICK made in this session, as the ScrWatcher saw them: the one signal
@@ -82,23 +91,44 @@ class ConnectionSession:
     """Owns the resources whose lifetime is bounded by a CLICK project connection.
 
     Resources managed (in teardown order):
-    1. Simulator window (with its console)
-    2. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
-    3. ScrWatcher (file polling)
-    4. AnalysisService (stale graph)
+    1. The database load in flight
+    2. The connection watch (every 100 ms) and the autocomplete popup
+    3. Workspace setup window (with its unapplied choice) and Simulator window
+       (with its console)
+    4. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
+    5. ScrWatcher (file polling)
+    6. AnalysisService (stale graph)
     """
 
     def __init__(
         self,
         click: ClickConnection,
         *,
-        workspace_dir: Path | None = None,
+        has_database: bool = False,
         on_sync_status_changed: Callable[[int], None] | None = None,
         on_build_finished: Callable[[], None] | None = None,
     ) -> None:
+        # The connected window, for the session's lifetime: a project change
+        # replaces the session.
         self.click = click
-        self.workspace_dir = workspace_dir.resolve() if workspace_dir is not None else None
+        # Whether ClickNick read CLICK's database for this project. A session
+        # opens before the database loads, and stays without one when there is
+        # no database backend or the load fails (the CSV fallback). The analysis
+        # reads SC_.mdb through ODBC or Jet, so until then nothing is built, and
+        # nothing that needs a build (the simulation, Review Changes' comparison)
+        # starts.
+        self.has_database = has_database
+        from .services.workspace_mirror import WorkspacePairing
 
+        # The durable workspace builds use, if any (load_workspace_pairing, use_workspace)
+        self.pairing: WorkspacePairing = WorkspacePairing()
+
+        # The autocomplete popup over CLICK's instruction dialog, once one showed
+        self.overlay: Any | None = None
+        # The Workspace setup window, while it is open, and the workspace chosen
+        # in it and not applied yet
+        self.setup_window: Any | None = None
+        self.pending_workspace: ProjectWorkspaceConfig | None = None
         self.analysis: AnalysisService | None = None
         self.scr_watcher: ScrWatcher | None = None
         self.simulator: Any | None = None
@@ -116,6 +146,94 @@ class ConnectionSession:
         self._build_running = False
         self._next_build: _BuildRequest | None = None
         self._closed = False
+        # The database load in flight (begin_load); None once it is cancelled.
+        self._load_token: object | None = None
+        # The connection watch (watch): the scheduler it runs on, and its next tick
+        self._watch_scheduler: tk.Misc | None = None
+        self._watch_id: str | None = None
+
+    # -- Database load -----------------------------------------------------
+
+    def begin_load(self) -> object:
+        """Note a database load starting; its result counts while ``loads(token)``."""
+        self._load_token = token = object()
+        return token
+
+    def loads(self, token: object) -> bool:
+        """Whether the load *token* names is still wanted: not cancelled, session open."""
+        return not self._closed and self._load_token is token
+
+    def cancel_load(self) -> None:
+        """Drop the database load in flight: its result will not be used."""
+        self._load_token = None
+
+    # -- Connection watch --------------------------------------------------
+
+    def watch(self, scheduler: tk.Misc, tick: Callable[[], None]) -> None:
+        """Run *tick* now and every 100 ms after, until the session closes.
+
+        A session has one watch: calling this again while it runs does nothing.
+        """
+        if self._closed or self._watch_scheduler is not None:
+            return
+        self._watch_scheduler = scheduler
+        self._watch_tick(tick)
+
+    def _watch_tick(self, tick: Callable[[], None]) -> None:
+        self._watch_id = None
+        try:
+            tick()
+        finally:
+            # A tick that closed the session (CLICK's window closed, or shows
+            # another project) was its last.
+            if not self._closed:
+                assert self._watch_scheduler is not None
+                self._watch_id = self._watch_scheduler.after(100, lambda: self._watch_tick(tick))
+
+    def _stop_watch(self) -> None:
+        if self._watch_id is not None and self._watch_scheduler is not None:
+            self._watch_scheduler.after_cancel(self._watch_id)
+        self._watch_id = None
+
+    def hide_overlay(self) -> None:
+        """Withdraw and destroy the autocomplete popup; the next popup is a new one."""
+        overlay, self.overlay = self.overlay, None
+        if overlay is not None:
+            overlay.withdraw()
+            overlay.destroy()
+
+    def close_setup_window(self) -> None:
+        """Close the Workspace setup window, dropping the choice not applied yet."""
+        window, self.setup_window = self.setup_window, None
+        self.pending_workspace = None
+        if window is not None:
+            try:
+                window.destroy()
+            except Exception:
+                pass
+
+    # -- Workspace pairing -------------------------------------------------
+
+    @property
+    def workspace_dir(self) -> Path | None:
+        """The paired durable workspace, which builds write; None for a temporary one."""
+        config = self.pairing.config
+        return config.workspace_path.resolve() if config is not None else None
+
+    def plc_name(self) -> str | None:
+        """CLICK's PLC name for the project, from Project.ini (None without one)."""
+        from pyclickplc.project import read_plc_name
+
+        try:
+            return read_plc_name(self.project_ini)
+        except (OSError, ValueError):
+            return None
+
+    def load_workspace_pairing(self) -> None:
+        """Pair the user's preferred workspace for the project's PLC name."""
+        from .services.workspace_mirror import pair_workspace
+
+        self.pairing = pair_workspace(self.plc_name())
 
     @property
     def synced_pending(self) -> int:
@@ -138,14 +256,16 @@ class ConnectionSession:
 
         analysis = self.analysis
         assert analysis is not None
-        persistent_workspace = self.workspace_dir is not None
-        persist = self.workspace_dir or (request.scr_folder / "pyrung_project")
+        # Read once: Workspace setup may pair another one on the Tk thread meanwhile.
+        workspace_dir = self.workspace_dir
+        persistent_workspace = workspace_dir is not None
+        persist = workspace_dir or (request.scr_folder / "pyrung_project")
 
         error: str | None = None
         try:
             from .services.program_check_selection import ProgramCheckSelection
 
-            selection = ProgramCheckSelection(self.workspace_dir)
+            selection = ProgramCheckSelection(workspace_dir)
             analysis.check_selection = selection
             with _BUILD_GATE:
                 # Closed while waiting: the session that replaced this one owns the folder.
@@ -231,13 +351,7 @@ class ConnectionSession:
 
     def _simulation_key(self) -> str:
         """The PLC name simulator settings are remembered under, else the project's name."""
-        from pyclickplc.project import read_plc_name
-
-        try:
-            plc_name = read_plc_name(self.project_ini)
-        except (OSError, ValueError):
-            plc_name = None
-        return plc_name or self.click.project_name
+        return self.plc_name() or self.click.project_name
 
     def ensure_simulation(
         self, scheduler: tk.Misc, *, on_retry_analysis: Callable[[], None] | None = None
@@ -260,6 +374,7 @@ class ConnectionSession:
     # -- Private helpers ---------------------------------------------------
 
     def _close_windows(self) -> None:
+        self.close_setup_window()
         window = self.simulator
         if window is not None:
             try:
@@ -268,13 +383,19 @@ class ConnectionSession:
                 pass
             self.simulator = None
 
-    def use_workspace(self, workspace_dir: Path) -> None:
-        """Move future analysis builds (and simulator settings) to a durable workspace.
+    def use_workspace(self, config: ProjectWorkspaceConfig) -> None:
+        """Pair the durable workspace *config*, for future analysis builds (and
+        simulator settings).
 
         A running simulation relaunches from the new workspace once its
         analysis rebuild finishes.
         """
-        self.workspace_dir = workspace_dir.resolve()
+        from .services.workspace_mirror import WorkspacePairing
+
+        known = [
+            match for match in self.pairing.matches if match.sidecar_path != config.sidecar_path
+        ]
+        self.pairing = WorkspacePairing(config, [*known, config])
         if self.analysis is not None:
             self.analysis.invalidate()
         if self.simulation is not None:
@@ -317,6 +438,8 @@ class ConnectionSession:
         """Where the program CLICK last saved can be read as CSVs, right now."""
         from .services.analysis_service import AnalysisStatus
 
+        if not self.has_database:
+            return SavedProgram()
         reading = "Reading CLICK's program…"
         saves = self._save_count
         analysis = self.analysis
@@ -363,6 +486,10 @@ class ConnectionSession:
         on_complete: Callable[[bool, str | None], None] | None = None,
     ) -> bool:
         """Explicitly regenerate the workspace from the saved CLICK project."""
+        if not self.has_database:
+            if on_complete is not None:
+                root.after(0, lambda: on_complete(False, NO_DATABASE))
+            return False
         paths = self._analysis_paths()
         if paths is None:
             if on_complete is not None:
@@ -379,11 +506,14 @@ class ConnectionSession:
 
         A build already under way serves the request. The ScrWatcher is made
         once per session, as it counts what was synced since CLICK last saved.
+        Nothing starts before ClickNick read CLICK's database (``has_database``).
         """
         from .services.analysis_service import AnalysisStatus
         from .services.scr_watcher import ScrWatcher
         from .utils.click_temp import click_temp_dir
 
+        if not self.has_database:
+            return
         paths = None
         if self.analysis is None or self.analysis.status is not AnalysisStatus.BUILDING:
             paths = self._analysis_paths()
@@ -414,8 +544,12 @@ class ConnectionSession:
     # -- Teardown ----------------------------------------------------------
 
     def close(self) -> None:
-        """Close the simulation windows and stop simulating, watching and analysing."""
+        """Drop the database load, stop watching the window, hide the popup,
+        close the simulation windows, and stop simulating, watching and analysing."""
         self._closed = True
+        self._load_token = None
+        self._stop_watch()
+        self.hide_overlay()
         self._close_windows()
         if self.simulation is not None:
             self.simulation.close()

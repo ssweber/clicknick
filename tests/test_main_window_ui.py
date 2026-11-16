@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from clicknick.app import ClickNickApp
-from clicknick.connection_session import ClickConnection
-from clicknick.services.workspace_mirror import WorkspaceDirectoryInfo
+from clicknick.connection_session import ClickConnection, ConnectionSession
+from clicknick.services.workspace_mirror import WorkspaceDirectoryInfo, WorkspacePairing
 from clicknick.services.workspace_service import WorkspaceState, WorkspaceStatus
 
 
@@ -66,7 +66,7 @@ def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
 def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
-    app._workspace_config = None
+    app._session = None
     app._workspace_display_dir = MagicMock(return_value=None)
     app._open_workspace = MagicMock()
     app._open_mirror_setup_window = MagicMock()
@@ -95,7 +95,7 @@ def test_open_workspace_menu_items_follow_active_directory(tmp_path) -> None:
     app._workspace_options_open_index = 0
     app.workspace_menu = MagicMock()
     app._workspace_menu_open_index = 3
-    app._workspace_config = None
+    app._session = None
     app._workspace_display_dir = MagicMock(return_value=None)
 
     app._refresh_workspace_menu_states()
@@ -122,7 +122,7 @@ def test_open_workspace_menu_items_follow_active_directory(tmp_path) -> None:
 
     app.workspace_options_menu.reset_mock()
     app.workspace_menu.reset_mock()
-    app._workspace_config = object()
+    app._session = SimpleNamespace(pairing=WorkspacePairing(object()))
 
     app._refresh_workspace_menu_states()
 
@@ -189,9 +189,6 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
     for name in variable_names:
         setattr(app, name, MagicMock())
     app._workspace_refresh_after_id = None
-    app._workspace_config = object()
-    app._workspace_mirror_error = None
-    app._click = ClickConnection("1", 2, "Example.ckp")
     app._get_workspace_status = MagicMock(
         return_value=WorkspaceStatus(WorkspaceState.CLEAN, "Clean")
     )
@@ -211,6 +208,8 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
     app.repairs_menu = MagicMock()
     app._repairs_system_nicknames_index = 0
     app._session = SimpleNamespace(
+        click=ClickConnection("1", 2, "Example.ckp"),
+        pairing=WorkspacePairing(object()),
         analysis=SimpleNamespace(system_nickname_repairs=(object(),)),
         synced_pending=2,
         simulation=None,
@@ -242,12 +241,8 @@ def test_changing_shown_state_schedules_one_idle_refresh() -> None:
     app._ui_refresh_id = None
     app._refresh_ui = MagicMock()
 
-    app._click = ClickConnection("1", 2, "Example.ckp")
+    app._session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
     app._data = None
-    app._session = None
-    app._workspace_config = None
-    app._workspace_matches = []
-    app._workspace_mirror_error = "missing"
 
     app.root.after_idle.assert_called_once()
     app._refresh_ui.assert_not_called()
@@ -255,7 +250,6 @@ def test_changing_shown_state_schedules_one_idle_refresh() -> None:
     app._refresh_ui.assert_called_once_with()
     assert app._ui_refresh_id is None
     assert app._click == ClickConnection("1", 2, "Example.ckp")
-    assert app._workspace_mirror_error == "missing"
 
     app._session = None
     assert app.root.after_idle.call_count == 2

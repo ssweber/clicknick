@@ -8,7 +8,7 @@ import os
 import shutil
 import tempfile
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from pyclickplc.validation import validate_click_name
@@ -233,6 +233,41 @@ def preferred_project_config(
     if preferred_path is None:
         return None
     return next((config for config in configs if config.sidecar_path == preferred_path), None)
+
+
+@dataclass
+class WorkspacePairing:
+    """The durable workspace paired with a connected project, as its session holds it."""
+
+    # The workspace builds use; None for a temporary workspace in CLICK's folder
+    config: ProjectWorkspaceConfig | None = None
+    # Every known workspace for the project's PLC name
+    matches: list[ProjectWorkspaceConfig] = field(default_factory=list)
+    # Why no workspace was paired although some are known
+    error: str | None = None
+
+
+def pair_workspace(plc_name: str | None) -> WorkspacePairing:
+    """Pair the user's preferred workspace for *plc_name* (none without a name)."""
+    if not plc_name:
+        return WorkspacePairing()
+    matches = find_project_configs(plc_name)
+    if len(matches) == 1:
+        if matches[0].workspace_path.is_dir():
+            return WorkspacePairing(matches[0], matches)
+        return WorkspacePairing(
+            None, matches, f"Workspace folder not found: {matches[0].workspace_path}"
+        )
+    if not matches:
+        return WorkspacePairing()
+    config = preferred_project_config(plc_name, matches)
+    if config is not None and config.workspace_path.is_dir():
+        return WorkspacePairing(config, matches)
+    return WorkspacePairing(
+        None,
+        matches,
+        "Multiple workspaces are known for this PLC. Choose one in Workspace setup.",
+    )
 
 
 def _is_ignored(path: Path) -> bool:

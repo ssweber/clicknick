@@ -23,7 +23,7 @@ How to use it:
 2. ssort out, tests into CI (nothing)
 3. The bob plugin (done)
 4. CLICK runner (built: `devtools/click_runner.py`; next its early jobs), and the user checks it or a mock can automate (nothing)
-5. ConnectionSession owns the window and project (nothing)
+5. ConnectionSession owns the window and project (done)
 6. Split ClickNickApp (nothing)
 7. Onto pyclickplc's readers (done)
 8. Onto pyrung's named imports (waits on pyrung's deletions release)
@@ -146,28 +146,12 @@ What a script cannot judge is the wording: collect each notice into one page for
 Not without CLICK: the overlay, project change and Save As, Review Changes paste steps, and Sync racing a
 CLICK save.
 
-## 5. ConnectionSession owns the window and project (nothing)
+## 5. ConnectionSession owns the window and project (done)
 
-Checked against the code on 2026-11-15:
-
-- The session is made only after a database load succeeds (`app.py:2596`, and on a kept-edits project change at
-  `:2742`). There is none after the CSV fallback. A CSV loaded over a connected database window keeps the
-  session.
-- Two facts have two homes: the connection (`app._click` and `ConnectionSession.click`) and the workspace
-  folder (`app._workspace_config` and `ConnectionSession.workspace_dir`). `_click` lives longer than the
-  session: during the load, and after the CSV fallback.
-- Loose on the app: the probe token, the overlay and its 100 ms monitor loop, the workspace pairing
-  (`_workspace_config`, `_workspace_matches`, `_pending_workspace_config`, `_workspace_mirror_error`), and the
-  mirror-setup and project-info windows.
-- Four teardown blocks repeat `self._session.close(); self._session = None` (`app.py:2475, 2730, 2889, 2970`).
-
-The job: create the session at connect time and move those fields into it, so each fact has one home and
-teardown happens in one place. A session made at connect time exists before the database loads, and with no
-database backend at all. Analysis reads SC_.mdb through ODBC or Jet, so that session holds a
-"can't build: no database" state instead of failing. `_BUILD_GATE` stays: a closed session's build may still
-be writing the temporary workspace.
-
-Not in scope: `DataSession` and the Review Changes windows keep their own lifetimes.
+The session opens on connect, before the database loads, and holds the window, the load token, the workspace
+pairing, the connection watch, the popup and the Workspace setup window; `_close_session` is the one teardown.
+The Workspace setup window now closes when CLICK's window closes (Sam, 2026-11-15). The project-info window
+stays on the app: it holds nothing of the connection and opens with nothing connected.
 
 ## 6. Split ClickNickApp (nothing)
 

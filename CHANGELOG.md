@@ -17,6 +17,7 @@
 - A project or CSV that holds such a space therefore opens with the **Trim spaces** edit unsaved, so closing ClickNick asks whether to save it and another project in the same CLICK window asks whether to keep it; **Discard** stages it again.
 - An address with a stray `u` (`DS1u`) or a digit that is not 0-9 is no longer read as `DS1`; it is refused, as CLICK refuses it.
 - A nickname CSV whose Data Type is not CLICK's type for the address (or is `TXT`), or whose row has more cells than the header has columns, no longer loads, and the message names the line: pyrung refuses the same file.
+- The Workspace setup window closes when the CLICK window it was opened for closes, as it already did when that window opened another project.
 
 ### Fixed
 

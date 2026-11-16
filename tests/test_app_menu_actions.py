@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from clicknick.app import ClickNickApp
-from clicknick.connection_session import ClickConnection
+from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.analysis_service import AnalysisStatus
 
 
@@ -18,8 +18,7 @@ def _app(click: ClickConnection | None = None) -> ClickNickApp:
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
     app._update_status = MagicMock()
-    app._click = click
-    app._session = None
+    app._session = ConnectionSession(click) if click is not None else None
     return app
 
 
