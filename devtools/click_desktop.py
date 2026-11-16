@@ -27,6 +27,9 @@ SYNTAX_CHECK = 32846
 SAVE_PROJECT = 32898
 SAVE_PROJECT_AS = 32899
 DISCONNECT = 32850
+# File > Import > Nickname ("Import to Address Picker" in the string table). It opens an Open
+# dialog with three import modes and writes the rows into SC_.mdb (live probe of 2026-11-15)
+IMPORT_NICKNAME = 32900
 READ_PROJECT_FROM_PLC = 32853
 WRITE_PROJECT_INTO_PLC = 32854
 # The ribbon's Instruction tab, which opens an instruction's dialog at the ladder's cursor.
@@ -44,6 +47,7 @@ ALLOWED_COMMANDS = {
     SAVE_PROJECT: "Save Project",
     SAVE_PROJECT_AS: "Save Project As",
     DISCONNECT: "Disconnect",
+    IMPORT_NICKNAME: "Import Nickname",
     OUT_DIALOG: "Out...",
     MATH_DIALOG: "Math...",
     COPY_DIALOG: "Copy...",
