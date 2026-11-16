@@ -83,7 +83,8 @@ class FakeClick(cd.Desktop):
     an error box, ``("warn", code, message)`` shows the box and then places the
     instruction, ``"question"`` shows a Yes/No box with no code. The placed instruction
     stays until Delete, unless *delete_works* is off; Syntax Check lists *syntax_lines*'
-    line for it, keyed by the dialog's title.
+    line for it, keyed by the dialog's title. *drop_check_after_delete* ignores the first
+    Syntax Check after each Delete, as live run try1 met it.
     """
 
     def __init__(
@@ -118,6 +119,7 @@ class FakeClick(cd.Desktop):
         judge: Callable[[str, str | None, dict[str, str]], object] | None = None,
         delete_works: bool = True,
         syntax_lines: dict[str, str] | None = None,
+        drop_check_after_delete: bool = False,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -172,6 +174,8 @@ class FakeClick(cd.Desktop):
         self.judge = judge or judge_like_click
         self.delete_works = delete_works
         self.syntax_lines = syntax_lines or {}
+        self.drop_check_after_delete = drop_check_after_delete
+        self.dropping = False
         self.placed: str | None = None  # The title of the instruction in rung 1
         self.entered: list[tuple[str, str | None, dict[str, str]]] = []
 
@@ -559,6 +563,8 @@ class FakeClick(cd.Desktop):
                 self.cursor_rung += 1
 
             self._later("paste", paste)
+        elif command_id == cd.SYNTAX_CHECK and self.dropping:
+            self.dropping = False
         elif command_id == cd.SYNTAX_CHECK:
 
             def checking() -> None:
@@ -588,6 +594,7 @@ class FakeClick(cd.Desktop):
             def delete() -> None:
                 if self.delete_works:
                     self.placed = None
+                self.dropping = self.drop_check_after_delete
 
             self._later("delete", delete)
         else:
@@ -1868,6 +1875,18 @@ def test_try_records_each_answer(tmp_path, setup):
     assert not fake.connected and fake.terminated and not fake.saved
     assert list(result["timings"])[-5:] == ["nicknames", "baseline", "try", "disconnect", "close"]
     assert all(c["seconds"] is not None for c in result["cases"])
+
+
+def test_a_syntax_check_that_never_starts_is_posted_again(tmp_path, setup, monkeypatch):
+    _, exe = setup
+    monkeypatch.setattr(cr, "SYNTAX_REPOST_AFTER", 0.3)
+    fake = FakeClick(tmp_path, drop_check_after_delete=True)
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:3]})
+    assert code == cr.EXIT_OK, result["reason"]
+    assert [c["outcome"] for c in result["cases"]] == ["accepted", "refused", "accepted"]
+    assert fake.commands.count("Syntax Check") == 1 + 2 * 3
+    log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
+    assert log.count("Output is still empty after 0.3 s: post again") == 2
 
 
 def test_try_record_dumps_each_case(tmp_path, setup):

@@ -125,6 +125,12 @@ IDLE_TIMEOUT = 2.0
 RESPONSIVE_POLLS = 3
 # How often a wait logs the status bar (or that CLICK does not answer)
 STATUS_EVERY = 10.0
+# Seconds Output may stay empty, CLICK idle, before Syntax Check is posted again, and the most
+# posts. CLICK writes the check's header at once; live run try1 (2026-11-15) met a Syntax
+# Check posted just after Delete that CLICK never ran, as MFC drops a command that is
+# disabled when it arrives.
+SYNTAX_REPOST_AFTER = 5.0
+SYNTAX_POSTS = 3
 STATUS_BAR_ID = 59393  # AFX_IDW_STATUS_BAR
 # The Connect dialog's PLC list is taken once it reads the same for this many seconds:
 # the LAN scan adds its rows one at a time
@@ -1149,12 +1155,20 @@ class Run:
         self.desktop.set_text(output.hwnd, "")
         before = self.desktop.read_text(output.hwnd)
         self.command(SYNTAX_CHECK)
+        posts = [time.monotonic()]
 
         def finished(found: dict[str, Window]) -> tuple[str, re.Match[str]] | None:
             if not self.only_main(found):
                 return None
             text = self.desktop.read_text(output.hwnd)
             if not text or text == before:
+                if (
+                    len(posts) < SYNTAX_POSTS
+                    and time.monotonic() - posts[-1] >= SYNTAX_REPOST_AFTER
+                ):
+                    self.log(f"Output is still empty after {SYNTAX_REPOST_AFTER:g} s: post again")
+                    self.command(SYNTAX_CHECK)
+                    posts.append(time.monotonic())
                 return None
             matches = list(total.finditer(text))
             return (text, matches[-1]) if matches else None
