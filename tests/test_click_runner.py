@@ -8,6 +8,7 @@ in CLICK.
 
 from __future__ import annotations
 
+import csv as csv_module
 import io
 import json
 import os
@@ -89,6 +90,16 @@ class FakeClick(cd.Desktop):
     show an error box owned by the dialog at once. *quick_checks* ignores a Syntax Check
     posted within that many polls of the last check's result, as live probe 3 found
     CLICK ignoring one posted soon after (event ``check_ignored``).
+
+    File > Import > Nickname opens the Open dialog as live probes 1 to 4 dumped it
+    (2026-11-15): Merge (Project priority) checked, the other modes beside it. Open hands the
+    file's bytes to *import_answer*, which returns the rows the import stores and the error
+    list's text (None for "Completed!"); the rows replace the table (Delete Existing) or are
+    merged into it, kept as JSON in SC_.mdb. *import_writes* is when SC_.mdb is written:
+    ``answer`` as the answer shows, ``ok`` once its OK is pressed. *mode_takes* off leaves the
+    mode as it was; *import_box* ``"question"`` shows a Yes/No box in place of the answer,
+    ``"twice"`` the same answer again once the first is closed. ``imported`` lists each
+    import's mode and file.
     """
 
     def __init__(
@@ -127,6 +138,10 @@ class FakeClick(cd.Desktop):
         places: bool = True,
         box_on_fill: str | None = None,
         quick_checks: int = 0,
+        import_answer: Callable[[bytes], tuple[dict[str, dict], str | None]] | None = None,
+        import_writes: str = "answer",
+        mode_takes: bool = True,
+        import_box: str | None = None,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -188,6 +203,11 @@ class FakeClick(cd.Desktop):
         self.checked_tick: int | None = None  # The poll the last check's result showed on
         self.placed: str | None = None  # The title of the instruction in rung 1
         self.entered: list[tuple[str, str | None, dict[str, str]]] = []
+        self.import_answer = import_answer or import_like_click
+        self.import_writes = import_writes
+        self.mode_takes = mode_takes
+        self.import_box = import_box
+        self.imported: list[tuple[str, str]] = []
 
     # -- building windows ---------------------------------------------------
 
@@ -557,6 +577,102 @@ class FakeClick(cd.Desktop):
         self._control(dialog, "Button", "Cancel", 2, on_press=lambda: self._later("cancel", cancel))
         main.enabled = False
 
+    def _show_open(self) -> None:
+        """The Open dialog of File > Import > Nickname, as live probe 1 dumped it."""
+        assert self.main is not None
+        main = self.main
+        main.enabled = False
+        dialog = self._window("#32770", "Open", main.hwnd)
+        self._control(dialog, "ComboBox", "", 1137)
+        box_ex = self._control(dialog, "ComboBoxEx32", "", 1148)
+        box = self._control(dialog, "ComboBox", "", 1148, parent=box_ex.hwnd)
+        name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
+        self._control(dialog, "Button", "Open as &read-only", 1040, visible=False, enabled=False)
+        # The template's panel: Delphi radio buttons, whose ids are their hwnds
+        template = self._control(dialog, "#32770", "", 0)
+        panel = self._control(dialog, "TPanel", "", 0, parent=template.hwnd)
+        modes = {
+            text: self._control(dialog, "TRadioButton", text, 0, parent=panel.hwnd)
+            for text in ("Delete Existing", "Merge (File priority)", "Merge (Project priority)")
+        }
+        modes["Merge (Project priority)"].checked = 1
+        for control in (panel, *modes.values()):
+            control.id = control.hwnd
+
+        def pick(text: str) -> None:
+            if self.mode_takes:
+                for other, radio in modes.items():
+                    radio.checked = int(other == text)
+
+        for text, radio in modes.items():
+            radio.on_press = lambda t=text: self._later("import_mode", lambda: pick(t))
+
+        def open_file() -> None:
+            mode = next(t for t, r in modes.items() if r.checked)
+            self._drop(dialog)
+            self._import(Path(name.value), mode.removeprefix("Merge (").removesuffix(")"))
+
+        self._control(
+            dialog, "Button", "&Open", 1, on_press=lambda: self._later("import", open_file)
+        )
+        self._control(dialog, "Button", "Cancel", 2)
+
+    def _import(self, path: Path, mode: str) -> None:
+        """CLICK importing *path*: its progress window, then its answer over it."""
+        assert self.main is not None
+        main = self.main
+        self.imported.append((mode, path.name))
+        rows, errors = self.import_answer(path.read_bytes())
+        mdb = self.temp_dir(main.hwnd) / "SC_.mdb"
+
+        def write() -> None:
+            try:
+                table = json.loads(mdb.read_text(encoding="utf-8"))
+            except ValueError:
+                table = {}  # A new project's SC_.mdb, b"mdb" here
+            table = rows if mode == "Delete Existing" else {**table, **rows}
+            mdb.write_text(json.dumps(table), encoding="utf-8")
+
+        progress = self._window("TfrmProgress", f"Import - {mode}", main.hwnd, enabled=False)
+        self._control(progress, "TProgressBar", "", 0)
+        if self.import_writes == "answer":
+            write()
+
+        def closed(box: FakeWindow, again: bool) -> None:
+            self._drop(box)
+            if again:
+                show(False)
+                return
+            self._drop(progress)
+            if self.import_writes == "ok":
+                write()
+            main.enabled = True
+
+        def show(again: bool) -> None:
+            if self.import_box == "question":
+                box = self._window("#32770", "Import Database", main.hwnd)
+                self._control(box, "Static", "Overwrite the nicknames?", 65535)
+                self._control(box, "Button", "&Yes", 6)
+                self._control(box, "Button", "&No", 7)
+            elif errors is None:
+                box = self._window("#32770", "Import Database", main.hwnd)
+                self._control(box, "Button", "OK", 2)
+                self._control(box, "Static", "", 20)
+                self._control(box, "Static", "Completed!", 65535)
+            else:
+                box = self._window("TfrmErrorList", "Import Error List", main.hwnd)
+                self._control(box, "TButton", "Ok", 0)
+                self._control(box, "TMemo", "", 0, value=errors)
+                for control in box.controls:
+                    control.id = control.hwnd
+            for button in box.controls:
+                if button.text in ("OK", "Ok"):
+                    button.on_press = lambda b=box: self._later(
+                        "import_closed", lambda: closed(b, again)
+                    )
+
+        show(self.import_box == "twice")
+
     # -- Desktop ----------------------------------------------------------------
 
     def _post_command(self, hwnd: int, command_id: int) -> None:
@@ -607,6 +723,8 @@ class FakeClick(cd.Desktop):
             self._later("save_as", self._show_save_as)
         elif command_id == cd.DISCONNECT:
             self._later("disconnect", self._show_disconnect)
+        elif command_id == cd.IMPORT_NICKNAME:
+            self._later("import_open", self._show_open)
         elif command_id == cd.DELETE:
 
             def delete() -> None:
@@ -706,7 +824,7 @@ class FakeClick(cd.Desktop):
         control = self._find(hwnd)
         if control.id == 20142:
             return ""  # ES_PASSWORD: another process reads nothing
-        return control.value if control.cls in ("Edit", "RichEdit20W") else control.text
+        return control.value if control.cls in ("Edit", "RichEdit20W", "TMemo") else control.text
 
     def set_text(self, hwnd: int, text: str) -> bool:
         if not self._message("WM_SETTEXT"):
@@ -808,6 +926,43 @@ def judge_like_click(title: str, mode: str | None, values: dict[str, str]) -> ob
     if title == "Copy" and values.get("destination", "").startswith("YD"):  # Live try4, B1
         return ("OBJ-004", "The entered address cannot be used in this instruction.")
     return None
+
+
+def import_like_click(data: bytes) -> tuple[dict[str, dict], str | None]:
+    """The rows an import stores and its error list, as live probes 2 and 3 saw three cases:
+    a line that is not six cells is refused, so is a quoted address with a space at an end
+    (listed twice for a file's first row), and any other row is stored under its address
+    without the spaces at its ends."""
+    rows: dict[str, dict] = {}
+    errors = ""
+    lines = data.decode("latin-1").split("\r\n")
+    for number, line in enumerate(lines[1:], 2):
+        if not line:
+            continue
+        cells = next(csv_module.reader([line]))
+        if len(cells) != 6:  # As live probe 3 saw the second line of a quoted line break
+            errors += (
+                f"Error : Unable to import to Database.\r\nLine {number} : {line}\r\n"
+                "Cause : The file format is not correct.\r\n\r\n"
+            )
+            continue
+        address, data_type, nickname, initial, retentive, comment = cells
+        if line.startswith('"') and address != address.strip():
+            entry = (
+                f"Error : Unable to import to Database.\r\nLine {number} : {line}\r\n"
+                "Cause : The memory address is not supported by this CLICK CPU module.\r\n\r\n"
+            )
+            errors += entry * (2 if number == 2 else 1)
+            continue
+        rows[address.strip()] = {
+            "DataType": {"INT": 1, "TEXT": 6, "FLOAT": 3}.get(data_type),
+            "Nickname": nickname,
+            "InitialValue": initial or None,
+            "Retentive": retentive == "Yes",
+            "Comment": comment or None,
+            "Use": False,
+        }
+    return rows, errors or None
 
 
 # ---------------------------------------------------------------------------
@@ -2124,6 +2279,274 @@ def test_the_cases_file_loads():
 
 
 # ---------------------------------------------------------------------------
+# import: a nickname CSV through CLICK's own import
+# ---------------------------------------------------------------------------
+
+HEADER = b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
+IMPORT_ROWS = [
+    b'DS20,INT,"Line Break",0,No,"first\r\nsecond"\r\n',
+    b'" DS32",INT,"Addr Quoted Lead",0,No,""\r\n',
+    b'TXT20,TEXT,"Bare Tab",\t,No,""\r\n',
+]
+# Lines: the header 1, DS20 2 and 3, an empty line 4, DS32 5, TXT20 6
+IMPORT_CSV = HEADER + IMPORT_ROWS[0] + b"\r\n" + IMPORT_ROWS[1] + IMPORT_ROWS[2]
+# The Import Error List's text in live probe 2 (2026-11-15), for tab_checks.csv
+LIVE_ERROR_LIST = (
+    "Unable to import Intial Value.\r\nLine 14 : Address = DS25, Initial Value =  5 \r\n"
+    "Cause : The file format is not correct.\r\n\r\n"
+    "Unable to import Intial Value.\r\nLine 15 : Address = DS26, Initial Value = \t5\r\n"
+    "Cause : The file format is not correct.\r\n\r\n"
+    "Error : Unable to import to Database.\r\n"
+    'Line 19 : " DS32",INT,"Addr Quoted Lead",0,No,""\r\n'
+    "Cause : The memory address is not supported by this CLICK CPU module.\r\n\r\n"
+)
+
+
+class Rows:
+    """read_rows for the fake's SC_.mdb, which holds JSON; records the files read."""
+
+    def __init__(self, *, fails: bool = False) -> None:
+        self.read: list[Path] = []
+        self.fails = fails
+
+    def __call__(self, mdb: Path) -> dict[str, dict]:
+        self.read.append(mdb)
+        if self.fails:
+            raise RuntimeError("no Access ODBC driver")
+        return json.loads(mdb.read_text(encoding="utf-8"))
+
+
+def run_import(
+    fake: FakeClick,
+    tmp_path: Path,
+    exe: Path,
+    *args: str,
+    data: bytes | None = IMPORT_CSV,
+    timeout: float = 5,
+    rows: Rows | None = None,
+) -> tuple[int, dict]:
+    """Run ``import`` on *fake*, with *data* as the CSV (none written when None)."""
+    csv = tmp_path / "nicknames.csv"
+    if data is not None:
+        csv.write_bytes(data)
+    out = tmp_path / "out"
+    argv = ["import", str(csv), "--out", str(out), "--click-exe", str(exe)]
+    argv += ["--timeout", str(timeout), "--paste-timeout", str(timeout), *args]
+    code = cr.main(
+        argv, desktop=fake, prepare=Prepare(), read_rows=rows or Rows(), stderr=io.StringIO()
+    )
+    result_file = out / "result.json"
+    return code, json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
+
+
+def test_import_each_row(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    rows = Rows()
+    out = tmp_path / "out"
+
+    code, result = run_import(fake, tmp_path, exe, "--each-row", rows=rows)
+
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["import_mode"] == "Delete Existing" and result["each_row"] is True
+    imports = result["imports"]
+    assert [(i["name"], i["line"], i["answer"]) for i in imports] == [
+        ("whole", None, "errors"),
+        ("line002", 2, "errors"),
+        ("line005", 5, "errors"),
+        ("line006", 6, "completed"),
+    ]
+    # Each row's file is the header and the row, byte for byte; a quoted line break stays
+    for name, row in zip(["line002", "line005", "line006"], IMPORT_ROWS, strict=True):
+        assert (out / "rows" / f"{name}.csv").read_bytes() == HEADER + row
+    assert imports[1]["row"] == IMPORT_ROWS[0].decode("latin-1")
+    assert fake.imported == [
+        ("Delete Existing", "nicknames.csv"),
+        ("Delete Existing", "line002.csv"),
+        ("Delete Existing", "line005.csv"),
+        ("Delete Existing", "line006.csv"),
+    ]
+    # The answers: the error list's text and its entries, or the box's
+    whole = imports[0]
+    assert [(e["line"], e["cause"]) for e in whole["errors"]] == [
+        (3, "The file format is not correct."),
+        (5, "The memory address is not supported by this CLICK CPU module."),
+    ]
+    assert whole["errors"][0]["text"] == 'second"'
+    assert "Line 5 : " in whole["message"]
+    assert len(imports[2]["errors"]) == 2 and imports[3]["message"] == "Completed!"
+    # What each import stored, read from its own copy of SC_.mdb once CLICK had ended
+    assert set(whole["stored"]) == {"DS20", "TXT20"}
+    assert whole["stored"]["DS20"]["Comment"] == "first"
+    assert set(imports[1]["stored"]) == {"DS20"}
+    assert imports[2]["stored"] == {}
+    assert imports[3]["stored"] == {"TXT20": whole["stored"]["TXT20"]}
+    assert whole["stored"]["TXT20"]["InitialValue"] == "\t"
+    copies = [out / "mdb" / f"{n:02d}-{i['name']}.mdb" for n, i in enumerate(imports, 1)]
+    assert rows.read == copies and [Path(i["mdb"]) for i in imports] == copies
+    assert whole["mdb_changed_at_answer"] is True and whole["mdb_changed"] is True
+    assert all(i["seconds"] is not None for i in imports)
+    # The mode is picked, the path typed, and only the import is sent before Disconnect
+    assert fake.pressed.count("Delete Existing") == 4
+    assert fake.typed[1148] == str(out / "rows" / "line006.csv")
+    assert fake.commands == ["Import Nickname"] * 4 + ["Disconnect"]
+    # The project was never saved: CLICK is disconnected, then ended
+    assert not fake.connected and fake.terminated and not fake.saved
+    assert list(result["timings"])[-4:] == ["import", "disconnect", "close", "read"]
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "line006: 1 row(s) stored" in log and "InitialValue='\\t'" in log
+    assert "SC_.mdb changed (already when the answer showed); copied" in log
+
+
+def test_import_once_without_each_row(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_import(fake, tmp_path, exe, "--record")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert [i["name"] for i in result["imports"]] == ["whole"]
+    assert result["each_row"] is False and not (tmp_path / "out" / "rows").exists()
+    labels = {p.name.split("-")[1] for p in (tmp_path / "out" / "record").glob("*.json")}
+    assert {"import01_open", "import01_answer", "import01_done"} <= labels
+
+
+def test_an_import_written_after_its_ok_is_waited_for(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, import_writes="ok")
+    code, result = run_import(fake, tmp_path, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    (whole,) = result["imports"]
+    assert whole["mdb_changed_at_answer"] is False and whole["mdb_changed"] is True
+    assert set(whole["stored"]) == {"DS20", "TXT20"}
+
+
+def test_a_mode_that_does_not_take_stops_the_import(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, mode_takes=False)
+    out = tmp_path / "out"
+    code, result = run_import(fake, tmp_path, exe, timeout=1)
+    assert_aborted(fake, out, code, result, "'Delete Existing' to be checked")
+    assert result["step"] == "import" and fake.imported == []
+
+
+@pytest.mark.parametrize("event", ["import_open", "import", "import_closed"])
+def test_an_unexpected_dialog_during_an_import_aborts(tmp_path, setup, event):
+    _, exe = setup
+    fake = FakeClick(tmp_path, surprise=event)
+    out = tmp_path / "out"
+    code, result = run_import(fake, tmp_path, exe)
+    assert_aborted(fake, out, code, result, "unexpected window")
+    assert "'Set a Project Password'" in result["reason"] and result["step"] == "import"
+
+
+@pytest.mark.parametrize(
+    ("box", "reason"),
+    [
+        ("question", "CLICK asked something the runner does not answer"),
+        ("twice", "import01: CLICK answered again"),
+    ],
+)
+def test_an_import_answer_the_runner_does_not_know_aborts(tmp_path, setup, box, reason):
+    _, exe = setup
+    fake = FakeClick(tmp_path, import_box=box)
+    out = tmp_path / "out"
+    code, result = run_import(fake, tmp_path, exe)
+    assert_aborted(fake, out, code, result, reason)
+    assert "&Yes" not in fake.pressed and "&No" not in fake.pressed
+
+
+def test_an_abort_keeps_the_imports_done_and_their_rows(tmp_path, setup):
+    _, exe = setup
+    calls: list[bytes] = []
+
+    def answer(data: bytes) -> tuple[dict[str, dict], str | None]:
+        calls.append(data)
+        if len(calls) == 2:
+            fake.import_box = "question"
+        return import_like_click(data)
+
+    fake = FakeClick(tmp_path, import_answer=answer)
+    out = tmp_path / "out"
+    code, result = run_import(fake, tmp_path, exe, "--each-row")
+    assert_aborted(fake, out, code, result, "does not answer")
+    assert result["step"] == "import"
+    done, stopped = result["imports"]
+    assert set(done["stored"]) == {"DS20", "TXT20"}
+    assert (stopped["name"], stopped["mdb"], stopped["stored"]) == ("line002", None, None)
+
+
+def test_reading_the_copies_failing_stops_the_run(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_import(fake, tmp_path, exe, rows=Rows(fails=True))
+    assert code == cr.EXIT_ABORTED
+    assert result["reason"] == (
+        "reading the copies of SC_.mdb failed: RuntimeError: no Access ODBC driver"
+    )
+    assert result["step"] == "read" and fake.terminated and result["click"]["closed"] is True
+    assert (tmp_path / "out" / "mdb" / "01-whole.mdb").is_file()
+
+
+@pytest.mark.parametrize(
+    ("data", "args", "reason"),
+    [
+        (None, (), "no CSV at"),
+        (HEADER, ("--each-row",), "has no rows after its header to import one by one"),
+    ],
+)
+def test_import_refuses(tmp_path, setup, data, args, reason):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_import(fake, tmp_path, exe, *args, data=data)
+    assert code == cr.EXIT_REFUSED and reason in result["reason"]
+    assert fake.pid is None
+
+
+def test_a_header_alone_is_imported_once(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_import(fake, tmp_path, exe, data=HEADER)
+    assert code == cr.EXIT_OK, result["reason"]
+    (whole,) = result["imports"]
+    assert (whole["answer"], whole["stored"]) == ("completed", {})
+
+
+def test_split_rows_keeps_each_record_as_in_the_file():
+    header, rows = cr.split_rows(IMPORT_CSV)
+    assert header == HEADER
+    assert rows == [(2, IMPORT_ROWS[0]), (5, IMPORT_ROWS[1]), (6, IMPORT_ROWS[2])]
+    # LF line ends, and a last row with none
+    assert cr.split_rows(b"A,B\nDS1,x\nDS2,y") == (b"A,B\n", [(2, b"DS1,x\n"), (3, b"DS2,y")])
+    assert cr.split_rows(b"") == (b"", [])
+
+
+def test_parse_import_errors_reads_the_live_error_list():
+    entries = cr.parse_import_errors(LIVE_ERROR_LIST)
+    assert entries == [
+        {
+            "error": "Unable to import Intial Value.",
+            "line": 14,
+            "text": "Address = DS25, Initial Value =  5 ",
+            "cause": "The file format is not correct.",
+        },
+        {
+            "error": "Unable to import Intial Value.",
+            "line": 15,
+            "text": "Address = DS26, Initial Value = \t5",
+            "cause": "The file format is not correct.",
+        },
+        {
+            "error": "Error : Unable to import to Database.",
+            "line": 19,
+            "text": '" DS32",INT,"Addr Quoted Lead",0,No,""',
+            "cause": "The memory address is not supported by this CLICK CPU module.",
+        },
+    ]
+    # A vertical tab or form feed is text, and a line in no known form is kept
+    (entry,) = cr.parse_import_errors("Odd.\r\nLine 3 : a\x0bb\x0c\r\nmore\r\n")
+    assert entry["text"] == "a\x0bb\x0c" and entry["other"] == ["more", ""]
+
+
+# ---------------------------------------------------------------------------
 # The command allowlist
 # ---------------------------------------------------------------------------
 
@@ -2155,7 +2578,7 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_nine_commands():
+def test_the_allowlist_is_the_ten_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         32777: "Delete",
@@ -2163,6 +2586,7 @@ def test_the_allowlist_is_the_nine_commands():
         32898: "Save Project",
         32899: "Save Project As",
         32850: "Disconnect",
+        32900: "Import Nickname",
         50010: "Out...",
         50030: "Math...",
         50040: "Copy...",

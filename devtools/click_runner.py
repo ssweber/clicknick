@@ -1610,9 +1610,7 @@ class Run:
         A row's file is the CSV's header and that row, byte for byte, in ``DIR/rows/``.
         """
         assert self.s.csv is not None
-        plan: list[tuple[str, Path, int | None, bytes | None]] = [
-            ("whole", self.s.csv, None, None)
-        ]
+        plan: list[tuple[str, Path, int | None, bytes | None]] = [("whole", self.s.csv, None, None)]
         if self.s.each_row:
             folder = self.s.out / "rows"
             folder.mkdir()
