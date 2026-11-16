@@ -2219,9 +2219,15 @@ class Run:
         }
 
     def open_project(self, ckp: Path, temp: Path) -> None:
-        """File > Open Project *ckp*, and wait until its title names it and CLICK's Scr*.tmp
-        files are the same on two polls in a row."""
+        """File > Open Project *ckp*, and wait until the open has begun, its title names it
+        and CLICK's Scr*.tmp files are the same on two polls in a row.
+
+        The open has begun once Project Reading or the bare title has shown, or the Scr*.tmp
+        files differ from those before the command. The title can name *ckp* already (reopen
+        opens the project it saved last), so the title alone proves nothing.
+        """
         self.wait("the main window alone", [], self.only_main)
+        before = _scr_state(temp)
         self.command(OPEN_PROJECT)
         dialog = self.wait("Open", [OPEN], lambda f: f.get(OPEN.name))
         self.record("open")
@@ -2231,12 +2237,21 @@ class Run:
         self.fill_path(name, ckp, [OPEN])
         self.press(dialog, button)
         last: list[object] = [None]
+        begun = [False]
 
         def opened(found: dict[str, Window]) -> bool:
             main = found.get(MAIN)
+            state = _scr_state(temp)
+            if (
+                PROJECT_READING.name in found
+                or (main is not None and _project_file(main.title) is None)
+                or (state and state != before)
+            ):
+                begun[0] = True
+            if not begun[0]:
+                return False
             if main is None or _project_file(main.title) != ckp.name or not self.only_main(found):
                 return False
-            state = _scr_state(temp)
             done = bool(state) and state == last[0]
             last[0] = state
             return done

@@ -161,6 +161,7 @@ class FakeClick(cd.Desktop):
         import_box: str | None = None,
         import_as: str | None = None,
         writes_data: bool = True,
+        open_gap: int = 0,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -230,6 +231,7 @@ class FakeClick(cd.Desktop):
         self.import_as = import_as
         self.imported: list[tuple[str, str]] = []
         self.writes_data = writes_data
+        self.open_gap = open_gap
         self.editor_keys: Callable[[int], None] = lambda vk: None
         self.ckps: dict[Path, dict[str, bytes]] = {}  # Each saved project's files
         self.opened: list[Path] = []
@@ -254,8 +256,8 @@ class FakeClick(cd.Desktop):
         if window is not None:
             self.wins.pop(window.hwnd, None)
 
-    def _later(self, event: str, action: Callable[[], None]) -> None:
-        """Run *action* a few polls from now, as a posted message is."""
+    def _later(self, event: str, action: Callable[[], None], polls: int | None = None) -> None:
+        """Run *action* a few polls from now (*polls*, else ``lag``), as a posted message is."""
 
         def run() -> None:
             if event == self.stall:
@@ -270,7 +272,7 @@ class FakeClick(cd.Desktop):
             if event == self.error_on:
                 self._show_error(event)
 
-        self.queue.append((self.tick + self.lag, run))
+        self.queue.append((self.tick + (self.lag if polls is None else polls), run))
 
     def _show_error(self, event: str) -> None:
         """CLICK's error box as live run 3 dumped it (live3/abort/04-abort-288099950.json)."""
@@ -488,7 +490,11 @@ class FakeClick(cd.Desktop):
         self._control(dialog, "Button", "Cancel", 2)
 
     def _show_open_project(self) -> None:
-        """File > Open Project's Open dialog; opening puts the project's files in the temp folder."""
+        """File > Open Project's Open dialog; opening puts the project's files in the temp folder.
+
+        With *open_gap*, Open closes the dialog at once and leaves the main window alone, still
+        titled as before, for *open_gap* polls before the open begins.
+        """
         assert self.main is not None
         main = self.main
         main.enabled = False
@@ -517,7 +523,20 @@ class FakeClick(cd.Desktop):
             self._drop(reading)
             main.enabled = True
 
-        self._control(dialog, "Button", "&Open", 1, on_press=lambda: self._later("open", read_file))
+        def press_open() -> None:
+            if not self.open_gap:
+                self._later("open", read_file)
+                return
+            self._drop(dialog)
+            main.enabled = True
+
+            def begin() -> None:
+                main.enabled = False
+                read_file()
+
+            self._later("open_begins", begin, polls=self.open_gap)
+
+        self._control(dialog, "Button", "&Open", 1, on_press=press_open)
         self._control(dialog, "Button", "Cancel", 2)
 
     def _show_read_data(self) -> None:
@@ -2960,6 +2979,18 @@ def test_reopen_copies_each_point(tmp_path, setup):
         "third_save",
         "close",
     ]
+
+
+def test_reopen_waits_for_the_open_to_begin(tmp_path, setup):
+    # Open closes the dialog and leaves second.ckp's title, as Save As left it, before the
+    # open begins: the title and the Scr*.tmp files alone would pass on the old files
+    _, exe = setup
+    fake = FakeClick(tmp_path, open_gap=8)
+    code, result = run_reopen(fake, tmp_path, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.opened == [(tmp_path / "out" / "second.ckp").resolve()]
+    assert fake.commands[-1] == "Save Project As"
+    assert result["points"]["third"]["title"].endswith("- third.ckp - [Main Program]")
 
 
 def test_reopen_refuses_lines_that_are_not_ascii(tmp_path, setup):
