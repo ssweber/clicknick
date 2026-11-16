@@ -22,6 +22,7 @@ from clicknick.services.workspace_service import (
     get_workspace_status,
 )
 from clicknick.views.review_changes_window import ProposalSource
+from clicknick.workspace_controller import WorkspaceController
 
 
 def _analysis(
@@ -100,15 +101,14 @@ def test_generated_workspace_opens_after_analysis_failure(tmp_path: Path) -> Non
     assert status.label == "Analysis failed"
     assert status.detail == "reset needs a condition"
 
-    app = ClickNickApp.__new__(ClickNickApp)
+    workspace = WorkspaceController(
+        SimpleNamespace(_session=SimpleNamespace(analysis=analysis, pairing=WorkspacePairing()))
+    )
+    workspace._open_folder = MagicMock()
 
-    app._request_ui_refresh = MagicMock()
-    app._session = SimpleNamespace(analysis=analysis, pairing=WorkspacePairing())
-    app._open_folder = MagicMock()
-
-    assert app._open_workspace_menu_options() == ("Open Temporary Workspace", "normal")
-    app._open_workspace()
-    app._open_folder.assert_called_once_with(
+    assert workspace.open_entry_options() == ("Open Temporary Workspace", "normal")
+    workspace.open_workspace()
+    workspace._open_folder.assert_called_once_with(
         project, title="Open Workspace", unavailable="Workspace is not available"
     )
 
@@ -743,11 +743,12 @@ def test_main_window_review_changes_uses_consolidated_workflow() -> None:
         has_database=True,
         staged_rungs=4,
     )
-    app._get_workspace_status = MagicMock(
+    workspace = WorkspaceController(app)
+    workspace.status = MagicMock(
         return_value=SimpleNamespace(label="4 changed rungs", changed_rungs=4)
     )
 
-    app._workspace_rung_apply()
+    workspace.review_changes()
 
     app._live_server.dispatch_now.assert_called_once_with("rung apply")
     app._update_status.assert_called_once_with("Reviewing 4 changed rungs", "connected")
@@ -800,7 +801,7 @@ def test_successful_main_window_reload_clears_changed_rung_count() -> None:
     folder = MagicMock(shows_workspace_proposal=False)
     app._review_changes_windows = {Path("csv_output"): proposal, Path("export"): folder}
 
-    app._workspace_reload_finished(True, None)
+    WorkspaceController(app)._reload_finished(True, None)
 
     app._session.record_rung_stage.assert_called_once_with(0)
     app._update_status.assert_called_once_with("Workspace reloaded from CLICK", "connected")
@@ -814,21 +815,22 @@ def test_main_window_reload_ignores_completion_from_replaced_session(monkeypatch
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
     app._update_status = MagicMock()
-    app._get_workspace_status = MagicMock(
-        return_value=SimpleNamespace(state=WorkspaceState.MODIFIED)
-    )
+    workspace = WorkspaceController(app)
+    workspace.status = MagicMock(return_value=SimpleNamespace(state=WorkspaceState.MODIFIED))
     old_session = SimpleNamespace(has_database=True, reload_workspace_from_click=MagicMock())
     app._session = old_session
-    monkeypatch.setattr("clicknick.app.messagebox.askokcancel", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.messagebox.askokcancel", lambda *_a, **_k: True
+    )
 
-    app._workspace_reload_from_click()
+    workspace.reload_from_click()
     callback = old_session.reload_workspace_from_click.call_args.args[1]
     app._session = SimpleNamespace(record_rung_stage=MagicMock())
-    app._workspace_reload_finished = MagicMock()
+    workspace._reload_finished = MagicMock()
 
     callback(True, None)
 
-    app._workspace_reload_finished.assert_not_called()
+    workspace._reload_finished.assert_not_called()
 
 
 def test_analysis_builds_run_one_at_a_time_and_coalesce(tmp_path) -> None:

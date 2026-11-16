@@ -11,6 +11,7 @@ from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data_session import DataSession
 from clicknick.detection.window_detector import ClickInstance
+from clicknick.workspace_controller import WorkspaceController
 
 
 class FakeVar:
@@ -162,6 +163,7 @@ def _app(monkeypatch, *, answer=None, yes_no=False) -> tuple[ClickNickApp, list]
         get_click_instances=lambda: list(app.click_instances),
         detect_child_window=MagicMock(return_value=None),
     )
+    app._workspace = WorkspaceController(app)
     return app, prompts
 
 
@@ -509,24 +511,24 @@ def test_connecting_opens_the_session_before_the_database_loads(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "action",
+    ("owner", "action"),
     [
-        "_workspace_rung_apply",
-        "_workspace_reload_from_click",
-        "_open_simulator",
-        "_toggle_simulation",
-        "_apply_workspace_mirror_setup",
-        "_ensure_plc_name_for_workspace",
+        ("workspace", "review_changes"),
+        ("workspace", "reload_from_click"),
+        ("app", "_open_simulator"),
+        ("app", "_toggle_simulation"),
+        ("workspace", "_apply_setup"),
+        ("workspace", "_ensure_plc_name"),
     ],
 )
-def test_without_its_database_a_session_asks_to_connect_first(monkeypatch, action):
+def test_without_its_database_a_session_asks_to_connect_first(monkeypatch, owner, action):
     """While the database loads, and after the CSV fallback, these say what they
     said before a session was made on connect."""
     app, _prompts = _app(monkeypatch)
     app._live_server = MagicMock()
-    app._current_plc_name = MagicMock(return_value=None)
+    app._workspace.plc_name = MagicMock(return_value=None)
 
-    getattr(app, action)()
+    getattr(app._workspace if owner == "workspace" else app, action)()
 
     ((message, style),) = [call.args for call in app._update_status.call_args_list]
     assert (message.casefold(), style) == ("connect to a click project first", "error")

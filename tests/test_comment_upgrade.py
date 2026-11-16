@@ -202,10 +202,11 @@ def tk_root():
 
 def test_opening_the_repairs_menu_refreshes_the_upgrade_entry(tk_root):
     from clicknick.app import ClickNickApp
+    from clicknick.workspace_controller import WorkspaceController
 
     app = ClickNickApp.__new__(ClickNickApp)
     app.root = tk_root
-    app._open_workspace_menu_options = MagicMock(return_value=("Open Workspace", "disabled"))
+    app._workspace = WorkspaceController(SimpleNamespace(_session=None))
     app._refresh_upgrade_entry = MagicMock()
     app._create_menu_bar()
     menubar = tk_root.nametowidget(tk_root.cget("menu"))

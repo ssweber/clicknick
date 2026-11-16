@@ -11,6 +11,7 @@ import pytest
 from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.analysis_service import AnalysisStatus
+from clicknick.workspace_controller import WorkspaceController
 
 
 def _app(click: ClickConnection | None = None) -> ClickNickApp:
@@ -19,6 +20,7 @@ def _app(click: ClickConnection | None = None) -> ClickNickApp:
     app.root = MagicMock()
     app._update_status = MagicMock()
     app._session = ConnectionSession(click) if click is not None else None
+    app._workspace = WorkspaceController(app)
     return app
 
 

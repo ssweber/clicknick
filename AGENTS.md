@@ -55,6 +55,7 @@ src/clicknick/
 ├── data_session.py        # DataSession: current store + Dataview model + editor windows
 ├── connection_session.py  # ClickConnection + ConnectionSession (watch, workspace, analysis, simulation)
 ├── simulation_session.py  # SimulationSession: pyrung DAP + Modbus + simulator settings (no tkinter)
+├── workspace_controller.py  # WorkspaceController: the Workspace group, its menu entries, Workspace setup
 ├── models/                # Data models and constants
 │   ├── address_row.py     # Frozen dataclass for address data
 │   └── mutable_row_builder.py  # Builder for accumulating changes
