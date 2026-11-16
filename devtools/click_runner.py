@@ -171,7 +171,6 @@ from typing import Any
 
 from click_desktop import (
     ADDRESS_PICKER,
-    SYSTEM_CONFIGURATION,
     COPY_DIALOG,
     DELETE,
     DISCONNECT,
@@ -183,6 +182,7 @@ from click_desktop import (
     READ_DATA_FROM_PLC,
     SAVE_PROJECT_AS,
     SYNTAX_CHECK,
+    SYSTEM_CONFIGURATION,
     Control,
     Desktop,
     Window,
@@ -2264,9 +2264,7 @@ class Run:
             form = found.get(SYSTEM_CONFIG.name)
             return form if form is not None and form.enabled else None
 
-        form = self.wait(
-            "System Configuration", [SYSTEM_CONFIG, SYSTEM_CONFIG_NOTICE], shown
-        )
+        form = self.wait("System Configuration", [SYSTEM_CONFIG, SYSTEM_CONFIG_NOTICE], shown)
         self.record(f"{point}_system_config")
         controls = self.controls(form)
         edits = [c for c in controls if c.cls == "TEdit"]

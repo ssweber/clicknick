@@ -655,7 +655,9 @@ class FakeClick(cd.Desktop):
         if self.system_config_notice and not self.system_config_shown:
             self.system_config_shown = True
             form.enabled = False
-            notice = self._window("TfrmInformationSystemConfigDlg", "System Configuration", form.hwnd)
+            notice = self._window(
+                "TfrmInformationSystemConfigDlg", "System Configuration", form.hwnd
+            )
             self._control(notice, "TButton", "OK", 0, on_press=ok)
 
             def close() -> None:
