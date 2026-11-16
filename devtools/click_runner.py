@@ -134,6 +134,7 @@ from pathlib import Path
 from typing import Any
 
 from click_desktop import (
+    ADDRESS_PICKER,
     COPY_DIALOG,
     DELETE,
     DISCONNECT,
@@ -269,6 +270,10 @@ SAVE_DATA = Expect("save_data", "#32770", "Save", "read_data")
 READING_DATA = Expect(
     "reading_data", "TfrmReadWriteDataMemoryStatus", "Data Memory Reading..", "read_data"
 )
+# Program > Address Picker, as live probe e1 (2026-11-16) dumped it: a Delphi form with a
+# TStringGrid of every address (Address, Data Type, Nickname, Used, Initial Value, Retentive,
+# Address Comment), the memory types as tabs, filters, OK, Cancel and Help
+PICKER = Expect("picker", "TfrmTagDB", "Address Picker : Edit Mode", MAIN)
 # The instruction dialog ``try`` has open, and the error box it may own after OK
 DIALOG = "dialog"
 ANSWER_BOX = "answer_box"
@@ -547,6 +552,21 @@ def _child(
     return None
 
 
+# The keys ``picker --key`` takes by name
+_VIRTUAL_KEYS = {
+    "RETURN": 0x0D,
+    "ESCAPE": 0x1B,
+    "TAB": 0x09,
+    "END": 0x23,
+    "HOME": 0x24,
+    "LEFT": 0x25,
+    "UP": 0x26,
+    "RIGHT": 0x27,
+    "DOWN": 0x28,
+    "F2": 0x71,
+}
+
+
 def _labelled(controls: list[Control], cls: str, text: str) -> Control | None:
     """The one *cls* control reading *text*; None if there is none or more than one (a
     Delphi form's controls have no ids of their own: each reads its hwnd)."""
@@ -621,7 +641,7 @@ def _json_default(value: object) -> object:
 
 @dataclass
 class Settings:
-    command: str  # "paste", "record", "try", "import", "read-data" or "reopen"
+    command: str  # "paste", "record", "try", "import", "read-data", "reopen" or "picker"
     out: Path
     # The rest by name only: a field added among them cannot shift a caller's arguments
     _: KW_ONLY
@@ -630,6 +650,8 @@ class Settings:
     cases: Path | None = None  # try's CASES.json
     keep: bool = False  # try: save each accepted case's project and decode it
     ini_add: str | None = None  # reopen: lines added to the end of the project's Project.ini
+    keys: tuple[str, ...] = ()  # picker: keys sent to the Address Picker's grid (probe)
+    ok: bool = False  # picker: close the Address Picker by OK (else by WM_CLOSE)
     exe: Path = DEFAULT_EXE
     password: str = DEFAULT_PASSWORD
     user_type: str = DEFAULT_USER_TYPE
@@ -832,6 +854,10 @@ class Run:
             self.result.update(import_mode=IMPORT_MODE, each_row=settings.each_row, imports=[])
         if settings.command == "reopen":
             self.result.update(ini_add=settings.ini_add, points={})
+        if settings.command == "read-data":
+            self.result.update(reading_seen=False)
+        if settings.command == "picker":
+            self.result.update(mdb_copies={})
 
     # -- logging, timing, dumps ---------------------------------------------
 
@@ -1099,6 +1125,9 @@ class Run:
                 raise Refused(f"{self.s.csv} has no rows after its header to import one by one")
         if self.s.ini_add is not None and not self.s.ini_add.isascii():
             raise Refused(f"--ini-add is not ASCII: {self.s.ini_add!r}")
+        for token in self.s.keys:
+            if not token.startswith(("chars:", "text:")) and token not in _VIRTUAL_KEYS:
+                raise Refused(f"--key {token!r} is not a key the runner knows")
 
     def launch(self) -> None:
         with self.step("launch"):
@@ -1970,13 +1999,25 @@ class Run:
                 raise Aborted("the File name edit did not take the path")
             self.press(save, button)
             last: list[int | None] = [None]
+            # Polls in a row with the reading over and no file (live run d8 met one: CLICK
+            # showed nothing and wrote nothing)
+            idle = [0]
 
             def written(found: dict[str, Window]) -> bool:
                 form = found.get(READ_DATA.name)
+                if READING_DATA.name in found and not self.result["reading_seen"]:
+                    self.result["reading_seen"] = True
+                    self.log("CLICK is reading the PLC's data")
                 busy = SAVE_DATA.name in found or READING_DATA.name in found
                 if busy or form is None or not form.enabled:
+                    idle[0] = 0
                     return False
                 size = dump.stat().st_size if dump.is_file() else None
+                if size is None and self.result["reading_seen"]:
+                    idle[0] += 1
+                    if idle[0] >= 2:
+                        self.record("no_file")
+                        raise Aborted(f"CLICK read the PLC's data but wrote no {dump.name}")
                 done = size is not None and size == last[0]
                 last[0] = size
                 return done
@@ -1993,6 +2034,77 @@ class Run:
             close = _require(_labelled(self.controls(dialog), "TButton", "Close"), "Close")
             self.press(dialog, close)
             self.wait("Read Data from PLC to close", [READ_DATA], self.only_main)
+
+    # -- picker: CLICK's Address Picker and what it writes into SC_.mdb ----------
+
+    def picker(self) -> None:
+        """Copy SC_.mdb, open Program > Address Picker, dump it, close it, copy SC_.mdb again."""
+        assert self.main is not None
+        mdb = self.desktop.temp_dir(self.main) / "SC_.mdb"
+        with self.step("before"):
+            self.copy_mdb(mdb, "before")
+        with self.step("picker"):
+            self.command(ADDRESS_PICKER)
+            window = self.wait("the Address Picker", [PICKER], lambda f: f.get(PICKER.name))
+            self.dump(self.s.out / "record", "picker")
+            controls = self.controls(window)
+            grids = [c for c in controls if c.cls == "TStringGrid"]
+            if len(grids) != 1:
+                raise Aborted(f"the Address Picker has {len(grids)} grid(s), not one")
+            grid, at_open = grids[0], {c.hwnd for c in controls}
+            for number, token in enumerate(self.s.keys, 1):
+                # The grid's in-place editor, once it shows, is a control the picker did not
+                # have when it opened
+                new = [c for c in self.controls(window) if c.hwnd not in at_open and c.visible]
+                target = new[-1] if new else grid
+                self.log(f"key {token!r} to {target.cls} {target.hwnd}")
+                if token.startswith("chars:"):
+                    answered = self.desktop.send_chars(target.hwnd, token[len("chars:") :])
+                elif token.startswith("text:"):
+                    answered = self.desktop.set_text(target.hwnd, token[len("text:") :])
+                else:
+                    answered = self.desktop.send_key(target.hwnd, _VIRTUAL_KEYS[token])
+                if not answered:
+                    raise Aborted(f"CLICK did not answer the key {token!r}")
+                self.wait(f"the key {token!r}", [PICKER], lambda f: PICKER.name in f)
+                self.dump(self.s.out / "record", f"key{number:02d}")
+            if self.s.ok:
+                ok = _require(_labelled(self.controls(window), "TButton", "OK"), "OK")
+                self.press(window, ok)
+            else:
+                self.desktop.close(window.hwnd)
+            self.wait("the Address Picker to close", [PICKER], self.only_main)
+        with self.step("after"):
+            self.copy_mdb(mdb, "after")
+
+    def copy_mdb(self, mdb: Path, label: str) -> None:
+        """Wait for the main window alone and *mdb* unchanged for ``IMPORT_SETTLE``, then copy
+        it to ``DIR/mdb/<label>.mdb`` (``mdb_copies``)."""
+        held: list[Any] = [None, 0.0]
+
+        def settled(found: dict[str, Window]) -> bool:
+            if not self.only_main(found):
+                held[0] = None
+                return False
+            state, now = _file_state(mdb), time.monotonic()
+            if state is None or state != held[0]:
+                held[:] = [state, now]
+                return False
+            return now - held[1] >= IMPORT_SETTLE
+
+        self.wait(f"SC_.mdb to settle ({label})", [], settled)
+        folder = self.s.out / "mdb"
+        folder.mkdir(exist_ok=True)
+        copy = Path(shutil.copy2(mdb, folder / f"{label}.mdb"))
+        self.result["mdb_copies"][label] = {"mdb": copy, "rows": None}
+        self.log(f"copied SC_.mdb as {label}")
+
+    def read_mdb_copies(self) -> None:
+        """Read the rows of each copy of SC_.mdb (CLICK's file is not opened)."""
+        with self.step("read"):
+            for label, entry in self.result["mdb_copies"].items():
+                entry["rows"] = self.read_rows(Path(entry["mdb"]))
+                self.log(f"{label}: {len(entry['rows'])} row(s): {', '.join(entry['rows'])}")
 
     # -- reopen: what CLICK does with its Project.ini over save and open ---------
 
@@ -2371,6 +2483,8 @@ class Run:
                     self.read_data()
                 elif self.s.command == "reopen":
                     self.reopen()
+                elif self.s.command == "picker":
+                    self.picker()
                 if self.connected:
                     self.disconnect_step()
                 if self.s.command == "paste":
@@ -2411,6 +2525,8 @@ class Run:
         if self.result["click"]["closed"] is True:
             if self.s.command == "import":
                 self.read_after_click(self.read_imports, "reading the copies of SC_.mdb")
+            elif self.s.command == "picker":
+                self.read_after_click(self.read_mdb_copies, "reading the copies of SC_.mdb")
             elif self.s.command == "try" and self.s.keep:
                 self.read_after_click(self.decode_kept, "decoding the kept cases")
         if self.result["status"] is None:
@@ -2587,6 +2703,22 @@ def _parser() -> argparse.ArgumentParser:
         "read-data", parents=[common], help="read the PLC's data values into a file"
     )
     reads.add_argument("--record", action="store_true", help="also dump every window at each step")
+    pickers = commands.add_parser(
+        "picker", parents=[common], help="open CLICK's Address Picker and copy SC_.mdb around it"
+    )
+    pickers.add_argument(
+        "--record", action="store_true", help="also dump every window at each step"
+    )
+    pickers.add_argument(
+        "--key",
+        action="append",
+        default=[],
+        dest="keys",
+        metavar="KEY",
+        help=f"a key to send to the grid (or its editor): {', '.join(_VIRTUAL_KEYS)}, "
+        "chars:TEXT (WM_CHAR) or text:TEXT (WM_SETTEXT); repeat for more",
+    )
+    pickers.add_argument("--ok", action="store_true", help="close the Address Picker by OK")
     reopens = commands.add_parser(
         "reopen",
         parents=[common],
@@ -2616,6 +2748,8 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         cases=args.cases.resolve() if args.command == "try" else None,
         keep=getattr(args, "keep", False),
         ini_add=getattr(args, "ini_add", None),
+        keys=tuple(getattr(args, "keys", ())),
+        ok=getattr(args, "ok", False),
         exe=args.click_exe,
         password=args.password or env.get("CLICK_RUNNER_PASSWORD") or DEFAULT_PASSWORD,
         user_type=args.user_type or env.get("CLICK_RUNNER_USER_TYPE") or DEFAULT_USER_TYPE,

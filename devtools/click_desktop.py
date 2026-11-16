@@ -35,6 +35,9 @@ IMPORT_NICKNAME = 32900
 # PLC > Read Data from PLC: it reads the PLC's data values and saves them to a file. Write
 # Data into PLC, beside it, writes a file's values into the PLC and is never sent (string
 # table, probe of 2026-11-16)
+# Program > Address Picker (Ctrl+T; "Address Picker" in the string table): CLICK's editor of
+# nicknames and address comments (probe of 2026-11-16)
+ADDRESS_PICKER = 32834
 READ_DATA_FROM_PLC = 32851
 WRITE_DATA_INTO_PLC = 32852
 READ_PROJECT_FROM_PLC = 32853
@@ -57,6 +60,7 @@ ALLOWED_COMMANDS = {
     DISCONNECT: "Disconnect",
     IMPORT_NICKNAME: "Import Nickname",
     READ_DATA_FROM_PLC: "Read Data from PLC",
+    ADDRESS_PICKER: "Address Picker",
     OUT_DIALOG: "Out...",
     MATH_DIALOG: "Math...",
     COPY_DIALOG: "Copy...",
@@ -197,6 +201,20 @@ class Desktop(ABC):
         """Post WM_CLOSE to *hwnd*."""
 
     @abstractmethod
+    def send_key(self, hwnd: int, vk: int) -> bool:
+        """Send WM_KEYDOWN then WM_KEYUP for the virtual key *vk* to *hwnd*; whether both
+        were answered.
+
+        A message to that one window, as WM_SETTEXT is: no global input, so nothing reaches
+        another window, whatever has the focus. Sent, not posted, so it has been handled
+        when this returns.
+        """
+
+    @abstractmethod
+    def send_chars(self, hwnd: int, text: str) -> bool:
+        """Send a WM_CHAR to *hwnd* for each character of *text*; whether all were answered."""
+
+    @abstractmethod
     def idle(self, hwnd: int, timeout: float) -> bool:
         """Whether *hwnd*'s thread answers WM_NULL within *timeout* seconds."""
 
@@ -225,6 +243,9 @@ WM_SETTEXT = 0x000C
 WM_GETTEXT = 0x000D
 WM_GETTEXTLENGTH = 0x000E
 WM_CLOSE = 0x0010
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+WM_CHAR = 0x0102
 WM_COMMAND = 0x0111
 BM_GETCHECK = 0x00F0
 BM_CLICK = 0x00F5
@@ -712,6 +733,15 @@ class Win32Desktop(Desktop):
 
     def close(self, hwnd: int) -> None:
         self._post(hwnd, WM_CLOSE)
+
+    def send_key(self, hwnd: int, vk: int) -> bool:
+        scan = self._user32.MapVirtualKeyW(vk, 0) & 0xFF  # MAPVK_VK_TO_VSC
+        down = self._send(hwnd, WM_KEYDOWN, vk, 1 | scan << 16)
+        up = self._send(hwnd, WM_KEYUP, vk, 1 | scan << 16 | 1 << 30 | 1 << 31)
+        return down is not None and up is not None
+
+    def send_chars(self, hwnd: int, text: str) -> bool:
+        return all(self._send(hwnd, WM_CHAR, ord(char), 1) is not None for char in text)
 
     def idle(self, hwnd: int, timeout: float) -> bool:
         result = _ULONG_PTR()

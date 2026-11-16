@@ -52,6 +52,7 @@ class FakeControl:
     checked: int = 0
     items: int = 0
     on_press: Callable[[], None] | None = None
+    on_key: Callable[[int], None] | None = None
 
 
 @dataclass
@@ -186,6 +187,7 @@ class FakeClick(cd.Desktop):
         self.pasted: bytes | None = None
         self.clipboard: bytes | None = None
         self.commands: list[str] = []
+        self.keys: list[tuple[str, int | str]] = []
         self.pressed: list[str] = []
         self.typed: dict[int, str] = {}
         self.events: list[str] = []
@@ -950,6 +952,23 @@ class FakeClick(cd.Desktop):
         window = self.wins[hwnd]
         if window.on_close is not None:
             window.on_close()
+
+    def send_key(self, hwnd: int, vk: int) -> bool:
+        if not self._message("WM_KEYDOWN"):
+            return False
+        self.keys.append((self._find(hwnd).cls, vk))
+        control = self._find(hwnd)
+        if control.on_key is not None:
+            control.on_key(vk)
+        return True
+
+    def send_chars(self, hwnd: int, text: str) -> bool:
+        if not self._message("WM_CHAR"):
+            return False
+        self.keys.append((self._find(hwnd).cls, text))
+        control = self._find(hwnd)
+        control.value += text
+        return True
 
     def idle(self, hwnd: int, timeout: float) -> bool:
         return not self.hung()  # SMTO_ABORTIFHUNG gives up at once on a hung window
