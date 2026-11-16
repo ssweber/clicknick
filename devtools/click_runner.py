@@ -3,6 +3,7 @@
     uv run python devtools/click_runner.py paste CSV --out DIR [--record]
     uv run python devtools/click_runner.py record --out DIR
     uv run python devtools/click_runner.py try CASES.json --out DIR [--record]
+    uv run python devtools/click_runner.py import CSV --out DIR [--each-row] [--record]
 
 The runner starts its own CLICK, connects to the one PLC on the LAN (so the new project
 takes that PLC's hardware) and answers "Don't read" to reading the PLC's project. ``paste``
@@ -32,6 +33,20 @@ otherwise, which stops the run. Edit > Delete then removes the instruction, and 
 Syntax Check must read as the empty program's did. All cases run in one CLICK, which is
 then disconnected and ended, as ``record`` ends it. result.json holds one entry per case
 under ``cases``, in the order tried, and an abort keeps the entries done before it.
+
+``import`` imports a nickname CSV through CLICK's own File > Import > Nickname (32900) and
+reads what CLICK stored. With ``--each-row`` it then imports each row on its own, in a file
+of the CSV's header and that row, byte for byte (``DIR/rows/``; a line break inside quotes
+stays in its row), since one bad row may take others with it. Every import picks the mode
+Delete Existing in the Open dialog, so CLICK empties the address table first and what it
+stores is what it made of that file alone; it fills in the path and presses Open. CLICK
+answers with a box reading "Completed!" or with its Import Error List (a text listing each
+line it could not take, and why); its text is kept, and its OK closes it. The runner then
+waits for the main window alone and CLICK's SC_.mdb unchanged on two polls in a row, and
+copies SC_.mdb into ``DIR/mdb/``. Once CLICK has ended (disconnected and ended, as ``try``
+ends it), each copy is read through Access ODBC, so a NULL stays None and a text keeps every
+character. result.json holds one entry per import under ``imports``
+(``Run.import_one``), after an abort too.
 
 Every Syntax Check (``paste``'s too) empties Output first, so a result that reads as the one
 before is still seen. CLICK ignores a Syntax Check posted soon after the last one's result
@@ -79,7 +94,9 @@ Rules (scratchpad/roadmap.md, item 4):
   ``cleanup_click_error``; it is not what stopped the run. The one exception is ``try``:
   a box owned by an instruction dialog after its OK is the case's answer. A box there with
   no code, or with buttons other than one OK, is a question the runner does not answer:
-  the case is kept as ``other`` and the run stops.
+  the case is kept as ``other`` and the run stops. An import's answer is the "Import
+  Database" box with one text and one OK, or the error list with one text and Ok; any
+  other box there, or a second answer, stops the run.
 - Any top-level window of CLICK that the step does not expect (a tooltip aside) stops the
   run: every window is dumped into ``DIR/abort/`` (a window that does not answer without
   its edit text or a PNG), CLICK is disconnected if it answers with no dialog open, then
@@ -112,6 +129,7 @@ from click_desktop import (
     COPY_DIALOG,
     DELETE,
     DISCONNECT,
+    IMPORT_NICKNAME,
     MATH_DIALOG,
     OUT_DIALOG,
     PASTE,
@@ -213,6 +231,15 @@ LOGIN = Expect("login", "#32770", "Login", "connect")
 READ_PROMPT = Expect("read_prompt", "#32770", "Connect", "connect")
 SAVE_AS = Expect("save_as", "#32770", "Save As", MAIN)
 DISCONNECT_PROMPT = Expect("disconnect_prompt", "#32770", "CLICK Programming Software", MAIN)
+# File > Import > Nickname, as live probes 1 to 4 (2026-11-15) dumped it: an Open dialog
+# whose template adds three import modes (Delphi radio buttons, Merge (Project priority)
+# checked as it opens), a progress window titled by the mode, then one answer, both shown
+# while the progress window is still up: a box reading "Completed!" or the error list
+IMPORT_MODE = "Delete Existing"
+OPEN = Expect("open", "#32770", "Open", MAIN)
+IMPORT_PROGRESS = Expect("import_progress", "TfrmProgress", f"Import - {IMPORT_MODE}", MAIN)
+IMPORT_DONE = Expect("import_done", "#32770", "Import Database", MAIN)
+IMPORT_ERRORS = Expect("import_errors", "TfrmErrorList", "Import Error List", MAIN)
 # The instruction dialog ``try`` has open, and the error box it may own after OK
 DIALOG = "dialog"
 ANSWER_BOX = "answer_box"
@@ -337,6 +364,77 @@ def load_cases(path: Path) -> tuple[list[Case], list[str]]:
     for address in nicknames:
         parse_address(address)  # ValueError names the address
     return cases, nicknames
+
+
+# ---------------------------------------------------------------------------
+# ``import``: a nickname CSV, its rows, and CLICK's error list
+# ---------------------------------------------------------------------------
+
+# A line of an error list entry naming the file's line: "Line 14 : Address = DS25, ..."
+_IMPORT_LINE = re.compile(r"^Line (\d+) : (.*)$", re.DOTALL)
+_IMPORT_CAUSE = "Cause : "
+
+
+def split_rows(data: bytes) -> tuple[bytes, list[tuple[int, bytes]]]:
+    """The first record of the CSV *data* (its header), and each record after it with its line.
+
+    A record ends at a line feed outside double quotes and keeps its line end, so a line
+    break inside a quoted cell stays in its record. The line is the one the record starts
+    on, counted from 1 for the header, as CLICK's error list counts them. A record that is
+    only a line end is no row. The bytes are kept as they are, whatever the encoding.
+    """
+    records: list[tuple[int, bytes]] = []
+    start, line, first, quoted = 0, 1, 1, False
+    for index, byte in enumerate(data):
+        if byte == 0x22:  # "
+            quoted = not quoted
+        elif byte == 0x0A:  # \n
+            line += 1
+            if not quoted:
+                records.append((first, data[start : index + 1]))
+                start, first = index + 1, line
+    if start < len(data):
+        records.append((first, data[start:]))
+    if not records:
+        return b"", []
+    (_, header), *rows = records
+    return header, [(number, row) for number, row in rows if row.strip(b"\r\n")]
+
+
+def parse_import_errors(text: str) -> list[dict[str, Any]]:
+    """The entries of CLICK's Import Error List: its error, the line it names, and the cause.
+
+    Live probe 2 (2026-11-15) read entries such as "Error : Unable to import to
+    Database.", "Line 19 : <the line as in the file>", "Cause : The memory address is not
+    supported by this CLICK CPU module.", each followed by an empty line. The line's text is
+    kept exactly (an edge space or a tab is the point); a line in no known form goes under
+    ``other``. Lines split at CR LF or LF only: a vertical tab or form feed is text.
+    """
+    entries: list[dict[str, Any]] = []
+    for block in re.split(r"\r?\n\r?\n", text):
+        if not block.strip():
+            continue
+        first, *rest = re.split(r"\r?\n", block)
+        entry: dict[str, Any] = {"error": first, "line": None, "text": None, "cause": None}
+        for part in rest:
+            match = _IMPORT_LINE.match(part)
+            if match and entry["line"] is None:
+                entry.update(line=int(match.group(1)), text=match.group(2))
+            elif part.startswith(_IMPORT_CAUSE) and entry["cause"] is None:
+                entry["cause"] = part.removeprefix(_IMPORT_CAUSE)
+            else:
+                entry.setdefault("other", []).append(part)
+        entries.append(entry)
+    return entries
+
+
+def _file_state(path: Path) -> tuple[int, int] | None:
+    """*path*'s size and modification time, or None if it cannot be read."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat.st_size, stat.st_mtime_ns
 
 
 def _end_rung(text: str) -> int | None:
@@ -483,11 +581,12 @@ def _json_default(value: object) -> object:
 
 @dataclass
 class Settings:
-    command: str  # "paste", "record" or "try"
+    command: str  # "paste", "record", "try" or "import"
     out: Path
     # The rest by name only: a field added among them cannot shift a caller's arguments
     _: KW_ONLY
-    csv: Path | None = None
+    csv: Path | None = None  # paste's ladder CSV, import's nickname CSV
+    each_row: bool = False  # import: each row on its own too
     cases: Path | None = None  # try's CASES.json
     exe: Path = DEFAULT_EXE
     password: str = DEFAULT_PASSWORD
@@ -527,6 +626,41 @@ def _read_nicknames(mdb: Path, addresses: list[str]) -> dict[str, str | None]:
     return found
 
 
+_ROW_COLUMNS = ("DataType", "Nickname", "InitialValue", "Retentive", "Comment", "Use")
+
+
+def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
+    """Every row of the address table in the SC_.mdb at *mdb*, as stored, by address.
+
+    It reads through Access ODBC only, so a NULL stays None and a text keeps every
+    character; each row maps its columns (``Nickname``, ``InitialValue``, ...) to their
+    values, in the order of AddrKey.
+    """
+    import pyodbc
+    from pyclickplc.addresses import format_address_display
+
+    from clicknick.utils.mdb_shared import create_access_connection
+
+    connection = create_access_connection(mdb)
+    if not isinstance(connection, pyodbc.Connection):
+        connection.close()
+        raise RuntimeError("reading SC_.mdb as stored needs an Access ODBC driver")
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            f"SELECT MemoryType, Address, {', '.join(_ROW_COLUMNS)} FROM address ORDER BY AddrKey"
+        )
+        rows = cursor.fetchall()
+    finally:
+        connection.close()
+    return {
+        format_address_display(str(row[0]).strip(), int(row[1])): dict(
+            zip(_ROW_COLUMNS, row[2:], strict=True)
+        )
+        for row in rows
+    }
+
+
 class Run:
     """One run of the runner against one CLICK it starts."""
 
@@ -538,6 +672,7 @@ class Run:
         prepare: Callable[[Path, Path | None], Any] = _prepare,
         decode: Callable[[Path, Path], Any] = _decode,
         read_nicknames: Callable[[Path, list[str]], dict[str, str | None]] = _read_nicknames,
+        read_rows: Callable[[Path], dict[str, dict[str, Any]]] = _read_rows,
         stderr: Any = None,
     ) -> None:
         self.desktop = desktop
@@ -545,8 +680,12 @@ class Run:
         self.prepare = prepare
         self.decode = decode
         self.read_nicknames = read_nicknames
+        self.read_rows = read_rows
         self.cases: list[Case] = []
         self.nickname_addresses: list[str] = []
+        # import's CSV: its header and each row with the line it starts on
+        self.header = b""
+        self.rows: list[tuple[int, bytes]] = []
         self.stderr = sys.stderr if stderr is None else stderr
         self.started = time.monotonic()
         self.pid: int | None = None
@@ -584,6 +723,8 @@ class Run:
             self.result.update(
                 cases_file=settings.cases, nicknames=None, baseline_syntax_check=None, cases=[]
             )
+        if settings.command == "import":
+            self.result.update(import_mode=IMPORT_MODE, each_row=settings.each_row, imports=[])
 
     # -- logging, timing, dumps ---------------------------------------------
 
@@ -762,7 +903,7 @@ class Run:
 
     def press(self, window: Window, button: Control) -> None:
         """BM_CLICK *button*, a button found among *window*'s controls."""
-        if button.cls not in ("Button", "TButton") or button.hwnd not in {
+        if button.cls not in ("Button", "TButton", "TRadioButton") or button.hwnd not in {
             c.hwnd for c in self.controls(window)
         }:
             raise Aborted(f"{button.cls} {button.hwnd} is not a button of {_describe(window)}")
@@ -844,6 +985,16 @@ class Run:
                 raise Refused(f"cannot read the cases in {self.s.cases}: {exc}") from exc
             if not self.cases:
                 raise Refused(f"{self.s.cases} lists no cases")
+        if self.s.command == "import":
+            assert self.s.csv is not None
+            if not self.s.csv.is_file():
+                raise Refused(f"no CSV at {self.s.csv}")
+            try:
+                self.header, self.rows = split_rows(self.s.csv.read_bytes())
+            except OSError as exc:
+                raise Refused(f"cannot read {self.s.csv}: {exc}") from exc
+            if self.s.each_row and not self.rows:
+                raise Refused(f"{self.s.csv} has no rows after its header to import one by one")
 
     def launch(self) -> None:
         with self.step("launch"):
@@ -1451,6 +1602,200 @@ class Run:
         self.wait(f"the {dialog.title} dialog to close", expected[:1], self.only_main)
         return False
 
+    # -- import: a nickname CSV through CLICK's own import ---------------------
+
+    def import_csvs(self) -> None:
+        """Import the CSV, then with ``each_row`` each of its rows in a file of its own.
+
+        A row's file is the CSV's header and that row, byte for byte, in ``DIR/rows/``.
+        """
+        assert self.s.csv is not None
+        plan: list[tuple[str, Path, int | None, bytes | None]] = [
+            ("whole", self.s.csv, None, None)
+        ]
+        if self.s.each_row:
+            folder = self.s.out / "rows"
+            folder.mkdir()
+            written: list[Path] = self.result["files"].setdefault("rows", [])
+            for line, row in self.rows:
+                path = folder / f"line{line:03d}.csv"
+                path.write_bytes(self.header + row)
+                written.append(path)
+                plan.append((f"line{line:03d}", path, line, row))
+        (self.s.out / "mdb").mkdir()
+        with self.step("import"):
+            for number, (name, csv, line, row) in enumerate(plan, 1):
+                self.import_one(number, name, csv, line, row)
+
+    def import_one(
+        self, number: int, name: str, csv: Path, line: int | None, row: bytes | None
+    ) -> None:
+        """Import *csv* by File > Import > Nickname, take CLICK's answer, copy SC_.mdb.
+
+        The import's entry in ``imports``: its ``name`` (``whole``, or ``line014`` for the
+        row starting on line 14), the ``csv`` imported, the row's ``line`` and text
+        (``row``, its bytes as Latin-1), then ``answer`` (``completed`` for the box reading
+        "Completed!", ``message`` for that box with any other text, ``errors`` for the
+        Import Error List), the box's or list's text (``message``), the list's entries
+        (``errors``, see ``parse_import_errors``), the copy of SC_.mdb (``mdb``), whether
+        CLICK's SC_.mdb had changed when the answer showed (``mdb_changed_at_answer``)
+        and once it settled (``mdb_changed``), the rows read from the copy once CLICK has
+        ended (``stored``) and ``seconds``.
+
+        The mode is ``IMPORT_MODE`` (Delete Existing): CLICK empties the address table and
+        stores what it takes from the file (live probe 4: an import whose every row fails,
+        or whose header is wrong, leaves no row), so ``stored`` is what CLICK made of
+        this file alone.
+        """
+        assert self.main is not None
+        label = f"import{number:02d}"
+        entry: dict[str, Any] = {
+            "name": name,
+            "csv": csv,
+            "line": line,
+            "row": None if row is None else row.decode("latin-1"),
+            "answer": None,
+            "message": None,
+            "errors": None,
+            "mdb": None,
+            "mdb_changed_at_answer": None,
+            "mdb_changed": None,
+            "stored": None,
+            "seconds": None,
+        }
+        self.result["imports"].append(entry)
+        began = time.monotonic()
+        self.log(f"{label}: {name}, {csv}")
+        mdb = self.desktop.temp_dir(self.main) / "SC_.mdb"
+        self.wait("the main window alone", [], self.only_main)
+        before = _file_state(mdb)
+        if before is None:
+            raise Aborted(f"CLICK's SC_.mdb is not at {mdb}")
+        self.command(IMPORT_NICKNAME)
+        dialog = self.wait(
+            "the Open dialog",
+            [OPEN],
+            lambda f: f[OPEN.name] if OPEN.name in f and f[OPEN.name].enabled else None,
+        )
+        self.record(f"{label}_open")
+        controls = self.controls(dialog)
+        mode = _require(
+            next((c for c in controls if c.cls == "TRadioButton" and c.text == IMPORT_MODE), None),
+            f"the Open dialog's {IMPORT_MODE!r} option",
+        )
+        if self.desktop.button_checked(mode.hwnd) != 1:
+            self.press(dialog, mode)
+            self.wait(
+                f"{IMPORT_MODE!r} to be checked",
+                [OPEN],
+                lambda f: self.desktop.button_checked(mode.hwnd) == 1,
+            )
+        boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == 1148}
+        file_name = _require(
+            next(
+                (c for c in controls if c.cls == "Edit" and c.id == 1148 and c.parent in boxes),
+                None,
+            ),
+            "the File name edit (1148)",
+        )
+        button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
+        self.desktop.set_text(file_name.hwnd, str(csv))
+        if self.desktop.read_text(file_name.hwnd) != str(csv):
+            raise Aborted("the File name edit did not take the path")
+        self.wait(
+            f"the Open dialog alone, {IMPORT_MODE!r} checked",
+            [OPEN],
+            lambda f: len(f) == 2 and self.desktop.button_checked(mode.hwnd) == 1,
+        )
+        self.press(dialog, button)
+
+        expected = [OPEN, IMPORT_PROGRESS, IMPORT_DONE, IMPORT_ERRORS]
+
+        def answered(found: dict[str, Window]) -> tuple[Expect, Window] | None:
+            shown = [e for e in (IMPORT_DONE, IMPORT_ERRORS) if e.name in found]
+            if len(shown) > 1:
+                raise Aborted(f"{label}: CLICK shows both 'Completed!' and the error list")
+            if shown and found[shown[0].name].enabled:
+                return shown[0], found[shown[0].name]
+            return None
+
+        kind, box = self.wait(
+            f"CLICK's answer to {label}", expected, answered, timeout=self.s.paste_timeout
+        )
+        entry["mdb_changed_at_answer"] = _file_state(mdb) != before
+        self.record(f"{label}_answer")
+        controls = self.controls(box)
+        if kind is IMPORT_DONE:
+            texts = [c.text for c in controls if c.cls == "Static" and c.text]
+            buttons = [c for c in controls if c.cls == "Button"]
+            if len(texts) != 1 or [b.text for b in buttons] != ["OK"]:
+                raise Aborted(
+                    f"{label}: CLICK asked something the runner does not answer: {texts!r}, "
+                    f"buttons {[b.text for b in buttons]!r}"
+                )
+            message = texts[0]
+            entry.update(answer="completed" if message == "Completed!" else "message")
+        else:
+            memos = [c for c in controls if c.cls == "TMemo"]
+            buttons = [c for c in controls if c.cls == "TButton"]
+            if len(memos) != 1 or [b.text for b in buttons] != ["Ok"]:
+                raise Aborted(
+                    f"{label}: the error list is not one text with Ok: {len(memos)} text(s), "
+                    f"buttons {[b.text for b in buttons]!r}"
+                )
+            text = self.desktop.read_text(memos[0].hwnd)
+            if text is None:
+                raise Aborted(f"{label}: the error list's text did not answer WM_GETTEXT")
+            message = text
+            entry.update(answer="errors", errors=parse_import_errors(text))
+        entry["message"] = message
+        self.log(f"{label}: {entry['answer']}: {message!r}")
+        self.press(box, buttons[0])
+        last: list[tuple[int, int] | None] = [None]
+
+        def settled(found: dict[str, Window]) -> bool:
+            # The answer closes with the progress window; the import is done once the main
+            # window is alone and CLICK's SC_.mdb reads the same on two polls in a row
+            again = found.get(kind.name)
+            if again is not None and again.hwnd != box.hwnd:
+                raise Aborted(f"{label}: CLICK answered again: {_describe(again)}")
+            if not self.only_main(found):
+                last[0] = None
+                return False
+            state = _file_state(mdb)
+            done = state is not None and state == last[0]
+            last[0] = state
+            return done
+
+        self.wait(
+            f"the import of {csv.name} to finish",
+            [IMPORT_PROGRESS, kind],
+            settled,
+            timeout=self.s.paste_timeout,
+        )
+        entry["mdb_changed"] = last[0] != before
+        copy = Path(shutil.copy2(mdb, self.s.out / "mdb" / f"{number:02d}-{name}.mdb"))
+        entry["mdb"] = copy
+        self.result["files"].setdefault("mdb", []).append(copy)
+        changed = "changed" if entry["mdb_changed"] else "unchanged"
+        at_answer = "already" if entry["mdb_changed_at_answer"] else "not yet"
+        self.log(f"{label}: SC_.mdb {changed} ({at_answer} when the answer showed); copied")
+        self.record(f"{label}_done")
+        entry["seconds"] = round(time.monotonic() - began, 3)
+
+    def read_imports(self) -> None:
+        """Read the rows each import left from its copy of SC_.mdb (CLICK's file is not opened)."""
+        with self.step("read"):
+            for entry in self.result["imports"]:
+                if entry["mdb"] is None:
+                    continue
+                stored = self.read_rows(Path(entry["mdb"]))
+                entry["stored"] = stored
+                self.log(f"{entry['name']}: {len(stored)} row(s) stored")
+                for address, row in stored.items():
+                    values = ", ".join(f"{column}={value!r}" for column, value in row.items())
+                    self.log(f"  {address}: {values}")
+
     def save(self) -> Path:
         assert self.main is not None and self.s.csv is not None
         ckp = (self.s.out / f"{self.s.csv.stem}.ckp").resolve()
@@ -1688,6 +2033,8 @@ class Run:
                     self.save()
                 elif self.s.command == "try":
                     self.try_cases()
+                elif self.s.command == "import":
+                    self.import_csvs()
                 self.disconnect_step()
                 if self.s.command == "paste":
                     self.close()
@@ -1723,9 +2070,34 @@ class Run:
             except Exception as exc:
                 self.result.update(status="aborted", reason=f"decoding failed: {exc}")
                 self.log(f"ABORT: decoding failed: {exc}")
+        if self.s.command == "import" and self.result["click"]["closed"] is True:
+            self.read_after_click()
         if self.result["status"] is None:
             self.result["status"] = "ok"
         return self.finish()
+
+    def read_after_click(self) -> None:
+        """Read the copies of SC_.mdb once CLICK has ended, after an abort too.
+
+        The imports done before an abort keep their rows; the step the abort names stays
+        the result's step. A read that fails stops a run that had not stopped.
+        """
+        stopped_at = self.result["step"] if self.result["status"] is not None else None
+        try:
+            self.read_imports()
+            return
+        except KeyboardInterrupt:
+            reason = "interrupted (Ctrl+C) while reading the copies of SC_.mdb"
+        except Exception as exc:
+            reason = f"reading the copies of SC_.mdb failed: {type(exc).__name__}: {exc}"
+        finally:
+            if stopped_at is not None:
+                self.result["step"] = stopped_at
+        if self.result["status"] is None:
+            self.result.update(status="aborted", reason=reason)
+            self.log(f"ABORT: {reason}")
+        else:
+            self.log(reason)
 
     def stop(self, reason: str) -> None:
         """Abort the run for *reason*; a cleanup cut short (Ctrl+C again) is logged."""
@@ -1850,6 +2222,20 @@ def _parser() -> argparse.ArgumentParser:
     )
     tries.add_argument("cases", type=Path, help="the cases (JSON; see load_cases)")
     tries.add_argument("--record", action="store_true", help="also dump every window at each step")
+    imports = commands.add_parser(
+        "import",
+        parents=[common],
+        help="import a nickname CSV into CLICK and read what CLICK stored",
+    )
+    imports.add_argument("csv", type=Path, help="the nickname CSV")
+    imports.add_argument(
+        "--each-row",
+        action="store_true",
+        help="then import each row on its own, in a file with the CSV's header",
+    )
+    imports.add_argument(
+        "--record", action="store_true", help="also dump every window at each step"
+    )
     return parser
 
 
@@ -1859,7 +2245,8 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
     return Settings(
         command=args.command,
         out=args.out.resolve(),
-        csv=args.csv.resolve() if args.command == "paste" else None,
+        csv=args.csv.resolve() if args.command in ("paste", "import") else None,
+        each_row=getattr(args, "each_row", False),
         cases=args.cases.resolve() if args.command == "try" else None,
         exe=args.click_exe,
         password=args.password or env.get("CLICK_RUNNER_PASSWORD") or DEFAULT_PASSWORD,
