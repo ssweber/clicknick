@@ -2399,6 +2399,42 @@ def test_try_keep_saves_each_accepted_case(tmp_path, setup):
     assert [p.parent.parent.name for p in stored.read] == ["case01", "case03", "case04"]
 
 
+@pytest.mark.skipif(not cr._reads_stored_tags(), reason="laddercodec 0.4.0 has no stored-tag walk")
+def test_read_stored_reads_the_tags_click_stored():
+    # Scr1.tmp of live run b/live-b2's case05 (copy 005 to DS1), as CLICK saved it
+    scr = Path(__file__).parent / "fixtures" / "click_runner" / "copy_5_ds1_Scr1.tmp"
+    assert cr._read_stored(scr) == {
+        "program": "Main Program",
+        "prog_idx": 1,
+        "rungs": [
+            [
+                {
+                    "row": 0,
+                    "column": 31,
+                    "class": "Copy",
+                    "type": 10017,
+                    "tags": {"0x6074": "5", "0x6076": "DS1", "0x1201": "", "0x0000": ""},
+                    "indexed": {},
+                }
+            ],
+            [],
+        ],
+        "error": None,
+    }
+
+
+def test_try_keep_refuses_a_laddercodec_without_the_walk(tmp_path, setup, monkeypatch):
+    _, exe = setup
+    monkeypatch.setattr(cr, "_reads_stored_tags", lambda: False)
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES}, "--keep")
+    assert code == cr.EXIT_REFUSED
+    assert result["reason"] == (
+        "try --keep needs laddercodec newer than 0.4.0 (_walk_until_framing_error)"
+    )
+    assert fake.pid is None
+
+
 def test_try_without_keep_saves_nothing(tmp_path, setup):
     _, exe = setup
     fake = FakeClick(tmp_path)

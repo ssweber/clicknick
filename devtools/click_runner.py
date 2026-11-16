@@ -147,6 +147,7 @@ no password shows no Login dialog.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import re
@@ -775,6 +776,13 @@ def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
     return _rows_by_address(rows)
 
 
+def _reads_stored_tags() -> bool:
+    """Whether this laddercodec has the private walk ``_read_stored`` reads (laddercodec
+    0.4.0 has none; it came after, in ac7d910)."""
+    module = importlib.import_module("laddercodec.decode_program")
+    return all(hasattr(module, name) for name in ("_parse_header", "_walk_until_framing_error"))
+
+
 def _read_stored(scr: Path) -> dict[str, Any]:
     """The instructions in the Scr*.tmp at *scr* with the tags CLICK stored for them.
 
@@ -1142,6 +1150,10 @@ class Run:
                 raise Refused(f"cannot read the cases in {self.s.cases}: {exc}") from exc
             if not self.cases:
                 raise Refused(f"{self.s.cases} lists no cases")
+            if self.s.keep and self.read_stored is _read_stored and not _reads_stored_tags():
+                raise Refused(
+                    "try --keep needs laddercodec newer than 0.4.0 (_walk_until_framing_error)"
+                )
         if self.s.command == "import":
             assert self.s.csv is not None
             if not self.s.csv.is_file():
