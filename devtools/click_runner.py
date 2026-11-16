@@ -103,7 +103,7 @@ import sys
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, redirect_stdout
-from dataclasses import asdict, dataclass
+from dataclasses import KW_ONLY, asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -485,6 +485,8 @@ def _json_default(value: object) -> object:
 class Settings:
     command: str  # "paste", "record" or "try"
     out: Path
+    # The rest by name only: a field added among them cannot shift a caller's arguments
+    _: KW_ONLY
     csv: Path | None = None
     cases: Path | None = None  # try's CASES.json
     exe: Path = DEFAULT_EXE

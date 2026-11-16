@@ -1020,7 +1020,7 @@ def test_paste_provisions_the_runners_own_mdb(tmp_path, setup):
     fake = FakeClick(tmp_path)
     prepare = Prepare()
     settings = cr.Settings(
-        "paste", tmp_path / "out", csv, exe, timeout=5, paste_timeout=5, poll=0.001
+        "paste", tmp_path / "out", csv=csv, exe=exe, timeout=5, paste_timeout=5, poll=0.001
     )
     result = cr.Run(fake, settings, prepare=prepare, stderr=io.StringIO()).execute()
     assert result["status"] == "ok", result["reason"]
