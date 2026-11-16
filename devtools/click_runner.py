@@ -139,8 +139,10 @@ from click_desktop import (
     DISCONNECT,
     IMPORT_NICKNAME,
     MATH_DIALOG,
+    OPEN_PROJECT,
     OUT_DIALOG,
     PASTE,
+    READ_DATA_FROM_PLC,
     SAVE_PROJECT_AS,
     SYNTAX_CHECK,
     Control,
@@ -254,6 +256,8 @@ IMPORT_STARTING = Expect("import_starting", "TfrmProgress", "frmProgress", MAIN)
 IMPORT_PROGRESS = Expect("import_progress", "TfrmProgress", f"Import - {IMPORT_MODE}", MAIN)
 IMPORT_DONE = Expect("import_done", "#32770", "Import Database", MAIN)
 IMPORT_ERRORS = Expect("import_errors", "TfrmErrorList", "Import Error List", MAIN)
+# PLC > Read Data from PLC (a first guess; the probe of 2026-11-16 records what opens)
+READ_DATA = Expect("read_data", "#32770", "Read Data from PLC", MAIN)
 # The instruction dialog ``try`` has open, and the error box it may own after OK
 DIALOG = "dialog"
 ANSWER_BOX = "answer_box"
@@ -597,7 +601,7 @@ def _json_default(value: object) -> object:
 
 @dataclass
 class Settings:
-    command: str  # "paste", "record", "try" or "import"
+    command: str  # "paste", "record", "try", "import", "read-data" or "reopen"
     out: Path
     # The rest by name only: a field added among them cannot shift a caller's arguments
     _: KW_ONLY
@@ -605,6 +609,7 @@ class Settings:
     each_row: bool = False  # import: each row on its own too
     cases: Path | None = None  # try's CASES.json
     keep: bool = False  # try: save each accepted case's project and decode it
+    ini_add: str | None = None  # reopen: lines added to the end of the project's Project.ini
     exe: Path = DEFAULT_EXE
     password: str = DEFAULT_PASSWORD
     user_type: str = DEFAULT_USER_TYPE
@@ -805,6 +810,8 @@ class Run:
             )
         if settings.command == "import":
             self.result.update(import_mode=IMPORT_MODE, each_row=settings.each_row, imports=[])
+        if settings.command == "reopen":
+            self.result.update(ini_add=settings.ini_add, points={})
 
     # -- logging, timing, dumps ---------------------------------------------
 
@@ -1075,6 +1082,8 @@ class Run:
                 raise Refused(f"cannot read {self.s.csv}: {exc}") from exc
             if self.s.each_row and not self.rows:
                 raise Refused(f"{self.s.csv} has no rows after its header to import one by one")
+        if self.s.ini_add is not None and not self.s.ini_add.isascii():
+            raise Refused(f"--ini-add is not ASCII: {self.s.ini_add!r}")
 
     def launch(self) -> None:
         with self.step("launch"):
@@ -1811,14 +1820,7 @@ class Run:
                 [OPEN],
                 lambda f: self.desktop.button_checked(mode.hwnd) == 1,
             )
-        boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == 1148}
-        file_name = _require(
-            next(
-                (c for c in controls if c.cls == "Edit" and c.id == 1148 and c.parent in boxes),
-                None,
-            ),
-            "the File name edit (1148)",
-        )
+        file_name = self._file_name_edit(controls)
         button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
         self.desktop.set_text(file_name.hwnd, str(csv))
         if self.desktop.read_text(file_name.hwnd) != str(csv):
@@ -1922,6 +1924,114 @@ class Run:
                     values = ", ".join(f"{column}={value!r}" for column, value in row.items())
                     self.log(f"  {address}: {values}")
 
+    # -- read-data: the PLC's data values into a file -------------------------
+
+    def read_data(self) -> None:
+        """PLC > Read Data from PLC: dump the dialog it opens, then Cancel it (probe)."""
+        with self.step("read_data"):
+            self.wait("the main window alone", [], self.only_main)
+            self.command(READ_DATA_FROM_PLC)
+            dialog = self.wait("Read Data from PLC", [READ_DATA], lambda f: f.get(READ_DATA.name))
+            self.dump(self.s.out / "record", "read_data")
+            cancel = _require(_child(self.controls(dialog), cls="Button", id=2), "Cancel (2)")
+            self.press(dialog, cancel)
+            self.wait("Read Data from PLC to close", [READ_DATA], self.only_main)
+
+    # -- reopen: what CLICK does with its Project.ini over save and open ---------
+
+    def reopen(self) -> None:
+        """Save, edit Project.ini, save again, open that save, and save once more.
+
+        CLICK is disconnected first, so opening a project compares it with no PLC. Each
+        point (``first``, ``second``, ``opened``, ``third``) copies CLICK's files into
+        ``DIR/<point>/click/`` (``copy_point``). Between ``first`` and ``second``,
+        ``ini_add`` is added to the end of the Project.ini in CLICK's temp folder (the
+        runner's own CLICK's; ``edit_ini``).
+        """
+        assert self.main is not None
+        temp = self.desktop.temp_dir(self.main)
+        with self.step("disconnect"):
+            self.disconnect()
+        for point in ("first", "second"):
+            if point == "second" and self.s.ini_add is not None:
+                with self.step("ini"):
+                    self.edit_ini(temp / "Project.ini")
+            with self.step(f"{point}_save"):
+                self.save_as((self.s.out / f"{point}.ckp").resolve(), temp, prefix=f"{point}_")
+                self.copy_point(point, temp)
+        with self.step("open"):
+            self.open_project((self.s.out / "second.ckp").resolve(), temp)
+            self.copy_point("opened", temp)
+        with self.step("third_save"):
+            self.save_as((self.s.out / "third.ckp").resolve(), temp, prefix="third_")
+            self.copy_point("third", temp)
+
+    def edit_ini(self, ini: Path) -> None:
+        """Add ``ini_add``'s lines (separated by ``\\n`` or line breaks) to the end of *ini*,
+        each ended CRLF as CLICK ends them."""
+        assert self.s.ini_add is not None
+        before = ini.read_bytes()
+        lines = self.s.ini_add.replace("\\n", "\n").replace("\r\n", "\n").split("\n")
+        added = "".join(f"{line}\r\n" for line in lines if line).encode("ascii")
+        joint = b"" if not before or before.endswith(b"\n") else b"\r\n"
+        ini.write_bytes(before + joint + added)
+        self.result["ini_added"] = (joint + added).decode("ascii")
+        self.log(f"added {added!r} to {ini}")
+
+    def copy_point(self, point: str, temp: Path) -> None:
+        """Copy CLICK's files into ``DIR/<point>/click/`` and keep the point's title, status
+        bar and Project.ini (as text, Latin-1 so every byte is kept) under ``points``."""
+        main = classify(self.desktop.windows(self.pid), [])[0].get(MAIN)
+        bar = self.read_status_bar()
+        copied = self.copy_temp(temp, self.s.out / point / "click")
+        ini = next((p for p in copied if p.name == "Project.ini"), None)
+        self.result["points"][point] = {
+            "title": main.title if main is not None else None,
+            "status_bar": bar.panes if bar is not None else None,
+            "files": copied,
+            "project_ini": ini.read_bytes().decode("latin-1") if ini is not None else None,
+        }
+
+    def open_project(self, ckp: Path, temp: Path) -> None:
+        """File > Open Project *ckp*, and wait until its title names it and CLICK's Scr*.tmp
+        files are the same on two polls in a row."""
+        self.wait("the main window alone", [], self.only_main)
+        self.command(OPEN_PROJECT)
+        dialog = self.wait("Open", [OPEN], lambda f: f.get(OPEN.name))
+        self.record("open")
+        controls = self.controls(dialog)
+        name = self._file_name_edit(controls)
+        button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
+        self.desktop.set_text(name.hwnd, str(ckp))
+        if self.desktop.read_text(name.hwnd) != str(ckp):
+            raise Aborted("the File name edit did not take the path")
+        self.press(dialog, button)
+        last: list[object] = [None]
+
+        def opened(found: dict[str, Window]) -> bool:
+            main = found.get(MAIN)
+            if main is None or _project_file(main.title) != ckp.name or not self.only_main(found):
+                return False
+            state = _scr_state(temp)
+            done = bool(state) and state == last[0]
+            last[0] = state
+            return done
+
+        self.wait(f"{ckp.name} to open", [OPEN], opened, timeout=self.s.paste_timeout)
+        self.log(f"opened {ckp}")
+        self.record("opened")
+
+    def _file_name_edit(self, controls: list[Control]) -> Control:
+        """A file dialog's File name edit: the Edit 1148 inside the ComboBox 1148."""
+        boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == 1148}
+        return _require(
+            next(
+                (c for c in controls if c.cls == "Edit" and c.id == 1148 and c.parent in boxes),
+                None,
+            ),
+            "the File name edit (1148)",
+        )
+
     def save(self) -> Path:
         assert self.main is not None and self.s.csv is not None
         ckp = (self.s.out / f"{self.s.csv.stem}.ckp").resolve()
@@ -1951,14 +2061,7 @@ class Run:
         dialog = self.wait("Save As", [SAVE_AS], lambda f: f.get(SAVE_AS.name))
         self.record(f"{prefix}save_as")
         controls = self.controls(dialog)
-        boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == 1148}
-        name = _require(
-            next(
-                (c for c in controls if c.cls == "Edit" and c.id == 1148 and c.parent in boxes),
-                None,
-            ),
-            "the File name edit (1148)",
-        )
+        name = self._file_name_edit(controls)
         button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
         self.desktop.set_text(name.hwnd, str(ckp))
         if self.desktop.read_text(name.hwnd) != str(ckp):
@@ -2201,7 +2304,12 @@ class Run:
                     self.try_cases()
                 elif self.s.command == "import":
                     self.import_csvs()
-                self.disconnect_step()
+                elif self.s.command == "read-data":
+                    self.read_data()
+                elif self.s.command == "reopen":
+                    self.reopen()
+                if self.connected:
+                    self.disconnect_step()
                 if self.s.command == "paste":
                     self.close()
                 else:
@@ -2412,6 +2520,25 @@ def _parser() -> argparse.ArgumentParser:
     imports.add_argument(
         "--record", action="store_true", help="also dump every window at each step"
     )
+    reads = commands.add_parser(
+        "read-data", parents=[common], help="read the PLC's data values into a file"
+    )
+    reads.add_argument("--record", action="store_true", help="also dump every window at each step")
+    reopens = commands.add_parser(
+        "reopen",
+        parents=[common],
+        help="save, edit Project.ini, save, open that save and save again, copying each point",
+    )
+    reopens.add_argument(
+        "--ini-add",
+        default=None,
+        metavar="LINES",
+        help="ASCII lines to add to the end of the project's Project.ini before the second "
+        r"save, separated by \n (a backslash, then n) or by line breaks",
+    )
+    reopens.add_argument(
+        "--record", action="store_true", help="also dump every window at each step"
+    )
     return parser
 
 
@@ -2425,6 +2552,7 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         each_row=getattr(args, "each_row", False),
         cases=args.cases.resolve() if args.command == "try" else None,
         keep=getattr(args, "keep", False),
+        ini_add=getattr(args, "ini_add", None),
         exe=args.click_exe,
         password=args.password or env.get("CLICK_RUNNER_PASSWORD") or DEFAULT_PASSWORD,
         user_type=args.user_type or env.get("CLICK_RUNNER_USER_TYPE") or DEFAULT_USER_TYPE,

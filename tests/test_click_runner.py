@@ -211,6 +211,8 @@ class FakeClick(cd.Desktop):
         self.import_box = import_box
         self.import_as = import_as
         self.imported: list[tuple[str, str]] = []
+        self.ckps: dict[Path, dict[str, bytes]] = {}  # Each saved project's files
+        self.opened: list[Path] = []
 
     # -- building windows ---------------------------------------------------
 
@@ -302,7 +304,7 @@ class FakeClick(cd.Desktop):
         temp = self.temp_dir(main.hwnd)
         temp.mkdir()
         (temp / "SC_.mdb").write_bytes(b"mdb")
-        (temp / "Project.ini").write_text("[Project]\n", encoding="utf-8")
+        (temp / "Project.ini").write_bytes(b"[Project]\r\n")
         for name in self.options["leftover"]:
             (temp / name).write_bytes(b"old")
         if self.options["tooltip"]:
@@ -453,13 +455,42 @@ class FakeClick(cd.Desktop):
             # The main program: what was pasted, or the instruction try placed in rung 1
             placed = f"placed {self.placed} ({path.name})".encode() if self.placed else None
             scr = self.pasted or placed or b"empty"
-            (self.temp_dir(main.hwnd) / "Scr1.tmp").write_bytes(scr)
+            temp = self.temp_dir(main.hwnd)
+            (temp / "Scr1.tmp").write_bytes(scr)
+            # The project file holds the temp folder's files as they are
+            self.ckps[path] = {p.name: p.read_bytes() for p in temp.iterdir()}
             main.title = f"CLICK Programming Software (Version4.00) - {path.name} - [Main Program]"
             self._drop(dialog)
             main.enabled = True
             self.saved = True
 
         self._control(dialog, "Button", "&Save", 1, on_press=lambda: self._later("save", save))
+        self._control(dialog, "Button", "Cancel", 2)
+
+    def _show_open_project(self) -> None:
+        """File > Open Project's Open dialog; opening puts the project's files in the temp folder."""
+        assert self.main is not None
+        main = self.main
+        main.enabled = False
+        dialog = self._window("#32770", "Open", main.hwnd)
+        box_ex = self._control(dialog, "ComboBoxEx32", "", 1148)
+        box = self._control(dialog, "ComboBox", "", 1148, parent=box_ex.hwnd)
+        name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
+
+        def open_file() -> None:
+            path = Path(name.value)
+            temp = self.temp_dir(main.hwnd)
+            for old in temp.iterdir():
+                if old.name != "SC_.mdb":
+                    old.unlink()
+            for file, data in self.ckps[path].items():
+                (temp / file).write_bytes(data)
+            self.opened.append(path)
+            main.title = f"CLICK Programming Software (Version4.00) - {path.name} - [Main Program]"
+            self._drop(dialog)
+            main.enabled = True
+
+        self._control(dialog, "Button", "&Open", 1, on_press=lambda: self._later("open", open_file))
         self._control(dialog, "Button", "Cancel", 2)
 
     def _show_disconnect(self) -> None:
@@ -742,6 +773,8 @@ class FakeClick(cd.Desktop):
             self._later("disconnect", self._show_disconnect)
         elif command_id == cd.IMPORT_NICKNAME:
             self._later("import_open", self._show_open)
+        elif command_id == cd.OPEN_PROJECT:
+            self._later("open_project", self._show_open_project)
         elif command_id == cd.DELETE:
 
             def delete() -> None:
@@ -2714,6 +2747,66 @@ def test_rows_by_address_keeps_each_row_as_stored():
 
 
 # ---------------------------------------------------------------------------
+# reopen: Project.ini over save and open
+# ---------------------------------------------------------------------------
+
+
+def run_reopen(fake: FakeClick, tmp_path: Path, exe: Path, *args: str) -> tuple[int, dict]:
+    out = tmp_path / "out"
+    argv = ["reopen", "--out", str(out), "--click-exe", str(exe)]
+    argv += ["--timeout", "5", "--paste-timeout", "5", *args]
+    code = cr.main(argv, desktop=fake, prepare=Prepare(), stderr=io.StringIO())
+    result_file = out / "result.json"
+    return code, json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
+
+
+def test_reopen_copies_each_point(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_reopen(fake, tmp_path, exe, "--ini-add", r"[sec20]\nkey1=Probe")
+    assert code == cr.EXIT_OK, result["reason"]
+    out = tmp_path / "out"
+    assert fake.commands == [
+        "Disconnect",
+        "Save Project As",
+        "Save Project As",
+        "Open Project",
+        "Save Project As",
+    ]
+    assert fake.opened == [(out / "second.ckp").resolve()]
+    points = result["points"]
+    assert list(points) == ["first", "second", "opened", "third"]
+    assert points["first"]["project_ini"] == "[Project]\r\n"
+    added = "[sec20]\r\nkey1=Probe\r\n"
+    assert result["ini_added"] == added
+    for point in ("second", "opened", "third"):
+        assert points[point]["project_ini"] == "[Project]\r\n" + added
+        assert (
+            out / point / "click" / "Project.ini"
+        ).read_bytes() == b"[Project]\r\n" + added.encode()
+    assert points["opened"]["title"].endswith("- second.ckp - [Main Program]")
+    assert points["third"]["title"].endswith("- third.ckp - [Main Program]")
+    assert points["third"]["status_bar"][8] == "Offline"
+    assert not fake.connected and fake.terminated
+    assert list(result["timings"])[-6:] == [
+        "first_save",
+        "ini",
+        "second_save",
+        "open",
+        "third_save",
+        "close",
+    ]
+
+
+def test_reopen_refuses_lines_that_are_not_ascii(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_reopen(fake, tmp_path, exe, "--ini-add", "[Sec20]\\nKey1=caf\xe9")
+    assert code == cr.EXIT_REFUSED and "--ini-add is not ASCII" in result["reason"]
+    assert fake.pid is None
+
+
+# ---------------------------------------------------------------------------
 # The command allowlist
 # ---------------------------------------------------------------------------
 
@@ -2725,6 +2818,7 @@ def test_rows_by_address_keeps_each_row_as_stored():
         (cd.WRITE_PROJECT_INTO_PLC, "Write Project into PLC"),
         (32853, "Read Project from PLC"),
         (32854, "Write Project into PLC"),
+        (32852, "Write Data into PLC"),
         (12345, "not on the runner's allowlist"),
     ],
 )
@@ -2745,20 +2839,23 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_ten_commands():
+def test_the_allowlist_is_the_twelve_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         32777: "Delete",
         32846: "Syntax Check",
+        32772: "Open Project",
         32898: "Save Project",
         32899: "Save Project As",
         32850: "Disconnect",
         32900: "Import Nickname",
+        32851: "Read Data from PLC",
         50010: "Out...",
         50030: "Math...",
         50040: "Copy...",
     }
-    assert 32853 not in cd.ALLOWED_COMMANDS and 32854 not in cd.ALLOWED_COMMANDS
+    # Nothing that reads a project from the PLC or writes anything into it
+    assert not {32852, 32853, 32854} & set(cd.ALLOWED_COMMANDS)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="job objects are Windows'")

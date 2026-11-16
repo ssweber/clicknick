@@ -300,7 +300,8 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   changes? (How soon kept edits are checked against the new project's database.) Sam: SC_.mdb changes every
   time you edit in CLICK's Address Editor.
 - Q6: after deleting all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the step
-  wording say to click the first empty rung?
+  wording say to click the first empty rung? Sam (2026-11-16): "there are always empty rungs". Not to be
+  automated.
 - Q7: can SC_.mdb hold a nickname or address comment with a space at either end, typed in CLICK? (CLICK's own
   CSV import put none there, 4d.) ClickNick trims one on load as an unsaved edit ("Trim spaces"), so on a yes
   the next Sync writes the trimmed value into CLICK. The recorded `tests/SC_.mdb` and `NicknameExport.csv` hold

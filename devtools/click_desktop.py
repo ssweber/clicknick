@@ -5,8 +5,9 @@ The runner drives CLICK only through ``Desktop``, so its logic is tested against
 Win32 calls with no decisions of its own.
 
 Every ``WM_COMMAND`` goes through ``Desktop.command``, which refuses any command outside
-``ALLOWED_COMMANDS``. Read Project and Write Project are not in it, so the runner cannot
-read from or write to the PLC.
+``ALLOWED_COMMANDS``. Read Project, Write Project and Write Data are not in it, so the
+runner cannot read a project from the PLC or write anything into it; Read Data from PLC,
+which only reads the PLC's data values, is.
 """
 
 from __future__ import annotations
@@ -24,12 +25,18 @@ from pathlib import Path
 PASTE = 0xE125  # MFC's ID_EDIT_PASTE
 DELETE = 32777  # Edit > Delete: the instruction under the ladder's cursor
 SYNTAX_CHECK = 32846
+OPEN_PROJECT = 32772  # File > Open Project ("Open Project" in the string table, 2026-11-16)
 SAVE_PROJECT = 32898
 SAVE_PROJECT_AS = 32899
 DISCONNECT = 32850
 # File > Import > Nickname ("Import to Address Picker" in the string table). It opens an Open
 # dialog with three import modes and writes the rows into SC_.mdb (live probe of 2026-11-15)
 IMPORT_NICKNAME = 32900
+# PLC > Read Data from PLC: it reads the PLC's data values and saves them to a file. Write
+# Data into PLC, beside it, writes a file's values into the PLC and is never sent (string
+# table, probe of 2026-11-16)
+READ_DATA_FROM_PLC = 32851
+WRITE_DATA_INTO_PLC = 32852
 READ_PROJECT_FROM_PLC = 32853
 WRITE_PROJECT_INTO_PLC = 32854
 # The ribbon's Instruction tab, which opens an instruction's dialog at the ladder's cursor.
@@ -44,16 +51,19 @@ ALLOWED_COMMANDS = {
     PASTE: "Paste",
     DELETE: "Delete",
     SYNTAX_CHECK: "Syntax Check",
+    OPEN_PROJECT: "Open Project",
     SAVE_PROJECT: "Save Project",
     SAVE_PROJECT_AS: "Save Project As",
     DISCONNECT: "Disconnect",
     IMPORT_NICKNAME: "Import Nickname",
+    READ_DATA_FROM_PLC: "Read Data from PLC",
     OUT_DIALOG: "Out...",
     MATH_DIALOG: "Math...",
     COPY_DIALOG: "Copy...",
 }
 
 _NEVER = {
+    WRITE_DATA_INTO_PLC: "Write Data into PLC",
     READ_PROJECT_FROM_PLC: "Read Project from PLC",
     WRITE_PROJECT_INTO_PLC: "Write Project into PLC",
 }
