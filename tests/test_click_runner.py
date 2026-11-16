@@ -477,7 +477,14 @@ class FakeClick(cd.Desktop):
         box = self._control(dialog, "ComboBox", "", 1148, parent=box_ex.hwnd)
         name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
 
-        def open_file() -> None:
+        def read_file() -> None:
+            # CLICK titles the main window bare and shows Project Reading while it reads
+            self._drop(dialog)
+            main.title = "CLICK Programming Software (Version4.00)"
+            reading = self._window("#32770", "Project Reading", main.hwnd)
+            self._later("read", lambda: open_file(reading))
+
+        def open_file(reading: FakeWindow) -> None:
             path = Path(name.value)
             temp = self.temp_dir(main.hwnd)
             for old in temp.iterdir():
@@ -487,10 +494,10 @@ class FakeClick(cd.Desktop):
                 (temp / file).write_bytes(data)
             self.opened.append(path)
             main.title = f"CLICK Programming Software (Version4.00) - {path.name} - [Main Program]"
-            self._drop(dialog)
+            self._drop(reading)
             main.enabled = True
 
-        self._control(dialog, "Button", "&Open", 1, on_press=lambda: self._later("open", open_file))
+        self._control(dialog, "Button", "&Open", 1, on_press=lambda: self._later("open", read_file))
         self._control(dialog, "Button", "Cancel", 2)
 
     def _show_disconnect(self) -> None:

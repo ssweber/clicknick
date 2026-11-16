@@ -256,8 +256,19 @@ IMPORT_STARTING = Expect("import_starting", "TfrmProgress", "frmProgress", MAIN)
 IMPORT_PROGRESS = Expect("import_progress", "TfrmProgress", f"Import - {IMPORT_MODE}", MAIN)
 IMPORT_DONE = Expect("import_done", "#32770", "Import Database", MAIN)
 IMPORT_ERRORS = Expect("import_errors", "TfrmErrorList", "Import Error List", MAIN)
-# PLC > Read Data from PLC (a first guess; the probe of 2026-11-16 records what opens)
-READ_DATA = Expect("read_data", "#32770", "Read Data from PLC", MAIN)
+# File > Open Project: while CLICK reads the project it shows this progress box (live run
+# c1, 2026-11-16: a progress bar, "Reading ..." and a hidden button) and titles the main
+# window bare
+PROJECT_READING = Expect("project_reading", "#32770", "Project Reading", MAIN)
+# PLC > Read Data from PLC, as live probe d1 (2026-11-16) dumped it: a Delphi form with a
+# check box per memory type (DS, DD, DH and DF checked as it opens), All, Read, Close, Help
+READ_DATA = Expect("read_data", "TfrmReadWriteDataMemory", "Read Data from PLC", MAIN)
+# Its Read opens a Save dialog owned by the form (live probe d3), then a progress window
+# (two bars and Cancel) while it reads (live probe d5)
+SAVE_DATA = Expect("save_data", "#32770", "Save", "read_data")
+READING_DATA = Expect(
+    "reading_data", "TfrmReadWriteDataMemoryStatus", "Data Memory Reading..", "read_data"
+)
 # The instruction dialog ``try`` has open, and the error box it may own after OK
 DIALOG = "dialog"
 ANSWER_BOX = "answer_box"
@@ -476,16 +487,18 @@ def _describe(window: Window) -> str:
 
 
 def classify(
-    windows: list[Window], expected: list[Expect]
+    windows: list[Window], expected: list[Expect], *, main: int | None = None
 ) -> tuple[dict[str, Window], list[Window]]:
     """Match *windows* to the main frame and *expected*: (name -> window, windows matching none).
 
     Each expectation matches at most one window, and only one owned by the window its
     ``owner`` names, so a second Login, or a Login owned by the wrong dialog, is unexpected.
+    With *main*, the window of that hwnd is the main frame whatever its title (CLICK titles
+    it bare while it closes or reads a project).
     """
     found: dict[str, Window] = {}
     rest = list(windows)
-    mains = [w for w in rest if _is_main(w)]
+    mains = [w for w in rest if _is_main(w)] or [w for w in rest if w.hwnd == main]
     if mains:
         found[MAIN] = mains[0]
         rest.remove(mains[0])
@@ -532,6 +545,13 @@ def _child(
         if control.cls == cls and control.id == id and (text is None or control.text == text):
             return control
     return None
+
+
+def _labelled(controls: list[Control], cls: str, text: str) -> Control | None:
+    """The one *cls* control reading *text*; None if there is none or more than one (a
+    Delphi form's controls have no ids of their own: each reads its hwnd)."""
+    found = [c for c in controls if c.cls == cls and c.text == text]
+    return found[0] if len(found) == 1 else None
 
 
 def _require(control: Control | None, what: str) -> Control:
@@ -894,9 +914,10 @@ class Run:
         except one that was open before the main frame first appeared (CLICK starting up,
         a splash screen), until the launch step ends. CLICK exiting aborts too, unless
         *exits* (then the wait ends when it has). With *unloading*, the main window is
-        expected whatever its title: CLICK titles it bare while it closes. A CLICK error
-        box aborts at once (``check_error_boxes``), except one owned by the window
-        *answering* names (an instruction dialog whose OK was pressed). It gives up after
+        expected whatever its title: CLICK titles it bare while it closes or reads a
+        project. A CLICK error box aborts at once (``check_error_boxes``), except one owned
+        by the window *answering* names (an instruction dialog whose OK was pressed). It
+        gives up after
         *timeout* seconds (default ``Settings.timeout``), with a reason that starts with
         *on_timeout*'s text when it is given. Every ``STATUS_EVERY`` seconds it logs the
         status bar, or that CLICK does not answer.
@@ -914,13 +935,7 @@ class Run:
             self.check_error_boxes(
                 [w for w in windows if answering is None or w.owner != answering]
             )
-            found, unexpected = classify(windows, expected)
-            if unloading and MAIN not in found:
-                for window in unexpected:
-                    if window.hwnd == self.main:
-                        found[MAIN] = window
-                        unexpected.remove(window)
-                        break
+            found, unexpected = classify(windows, expected, main=self.main if unloading else None)
             unexpected = self._without_tooltips(unexpected)
             if self.main is None and MAIN not in found:
                 for window in unexpected:
@@ -1932,9 +1947,51 @@ class Run:
             self.wait("the main window alone", [], self.only_main)
             self.command(READ_DATA_FROM_PLC)
             dialog = self.wait("Read Data from PLC", [READ_DATA], lambda f: f.get(READ_DATA.name))
+            controls = self.controls(dialog)
+            every = _require(_labelled(controls, "TButton", "All"), "All")
+            read = _require(_labelled(controls, "TButton", "Read"), "Read")
+            self.press(dialog, every)
+            boxes = [c for c in controls if c.cls == "TCheckBox"]
+
+            def all_checked(found: dict[str, Window]) -> bool:
+                return bool(boxes) and all(self.desktop.button_checked(c.hwnd) == 1 for c in boxes)
+
+            self.wait("every memory type checked", [READ_DATA], all_checked)
             self.dump(self.s.out / "record", "read_data")
-            cancel = _require(_child(self.controls(dialog), cls="Button", id=2), "Cancel (2)")
-            self.press(dialog, cancel)
+            self.press(dialog, read)
+            save = self.wait("Save", [READ_DATA, SAVE_DATA], lambda f: f.get(SAVE_DATA.name))
+            self.record("save_data")
+            dump = (self.s.out / "plcdata.csv").resolve()
+            controls = self.controls(save)
+            name = self._file_name_edit(controls)
+            button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
+            self.desktop.set_text(name.hwnd, str(dump))
+            if self.desktop.read_text(name.hwnd) != str(dump):
+                raise Aborted("the File name edit did not take the path")
+            self.press(save, button)
+            last: list[int | None] = [None]
+
+            def written(found: dict[str, Window]) -> bool:
+                form = found.get(READ_DATA.name)
+                busy = SAVE_DATA.name in found or READING_DATA.name in found
+                if busy or form is None or not form.enabled:
+                    return False
+                size = dump.stat().st_size if dump.is_file() else None
+                done = size is not None and size == last[0]
+                last[0] = size
+                return done
+
+            self.wait(
+                f"{dump.name} to be written",
+                [READ_DATA, SAVE_DATA, READING_DATA],
+                written,
+                timeout=self.s.paste_timeout,
+            )
+            self.result["files"]["plc_data"] = dump
+            self.log(f"read the PLC's data into {dump} ({dump.stat().st_size} bytes)")
+            self.record("read")
+            close = _require(_labelled(self.controls(dialog), "TButton", "Close"), "Close")
+            self.press(dialog, close)
             self.wait("Read Data from PLC to close", [READ_DATA], self.only_main)
 
     # -- reopen: what CLICK does with its Project.ini over save and open ---------
@@ -2017,7 +2074,13 @@ class Run:
             last[0] = state
             return done
 
-        self.wait(f"{ckp.name} to open", [OPEN], opened, timeout=self.s.paste_timeout)
+        self.wait(
+            f"{ckp.name} to open",
+            [OPEN, PROJECT_READING],
+            opened,
+            unloading=True,
+            timeout=self.s.paste_timeout,
+        )
         self.log(f"opened {ckp}")
         self.record("opened")
 
