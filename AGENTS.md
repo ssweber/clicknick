@@ -54,7 +54,9 @@ src/clicknick/
 ├── config.py              # AppSettings with persistence
 ├── data_session.py        # DataSession: current store + Dataview model + editor windows
 ├── connection_session.py  # ClickConnection + ConnectionSession (watch, workspace, analysis, simulation)
+├── connection_controller.py  # ConnectionController: window list, connect, project change, watch tick
 ├── simulation_session.py  # SimulationSession: pyrung DAP + Modbus + simulator settings (no tkinter)
+├── workspace_controller.py  # WorkspaceController: the Workspace group, its menu entries, Workspace setup
 ├── models/                # Data models and constants
 │   ├── address_row.py     # Frozen dataclass for address data
 │   └── mutable_row_builder.py  # Builder for accumulating changes
@@ -407,11 +409,15 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   project name and analysis as getters, so they follow a project change
 
 ### Connection and Lifecycle
+- `ConnectionController` (`ClickNickApp._connection`) lists the CLICK windows, connects, follows a project
+  change and runs the watch tick; it writes the session and the data only through the app (`_session`,
+  `_open_data`, `_close_data`). `WorkspaceController` (`ClickNickApp._workspace`) runs the Workspace group,
+  its menu entries and Workspace setup, and reads the session through the app each time
 - Connecting opens a `ConnectionSession`, before CLICK's database loads; a project change replaces it, and
-  `_close_session` is the one teardown (the database load in flight, the watch, the popup, the Workspace setup
-  window, the simulation, the analysis). Until ClickNick has read the database (`has_database`: while it
-  loads, and after the CSV fallback) the session builds nothing, and the Workspace's **Review Changes**,
-  **Reload from CLICK**, the simulation and applying Workspace setup say to connect first
+  `ConnectionController.close_session` is the one teardown (the database load in flight, the watch, the popup,
+  the Workspace setup window, the simulation, the analysis). Until ClickNick has read the database
+  (`has_database`: while it loads, and after the CSV fallback) the session builds nothing, and the Workspace's
+  **Review Changes**, **Reload from CLICK**, the simulation and applying Workspace setup say to connect first
   (`_project_session`). **Compare with > Folder** works without it
 - A database load whose session closed, or that a CSV load or another connect cancelled, is dropped, also
   when that happens during the prompt to save the data it replaces

@@ -12,6 +12,7 @@ from laddercodec import Coil, Contact, Rung, read_csv
 from laddercodec.model import Program
 
 from clicknick.app import ClickNickApp
+from clicknick.connection_controller import ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
@@ -305,7 +306,7 @@ def test_refreshing_the_window_list_removes_copies_of_closed_windows(
     (compare / ".CLICK (00000003)-k2j8").mkdir()  # Left by a copy cut short
     (compare / "notes.txt").write_text("mine", encoding="utf-8")
     app = _app()  # Windows 1 and 2 are open
-    app.click_instances = []
+    app._connection = ConnectionController(app)
     app.instances_combobox = {}
     app.selected_instance_var = MagicMock()
     app.start_button = MagicMock()
@@ -317,7 +318,7 @@ def test_refreshing_the_window_list_removes_copies_of_closed_windows(
         snapshot_dir(5).resolve(): closed,
     }
 
-    app.refresh_click_instances()
+    app._connection.refresh_click_instances()
 
     assert sorted(path.name for path in compare.iterdir()) == [
         "CLICK (00000001)",

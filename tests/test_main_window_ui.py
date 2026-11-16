@@ -10,6 +10,7 @@ from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.workspace_mirror import WorkspaceDirectoryInfo, WorkspacePairing
 from clicknick.services.workspace_service import WorkspaceState, WorkspaceStatus
+from clicknick.workspace_controller import WorkspaceController
 
 
 @pytest.mark.parametrize(
@@ -64,74 +65,72 @@ def test_autocomplete_options_menu_uses_existing_setting_variables() -> None:
 
 
 def test_workspace_options_menu_exposes_active_folder_and_setup() -> None:
-    app = ClickNickApp.__new__(ClickNickApp)
-    app._request_ui_refresh = MagicMock()
-    app._session = None
-    app._workspace_display_dir = MagicMock(return_value=None)
-    app._open_workspace = MagicMock()
-    app._open_mirror_setup_window = MagicMock()
+    workspace = WorkspaceController(SimpleNamespace(_session=None))
+    workspace.display_dir = MagicMock(return_value=None)
+    workspace.open_workspace = MagicMock()
+    workspace.open_setup_window = MagicMock()
     menu = MagicMock()
+    menu.index.return_value = 0
 
-    app._populate_workspace_options_menu(menu)
+    workspace.populate_options_menu(menu)
 
     assert menu.mock_calls == [
         call.add_command(
             label="Open Temporary Workspace",
-            command=app._open_workspace,
+            command=workspace.open_workspace,
             state="disabled",
         ),
+        call.index("end"),
         call.add_separator(),
         call.add_command(
             label="View/Setup Workspace...",
-            command=app._open_mirror_setup_window,
+            command=workspace.open_setup_window,
         ),
     ]
 
 
 def test_open_workspace_menu_items_follow_active_directory(tmp_path) -> None:
-    app = ClickNickApp.__new__(ClickNickApp)
-    app._request_ui_refresh = MagicMock()
-    app.workspace_options_menu = MagicMock()
-    app._workspace_options_open_index = 0
-    app.workspace_menu = MagicMock()
-    app._workspace_menu_open_index = 3
-    app._session = None
-    app._workspace_display_dir = MagicMock(return_value=None)
+    app = SimpleNamespace(_session=None)
+    workspace = WorkspaceController(app)
+    workspace.display_dir = MagicMock(return_value=None)
+    options_menu, workspace_menu = MagicMock(), MagicMock()
+    options_menu.index.return_value = 0
+    workspace_menu.index.return_value = 3
+    workspace.add_open_entry(options_menu)
+    workspace.add_open_entry(workspace_menu)
+    options_menu.reset_mock()
+    workspace_menu.reset_mock()
 
-    app._refresh_workspace_menu_states()
+    workspace.refresh_menu_states()
 
-    app.workspace_options_menu.entryconfigure.assert_called_once_with(
+    options_menu.entryconfigure.assert_called_once_with(
         0, label="Open Temporary Workspace", state="disabled"
     )
-    app.workspace_menu.entryconfigure.assert_called_once_with(
+    workspace_menu.entryconfigure.assert_called_once_with(
         3, label="Open Temporary Workspace", state="disabled"
     )
 
-    app.workspace_options_menu.reset_mock()
-    app.workspace_menu.reset_mock()
-    app._workspace_display_dir.return_value = tmp_path
+    options_menu.reset_mock()
+    workspace_menu.reset_mock()
+    workspace.display_dir.return_value = tmp_path
 
-    app._refresh_workspace_menu_states()
+    workspace.refresh_menu_states()
 
-    app.workspace_options_menu.entryconfigure.assert_called_once_with(
+    options_menu.entryconfigure.assert_called_once_with(
         0, label="Open Temporary Workspace", state="normal"
     )
-    app.workspace_menu.entryconfigure.assert_called_once_with(
+    workspace_menu.entryconfigure.assert_called_once_with(
         3, label="Open Temporary Workspace", state="normal"
     )
 
-    app.workspace_options_menu.reset_mock()
-    app.workspace_menu.reset_mock()
+    options_menu.reset_mock()
+    workspace_menu.reset_mock()
     app._session = SimpleNamespace(pairing=WorkspacePairing(object()))
 
-    app._refresh_workspace_menu_states()
+    workspace.refresh_menu_states()
 
-    app.workspace_options_menu.entryconfigure.assert_called_once_with(
-        0, label="Open Workspace", state="normal"
-    )
-    app.workspace_menu.entryconfigure.assert_called_once_with(
-        3, label="Open Workspace", state="normal"
-    )
+    options_menu.entryconfigure.assert_called_once_with(0, label="Open Workspace", state="normal")
+    workspace_menu.entryconfigure.assert_called_once_with(3, label="Open Workspace", state="normal")
 
 
 def test_main_window_is_revealed_once_at_its_settled_requested_size() -> None:
@@ -155,10 +154,10 @@ def test_run_finishes_initial_refresh_before_revealing_main_window() -> None:
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
-    app.refresh_click_instances = MagicMock()
+    app._connection = MagicMock()
     app._show_main_window = MagicMock()
     lifecycle = MagicMock()
-    lifecycle.attach_mock(app.refresh_click_instances, "refresh")
+    lifecycle.attach_mock(app._connection.refresh_click_instances, "refresh")
     lifecycle.attach_mock(app._show_main_window, "show")
     lifecycle.attach_mock(app.root.mainloop, "mainloop")
 
@@ -189,13 +188,12 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
     for name in variable_names:
         setattr(app, name, MagicMock())
     app._workspace_refresh_after_id = None
-    app._get_workspace_status = MagicMock(
-        return_value=WorkspaceStatus(WorkspaceState.CLEAN, "Clean")
-    )
+    workspace = app._workspace = WorkspaceController(app)
+    workspace.status = MagicMock(return_value=WorkspaceStatus(WorkspaceState.CLEAN, "Clean"))
     mirror = tmp_path / "IMHERE Workspace"
     project = tmp_path / "Example.ckp"
-    app._workspace_display_dir = MagicMock(return_value=mirror)
-    app._get_workspace_directory_info = MagicMock(
+    workspace.display_dir = MagicMock(return_value=mirror)
+    workspace.directory_info = MagicMock(
         return_value=WorkspaceDirectoryInfo(
             generated_dir=tmp_path / "pyrung_project",
             config_path=project,
@@ -204,7 +202,7 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
             last_backup_at=None,
         )
     )
-    app._current_plc_name = MagicMock(return_value="IMHERE")
+    workspace.plc_name = MagicMock(return_value="IMHERE")
     app.repairs_menu = MagicMock()
     app._repairs_system_nicknames_index = 0
     app._session = SimpleNamespace(
@@ -284,7 +282,7 @@ def test_new_legacy_encodings_pop_up_and_offer_review_changes(monkeypatch, answe
     app.root = MagicMock()
     app._ui_refresh_id = None
     app._refresh_ui = MagicMock()
-    app._workspace_rung_apply = MagicMock()
+    app._workspace = MagicMock()
     detail = "it is stored as 16-bit and CLICK runs it as 4464."
     found = (LegacyEncoding("main.csv", "Main Program", 12, "Math", "H70000", detail),)
     app._session = SimpleNamespace(legacy_encodings_to_report=MagicMock(return_value=found))
@@ -296,7 +294,7 @@ def test_new_legacy_encodings_pop_up_and_offer_review_changes(monkeypatch, answe
     message = ask.call_args.args[1]
     assert f"Main Program rung 12, Math H70000: {detail}" in message
     assert "Open Review Changes now?" in message
-    assert app._workspace_rung_apply.called is answer
+    assert app._workspace.review_changes.called is answer
 
     # The next build finds nothing new, so no popup shows
     ask.reset_mock()
@@ -310,7 +308,7 @@ def _popup_app(found):
     app.root = MagicMock()
     app._ui_refresh_id = None
     app._refresh_ui = MagicMock()
-    app._workspace_rung_apply = MagicMock()
+    app._workspace = MagicMock()
     app._session = SimpleNamespace(legacy_encodings_to_report=MagicMock(return_value=found))
     return app
 
@@ -339,7 +337,7 @@ def test_rungs_clicknick_cannot_read_pop_up_without_offering_the_workspace(monke
     assert "  Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
     assert "empty rung" in message
     assert "old encoding" not in message
-    app._workspace_rung_apply.assert_not_called()
+    app._workspace.review_changes.assert_not_called()
 
 
 def test_a_program_csv_laddercodec_cannot_read_pops_up_too(monkeypatch) -> None:
@@ -374,4 +372,4 @@ def test_both_kinds_pop_up_together_and_offer_review_changes(monkeypatch) -> Non
     assert "Conf_Compare rung 4" in message
     assert "Main Program rung 12, Math H70000" in message
     assert message.endswith("Open Review Changes now?")
-    app._workspace_rung_apply.assert_called_once_with()
+    app._workspace.review_changes.assert_called_once_with()

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from clicknick.app import ClickNickApp
+from clicknick.connection_controller import ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.analysis_service import _publish_generated_project
 from clicknick.services.project_workspace import (
@@ -33,6 +34,23 @@ from clicknick.services.workspace_mirror import (
     validate_mirror_destination,
     workspace_path_for_selection,
 )
+from clicknick.workspace_controller import WorkspaceController
+
+
+def _app(session) -> ClickNickApp:
+    """An app connected through *session* (or none), its Workspace setup form mocked."""
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
+    app.root = MagicMock()
+    app._session = session
+    app._update_status = MagicMock()
+    app._start_analysis_build = MagicMock()
+    app.plc_name_var = MagicMock()
+    app.mirror_project_selection_var = MagicMock()
+    app.mirror_location_selection_var = MagicMock()
+    app.workspace_setup_action_var = MagicMock()
+    app._workspace = WorkspaceController(app)
+    return app
 
 
 def _config(home: Path, plc_name: str = "Line 1") -> ProjectWorkspaceConfig:
@@ -113,11 +131,9 @@ def test_current_plc_name_reads_click_3_and_4_project_ini(
     monkeypatch, tmp_path: Path, project_ini: bytes | None, expected: str | None
 ) -> None:
     _click_temp(monkeypatch, tmp_path, project_ini)
-    app = ClickNickApp.__new__(ClickNickApp)
-    app._request_ui_refresh = MagicMock()
-    app._session = ConnectionSession(ClickConnection("1", 123, "Example.ckp"))
+    app = _app(ConnectionSession(ClickConnection("1", 123, "Example.ckp")))
 
-    assert app._current_plc_name() == expected
+    assert app._workspace.plc_name() == expected
 
 
 @pytest.mark.parametrize(("project_ini", "expected"), _PROJECT_INI_NAMES)
@@ -135,20 +151,17 @@ def test_workspace_setup_writes_the_plc_name_where_click_4_reads_it(
 ) -> None:
     project_ini = b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=\r\n[Sec22]\r\n"
     _click_temp(monkeypatch, tmp_path, project_ini)
-    monkeypatch.setattr("clicknick.app.simpledialog.askstring", MagicMock(return_value="Line 1"))
-    monkeypatch.setattr("clicknick.app.messagebox.showinfo", MagicMock())
-    app = ClickNickApp.__new__(ClickNickApp)
-    app._request_ui_refresh = MagicMock()
-    app.root = MagicMock()
-    app._session = ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True)
-    app._update_status = MagicMock()
-    app.plc_name_var = MagicMock()
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.simpledialog.askstring", MagicMock(return_value="Line 1")
+    )
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.showinfo", MagicMock())
+    app = _app(ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True))
 
-    assert app._ensure_plc_name_for_workspace() == "Line 1"
+    assert app._workspace._ensure_plc_name() == "Line 1"
     assert (tmp_path / "Project.ini").read_bytes() == (
         b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=Line 1\r\n[Sec22]\r\n"
     )
-    assert app._current_plc_name() == "Line 1"
+    assert app._workspace.plc_name() == "Line 1"
 
 
 def test_workspace_selection_uses_plc_name(tmp_path: Path) -> None:
@@ -272,29 +285,26 @@ def _choose_existing_workspace(
     stands in for asking the PLC name. Returns the mocked messagebox.showerror.
     """
     monkeypatch.setattr("clicknick.services.workspace_mirror.remember_project_sidecar", MagicMock())
-    monkeypatch.setattr("clicknick.app.messagebox.askokcancel", MagicMock(return_value=True))
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.messagebox.askokcancel", MagicMock(return_value=True)
+    )
     showerror = MagicMock()
-    monkeypatch.setattr("clicknick.app.messagebox.showerror", showerror)
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.showerror", showerror)
 
-    app = ClickNickApp.__new__(ClickNickApp)
-    app._request_ui_refresh = MagicMock()
-    app.root = MagicMock()
-    app._session = MagicMock(
-        pairing=WorkspacePairing(),
-        setup_window=None,
-        pending_workspace=ProjectWorkspaceConfig("Line1", mirror),
+    app = _app(
+        MagicMock(
+            pairing=WorkspacePairing(),
+            setup_window=None,
+            pending_workspace=ProjectWorkspaceConfig("Line1", mirror),
+        )
     )
     if analysis is not None:
         app._session.analysis = analysis
-    app._ensure_plc_name_for_workspace = ensure_plc_name or MagicMock(return_value="Line1")
-    app._workspace_source_dir = MagicMock(return_value=source)
-    app._update_status = MagicMock()
-    app._start_analysis_build = MagicMock()
-    app.mirror_project_selection_var = MagicMock()
-    app.mirror_location_selection_var = MagicMock()
-    app.workspace_setup_action_var = MagicMock()
+    workspace = app._workspace
+    workspace._ensure_plc_name = ensure_plc_name or MagicMock(return_value="Line1")
+    workspace.source_dir = MagicMock(return_value=source)
 
-    app._apply_workspace_mirror_setup()
+    workspace._apply_setup()
     return showerror
 
 
@@ -584,14 +594,14 @@ def test_a_new_session_pairs_its_own_plc(monkeypatch, tmp_path: Path) -> None:
         MagicMock(return_value=[config]),
     )
     monkeypatch.setattr(ConnectionSession, "plc_name", lambda _self: "Machine")
-    app = ClickNickApp.__new__(ClickNickApp)
-    app._request_ui_refresh = MagicMock()
-    app._session = None
+    app = _app(None)
 
-    app._open_connection_session(ClickConnection("1", 2, "Machine-20260829.ckp"))
+    ConnectionController(app)._open_connection_session(
+        ClickConnection("1", 2, "Machine-20260829.ckp")
+    )
 
     assert app._session.pairing.config == config
-    assert app._configured_workspace_dir() == config.workspace_path
+    assert app._workspace.configured_dir() == config.workspace_path
 
 
 def test_setup_creates_plc_named_workspace_and_remembers_preference(
@@ -605,22 +615,11 @@ def test_setup_creates_plc_named_workspace_and_remembers_preference(
     )
     monkeypatch.setattr("clicknick.services.workspace_mirror.remember_project_sidecar", remember)
 
-    app = ClickNickApp.__new__(ClickNickApp)
+    app = _app(MagicMock(pairing=WorkspacePairing(), setup_window=None, pending_workspace=config))
+    app._workspace._ensure_plc_name = MagicMock(return_value="IMHERE")
+    app._workspace.source_dir = MagicMock(return_value=None)
 
-    app._request_ui_refresh = MagicMock()
-    app.root = MagicMock()
-    app._session = MagicMock(
-        pairing=WorkspacePairing(), setup_window=None, pending_workspace=config
-    )
-    app._ensure_plc_name_for_workspace = MagicMock(return_value="IMHERE")
-    app._workspace_source_dir = MagicMock(return_value=None)
-    app._update_status = MagicMock()
-    app._start_analysis_build = MagicMock()
-    app.mirror_project_selection_var = MagicMock()
-    app.mirror_location_selection_var = MagicMock()
-    app.workspace_setup_action_var = MagicMock()
-
-    app._apply_workspace_mirror_setup()
+    app._workspace._apply_setup()
 
     assert config.workspace_path.is_dir()
     save_config.assert_called_once_with(config)
@@ -633,19 +632,14 @@ def test_setup_creates_plc_named_workspace_and_remembers_preference(
 def test_choose_new_home_previews_plc_named_paths(monkeypatch, tmp_path: Path) -> None:
     home = tmp_path / "workspaces"
     home.mkdir()
-    monkeypatch.setattr("clicknick.app.filedialog.askdirectory", MagicMock(return_value=str(home)))
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.filedialog.askdirectory", MagicMock(return_value=str(home))
+    )
 
-    app = ClickNickApp.__new__(ClickNickApp)
+    app = _app(ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp")))
+    app._workspace._ensure_plc_name = MagicMock(return_value="LaserBall")
 
-    app._request_ui_refresh = MagicMock()
-    app.root = MagicMock()
-    app._session = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"))
-    app._ensure_plc_name_for_workspace = MagicMock(return_value="LaserBall")
-    app.mirror_project_selection_var = MagicMock()
-    app.mirror_location_selection_var = MagicMock()
-    app.workspace_setup_action_var = MagicMock()
-
-    app._select_mirror_location()
+    app._workspace._select_location()
 
     assert app._session.pending_workspace == _config(home, "LaserBall")
     app.mirror_project_selection_var.set.assert_called_once_with("")
@@ -659,21 +653,14 @@ def test_find_existing_workspace_selects_a_folder_not_a_config_file(
     config = _config(tmp_path, "LaserBall")
     save_project_workspace_config(config)
     monkeypatch.setattr(
-        "clicknick.app.filedialog.askdirectory",
+        "clicknick.workspace_controller.filedialog.askdirectory",
         MagicMock(return_value=str(config.workspace_path)),
     )
 
-    app = ClickNickApp.__new__(ClickNickApp)
+    app = _app(ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp")))
+    app._workspace._ensure_plc_name = MagicMock(return_value="LaserBall")
 
-    app._request_ui_refresh = MagicMock()
-    app.root = MagicMock()
-    app._session = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"))
-    app._ensure_plc_name_for_workspace = MagicMock(return_value="LaserBall")
-    app.mirror_project_selection_var = MagicMock()
-    app.mirror_location_selection_var = MagicMock()
-    app.workspace_setup_action_var = MagicMock()
-
-    app._select_existing_workspace_config()
+    app._workspace._select_existing()
 
     assert app._session.pending_workspace == config
     app.mirror_project_selection_var.set.assert_called_once_with(str(config.workspace_path))
@@ -684,40 +671,21 @@ def test_find_existing_workspace_selects_a_folder_not_a_config_file(
 def test_workspace_setup_prompts_for_and_writes_a_missing_plc_name(monkeypatch) -> None:
     ask_name = MagicMock(side_effect=["Bad.Name", "  Line 1  "])
     write_name = MagicMock()
-    monkeypatch.setattr("clicknick.app.simpledialog.askstring", ask_name)
-    monkeypatch.setattr("clicknick.app.messagebox.showerror", MagicMock())
-    monkeypatch.setattr("clicknick.app.messagebox.showinfo", MagicMock())
+    monkeypatch.setattr("clicknick.workspace_controller.simpledialog.askstring", ask_name)
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.showerror", MagicMock())
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.showinfo", MagicMock())
     monkeypatch.setattr("pyclickplc.project.write_plc_name", write_name)
     monkeypatch.setattr(
         "clicknick.utils.click_temp.click_temp_dir", MagicMock(return_value=Path("CLICK-temp"))
     )
 
-    app = ClickNickApp.__new__(ClickNickApp)
+    app = _app(ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True))
+    app._workspace.plc_name = MagicMock(return_value=None)
 
-    app._request_ui_refresh = MagicMock()
-    app.root = MagicMock()
-    app._session = ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True)
-    app._current_plc_name = MagicMock(return_value=None)
-    app._update_status = MagicMock()
-    app.plc_name_var = MagicMock()
-
-    assert app._ensure_plc_name_for_workspace() == "Line 1"
+    assert app._workspace._ensure_plc_name() == "Line 1"
     assert ask_name.call_count == 2
     write_name.assert_called_once_with(Path("CLICK-temp") / "Project.ini", "Line 1")
     app.plc_name_var.set.assert_called_once_with("Line 1")
-
-
-def _setup_app(session: ConnectionSession) -> ClickNickApp:
-    """An app showing Workspace setup for *session*, its form's fields mocked."""
-    app = ClickNickApp.__new__(ClickNickApp)
-    app._request_ui_refresh = MagicMock()
-    app.root = MagicMock()
-    app._session = session
-    app._update_status = MagicMock()
-    app.mirror_project_selection_var = MagicMock()
-    app.mirror_location_selection_var = MagicMock()
-    app.workspace_setup_action_var = MagicMock()
-    return app
 
 
 def test_a_folder_chosen_after_the_click_window_showed_another_project_is_dropped(
@@ -728,17 +696,19 @@ def test_a_folder_chosen_after_the_click_window_showed_another_project_is_droppe
     first = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"))
     first.setup_window = MagicMock()
     other = ConnectionSession(ClickConnection("1", 2, "Other.ckp"))
-    app = _setup_app(first)
-    app._ensure_plc_name_for_workspace = MagicMock(return_value="LaserBall")
+    app = _app(first)
+    app._workspace._ensure_plc_name = MagicMock(return_value="LaserBall")
 
     def choose_after_project_change(**_options):
         first.close()  # CLICK opened another project while the dialog was up
         app._session = other
         return str(home)
 
-    monkeypatch.setattr("clicknick.app.filedialog.askdirectory", choose_after_project_change)
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.filedialog.askdirectory", choose_after_project_change
+    )
 
-    app._select_mirror_location()
+    app._workspace._select_location()
 
     assert other.pending_workspace is None
     assert other.pairing.matches == []
@@ -749,18 +719,17 @@ def test_a_plc_name_entered_after_the_click_window_closed_is_not_written(monkeyp
     write_name = MagicMock()
     monkeypatch.setattr("pyclickplc.project.write_plc_name", write_name)
     session = ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True)
-    app = _setup_app(session)
-    app._current_plc_name = MagicMock(return_value=None)
-    app.plc_name_var = MagicMock()
+    app = _app(session)
+    app._workspace.plc_name = MagicMock(return_value=None)
 
     def answer_after_close(*_args, **_options):
         session.close()  # CLICK's window closed while the prompt was up
         app._session = None
         return "Line 1"
 
-    monkeypatch.setattr("clicknick.app.simpledialog.askstring", answer_after_close)
+    monkeypatch.setattr("clicknick.workspace_controller.simpledialog.askstring", answer_after_close)
 
-    assert app._ensure_plc_name_for_workspace() is None
+    assert app._workspace._ensure_plc_name() is None
     write_name.assert_not_called()
 
 
@@ -780,19 +749,20 @@ def test_setup_confirmed_after_the_click_window_closed_writes_nothing(
     session.setup_window = MagicMock()
     session.pending_workspace = config
     session.use_workspace = MagicMock()
-    app = _setup_app(session)
-    app._ensure_plc_name_for_workspace = MagicMock(return_value="IMHERE")
-    app._workspace_source_dir = MagicMock(return_value=None)
-    app._start_analysis_build = MagicMock()
+    app = _app(session)
+    app._workspace._ensure_plc_name = MagicMock(return_value="IMHERE")
+    app._workspace.source_dir = MagicMock(return_value=None)
 
     def confirm_after_close(*_args, **_options):
         session.close()  # CLICK's window closed while the question was up
         app._session = None
         return True
 
-    monkeypatch.setattr("clicknick.app.messagebox.askokcancel", confirm_after_close)
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.messagebox.askokcancel", confirm_after_close
+    )
 
-    app._apply_workspace_mirror_setup()
+    app._workspace._apply_setup()
 
     save_config.assert_not_called()
     remember.assert_not_called()
@@ -802,14 +772,13 @@ def test_setup_confirmed_after_the_click_window_closed_writes_nothing(
 
 def test_open_workspace_uses_single_active_folder(tmp_path: Path) -> None:
     workspace = tmp_path / "LaserBall Workspace"
-    app = ClickNickApp.__new__(ClickNickApp)
-    app._request_ui_refresh = MagicMock()
-    app._workspace_display_dir = MagicMock(return_value=workspace)
-    app._open_folder = MagicMock()
+    controller = _app(None)._workspace
+    controller.display_dir = MagicMock(return_value=workspace)
+    controller._open_folder = MagicMock()
 
-    app._open_workspace()
+    controller.open_workspace()
 
-    app._open_folder.assert_called_once_with(
+    controller._open_folder.assert_called_once_with(
         workspace,
         title="Open Workspace",
         unavailable="Workspace is not available",

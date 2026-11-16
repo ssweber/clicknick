@@ -8,9 +8,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from clicknick.app import ClickNickApp
+from clicknick.connection_controller import ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data_session import DataSession
 from clicknick.detection.window_detector import ClickInstance
+from clicknick.workspace_controller import WorkspaceController
 
 
 class FakeVar:
@@ -110,7 +112,7 @@ def _session(click: ClickConnection = _MAIN):
 
 def _assert_loads(app: ClickNickApp, click: ClickConnection) -> None:
     """The database load started, for a new session on *click*."""
-    app._load_instance_database.assert_called_once_with(app._session)
+    app._connection._load_instance_database.assert_called_once_with(app._session)
     assert app._session.click == click
 
 
@@ -137,31 +139,37 @@ def _app(monkeypatch, *, answer=None, yes_no=False) -> tuple[ClickNickApp, list]
     )
     app = ClickNickApp.__new__(ClickNickApp)
     app.__dict__["_ui_refresh_id"] = None
+    app._connection = ConnectionController(app)
     app._request_ui_refresh = MagicMock()
     app.root = FakeRoot()
     app._session = _session()
     app._data = None
     app._update_status = MagicMock()
-    app.monitoring = False
-    app._status_after_id = None
+    app._connection.monitoring = False
     app._live_server = None
     app.start_button = MagicMock()
     app.nickname_manager = SimpleNamespace(set_store=MagicMock(), has_database_backend=lambda: True)
-    app.click_instances = [_instance("111", 222, "Main.ckp")]
+    app._connection.click_instances = [_instance("111", 222, "Main.ckp")]
     app.instances_combobox = {}
     app.selected_instance_var = FakeVar("Main.ckp")
     # CLICK's folder is not read
     monkeypatch.setattr(ConnectionSession, "load_workspace_pairing", lambda _self: None)
-    app._load_instance_database = MagicMock()
+    app._connection._load_instance_database = MagicMock()
     app._remove_stale_compare_copies = MagicMock()
     app.detector = SimpleNamespace(
         check_window_exists=lambda _pid: True,
         get_window_title=lambda hwnd: next(
-            (instance.title for instance in app.click_instances if instance.hwnd == hwnd), ""
+            (
+                instance.title
+                for instance in app._connection.click_instances
+                if instance.hwnd == hwnd
+            ),
+            "",
         ),
-        get_click_instances=lambda: list(app.click_instances),
+        get_click_instances=lambda: list(app._connection.click_instances),
         detect_child_window=MagicMock(return_value=None),
     )
+    app._workspace = WorkspaceController(app)
     return app, prompts
 
 
@@ -232,10 +240,10 @@ def test_project_change_keeps_csv_data_with_unsaved_edits(monkeypatch):
     app, prompts = _app(monkeypatch)
     store = FakeStore(is_database=False, unsaved=True, source_path="C:/Users/me/Main_Address.csv")
     editor = _open(app, store)
-    app.monitoring = True
+    app._connection.monitoring = True
     session = app._session
 
-    app._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
 
     assert prompts == []
     assert app._data.store is store
@@ -245,16 +253,16 @@ def test_project_change_keeps_csv_data_with_unsaved_edits(monkeypatch):
     assert app._csv_path == "C:/Users/me/Main_Address.csv"
     assert app._click == ClickConnection("111", 222, "Main2.ckp")
     assert app.selected_instance_var.get() == "Main2.ckp"
-    assert app.monitoring
+    assert app._connection.monitoring
     session.close.assert_called_once()
-    app._load_instance_database.assert_not_called()
+    app._connection._load_instance_database.assert_not_called()
 
 
 def test_project_change_closes_database_data_and_loads_the_new_project(monkeypatch):
     app, prompts = _app(monkeypatch)
     editor = _open(app, FakeStore(is_database=True))
 
-    app._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
 
     assert prompts == [("Project Changed",)]
     assert editor.closed
@@ -279,7 +287,9 @@ def test_project_change_can_keep_unsaved_database_edits_for_the_new_project(monk
     editor = _open(app, store)
     old_session = app._session
 
-    app._handle_project_change("CLICK Programming Software - Renamed.ckp", "Renamed.ckp")
+    app._connection._handle_project_change(
+        "CLICK Programming Software - Renamed.ckp", "Renamed.ckp"
+    )
 
     ((_, title, message),) = prompts
     assert title == "Project Changed"
@@ -288,7 +298,7 @@ def test_project_change_can_keep_unsaved_database_edits_for_the_new_project(monk
     assert not editor.closed
     store.stop_file_monitoring.assert_not_called()  # It reads the base from the new database
     assert not store.save_all_changes.called
-    app._load_instance_database.assert_not_called()
+    app._connection._load_instance_database.assert_not_called()
     old_session.close.assert_called_once()
     # The kept edits are the new project's database data, so it builds at once
     assert sessions == [(ClickConnection("111", 222, "Renamed.ckp"), True)]
@@ -302,7 +312,7 @@ def test_project_change_can_discard_unsaved_database_edits(monkeypatch):
     store = FakeStore(is_database=True, unsaved=True)
     editor = _open(app, store)
 
-    app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
 
     assert [prompt[:2] for prompt in prompts] == [
         ("askyesno", "Project Changed"),
@@ -320,7 +330,9 @@ def test_project_change_counts_text_still_in_a_cell_editor(monkeypatch):
     editor = _open(app, store)
     editor.commit_open_cell_editor = lambda: setattr(store, "_unsaved", True) or True
 
-    app._handle_project_change("CLICK Programming Software - Renamed.ckp", "Renamed.ckp")
+    app._connection._handle_project_change(
+        "CLICK Programming Software - Renamed.ckp", "Renamed.ckp"
+    )
 
     assert [prompt[:2] for prompt in prompts] == [("askyesno", "Project Changed")]
     assert app._data.store is store
@@ -340,7 +352,7 @@ def test_project_change_asks_one_question_about_dataview_edits(monkeypatch, keep
     dataview = FakeDataview()
     app._data.register_dataview_window(dataview)
 
-    app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
 
     (question, *notices) = prompts
     assert question[:2] == ("askyesno", "Project Changed")
@@ -350,7 +362,7 @@ def test_project_change_asks_one_question_about_dataview_edits(monkeypatch, keep
         assert notices == []
         assert not dataview.closed
         assert app._data.store is store
-        app._load_instance_database.assert_not_called()
+        app._connection._load_instance_database.assert_not_called()
     else:
         assert notices == [("Project Changed",)]
         assert dataview.closed
@@ -365,7 +377,7 @@ def test_project_change_asks_when_a_cell_editor_will_not_commit(monkeypatch):
     editor = _open(app, FakeStore(is_database=True))
     editor.commit_open_cell_editor = lambda: False
 
-    app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
 
     assert prompts[0][:2] == ("askyesno", "Project Changed")
 
@@ -379,7 +391,7 @@ def test_connecting_by_itself_selects_the_window_in_the_list(monkeypatch):
     app._session = None
     app.selected_instance_var = FakeVar("")
 
-    app.refresh_click_instances()
+    app._connection.refresh_click_instances()
 
     assert app._click == ClickConnection("111", 222, "Main.ckp")
     assert app.instances_combobox["values"] == ["Main.ckp"]
@@ -391,21 +403,21 @@ def test_a_project_change_lists_a_window_the_list_left_out(monkeypatch):
     _open(app, FakeStore(is_database=False))
     # Read while the window's title showed no project
     app.detector.get_click_instances = lambda: []
-    app.refresh_click_instances()
+    app._connection.refresh_click_instances()
     assert app.instances_combobox["values"] == ["Main.ckp"]
 
-    app._handle_project_change("CLICK Programming Software - follow.ckp", "follow.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - follow.ckp", "follow.ckp")
 
     assert app.instances_combobox["values"] == ["follow.ckp"]
     assert app.selected_instance_var.get() == "follow.ckp"
-    (listed,) = app.click_instances
+    (listed,) = app._connection.click_instances
     assert listed == ClickInstance(
         "111", "CLICK Programming Software - follow.ckp", "follow.ckp", 222
     )
     app.selected_instance_var.set("follow.ckp")
-    app.connect_to_instance = MagicMock()
-    app._on_instance_selected()
-    app.connect_to_instance.assert_called_once()
+    app._connection.connect_to_instance = MagicMock()
+    app._connection.on_instance_selected()
+    app._connection.connect_to_instance.assert_called_once()
 
 
 # -- app#3: the CSV path is the open data's -----------------------------------------------------
@@ -419,7 +431,7 @@ def _patch_csv(monkeypatch, *, fails: bool = False) -> None:
 
     monkeypatch.setattr("clicknick.data.data_source.CsvDataSource", source)
     monkeypatch.setattr(
-        "clicknick.app.AddressStore",
+        "clicknick.connection_controller.AddressStore",
         lambda source: FakeStore(is_database=False, source_path=source.path),
     )
 
@@ -441,7 +453,9 @@ def test_a_csv_load_that_does_not_open_leaves_the_database_data(monkeypatch, fai
     assert app._window_title() == "ClickNick - Main.ckp - DB"
 
     # A CLICK Save As then reloads the database for the new name
-    app._handle_project_change("CLICK Programming Software - Renamed.ckp", "Renamed.ckp")
+    app._connection._handle_project_change(
+        "CLICK Programming Software - Renamed.ckp", "Renamed.ckp"
+    )
     _assert_loads(app, ClickConnection("111", 222, "Renamed.ckp"))
 
 
@@ -449,7 +463,7 @@ def test_a_csv_load_sets_the_csv_path_with_the_data(monkeypatch):
     _patch_csv(monkeypatch)
     app, _prompts = _app(monkeypatch)
 
-    assert app.load_csv("C:/tmp/Other.csv")
+    assert app._connection.load_csv("C:/tmp/Other.csv")
 
     assert app._csv_path == "C:/tmp/Other.csv"
     assert app._window_title() == "ClickNick - Main.ckp - CSV"
@@ -466,15 +480,15 @@ def test_refresh_after_the_window_closed_lists_windows_without_connecting(monkey
     app, _prompts = _app(monkeypatch)
     store = FakeStore(is_database=False, unsaved=True)
     editor = _open(app, store)
-    app.connect_to_instance = MagicMock()
+    app._connection.connect_to_instance = MagicMock()
     other = _instance("333", 444, "Other.ckp")
     app.detector.get_click_instances = lambda: [other]
 
-    app._handle_window_closed()
+    app._connection._handle_window_closed()
     (refresh,) = app.root.take(2000)
     refresh()
 
-    app.connect_to_instance.assert_not_called()
+    app._connection.connect_to_instance.assert_not_called()
     assert app.instances_combobox["values"] == ["Other.ckp"]
     assert app.selected_instance_var.get() == ""
     assert app._data.store is store
@@ -484,13 +498,15 @@ def test_refresh_after_the_window_closed_lists_windows_without_connecting(monkey
 def test_refresh_with_nothing_loaded_connects_to_the_first_window(monkeypatch):
     app, _prompts = _app(monkeypatch)
     app._session = None
-    app.connect_to_instance = MagicMock()
+    app._connection.connect_to_instance = MagicMock()
     other = _instance("333", 444, "Other.ckp")
     app.detector.get_click_instances = lambda: [other]
 
-    app.refresh_click_instances()
+    app._connection.refresh_click_instances()
 
-    app.connect_to_instance.assert_called_once_with("333", other.title, "Other.ckp", 444)
+    app._connection.connect_to_instance.assert_called_once_with(
+        "333", other.title, "Other.ckp", 444
+    )
 
 
 # -- The session opens on connect, before the database loads ----------------------------------
@@ -501,7 +517,9 @@ def test_connecting_opens_the_session_before_the_database_loads(monkeypatch):
     app, _prompts = _app(monkeypatch)
     app._session = None
 
-    app.connect_to_instance("111", "CLICK Programming Software - Main.ckp", "Main.ckp", 222)
+    app._connection.connect_to_instance(
+        "111", "CLICK Programming Software - Main.ckp", "Main.ckp", 222
+    )
 
     _assert_loads(app, ClickConnection("111", 222, "Main.ckp"))
     assert not app._session.has_database
@@ -509,24 +527,24 @@ def test_connecting_opens_the_session_before_the_database_loads(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "action",
+    ("owner", "action"),
     [
-        "_workspace_rung_apply",
-        "_workspace_reload_from_click",
-        "_open_simulator",
-        "_toggle_simulation",
-        "_apply_workspace_mirror_setup",
-        "_ensure_plc_name_for_workspace",
+        ("workspace", "review_changes"),
+        ("workspace", "reload_from_click"),
+        ("app", "_open_simulator"),
+        ("app", "_toggle_simulation"),
+        ("workspace", "_apply_setup"),
+        ("workspace", "_ensure_plc_name"),
     ],
 )
-def test_without_its_database_a_session_asks_to_connect_first(monkeypatch, action):
+def test_without_its_database_a_session_asks_to_connect_first(monkeypatch, owner, action):
     """While the database loads, and after the CSV fallback, these say what they
     said before a session was made on connect."""
     app, _prompts = _app(monkeypatch)
     app._live_server = MagicMock()
-    app._current_plc_name = MagicMock(return_value=None)
+    app._workspace.plc_name = MagicMock(return_value=None)
 
-    getattr(app, action)()
+    getattr(app._workspace if owner == "workspace" else app, action)()
 
     ((message, style),) = [call.args for call in app._update_status.call_args_list]
     assert (message.casefold(), style) == ("connect to a click project first", "error")
@@ -541,10 +559,10 @@ def test_stopped_monitoring_still_notices_click_closing(monkeypatch):
     app, _prompts = _app(monkeypatch)
     editor = _open(app, FakeStore(is_database=True, unsaved=True))
     session = app._session
-    app.refresh_click_instances = MagicMock()
+    app._connection.refresh_click_instances = MagicMock()
 
-    app.button_start_monitoring()
-    app.stop_monitoring()
+    app._connection.button_start_monitoring()
+    app._connection.stop_monitoring()
     app.detector.check_window_exists = lambda _pid: False
     for tick in app.root.take(100):
         tick()
@@ -560,7 +578,7 @@ def test_stopped_monitoring_still_notices_a_project_change(monkeypatch):
     _open(app, FakeStore(is_database=True))
     app.detector.get_window_title = lambda _hwnd: "CLICK Programming Software - Next.ckp"
 
-    app._watch_connection()
+    app._connection._watch_connection()
 
     _assert_loads(app, ClickConnection("111", 222, "Next.ckp"))
     app.detector.detect_child_window.assert_not_called()
@@ -570,10 +588,10 @@ def test_stopped_monitoring_still_notices_a_project_change(monkeypatch):
 def test_the_popup_goes_with_the_window_it_was_shown_over(monkeypatch):
     overlay = MagicMock()
     overlay.is_active.return_value = False
-    monkeypatch.setattr("clicknick.app.Overlay", MagicMock(return_value=overlay))
+    monkeypatch.setattr("clicknick.connection_controller.Overlay", MagicMock(return_value=overlay))
     app, _prompts = _app(monkeypatch)
     _open(app, FakeStore(is_database=False))
-    app.refresh_click_instances = MagicMock()
+    app._connection.refresh_click_instances = MagicMock()
     session = app._session
     app.detector.detect_child_window.return_value = SimpleNamespace(
         window_id=7, window_class="#32770", edit_control="Edit1"
@@ -581,7 +599,7 @@ def test_the_popup_goes_with_the_window_it_was_shown_over(monkeypatch):
     app.detector.field_has_text = lambda _control, _window: False
     app.detector.update_window_info = lambda *_args: SimpleNamespace(allowed_address_types=[])
 
-    app.button_start_monitoring()
+    app._connection.button_start_monitoring()
     assert session.overlay is overlay
     overlay.show_combobox.assert_called_once_with([])
 
@@ -597,13 +615,13 @@ def test_the_popup_goes_with_the_window_it_was_shown_over(monkeypatch):
 
 def test_workspace_setup_closes_with_the_click_window(monkeypatch):
     app, _prompts = _app(monkeypatch)
-    app.refresh_click_instances = MagicMock()
+    app._connection.refresh_click_instances = MagicMock()
     session = app._session
     setup = MagicMock()
     session.setup_window = setup
     session.pending_workspace = object()
 
-    app._watch_connection()
+    app._connection._watch_connection()
     app.detector.check_window_exists = lambda _pid: False
     (tick,) = app.root.take(100)
     tick()
@@ -621,10 +639,10 @@ def test_the_new_project_is_watched_even_when_following_it_fails(monkeypatch):
     def unreadable(**_kwargs):
         raise OSError("DataView folder unreadable")
 
-    app._reopen_dataview_editor = unreadable
+    app._connection._reopen_dataview_editor = unreadable
 
     with pytest.raises(OSError):
-        app._watch_connection()
+        app._connection._watch_connection()
 
     assert app._click == ClickConnection("111", 222, "Next.ckp")
     assert app.root.pending(100) == 1
@@ -654,9 +672,9 @@ def test_popup_detection_runs_only_while_monitoring(monkeypatch):
     app, _prompts = _app(monkeypatch)
     _open(app, FakeStore(is_database=True))
 
-    app.button_start_monitoring()
+    app._connection.button_start_monitoring()
     app.detector.detect_child_window.assert_called_once_with("111")
-    app.stop_monitoring()
+    app._connection.stop_monitoring()
     (tick,) = app.root.take(100)
     tick()
 
@@ -669,8 +687,12 @@ def test_connecting_starts_the_watch_before_data_loads(monkeypatch):
     app, _prompts = _app(monkeypatch)
     app._session = None
 
-    app.connect_to_instance("111", "CLICK Programming Software - Main.ckp", "Main.ckp", 222)
-    app.connect_to_instance("111", "CLICK Programming Software - Main.ckp", "Main.ckp", 222)
+    app._connection.connect_to_instance(
+        "111", "CLICK Programming Software - Main.ckp", "Main.ckp", 222
+    )
+    app._connection.connect_to_instance(
+        "111", "CLICK Programming Software - Main.ckp", "Main.ckp", 222
+    )
 
     # One watch, the second session's: closing the first ended its own
     assert app.root.pending(100) == 1
@@ -686,7 +708,7 @@ def test_refresh_closes_a_missing_window_only_when_its_process_is_gone(monkeypat
     app.detector.get_click_instances = lambda: []
     app.detector.check_window_exists = lambda _pid: process_alive
 
-    app.refresh_click_instances()
+    app._connection.refresh_click_instances()
 
     assert prompts == []
     if process_alive:
@@ -706,18 +728,18 @@ def test_refresh_closes_a_missing_window_only_when_its_process_is_gone(monkeypat
 def test_two_windows_with_one_filename_can_each_be_picked(monkeypatch):
     app, _prompts = _app(monkeypatch)
     app._session = None
-    app.connect_to_instance = MagicMock()
+    app._connection.connect_to_instance = MagicMock()
     first, second = _instance("1", 0x10, "Main.ckp"), _instance("2", 0x20, "Main.ckp")
     app.detector.get_click_instances = lambda: [first, second]
     app._data = DataSession(FakeStore(is_database=False))  # nothing auto-connects
-    app.refresh_click_instances()
+    app._connection.refresh_click_instances()
 
     labels = app.instances_combobox["values"]
     assert labels == ["Main.ckp (PID 1)", "Main.ckp (PID 2)"]
     app.selected_instance_var.set(labels[1])
-    app._on_instance_selected()
+    app._connection.on_instance_selected()
 
-    app.connect_to_instance.assert_called_once_with(
+    app._connection.connect_to_instance.assert_called_once_with(
         "2", second.title, "Main.ckp", 0x20, user_picked=True
     )
 
@@ -727,10 +749,10 @@ def test_cancelling_a_switch_shows_the_connected_window_again(monkeypatch):
     store = FakeStore(is_database=False, unsaved=True)
     _open(app, store)
     other = _instance("333", 444, "Other.ckp")
-    app.click_instances.append(other)
+    app._connection.click_instances.append(other)
     app.selected_instance_var.set("Other.ckp")
 
-    app.connect_to_instance("333", other.title, "Other.ckp", 444)
+    app._connection.connect_to_instance("333", other.title, "Other.ckp", 444)
 
     assert len(prompts) == 1
     assert app._data.store is store
@@ -743,10 +765,10 @@ def test_cancelling_a_switch_shows_the_connected_window_again(monkeypatch):
 
 def test_delayed_monitoring_status_does_not_overwrite_a_later_one(monkeypatch):
     app, _prompts = _app(monkeypatch)
-    app.refresh_click_instances = MagicMock()
-    app.monitoring = True
+    app._connection.refresh_click_instances = MagicMock()
+    app._connection.monitoring = True
 
-    app._on_data_ready()
+    app._connection._on_data_ready()
     (show_status,) = app.root.take(1000)
     app.detector.check_window_exists = lambda _pid: False
     for tick in app.root.take(100):
@@ -763,15 +785,15 @@ def test_delayed_monitoring_status_does_not_overwrite_a_later_one(monkeypatch):
 
 
 def _assert_stopped(app: ClickNickApp) -> None:
-    assert app.monitoring is False
+    assert app._connection.monitoring is False
     assert app.start_button.configure.call_args.kwargs == {"text": "▶ Start"}
     assert app.root.pending(1000) == 0
 
 
 def _stopped_app(monkeypatch, *, answer=None) -> tuple[ClickNickApp, list]:
     app, prompts = _app(monkeypatch, answer=answer)
-    app.monitoring = True
-    app.stop_monitoring()
+    app._connection.monitoring = True
+    app._connection.stop_monitoring()
     return app, prompts
 
 
@@ -780,11 +802,11 @@ def test_stop_sticks_through_a_project_change(monkeypatch):
     _open(app, FakeStore(is_database=True))
     app.detector.get_window_title = lambda _hwnd: "CLICK Programming Software - Next.ckp"
 
-    app._watch_connection()
+    app._connection._watch_connection()
     _assert_loads(app, ClickConnection("111", 222, "Next.ckp"))
     # What the off-thread load does once the new database is read
     app._open_data(FakeStore(is_database=True))
-    assert app.load_from_database()
+    assert app._connection.load_from_database()
 
     _assert_stopped(app)
 
@@ -793,12 +815,14 @@ def test_stop_sticks_through_the_csv_fallback(monkeypatch):
     _patch_csv(monkeypatch)
     app, _prompts = _stopped_app(monkeypatch)
     app._show_main_window = MagicMock()
-    monkeypatch.setattr("clicknick.app.find_fallback_csv", lambda _hwnd: "Address.csv")
+    monkeypatch.setattr(
+        "clicknick.connection_controller.find_fallback_csv", lambda _hwnd: "Address.csv"
+    )
     dialog = MagicMock()
     dialog.return_value.show.return_value = "C:/tmp/Main_Address.csv"
-    monkeypatch.setattr("clicknick.app.CsvFallbackDialog", dialog)
+    monkeypatch.setattr("clicknick.connection_controller.CsvFallbackDialog", dialog)
 
-    app._connect_csv_fallback("Main.ckp", 222)
+    app._connection._connect_csv_fallback("Main.ckp", 222)
 
     assert app._csv_path == "C:/tmp/Main_Address.csv"
     _assert_stopped(app)
@@ -806,17 +830,17 @@ def test_stop_sticks_through_the_csv_fallback(monkeypatch):
 
 def test_no_csv_chosen_says_nothing_is_loaded_without_saying_stopped(monkeypatch):
     app, _prompts = _app(monkeypatch)
-    app.monitoring = True
-    app._odbc_warning_shown = True
+    app._connection.monitoring = True
+    app._connection._odbc_warning_shown = True
     app._show_main_window = MagicMock()
-    monkeypatch.setattr("clicknick.app.find_fallback_csv", lambda _hwnd: None)
+    monkeypatch.setattr("clicknick.connection_controller.find_fallback_csv", lambda _hwnd: None)
 
-    app._connect_csv_fallback("Main.ckp", 222)
+    app._connection._connect_csv_fallback("Main.ckp", 222)
 
     app._update_status.assert_called_once_with(
         "No nicknames loaded - use File → Load Nicknames...", "error"
     )
-    assert app.monitoring is True
+    assert app._connection.monitoring is True
 
 
 def test_stop_sticks_when_a_refresh_connects_after_the_window_closed(monkeypatch):
@@ -827,13 +851,13 @@ def test_stop_sticks_when_a_refresh_connects_after_the_window_closed(monkeypatch
     app.detector.check_window_exists = lambda pid: pid == "333"
     app.detector.get_click_instances = lambda: [other]
 
-    app._watch_connection()
+    app._connection._watch_connection()
     assert app._click is None and app._data is None
     (refresh,) = app.root.take(2000)
     refresh()
     _assert_loads(app, ClickConnection("333", 444, "Other.ckp"))
     app._open_data(FakeStore(is_database=True))
-    app.load_from_database()
+    app._connection.load_from_database()
 
     assert app._click == ClickConnection("333", 444, "Other.ckp")
     _assert_stopped(app)
@@ -843,12 +867,12 @@ def test_picking_a_window_turns_monitoring_on(monkeypatch):
     monkeypatch.setattr("clicknick.utils.mdb_shared.get_database_backend", lambda: "odbc")
     app, _prompts = _stopped_app(monkeypatch)
     other = _instance("333", 444, "Other.ckp")
-    app.click_instances.append(other)
+    app._connection.click_instances.append(other)
     app.selected_instance_var.set("Other.ckp")
 
-    app._on_instance_selected()
+    app._connection.on_instance_selected()
 
-    assert app.monitoring is True
+    assert app._connection.monitoring is True
     assert app.start_button.configure.call_args.kwargs == {"text": "⏹ Stop"}
 
 
@@ -862,7 +886,7 @@ def test_a_csv_load_failure_shows_the_reason(monkeypatch):
     monkeypatch.setattr("clicknick.data.data_source.CsvDataSource", source)
     app, prompts = _app(monkeypatch)
 
-    assert app.load_csv("C:/tmp/names.csv") is False
+    assert app._connection.load_csv("C:/tmp/names.csv") is False
 
     assert prompts == [
         ("showerror", "CSV Load Failed", "names.csv is missing required column(s): Nickname")
@@ -879,7 +903,7 @@ def test_project_change_over_csv_data_says_only_the_simulator_closes(monkeypatch
     notices = []
     monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *args, **_kw: notices.append(args))
 
-    app._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
 
     assert notices == [
         ("Project Changed", "The Click project was changed. The Simulator will now close.")
@@ -919,7 +943,9 @@ def test_after_keep_open_editors_follow_the_new_project_and_its_build(monkeypatc
     (editor,) = app._data.editors
     assert editor.get_analysis_service() is old_analysis
 
-    app._handle_project_change("CLICK Programming Software - Renamed.ckp", "Renamed.ckp")
+    app._connection._handle_project_change(
+        "CLICK Programming Software - Renamed.ckp", "Renamed.ckp"
+    )
     app._refresh_ui()  # What assigning _click schedules
 
     assert app._data.editors == (editor,)
@@ -1045,7 +1071,7 @@ def test_project_change_asks_about_dataview_edits_over_csv_data(monkeypatch, kee
     app._data.register_dataview_window(dataview)
     app._open_dataview_editor = MagicMock()
 
-    app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
 
     ((_, title, message),) = prompts
     assert title == "Project Changed"
@@ -1074,7 +1100,7 @@ def test_project_change_reopens_a_clean_dataview_editor_over_csv_data(monkeypatc
     app._data.register_dataview_window(dataview)
     app._open_dataview_editor = MagicMock()
 
-    app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
 
     assert prompts == []
     assert dataview.closed
@@ -1095,7 +1121,9 @@ def test_kept_database_edits_leave_the_dataview_editor_open_and_list_its_folder(
     app._data.register_dataview_window(dataview)
     app._open_dataview_editor = MagicMock()
 
-    app._handle_project_change("CLICK Programming Software - Renamed.ckp", "Renamed.ckp")
+    app._connection._handle_project_change(
+        "CLICK Programming Software - Renamed.ckp", "Renamed.ckp"
+    )
 
     assert [prompt[:2] for prompt in prompts] == [("askyesno", "Project Changed")]
     assert not dataview.closed
@@ -1115,7 +1143,7 @@ def test_project_change_counts_text_still_in_a_dataview_cell(monkeypatch, commit
     app._data.register_dataview_window(dataview)
     app._open_dataview_editor = MagicMock()
 
-    app._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
+    app._connection._handle_project_change("CLICK Programming Software - Other.ckp", "Other.ckp")
 
     ((_, title, message),) = prompts
     assert title == "Project Changed"

@@ -24,7 +24,7 @@ How to use it:
 3. The bob plugin (done)
 4. CLICK runner (built: `devtools/click_runner.py`; next its early jobs), and the user checks it or a mock can automate (nothing)
 5. ConnectionSession owns the window and project (done)
-6. Split ClickNickApp (nothing)
+6. Split ClickNickApp (done)
 7. Onto pyclickplc's readers (done)
 8. Onto pyrung's named imports (waits on pyrung's deletions release)
 9. The undecoded marker (waits on laddercodec, pyrung)
@@ -153,11 +153,15 @@ pairing, the connection watch, the popup and the Workspace setup window; `_close
 The Workspace setup window now closes when CLICK's window closes (Sam, 2026-11-15). The project-info window
 stays on the app: it holds nothing of the connection and opens with nothing connected.
 
-## 6. Split ClickNickApp (nothing)
+## 6. Split ClickNickApp (done)
 
-`app.py` is 3,014 lines with about 130 methods. The workspace and mirror code (spread over lines 101-175,
-989-1404, 2130-2135 and 2343-2376) and the connection lifecycle leave the app class. Widget building stays.
-After item 5, most of the connection lifecycle already sits in the session.
+The Workspace group, its menu entries and Workspace setup are `WorkspaceController`
+(`workspace_controller.py`). Listing CLICK windows, connecting, the database load, the project change, the
+watch tick, the popup and Start/Stop are `ConnectionController` (`connection_controller.py`). `app.py` went
+from 3,017 lines to 1,883. Widget building stays on the app, and so do `_open_data` and `_close_data`, which
+write `_data`'s one home. Left on the app, each a candidate for a later split: the Tools and Repairs menu
+actions, launching Review Changes and Compare with, `_export_pyrung_project`, and the unused
+`_check_odbc_drivers_and_warn`.
 
 ## 7. Onto pyclickplc's readers (done)
 
