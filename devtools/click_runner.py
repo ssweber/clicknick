@@ -38,16 +38,15 @@ under ``cases``, in the order tried, and an abort keeps the entries done before 
 reads what CLICK stored. With ``--each-row`` it then imports each row on its own, in a file
 of the CSV's header and that row, byte for byte (``DIR/rows/``; a row is one line, as CLICK
 reads it, so a line break inside quotes ends the row), since a row CLICK refuses may change
-another (``split_rows``). Every import picks the mode
-Delete Existing in the Open dialog, so CLICK empties the address table first and what it
-stores is what it made of that file alone; it fills in the path and presses Open. CLICK
-answers with a box reading "Completed!" or with its Import Error List (a text listing each
-line it could not take, and why); its text is kept, and its OK closes it. The runner then
-waits for the main window alone and CLICK's SC_.mdb unchanged for ``IMPORT_SETTLE``, and
-copies SC_.mdb into ``DIR/mdb/``. Once CLICK has ended (disconnected and ended, as ``try``
-ends it), each copy is read through Access ODBC, so a NULL stays None and a text keeps every
-character. result.json holds one entry per import under ``imports``
-(``Run.import_one``), after an abort too.
+another (``split_rows``). Every import picks the mode Delete Existing in the Open dialog, so
+CLICK empties the address table first and what it stores is what it made of that file
+alone; it fills in the path and presses Open. CLICK answers with a box reading "Completed!"
+or with its Import Error List (a text listing each line it could not take, and why); its
+text is kept, and its OK closes it. The runner then waits for the main window alone and
+CLICK's SC_.mdb unchanged for ``IMPORT_SETTLE``, and copies SC_.mdb into ``DIR/mdb/``.
+Once CLICK has ended (disconnected and ended, as ``try`` ends it), each copy is read through
+Access ODBC, so a NULL stays None and a text keeps every character. result.json holds one
+entry per import under ``imports`` (``Run.import_one``), after an abort too.
 
 Every Syntax Check (``paste``'s too) empties Output first, so a result that reads as the one
 before is still seen. CLICK ignores a Syntax Check posted soon after the last one's result
@@ -2258,7 +2257,7 @@ def _parser() -> argparse.ArgumentParser:
     imports.add_argument(
         "--each-row",
         action="store_true",
-        help="then import each row on its own, in a file with the CSV's header",
+        help="then import each line after the header on its own, in a file with the header",
     )
     imports.add_argument(
         "--record", action="store_true", help="also dump every window at each step"
