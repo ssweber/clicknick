@@ -126,7 +126,8 @@ Early jobs once it works: what CLICK writes, and in what order, on Open, New and
 what CLICK turns constants such as `005`, `+5` and `0ffh` into (for laddercodec); the three small checks in the
 plan's "Only Sam can do these" (leading zeros and spaces in an address, a bare space as a Text initial value,
 whether CLICK strips spaces from nicknames and comments). The two answers that bear on pyclickplc's reader go
-to Sam. For CLICK's CSV import, 4d answers all but the leading zeros.
+to Sam. 4d answers the spaces in an address, the bare space and the edge spaces for CLICK's CSV import only;
+leading zeros, and a value typed in CLICK, are still open.
 
 ### 4b. User checks a mock can automate today (nothing; wording goes to Sam)
 
@@ -140,7 +141,7 @@ automated like this, as opt-in scripts or tests:
 - the planned-reload items
 - the Dataview small fixes, against the simulator's Modbus
 - the Tag Browser double-click
-- CSV Save counts and Text quoting import
+- CSV Save counts
 
 What a script cannot judge is the wording: collect each notice into one page for Sam to read in one sitting.
 Not without CLICK: the overlay, project change and Save As, Review Changes paste steps, and Sync racing a
@@ -163,14 +164,17 @@ answer. E1 is not in a new project's SC_.mdb; CLICK's `PLCType.ini` names SD21 `
 `click_runner.py import CSV --out DIR [--each-row]` imports a nickname CSV through CLICK's File > Import >
 Nickname (32900), with the mode Delete Existing, so that what CLICK stores comes from that file alone. It keeps
 CLICK's answer ("Completed!", or the Import Error List's text), copies SC_.mdb and reads the copy. With
-`--each-row` it then imports each row in a file of its own with the same header. The live run for pyclickplc's
-`tab_checks.csv` (19 rows, 20 imports) took 41 s. What CLICK did (live runs of 2026-11-15):
-- One bad row does not fail the file. A row whose initial value it refuses is stored with 0 as its initial
-  value, and the error list names its line. A row whose address it refuses is not stored, and its fields are
-  written over the row before it: `DS40` good, then `" DS41"`, leaves DS40 with DS41's nickname, initial
-  value, Retentive and comment.
-- A nickname or comment loses the spaces and tabs at its ends, quoted or not; a tab inside is kept. So the
-  import gives Q7 below no edge space.
+`--each-row` it then imports each line in a file of its own with the same header. The live run for pyclickplc's
+`tab_checks.csv` (19 rows, 20 imports) took 58 s. What CLICK did (live runs of 2026-11-15 and 2026-11-16):
+- A row whose initial value or address CLICK refuses does not fail the file: the other rows import, and the
+  error list names its line. (A quoted line break was tried only in a file of one row: CLICK reads it as the
+  end of the line.) A row whose initial value it refuses is stored with 0 as its initial value. A row whose
+  address it refuses is not stored, and its fields are written over the last row stored before it, as seen in
+  two files, both on DS: `DS40` good, then `" DS41"`, leaves DS40 with DS41's nickname, initial value,
+  Retentive and comment.
+- A quoted nickname or comment loses the spaces and tabs at its ends, and a bare nickname its leading space; a
+  tab inside is kept. A bare comment with an edge space or tab was not tried. So the import put no edge space
+  in SC_.mdb; Q7 below stays open for a value typed in CLICK.
 - A Text initial value loses its edge whitespace when bare (a bare tab, vertical tab, form feed or space is
   stored as no value) and keeps it when quoted. A quoted comma and a doubled double quote import as `,`
   and `"`.
@@ -179,7 +183,10 @@ CLICK's answer ("Completed!", or the Import Error List's text), copies SC_.mdb a
 - A bare space before or after an address is dropped; a quoted address with an edge space is refused.
 
 Left (Sam's call): a Read Data dump of TXT and DF from the PLC (it writes nothing to the PLC, but reads data
-from it), and the case of Project.ini's section names.
+from it), and the case of Project.ini's section names. The open check "(4b) CSV TXT quoting import" is
+answered by these runs and deleted; that pyclickplc's writer writes a Text value of a tab, or with an edge
+space, bare, which CLICK's import stores trimmed, goes to pyclickplc
+(`test_a_txt_value_with_a_tab_or_edge_space_is_written_bare`).
 
 ## 5. ConnectionSession owns the window and project (done)
 
@@ -294,9 +301,10 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   time you edit in CLICK's Address Editor.
 - Q6: after deleting all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the step
   wording say to click the first empty rung?
-- Q7: can SC_.mdb hold a nickname or address comment with a space at either end (typed in CLICK, or from
-  CLICK's own CSV import)? ClickNick trims one on load as an unsaved edit ("Trim spaces"), so on a yes the next
-  Sync writes the trimmed value into CLICK. The recorded `tests/SC_.mdb` and `NicknameExport.csv` hold none.
+- Q7: can SC_.mdb hold a nickname or address comment with a space at either end, typed in CLICK? (CLICK's own
+  CSV import put none there, 4d.) ClickNick trims one on load as an unsaved edit ("Trim spaces"), so on a yes
+  the next Sync writes the trimmed value into CLICK. The recorded `tests/SC_.mdb` and `NicknameExport.csv` hold
+  none.
 
 ### Address Editor and store
 - Fill Down / Add Block T1..TD5, then Sync.
@@ -307,9 +315,6 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
 - Edit two nicknames, let CLICK save one first, Sync -> "Synced 1 changes", main window "1 tags synced".
 - Edit a nickname, save the same in CLICK, Sync -> "CLICK already had these changes; nothing to write."
 - (4b) CSV Save reports the number of rows edited.
-- (4b) CSV TXT quoting import: a quoted comma, double quote and space, and a Text value of a tab, which
-  pyclickplc's writer writes bare (`test_a_txt_value_with_a_tab_or_edge_space_is_written_bare`). CLICK's own
-  import (4d) keeps the quoted ones and stores a bare tab or space as no value.
 
 ### Tag Browser, Dataview, Overlay
 - x1 / XD0u from the Tag Browser.
