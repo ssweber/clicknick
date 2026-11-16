@@ -60,6 +60,8 @@
      "fields": {"source": "DS1", "source_end": "DS2", "destination": "SD1"}},
     {"row": "A7", "case": "block DS1..DS2 to SD29 (a writable SD)", "instruction": "copy",
      "mode": "block", "fields": {"source": "DS1", "source_end": "DS2", "destination": "SD29"}},
+    {"row": "A7", "case": "block DS1..DS2 to SD31 (SD31, SD32 writable)", "instruction": "copy",
+     "mode": "block", "fields": {"source": "DS1", "source_end": "DS2", "destination": "SD31"}},
     {"row": "A8", "case": "block TXT1..TXT2 to TXT11", "instruction": "copy", "mode": "block",
      "fields": {"source": "TXT1", "source_end": "TXT2", "destination": "TXT11"}},
     {"row": "A9", "case": "SD1 = DS1 + 1 (decimal)", "instruction": "math", "mode": "decimal",
