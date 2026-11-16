@@ -77,6 +77,13 @@ class FakeClick(cd.Desktop):
     older CLICK with the same hwnd would leave them. *error_on* names an event after which
     CLICK shows an error box (PTC-013, as live run 3 met it), owned by the Connect dialog
     after "connect" (which then shows no Login) and by the main window otherwise.
+
+    The ribbon's Math, Copy and Out commands open their dialogs as live probe 2 dumped them
+    (2026-11-15). *judge* answers OK in one: None accepts, ``(code, message)`` refuses with
+    an error box, ``("warn", code, message)`` shows the box and then places the
+    instruction, ``"question"`` shows a Yes/No box with no code. The placed instruction
+    stays until Delete, unless *delete_works* is off; Syntax Check lists *syntax_lines*'
+    line for it, keyed by the dialog's title.
     """
 
     def __init__(
@@ -108,6 +115,9 @@ class FakeClick(cd.Desktop):
         desktop_name: str | None = "Default",
         running: tuple[int, ...] = (),
         open_windows: tuple[int, ...] = (),
+        judge: Callable[[str, str | None, dict[str, str]], object] | None = None,
+        delete_works: bool = True,
+        syntax_lines: dict[str, str] | None = None,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -159,6 +169,11 @@ class FakeClick(cd.Desktop):
         self._next = 1000
         self.main: FakeWindow | None = None
         self.output: FakeControl | None = None
+        self.judge = judge or judge_like_click
+        self.delete_works = delete_works
+        self.syntax_lines = syntax_lines or {}
+        self.placed: str | None = None  # The title of the instruction in rung 1
+        self.entered: list[tuple[str, str | None, dict[str, str]]] = []
 
     # -- building windows ---------------------------------------------------
 
@@ -447,6 +462,84 @@ class FakeClick(cd.Desktop):
 
         self._later("close", close)
 
+    def _show_instruction(self, title: str) -> None:
+        """An instruction dialog as live probe 2 dumped it: radios, edits, OK and Cancel."""
+        assert self.main is not None
+        main = self.main
+        dialog = self._window("#32770", title, main.hwnd)
+        spec = cr.INSTRUCTIONS[title.lower()]
+        radios = {
+            name: self._control(dialog, "Button", "", id, checked=int(index == 0))
+            for index, (name, id) in enumerate(spec.modes.items())
+        }
+        edits = {
+            name: self._control(dialog, "RichEdit20W" if name == "formula" else "Edit", "", id)
+            for name, id in spec.fields.items()
+        }
+
+        def pick(name: str) -> None:
+            for other, radio in radios.items():
+                radio.checked = int(other == name)
+            if title == "Math":  # Picking a type empties Result and the formula
+                for edit in edits.values():
+                    edit.value = ""
+            # As live probe 2 found the Copy dialog's "to" fields
+            closed = {
+                "single": ("source_end",),
+                "pack": ("destination_end",),
+                "unpack": ("source_end",),
+            }
+            for name_, edit in edits.items():
+                edit.enabled = name_ not in closed.get(name, ())
+
+        for name, radio in radios.items():
+            radio.on_press = lambda n=name: self._later("mode", lambda: pick(n))
+        if radios:
+            pick(next(iter(radios)))
+
+        def ok() -> None:
+            mode = next((n for n, r in radios.items() if r.checked), None)
+            values = {name: edit.value for name, edit in edits.items() if edit.value}
+            self.entered.append((title, mode, values))
+            answer = self.judge(title, mode, values)
+            if answer is None:
+                place()
+            elif answer == "question":
+                box = self._window("#32770", "CLICK Programming Software", dialog.hwnd)
+                self._control(box, "Static", "Replace the instruction?", 65535)
+                self._control(box, "Button", "&Yes", 6)
+                self._control(box, "Button", "&No", 7)
+                dialog.enabled = False
+            else:
+                warn = answer[0] == "warn"
+                code, message = answer[-2:]
+                box = self._window("#32770", "CLICK Programming Software", dialog.hwnd)
+
+                def closed() -> None:
+                    self._drop(box)
+                    if warn:
+                        place()
+                    else:
+                        dialog.enabled = True
+
+                self._control(box, "Button", "OK", 2, on_press=lambda: self._later("box", closed))
+                self._control(box, "Static", "", 20)
+                self._control(box, "Static", f"{code}\n{message}", 65535)
+                dialog.enabled = False
+
+        def place() -> None:
+            self.placed = title
+            self._drop(dialog)
+            main.enabled = True
+
+        def cancel() -> None:
+            self._drop(dialog)
+            main.enabled = True
+
+        self._control(dialog, "Button", "OK", 1, on_press=lambda: self._later("ok", ok))
+        self._control(dialog, "Button", "Cancel", 2, on_press=lambda: self._later("cancel", cancel))
+        main.enabled = False
+
     # -- Desktop ----------------------------------------------------------------
 
     def _post_command(self, hwnd: int, command_id: int) -> None:
@@ -475,9 +568,14 @@ class FakeClick(cd.Desktop):
                 self._later("syntax_check", checked)
 
             def checked() -> None:
+                # As live probe 2 read it: an instruction on rung 1 moves the END error on
+                rung = 1 if self.placed is None else 2
+                extra = self.syntax_lines.get(self.placed or "")
                 output.value += (
-                    "C0201 END instruction is missing.\r\n"
-                    "NewProject4 - 1 error(s), 0 warning(s)\r\n"
+                    f"Main Program : Rung {rung} : error C0201: No unconditional END "
+                    "instruction in the Main Program.\r\n"
+                    + (f"{extra}\r\n" if extra else "")
+                    + "\r\nNewProject4 - 1 error(s), 0 warning(s)\r\n"
                 )
 
             self._later("syntax_checking", checking)
@@ -485,6 +583,16 @@ class FakeClick(cd.Desktop):
             self._later("save_as", self._show_save_as)
         elif command_id == cd.DISCONNECT:
             self._later("disconnect", self._show_disconnect)
+        elif command_id == cd.DELETE:
+
+            def delete() -> None:
+                if self.delete_works:
+                    self.placed = None
+
+            self._later("delete", delete)
+        else:
+            title = {cd.MATH_DIALOG: "Math", cd.COPY_DIALOG: "Copy", cd.OUT_DIALOG: "Out"}
+            self._later("dialog", lambda: self._show_instruction(title[command_id]))
 
     def click_processes(self) -> list[int]:
         self._check("click_processes")
@@ -574,7 +682,7 @@ class FakeClick(cd.Desktop):
         control = self._find(hwnd)
         if control.id == 20142:
             return ""  # ES_PASSWORD: another process reads nothing
-        return control.value if control.cls == "Edit" else control.text
+        return control.value if control.cls in ("Edit", "RichEdit20W") else control.text
 
     def set_text(self, hwnd: int, text: str) -> bool:
         if not self._message("WM_SETTEXT"):
@@ -656,6 +764,17 @@ class FakeClick(cd.Desktop):
 
     def temp_dir(self, hwnd: int) -> Path:
         return self.temp_root / f"CLICK ({hwnd:08X})"
+
+
+def judge_like_click(title: str, mode: str | None, values: dict[str, str]) -> object:
+    """What live probe 2 met: a Math result in SD, an Out on X, and empty fields refused."""
+    if title == "Math" and not values.get("result"):
+        return ("OBJ-001", "Enter the result.")
+    if title == "Math" and values["result"].startswith("SD"):
+        return ("OBJ-003", "The entered address is outside the range.")
+    if title == "Out" and values.get("address", "").startswith("X"):
+        return ("OBJ-004", "The entered address cannot be used in this instruction.")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1617,6 +1736,255 @@ def test_the_project_file_in_the_main_title(title, file):
 
 
 # ---------------------------------------------------------------------------
+# try: CLICK's instruction dialogs
+# ---------------------------------------------------------------------------
+
+TRY_CASES = [
+    {
+        "row": "control",
+        "case": "DS1 = DS2 + 1",
+        "instruction": "math",
+        "mode": "decimal",
+        "fields": {"result": "DS1", "formula": "DS2 + 1"},
+    },
+    {
+        "row": "A9",
+        "case": "SD1",
+        "instruction": "math",
+        "mode": "decimal",
+        "fields": {"result": "SD1", "formula": "DS1 + 1"},
+    },
+    {
+        "row": "A10",
+        "case": "YD0 (hex)",
+        "instruction": "math",
+        "mode": "hex",
+        "fields": {"result": "YD0", "formula": "DH1 + DH2"},
+    },
+    {
+        "row": "B1",
+        "case": "block DS1..DS2 to YD1",
+        "instruction": "copy",
+        "mode": "block",
+        "fields": {"source": "DS1", "source_end": "DS2", "destination": "YD1"},
+    },
+    {"row": "B8", "case": "X001", "instruction": "out", "fields": {"address": "X001"}},
+]
+
+
+class Nicknames:
+    """read_nicknames without a database (the fake's SC_.mdb is not one); records its calls."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Path, list[str]]] = []
+
+    def __call__(self, mdb: Path, addresses: list[str]) -> dict[str, str | None]:
+        self.calls.append((mdb, list(addresses)))
+        return {a: f"_{a}" if a != "SD23" else None for a in addresses}
+
+
+def run_try(
+    fake: FakeClick,
+    tmp_path: Path,
+    exe: Path,
+    cases: object,
+    *args: str,
+    timeout: float = 5,
+    nicknames: Nicknames | None = None,
+) -> tuple[int, dict]:
+    file = tmp_path / "cases.json"
+    file.write_text(json.dumps(cases), encoding="utf-8")
+    out = tmp_path / "out"
+    argv = ["try", str(file), "--out", str(out), "--click-exe", str(exe)]
+    argv += ["--timeout", str(timeout), "--paste-timeout", str(timeout), *args]
+    code = cr.main(
+        argv,
+        desktop=fake,
+        prepare=Prepare(),
+        read_nicknames=nicknames or Nicknames(),
+        stderr=io.StringIO(),
+    )
+    result_file = out / "result.json"
+    return code, json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
+
+
+def test_try_records_each_answer(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, syntax_lines={"Copy": "Main Program : Rung 1 : warning W0301: x."})
+    nicknames = Nicknames()
+    cases = {"cases": TRY_CASES, "nicknames": ["SD21", "SD23"]}
+
+    code, result = run_try(fake, tmp_path, exe, cases, nicknames=nicknames)
+
+    assert code == cr.EXIT_OK, result["reason"]
+    answers = [(c["row"], c["outcome"], c["code"]) for c in result["cases"]]
+    assert answers == [
+        ("control", "accepted", None),
+        ("A9", "refused", "OBJ-003"),
+        ("A10", "accepted", None),
+        ("B1", "accepted", None),
+        ("B8", "refused", "OBJ-004"),
+    ]
+    refused = result["cases"][1]
+    assert refused["message"] == "The entered address is outside the range."
+    assert refused["syntax_check"] is None
+    assert refused["fields"] == {"result": "SD1", "formula": "DS1 + 1"}
+    # Each mode is picked before the fields: picking Hex empties them
+    assert fake.entered[2] == ("Math", "hex", {"result": "YD0", "formula": "DH1 + DH2"})
+    assert fake.entered[3][1] == "block"
+    # An accepted case's own lines leave out the codes the empty program's check has
+    assert result["cases"][0]["syntax_check"]["lines"] == []
+    copy = result["cases"][3]["syntax_check"]
+    assert copy["lines"] == ["Main Program : Rung 1 : warning W0301: x."]
+    assert copy["errors"] == 1 and "Rung 2 : error C0201" in copy["text"]
+    assert "Rung 1 : error C0201" in result["baseline_syntax_check"]["text"]
+    # Accepted: Syntax Check, Delete, Syntax Check; refused: the box's OK, then Cancel
+    assert fake.commands == [
+        "Syntax Check",
+        "Math...",
+        "Syntax Check",
+        "Delete",
+        "Syntax Check",
+        "Math...",
+        "Math...",
+        "Syntax Check",
+        "Delete",
+        "Syntax Check",
+        "Copy...",
+        "Syntax Check",
+        "Delete",
+        "Syntax Check",
+        "Out...",
+        "Disconnect",
+    ]
+    assert fake.pressed.count("Cancel") == 2 and fake.placed is None
+    # The nicknames come from a copy of the new project's SC_.mdb, not from CLICK's file
+    assert nicknames.calls == [(out_mdb := tmp_path / "out" / "SC_.mdb", ["SD21", "SD23"])]
+    assert out_mdb.read_bytes() == b"mdb"
+    assert result["nicknames"] == {"SD21": "_SD21", "SD23": None}
+    log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
+    assert "SD21: '_SD21'" in log and "SD23: no row" in log
+    # The project was never saved: CLICK is disconnected, then ended
+    assert not fake.connected and fake.terminated and not fake.saved
+    assert list(result["timings"])[-5:] == ["nicknames", "baseline", "try", "disconnect", "close"]
+    assert all(c["seconds"] is not None for c in result["cases"])
+
+
+def test_try_record_dumps_each_case(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:2]}, "--record")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["nicknames"] is None and "nicknames" not in result["timings"]
+    labels = {p.name.split("-")[1] for p in (tmp_path / "out" / "record").glob("*.json")}
+    assert {"baseline", "case01_filled", "case01_answer", "case02_answer"} <= labels
+
+
+def test_a_box_that_closes_the_dialog_is_an_acceptance(tmp_path, setup):
+    _, exe = setup
+
+    def judge(title: str, mode: str | None, values: dict[str, str]) -> object:
+        return ("warn", "OBJ-050", "Something to know.")
+
+    fake = FakeClick(tmp_path, judge=judge)
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:1]})
+    assert code == cr.EXIT_OK, result["reason"]
+    (case,) = result["cases"]
+    assert (case["outcome"], case["code"], case["message"]) == (
+        "accepted",
+        "OBJ-050",
+        "Something to know.",
+    )
+    assert case["syntax_check"] is not None and fake.placed is None
+
+
+def test_a_question_after_ok_stops_the_run(tmp_path, setup):
+    _, exe = setup
+
+    def judge(title: str, mode: str | None, values: dict[str, str]) -> object:
+        return "question" if title == "Copy" else judge_like_click(title, mode, values)
+
+    fake = FakeClick(tmp_path, judge=judge)
+    out = tmp_path / "out"
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES})
+    assert_aborted(fake, out, code, result, "CLICK asked something the runner does not answer")
+    assert result["step"] == "try" and result["click_error"] is None
+    assert [c["outcome"] for c in result["cases"]] == ["accepted", "refused", "accepted", "other"]
+    assert result["cases"][3]["message"] == "Replace the instruction?"
+
+
+def test_an_error_box_not_owned_by_the_dialog_still_aborts(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, error_on="dialog")
+    out = tmp_path / "out"
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:1]})
+    assert_aborted(fake, out, code, result, "CLICK error PTC-013")
+    assert result["click_error"] == "PTC-013"
+
+
+def test_a_delete_that_leaves_the_instruction_aborts(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, delete_works=False)
+    out = tmp_path / "out"
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES})
+    assert_aborted(fake, out, code, result, "Delete did not leave the main program empty")
+    assert [c["outcome"] for c in result["cases"]] == ["accepted"]
+
+
+def test_a_field_closed_in_the_mode_aborts(tmp_path, setup):
+    _, exe = setup
+    case = {
+        "row": "x",
+        "case": "a range in single mode",
+        "instruction": "copy",
+        "mode": "single",
+        "fields": {"source": "DS1", "source_end": "DS2", "destination": "DS3"},
+    }
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [case]})
+    assert_aborted(
+        fake, tmp_path / "out", code, result, "source_end field (5009) is not open for entry"
+    )
+    assert "OK" not in fake.pressed[5:]
+
+
+@pytest.mark.parametrize(
+    ("cases", "reason"),
+    [
+        ([], "expected an object with a list under 'cases'"),
+        ({"cases": []}, "lists no cases"),
+        ({"cases": [{"row": "A1"}]}, "case 1 needs a 'row' and a 'case'"),
+        (
+            {"cases": [{**TRY_CASES[0], "instruction": "timer"}]},
+            "'instruction' is not one of math, copy, out",
+        ),
+        ({"cases": [{**TRY_CASES[0], "mode": None}]}, "'mode' is not one of decimal, hex"),
+        ({"cases": [{**TRY_CASES[4], "mode": "single"}]}, "Out has no modes"),
+        ({"cases": [{**TRY_CASES[0], "fields": {"source": "DS1"}}]}, "Math has no field source"),
+        ({"cases": [{**TRY_CASES[0], "fields": {}}]}, "'fields' must name at least one field"),
+        ({"cases": [{**TRY_CASES[0], "extra": 1}]}, "unknown keys: extra"),
+        ({"cases": TRY_CASES, "nicknames": ["SD99999"]}, "cannot read the cases"),
+    ],
+)
+def test_try_refuses_a_bad_cases_file(tmp_path, setup, cases, reason):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, cases)
+    assert code == cr.EXIT_REFUSED
+    assert result["status"] == "refused" and reason in result["reason"]
+    assert fake.pid is None
+
+
+def test_the_cases_file_loads():
+    """The checked-in cases for the rule table's rows."""
+    cases, nicknames = cr.load_cases(Path(cd.__file__).parent / "editor_cases.json")
+    rows = {case.row for case in cases}
+    assert {"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"} <= rows
+    assert {"B1", "B2", "B3", "B4", "B5", "B6", "B8"} <= rows
+    assert {"SD21", "SD22", "SD24", "SD25", "SD26"} <= set(nicknames)
+
+
+# ---------------------------------------------------------------------------
 # The command allowlist
 # ---------------------------------------------------------------------------
 
@@ -1648,13 +2016,17 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_five_commands():
+def test_the_allowlist_is_the_nine_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
+        32777: "Delete",
         32846: "Syntax Check",
         32898: "Save Project",
         32899: "Save Project As",
         32850: "Disconnect",
+        50010: "Out...",
+        50030: "Math...",
+        50040: "Copy...",
     }
     assert 32853 not in cd.ALLOWED_COMMANDS and 32854 not in cd.ALLOWED_COMMANDS
 

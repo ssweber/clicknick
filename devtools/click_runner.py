@@ -1244,12 +1244,18 @@ class Run:
                 _child(self.controls(dialog), cls="Button", id=instruction.modes[case.mode]),
                 f"{title}'s {case.mode} button ({instruction.modes[case.mode]})",
             )
-            self.press(dialog, radio)
-            self.wait(
-                f"{title}'s {case.mode} button to be checked",
-                [dialog_expect],
-                lambda f: self.desktop.button_checked(radio.hwnd) == 1,
-            )
+            # BM_CLICK is posted, and Math empties its fields on a type click even on the
+            # type already checked: press only a button that is not, and fill after it
+            if self.desktop.button_checked(radio.hwnd) != 1:
+                self.press(dialog, radio)
+                self.wait(
+                    f"{title}'s {case.mode} button to be checked",
+                    [dialog_expect],
+                    lambda f: self.desktop.button_checked(radio.hwnd) == 1,
+                )
+                # Its click is handled in full once the dialog's thread answers again
+                if not self.desktop.idle(dialog.hwnd, self.s.timeout):
+                    raise Aborted(f"{what}: the {title} dialog stopped answering")
         controls = self.controls(dialog)
         for field, text in case.fields.items():
             field_id = instruction.fields[field]
@@ -1265,6 +1271,10 @@ class Run:
             self.desktop.set_text(control.hwnd, text)
             if self.desktop.read_text(control.hwnd) != text:
                 raise Aborted(f"{what}: {title}'s {field} field did not take {text!r}")
+        for field, text in case.fields.items():
+            control = next(c for c in controls if c.id == instruction.fields[field])
+            if self.desktop.read_text(control.hwnd) != text:
+                raise Aborted(f"{what}: {title}'s {field} field lost {text!r} before OK")
         self.record(f"{label}_filled")
         ok = _require(_child(controls, cls="Button", id=1, text="OK"), f"{title}'s OK (1)")
         self.press(dialog, ok)
