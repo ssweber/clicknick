@@ -126,7 +126,7 @@ Early jobs once it works: what CLICK writes, and in what order, on Open, New and
 what CLICK turns constants such as `005`, `+5` and `0ffh` into (for laddercodec); the three small checks in the
 plan's "Only Sam can do these" (leading zeros and spaces in an address, a bare space as a Text initial value,
 whether CLICK strips spaces from nicknames and comments). The two answers that bear on pyclickplc's reader go
-to Sam.
+to Sam. For CLICK's CSV import, 4d answers all but the leading zeros.
 
 ### 4b. User checks a mock can automate today (nothing; wording goes to Sam)
 
@@ -157,6 +157,29 @@ apart (for example, X001..X016 packs into DH but not into DS). A run of 66 cases
 CLICK ignores a Syntax Check posted soon after the last one, and nothing it shows says when it would take one,
 so most checks are posted again after 2 s. Left: the Receive dialog (B7), section D, and the rows only Sam can
 answer. E1 is not in a new project's SC_.mdb; CLICK's `PLCType.ini` names SD21 `_RTC_Month`.
+
+### 4d. Importing a nickname CSV into CLICK (done; Read Data and Project.ini left, Sam's call)
+
+`click_runner.py import CSV --out DIR [--each-row]` imports a nickname CSV through CLICK's File > Import >
+Nickname (32900), with the mode Delete Existing, so that what CLICK stores comes from that file alone. It keeps
+CLICK's answer ("Completed!", or the Import Error List's text), copies SC_.mdb and reads the copy. With
+`--each-row` it then imports each row in a file of its own with the same header. The live run for pyclickplc's
+`tab_checks.csv` (19 rows, 20 imports) took 41 s. What CLICK did (live runs of 2026-11-15):
+- One bad row does not fail the file. A row whose initial value it refuses is stored with 0 as its initial
+  value, and the error list names its line. A row whose address it refuses is not stored, and its fields are
+  written over the row before it: `DS40` good, then `" DS41"`, leaves DS40 with DS41's nickname, initial
+  value, Retentive and comment.
+- A nickname or comment loses the spaces and tabs at its ends, quoted or not; a tab inside is kept. So the
+  import gives Q7 below no edge space.
+- A Text initial value loses its edge whitespace when bare (a bare tab, vertical tab, form feed or space is
+  stored as no value) and keeps it when quoted. A quoted comma and a doubled double quote import as `,`
+  and `"`.
+- A number initial value with an edge space is taken bare (` 5`, `5 ` are stored as `5`); quoted, one with an
+  edge space or tab is refused (`" 5 "`, `"<tab>5"`, `" 1.5"`).
+- A bare space before or after an address is dropped; a quoted address with an edge space is refused.
+
+Left (Sam's call): a Read Data dump of TXT and DF from the PLC (it writes nothing to the PLC, but reads data
+from it), and the case of Project.ini's section names.
 
 ## 5. ConnectionSession owns the window and project (done)
 
@@ -285,7 +308,8 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
 - Edit a nickname, save the same in CLICK, Sync -> "CLICK already had these changes; nothing to write."
 - (4b) CSV Save reports the number of rows edited.
 - (4b) CSV TXT quoting import: a quoted comma, double quote and space, and a Text value of a tab, which
-  pyclickplc's writer writes bare (`test_a_txt_value_with_a_tab_or_edge_space_is_written_bare`).
+  pyclickplc's writer writes bare (`test_a_txt_value_with_a_tab_or_edge_space_is_written_bare`). CLICK's own
+  import (4d) keeps the quoted ones and stores a bare tab or space as no value.
 
 ### Tag Browser, Dataview, Overlay
 - x1 / XD0u from the Tag Browser.
