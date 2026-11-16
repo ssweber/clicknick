@@ -489,8 +489,8 @@ class FakeClick(cd.Desktop):
                 "pack": ("destination_end",),
                 "unpack": ("source_end",),
             }
-            for name_, edit in edits.items():
-                edit.enabled = name_ not in closed.get(name, ())
+            for key, edit in edits.items():
+                edit.enabled = key not in closed.get(name, ())
 
         for name, radio in radios.items():
             radio.on_press = lambda n=name: self._later("mode", lambda: pick(n))
