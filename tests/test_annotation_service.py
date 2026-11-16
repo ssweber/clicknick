@@ -188,9 +188,6 @@ class TestMetaHasAdvanced:
     def test_none_meta(self) -> None:
         assert AnnotationService.meta_has_advanced(None) is False
 
-    def test_lock_only(self) -> None:
-        assert AnnotationService.meta_has_advanced(TagMeta(lock=True)) is True
-
     def test_link_only(self) -> None:
         assert AnnotationService.meta_has_advanced(TagMeta(link="Cmd")) is True
 

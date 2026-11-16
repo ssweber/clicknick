@@ -75,8 +75,7 @@ class AnnotationService:
         if meta is None:
             return False
         return (
-            meta.lock
-            or meta.link is not None
+            meta.link is not None
             or meta.physical is not None
             or meta.system is not None
             or bool(meta_response(meta))

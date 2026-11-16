@@ -12,6 +12,7 @@
 
 ### Changed
 
+- The tag annotation dialog and `clicknick-live tag set-flag` no longer have a `lock` flag.
 - ClickNick now requires Python 3.13 or 3.14 (pywin32 has no 3.15 build yet); `uv tool install clicknick` fetches one if needed.
 - A nickname or address comment is kept without a space at either end, as CLICK keeps it: one typed, pasted or imported loses the space, and one loaded with it is trimmed as an unsaved edit, **Trim spaces**, that Sync writes and Undo takes back (the space then shows as an error, and Sync refuses it).
 - A project or CSV that holds such a space therefore opens with the **Trim spaces** edit unsaved, so closing ClickNick asks whether to save it and another project in the same CLICK window asks whether to keep it; **Discard** stages it again.

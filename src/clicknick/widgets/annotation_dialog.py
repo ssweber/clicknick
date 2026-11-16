@@ -133,7 +133,6 @@ class AnnotationDialog(tk.Toplevel):
             external=self._external_var.get(),
             final=self._final_var.get(),
             public=self._public_var.get(),
-            lock=self._lock_var.get(),
             choices=choices,
             min=min_val,
             max=max_val,
@@ -448,18 +447,6 @@ class AnnotationDialog(tk.Toplevel):
             "~ in front of a bit drives it while the bit is OFF",
         )
 
-        # ── Lock ──
-        ttk.Separator(self._adv_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=4)
-        self._lock_var = tk.BooleanVar()
-        lock_cb = ttk.Checkbutton(
-            self._adv_frame,
-            text="lock",
-            variable=self._lock_var,
-            command=self._update_preview,
-        )
-        lock_cb.pack(anchor=tk.W)
-        _bind_tooltip(lock_cb, "Include in behavioral change tracking between program versions")
-
         self._on_kind_changed()
 
     # ── Preview ──
@@ -534,7 +521,6 @@ class AnnotationDialog(tk.Toplevel):
             self._public_var.set(meta.public)
             self._on_flag_changed()
 
-            self._lock_var.set(meta.lock)
             self._link_var.set(meta.link or "")
             self._physical_var.set(meta.physical or "")
             for name, value in meta_response(meta):
