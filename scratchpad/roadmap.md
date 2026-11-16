@@ -184,10 +184,11 @@ Plan 2. ClickNick reads and writes nickname CSVs with pyclickplc's `read_csv` an
 
 What it changed:
 - A Text initial value that CLICK exports bare as a comma or a double quote now loads; a save writes it, and a
-  space, quoted, as CLICK imports them.
-- A file pyrung refuses (bad Address, wrong Data Type, extra cells) ClickNick refuses too, naming the line. In
-  Review Changes the nicknames row says so, and the diff says why pyrung could not convert the folder
-  (`BundleSources.error`).
+  space, quoted, so it reads back as written.
+- A file with a bad Address, a wrong Data Type or extra cells is refused by ClickNick as by pyrung, naming the
+  line: in Review Changes the nicknames row says so. Whenever pyrung cannot convert the folder, the diff says why
+  (`BundleSources.error`). A nickname used twice still loads in ClickNick (the store flags it) though pyrung
+  refuses the file.
 - `validate_nickname_format` and `detection/window_mapping.DATA_TYPES` are gone: `validate_nickname` calls
   pyclickplc's, and the combobox takes its prefixes from `BANKS`.
 - `validate_click_name`, `read_plc_name`, `write_plc_name` and `iter_address_slots` come from pyclickplc 0.7.
@@ -195,6 +196,10 @@ What it changed:
 What stays in ClickNick (Sam, 2026-11-15): its own `read_mdb_csv` for CLICK's `Address.csv`, which pyclickplc's
 reads differently, and `convert_mdb_csv_to_user_csv`, which now writes through `format_csv`. The names for
 unassigned I/O slots in `sim_hardware.py` stay too. The Text quoting import is an open user check (4b).
+
+Left over (nothing): ClickNick's `read_mdb_csv` reads a blank DataType as BIT, not the bank's type as the
+database path does (`mdb_operations`); nothing shows CLICK writes one, but if it did, Save As CSV would write a
+file ClickNick then refuses.
 
 ## 8. Onto pyrung's named imports (waits on pyrung's deletions release)
 
@@ -279,7 +284,8 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
 - Edit two nicknames, let CLICK save one first, Sync -> "Synced 1 changes", main window "1 tags synced".
 - Edit a nickname, save the same in CLICK, Sync -> "CLICK already had these changes; nothing to write."
 - (4b) CSV Save reports the number of rows edited.
-- (4b) CSV TXT quoting import.
+- (4b) CSV TXT quoting import: a quoted comma, double quote and space, and a Text value of a tab, which
+  pyclickplc's writer writes bare (`test_a_txt_value_with_a_tab_or_edge_space_is_written_bare`).
 
 ### Tag Browser, Dataview, Overlay
 - x1 / XD0u from the Tag Browser.

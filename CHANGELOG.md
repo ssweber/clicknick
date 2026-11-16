@@ -24,8 +24,8 @@
 - The Simulator loads a text value of a space from a PLC data file as a space (it loaded `$20`).
 - `clicknick-cli` and the Simulator know an address with no nickname inside a `:block` range by the name the program gives it, such as `Fill3` (`clicknick-cli` still takes its address too).
 - In a CLICK 4 project whose Project.ini also has an old `[PLCName]` section, ClickNick reads the PLC name CLICK 4 shows, and uses that name's workspace and Simulator settings.
-- A nickname CSV that CLICK exported with a Text initial value of a comma or a double quote loads as CLICK wrote it (the value was lost, or the rows after it were misread), and a save writes such a value quoted, the form CLICK imports.
-- Review Changes on a folder whose nicknames.csv pyrung cannot read says which line, on the nicknames row and above the diff, instead of offering to stage the nicknames and showing the rungs without their source.
+- A nickname CSV that CLICK exported with a Text initial value of a comma or a double quote loads as CLICK wrote it (the value was lost, or the rows after it were misread), and a save writes such a value quoted, so it reads back as written.
+- Review Changes on a folder whose nicknames.csv has a bad Address, a wrong Data Type or extra cells says which line on the nicknames row instead of offering to stage the nicknames, and whenever pyrung cannot convert the folder the diff says why instead of showing the rungs without their source.
 
 ## v0.24.1 - 2026-11-15
 

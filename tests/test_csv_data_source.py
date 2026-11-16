@@ -356,7 +356,22 @@ class TestFieldValues:
             f'TXT5,TEXT,"Sep",{written},No,""'
         )
 
-    @pytest.mark.parametrize("value", ['"', ",", " ", " a", 'a"b,c'])
+    @pytest.mark.parametrize("value", ["\t", " a", "a "])
+    def test_a_txt_value_with_a_tab_or_edge_space_is_written_bare(self, tmp_path, value):
+        """pyclickplc's writer quotes only a lone space; ClickNick quoted these before it.
+
+        Pinned so a change in pyclickplc shows here. Whether CLICK imports a bare
+        tab is an open user check; the other two are not one Text character.
+        """
+        path = tmp_path / "txt.csv"
+        CsvDataSource(str(path)).save_changes(
+            [AddressRow("TXT", 5, nickname="Sep", data_type=6, initial_value=value)]
+        )
+
+        line = path.read_bytes().decode("utf-8").split("\r\n")[1]
+        assert line == f'TXT5,TEXT,"Sep",{value},No,""'
+
+    @pytest.mark.parametrize("value", ['"', ",", " ", " a", "\t", 'a"b,c'])
     def test_a_txt_initial_value_round_trips(self, tmp_path, value):
         path = tmp_path / "txt.csv"
         rows = [

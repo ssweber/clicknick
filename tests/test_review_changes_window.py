@@ -1105,6 +1105,19 @@ def _only_in_click_window(monkeypatch, *, saved_after: bool = False):
 OLD = len(NAMES)  # The row of subroutines/old.csv, after the folder's own
 
 
+def test_a_program_only_in_click_is_not_blamed_on_the_folder_pyrung_refused(monkeypatch) -> None:
+    """It has no rungs in the folder, so pyrung's failure there says nothing about it."""
+    window = _only_in_click_window(monkeypatch)
+    window._before_sources = BundleSources({"subroutines/old.csv": "old source\n"})
+    window._after_sources = BundleSources(error=_PYRUNG_REFUSES)
+    window._view_name = "subroutines/old.csv"
+
+    note, diff = window._describe_view()
+
+    assert note == ""
+    assert diff.lines
+
+
 def test_clicking_a_program_only_in_click_makes_its_deletion_the_step(monkeypatch) -> None:
     window = _only_in_click_window(monkeypatch)
     window._sheet.get_currently_selected.return_value = SimpleNamespace(row=OLD)

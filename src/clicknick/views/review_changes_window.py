@@ -1025,7 +1025,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 else "This folder does not have the program; it is to be deleted in CLICK."
             )
         notes = [_legacy_note(change, instead=instead)]
-        if after.error and not after.text(name):
+        if after.error and not after.text(name) and name not in self._only_in_click:
             # Such as a nicknames.csv that pyrung refuses, naming its line
             notes.append(
                 f"pyrung could not convert the rungs from {self._source.label}, so they are "

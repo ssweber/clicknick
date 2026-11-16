@@ -20,7 +20,7 @@ from pyclickplc.banks import (
     MEMORY_TYPE_TO_DATA_TYPE,
     DataType,
 )
-from pyclickplc.nicknames import format_csv, read_csv
+from pyclickplc.nicknames import REQUIRED_COLUMNS, format_csv, read_csv
 
 from ..models.address_row import AddressRow
 from ..utils.mdb_operations import (
@@ -32,9 +32,6 @@ from ..utils.mdb_operations import (
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-# A nickname CSV must have these columns; without them it is not a nickname CSV
-REQUIRED_COLUMNS = ("Address", "Nickname")
 
 # The AddressRow field each nickname CSV column sets
 COLUMN_FIELDS = {
