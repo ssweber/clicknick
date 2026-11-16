@@ -36,13 +36,14 @@ under ``cases``, in the order tried, and an abort keeps the entries done before 
 
 ``import`` imports a nickname CSV through CLICK's own File > Import > Nickname (32900) and
 reads what CLICK stored. With ``--each-row`` it then imports each row on its own, in a file
-of the CSV's header and that row, byte for byte (``DIR/rows/``; a line break inside quotes
-stays in its row), since one bad row may take others with it. Every import picks the mode
+of the CSV's header and that row, byte for byte (``DIR/rows/``; a row is one line, as CLICK
+reads it, so a line break inside quotes ends the row), since a row CLICK refuses may change
+another (``split_rows``). Every import picks the mode
 Delete Existing in the Open dialog, so CLICK empties the address table first and what it
 stores is what it made of that file alone; it fills in the path and presses Open. CLICK
 answers with a box reading "Completed!" or with its Import Error List (a text listing each
 line it could not take, and why); its text is kept, and its OK closes it. The runner then
-waits for the main window alone and CLICK's SC_.mdb unchanged on two polls in a row, and
+waits for the main window alone and CLICK's SC_.mdb unchanged for ``IMPORT_SETTLE``, and
 copies SC_.mdb into ``DIR/mdb/``. Once CLICK has ended (disconnected and ended, as ``try``
 ends it), each copy is read through Access ODBC, so a NULL stays None and a text keeps every
 character. result.json holds one entry per import under ``imports``
@@ -118,7 +119,7 @@ import re
 import shutil
 import sys
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import KW_ONLY, asdict, dataclass
 from datetime import UTC, datetime
@@ -164,6 +165,10 @@ STATUS_BAR_ID = 59393  # AFX_IDW_STATUS_BAR
 # The Connect dialog's PLC list is taken once it reads the same for this many seconds:
 # the LAN scan adds its rows one at a time
 PLC_SETTLE = 2.0
+# An import is done once CLICK's main window is alone and its SC_.mdb has read the same for
+# this many seconds. The live runs saw SC_.mdb written before the answer showed; the hold
+# catches a write that comes later
+IMPORT_SETTLE = 1.0
 
 EXIT_OK = 0
 EXIT_ABORTED = 1
@@ -378,29 +383,22 @@ _IMPORT_CAUSE = "Cause : "
 
 
 def split_rows(data: bytes) -> tuple[bytes, list[tuple[int, bytes]]]:
-    """The first record of the CSV *data* (its header), and each record after it with its line.
+    """The first line of the CSV *data* (its header), and each line after it with its number.
 
-    A record ends at a line feed outside double quotes and keeps its line end, so a line
-    break inside a quoted cell stays in its record. The line is the one the record starts
-    on, counted from 1 for the header, as CLICK's error list counts them. A record that is
-    only a line end is no row. The bytes are kept as they are, whatever the encoding.
+    CLICK reads a nickname CSV line by line: a line break inside a quoted cell ends the row
+    there, and the error list names the rest as the next line (live probe 3). So each row
+    is one line, with its line end, numbered from 1 for the header as CLICK's error list
+    numbers them; a line that is only a line end is no row. The bytes are kept as they are
+    and split after each line feed byte, which holds for an ASCII-compatible encoding
+    (UTF-8, Latin-1, CP1252) and not for UTF-16. A file with CR line ends only is one
+    line: a header and no rows.
     """
-    records: list[tuple[int, bytes]] = []
-    start, line, first, quoted = 0, 1, 1, False
-    for index, byte in enumerate(data):
-        if byte == 0x22:  # "
-            quoted = not quoted
-        elif byte == 0x0A:  # \n
-            line += 1
-            if not quoted:
-                records.append((first, data[start : index + 1]))
-                start, first = index + 1, line
-    if start < len(data):
-        records.append((first, data[start:]))
-    if not records:
+    *ended, last = data.split(b"\n")
+    lines = [line + b"\n" for line in ended] + ([last] if last else [])
+    if not lines:
         return b"", []
-    (_, header), *rows = records
-    return header, [(number, row) for number, row in rows if row.strip(b"\r\n")]
+    header, *rows = lines
+    return header, [(number, row) for number, row in enumerate(rows, 2) if row.strip(b"\r\n")]
 
 
 def parse_import_errors(text: str) -> list[dict[str, Any]]:
@@ -409,14 +407,16 @@ def parse_import_errors(text: str) -> list[dict[str, Any]]:
     Live probe 2 (2026-11-15) read entries such as "Error : Unable to import to
     Database.", "Line 19 : <the line as in the file>", "Cause : The memory address is not
     supported by this CLICK CPU module.", each followed by an empty line. The line's text is
-    kept exactly (an edge space or a tab is the point); a line in no known form goes under
-    ``other``. Lines split at CR LF or LF only: a vertical tab or form feed is text.
+    kept exactly (an edge space or a tab is the point); an empty line is no part of an
+    entry, and a line in no known form goes under ``other``. Lines split at CR LF or LF
+    only: a vertical tab or form feed is text.
     """
     entries: list[dict[str, Any]] = []
     for block in re.split(r"\r?\n\r?\n", text):
-        if not block.strip():
+        lines = [part for part in re.split(r"\r?\n", block) if part]
+        if not lines:
             continue
-        first, *rest = re.split(r"\r?\n", block)
+        first, *rest = lines
         entry: dict[str, Any] = {"error": first, "line": None, "text": None, "cause": None}
         for part in rest:
             match = _IMPORT_LINE.match(part)
@@ -631,15 +631,39 @@ def _read_nicknames(mdb: Path, addresses: list[str]) -> dict[str, str | None]:
 _ROW_COLUMNS = ("DataType", "Nickname", "InitialValue", "Retentive", "Comment", "Use")
 
 
+def _rows_by_address(rows: Iterable[Sequence[Any]]) -> dict[str, dict[str, Any]]:
+    """The address table's *rows* (``AddrKey``, ``MemoryType``, ``Address``, then
+    ``_ROW_COLUMNS``) by their address as CLICK shows it ("DS31"), in the order given.
+
+    Each row maps every column to its value as stored, the first three included. Two rows
+    for one address raise RuntimeError: a reading by address would hide one of them.
+    """
+    from pyclickplc.addresses import format_address_display
+
+    found: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key, memory_type, address, *values = row
+        shown = format_address_display(str(memory_type).strip(), int(address))
+        if shown in found:
+            raise RuntimeError(
+                f"two rows for {shown}: AddrKey {found[shown]['AddrKey']!r} and {key!r}"
+            )
+        found[shown] = {
+            "AddrKey": key,
+            "MemoryType": memory_type,
+            "Address": address,
+            **dict(zip(_ROW_COLUMNS, values, strict=True)),
+        }
+    return found
+
+
 def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
     """Every row of the address table in the SC_.mdb at *mdb*, as stored, by address.
 
     It reads through Access ODBC only, so a NULL stays None and a text keeps every
-    character; each row maps its columns (``Nickname``, ``InitialValue``, ...) to their
-    values, in the order of AddrKey.
+    character; see ``_rows_by_address`` for what each row holds.
     """
     import pyodbc
-    from pyclickplc.addresses import format_address_display
 
     from clicknick.utils.mdb_shared import create_access_connection
 
@@ -650,17 +674,13 @@ def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
     try:
         cursor = connection.cursor()
         cursor.execute(
-            f"SELECT MemoryType, Address, {', '.join(_ROW_COLUMNS)} FROM address ORDER BY AddrKey"
+            f"SELECT AddrKey, MemoryType, Address, {', '.join(_ROW_COLUMNS)} "
+            "FROM address ORDER BY AddrKey"
         )
         rows = cursor.fetchall()
     finally:
         connection.close()
-    return {
-        format_address_display(str(row[0]).strip(), int(row[1])): dict(
-            zip(_ROW_COLUMNS, row[2:], strict=True)
-        )
-        for row in rows
-    }
+    return _rows_by_address(rows)
 
 
 class Run:
@@ -1638,8 +1658,9 @@ class Run:
         "Completed!", ``message`` for that box with any other text, ``errors`` for the
         Import Error List), the box's or list's text (``message``), the list's entries
         (``errors``, see ``parse_import_errors``), the copy of SC_.mdb (``mdb``), whether
-        CLICK's SC_.mdb had changed when the answer showed (``mdb_changed_at_answer``)
-        and once it settled (``mdb_changed``), the rows read from the copy once CLICK has
+        CLICK's SC_.mdb had changed when the answer showed (``mdb_changed_at_answer``),
+        once it settled (``mdb_changed``) and between the two
+        (``mdb_changed_after_answer``), the rows read from the copy once CLICK has
         ended (``stored``) and ``seconds``.
 
         The mode is ``IMPORT_MODE`` (Delete Existing): CLICK empties the address table and
@@ -1660,6 +1681,7 @@ class Run:
             "mdb": None,
             "mdb_changed_at_answer": None,
             "mdb_changed": None,
+            "mdb_changed_after_answer": None,
             "stored": None,
             "seconds": None,
         }
@@ -1722,7 +1744,8 @@ class Run:
         kind, box = self.wait(
             f"CLICK's answer to {label}", expected, answered, timeout=self.s.paste_timeout
         )
-        entry["mdb_changed_at_answer"] = _file_state(mdb) != before
+        at_answer = _file_state(mdb)
+        entry["mdb_changed_at_answer"] = at_answer != before
         self.record(f"{label}_answer")
         controls = self.controls(box)
         if kind is IMPORT_DONE:
@@ -1751,21 +1774,23 @@ class Run:
         entry["message"] = message
         self.log(f"{label}: {entry['answer']}: {message!r}")
         self.press(box, buttons[0])
-        last: list[tuple[int, int] | None] = [None]
+        # SC_.mdb's state, and since when it has read so with the main window alone
+        held: list[Any] = [None, 0.0]
 
         def settled(found: dict[str, Window]) -> bool:
             # The answer closes with the progress window; the import is done once the main
-            # window is alone and CLICK's SC_.mdb reads the same on two polls in a row
+            # window is alone and CLICK's SC_.mdb has read the same for IMPORT_SETTLE
             again = found.get(kind.name)
             if again is not None and again.hwnd != box.hwnd:
                 raise Aborted(f"{label}: CLICK answered again: {_describe(again)}")
             if not self.only_main(found):
-                last[0] = None
+                held[0] = None
                 return False
-            state = _file_state(mdb)
-            done = state is not None and state == last[0]
-            last[0] = state
-            return done
+            state, now = _file_state(mdb), time.monotonic()
+            if state is None or state != held[0]:
+                held[:] = [state, now]
+                return False
+            return now - held[1] >= IMPORT_SETTLE
 
         self.wait(
             f"the import of {csv.name} to finish",
@@ -1773,13 +1798,15 @@ class Run:
             settled,
             timeout=self.s.paste_timeout,
         )
-        entry["mdb_changed"] = last[0] != before
+        entry["mdb_changed"] = held[0] != before
+        entry["mdb_changed_after_answer"] = held[0] != at_answer
         copy = Path(shutil.copy2(mdb, self.s.out / "mdb" / f"{number:02d}-{name}.mdb"))
         entry["mdb"] = copy
         self.result["files"].setdefault("mdb", []).append(copy)
         changed = "changed" if entry["mdb_changed"] else "unchanged"
-        at_answer = "already" if entry["mdb_changed_at_answer"] else "not yet"
-        self.log(f"{label}: SC_.mdb {changed} ({at_answer} when the answer showed); copied")
+        shown = "already" if entry["mdb_changed_at_answer"] else "not yet"
+        after = "; changed after it" if entry["mdb_changed_after_answer"] else ""
+        self.log(f"{label}: SC_.mdb {changed} ({shown} when the answer showed{after}); copied")
         self.record(f"{label}_done")
         entry["seconds"] = round(time.monotonic() - began, 3)
 
