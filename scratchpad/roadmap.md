@@ -91,31 +91,35 @@ early jobs below, and subroutines (pasting into one needs its dialogs recorded f
 `jobs/runner-jobs/`, RESULTS-A.md to RESULTS-F.md). New modes: `try --keep` (save and decode each accepted
 case), `reopen` (save, edit the runner's own Project.ini, save, open, save), `read-data` (PLC > Read Data from
 PLC, 32851, into `DIR/plcdata.csv`) and `picker` (Program > Address Picker, 32834, with keys sent to its grid
-and editor by SendMessage, SC_.mdb copied before and after). Open Project (32772) is on the allowlist too; Write
+and editor by SendMessage, SC_.mdb copied before and after). Open Project (32772) and System Configuration
+(32827; `reopen` reads its PLC Name at each point and closes it by Cancel) are on the allowlist too; Write
 Data into PLC (32852) is on its never list. Sam approved Read Data from PLC, editing the runner's own Project.ini,
 the one Address Picker edit (X001 `Test`, then OK) and writing pyclickplc's test data values into the
 conformance PLC by pyclickplc's Modbus client (TXT961..TXT993, DF251..DF258, read first and written back; the
-runner itself writes nothing into the PLC). What the jobs answered:
+runner itself writes nothing into the PLC), and opening System Configuration without OK. What the jobs answered:
 - Constants (B): CLICK stores a Math real and a Copy source in its own printed form (`1.50` as `1.5`, `1e3` as
   `1000.0`, `0ffh` as `0FFh`), and a hex Math takes a constant without `h` as hex; laddercodec keeps the typed
   text or refuses those. Rule table row A6: the 15 SC points tried between laddercodec's writable ones are
   refused (OBJ-003), SC50 and SC162 accepted.
-- Project.ini (C): CLICK carries added sections byte for byte, in either case, through Save As and Open; with no
-  PLC connected it shows no PLC name, so whether it reads `[sec20]` as `[Sec20]` is still open (it needs a place
-  where CLICK shows the project's PLC name).
+- Project.ini (C): CLICK carries added sections byte for byte, in either case, through Save As and Open. System
+  Configuration's PLC Name shows `[Sec20] Key1=` with section and key in each case tried (`[sec20]`, `[SEC20]`,
+  `key1`, `KEY1` and mixes); of two such sections or keys, the first in the file; `[PLCName] PLCName=` alone shows
+  nothing (pyclickplc reads it when there is no `[Sec20]`).
 - Read Data (D): CLICK writes a space, 0x01, 0x7F and 0xFF in TXT as `$20`, `$1`, `$7F`, `$FF`, as pyclickplc
-  does, but every other printable character plain (pyclickplc refuses them) and a comma raw, which splits the
-  row. DF 1.8e30 and 1.5e30 print with other digits than pyclickplc's; CLICK's switch to fewer digits lies
-  between 1.0000000409e19 and 1.4999999470e19. One run (d8) wrote no file, unexplained; a connect after an
-  aborted connected run timed out (PTC-013) each time.
+  does, but the other printable punctuation tried plain (pyclickplc refuses it) and a comma raw, which splits
+  the row. DF 1.8e30 and 1.5e30 print with other digits than pyclickplc's. D2 pinned the switch from 20 to 19
+  digits near 1e30 between the neighbouring floats `0x7154FFFF` and `0x71550000`, and found it is no one limit
+  on the first 20 digits (1.0548e35 keeps 20, 1.0546e25 keeps 19). Run d8's file went into the Save dialog's
+  last folder: the dialog had emptied the path set in it, which the runner now sets again until it holds. A
+  connect after an aborted connected run timed out (PTC-013) each time.
 - System nicknames (E): a new project's SC_.mdb holds 3 rows until the Address Picker is closed by OK; OK
   writes 135 SC and 222 SD rows (SD19 to SD26 included), with or without an edit. Closing it by its window's
-  close writes nothing. Cancel was not tried.
+  close with nothing typed left SC_.mdb unchanged (e3, e4). Cancel, and a close after typing, were not tried.
 - Reserved words (F): the Address Picker and the import refuse all 12 words tried (`MAX`, `Max`, `max`, `MIN`,
   `ABS`, `abs`, `RAND`, `MDN`, `AVG`, `LOG`, `Log`, `log`) and `A,B`, and take `MAXIMUM` and `Max_Speed`.
 
-Left: where CLICK shows the project's PLC name (C), the exact DF digit cut-off (more test values in the PLC,
-Sam's call), Cancel in the Address Picker, and d8.
+Left: the rule behind CLICK's DF digits (D2 says where it switches near 1e30, not why), and Cancel in the
+Address Picker.
 
 **Where it runs (Sam, 2026-11-15, replacing the plan's Sandbox-first rule):** on the CLICK installed on Sam's
 desktop, while he is away, as long as it is deterministic. Windows Sandbox is the fallback, and is needed only
@@ -221,7 +225,7 @@ Runs of 2026-11-16 (job A): INT refuses `1_000`, `1e3` and `.5`; FLOAT refuses `
 `1000`) and `.5` (stored `0.5`); `+5` is stored `5`; HEX refuses `0x1F` and stores `1F` as `001F`. A number
 with U+00A0 at an edge is refused, and so is `٥`. `５` and a U+3000 edge are taken (as `5` and a space) only
 from UTF-8 with a BOM. `DS030`, `DS0030` and `X0001`, bare or quoted, import under the plain address. The
-import refuses the reserved words tried (CLICK's `[NGWORD]`), whatever their case, as the Address Picker does
+import refuses the reserved words tried (CLICK's `[NGWORD]`) in each letter case tried, as the Address Picker does
 (job F, item 4).
 
 The Read Data dump and Project.ini's section case, left here before, ran as jobs D and C (item 4). The open

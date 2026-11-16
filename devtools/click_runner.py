@@ -2359,11 +2359,11 @@ class Run:
         """Set a file dialog's File name *edit* to *path*, and wait until it has read *path*
         for ``FILL_SETTLE`` seconds, setting it again whenever it reads something else.
 
-        A dialog still opening can put its own name back over the path: CLICK's Read Data
+        A dialog still opening can empty the edit after the path is set: CLICK's Read Data
         Save dialog, filled as soon as it showed, then saved plcdata.csv into the folder it
         last saved in (live run d8, 2026-11-16, wrote it there; the D2 runs r1 and r1c met
-        that file as "plcdata.csv already exists"). Filled after a ``--record`` dump, it kept
-        the path (d7, d10 to d13).
+        that file as "plcdata.csv already exists", and in r1e the edit read '' once set).
+        Filled after a ``--record`` dump, it kept the path (d7, d10 to d13).
         """
         text = str(path)
         held: list[float | None] = [None]
