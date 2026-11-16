@@ -2898,10 +2898,13 @@ def last_lines(out: Path) -> dict[str, dict]:
 def try_again(
     tmp_path: Path, exe: Path, name: str, cases: object, *args: str, **fake_args: object
 ) -> tuple[FakeClick, int, dict]:
-    """``run_try`` into ``tmp_path/<name>`` with a CLICK of its own."""
+    """``run_try`` into ``tmp_path/<name>`` with a CLICK of its own. A kept save's Scr*.tmp is
+    read by ``Stored``, as the fake writes text there (and the installed laddercodec may have
+    no stored-tag walk)."""
     (tmp_path / name).mkdir()
     fake = FakeClick(tmp_path / name, **fake_args)  # pyright: ignore[reportArgumentType]
-    code, result = run_try(fake, tmp_path, exe, cases, *args, out=tmp_path / name / "out")
+    out = tmp_path / name / "out"
+    code, result = run_try(fake, tmp_path, exe, cases, *args, out=out, read_stored=Stored())
     return fake, code, result
 
 
