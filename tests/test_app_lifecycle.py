@@ -647,7 +647,7 @@ def test_a_database_load_whose_session_closed_during_the_save_prompt_is_dropped(
     assert not app._open_data(new, still_wanted=lambda: session.loads(token))
     new.start_file_monitoring.assert_not_called()
     assert app._data is None
-    app.nickname_manager.set_store.assert_not_called()
+    app.nickname_manager.set_store.assert_called_once_with(None)
 
 
 def test_popup_detection_runs_only_while_monitoring(monkeypatch):

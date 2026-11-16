@@ -707,6 +707,99 @@ def test_workspace_setup_prompts_for_and_writes_a_missing_plc_name(monkeypatch) 
     app.plc_name_var.set.assert_called_once_with("Line 1")
 
 
+def _setup_app(session: ConnectionSession) -> ClickNickApp:
+    """An app showing Workspace setup for *session*, its form's fields mocked."""
+    app = ClickNickApp.__new__(ClickNickApp)
+    app._request_ui_refresh = MagicMock()
+    app.root = MagicMock()
+    app._session = session
+    app._update_status = MagicMock()
+    app.mirror_project_selection_var = MagicMock()
+    app.mirror_location_selection_var = MagicMock()
+    app.workspace_setup_action_var = MagicMock()
+    return app
+
+
+def test_a_folder_chosen_after_the_click_window_showed_another_project_is_dropped(
+    monkeypatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "workspaces"
+    home.mkdir()
+    first = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"))
+    first.setup_window = MagicMock()
+    other = ConnectionSession(ClickConnection("1", 2, "Other.ckp"))
+    app = _setup_app(first)
+    app._ensure_plc_name_for_workspace = MagicMock(return_value="LaserBall")
+
+    def choose_after_project_change(**_options):
+        first.close()  # CLICK opened another project while the dialog was up
+        app._session = other
+        return str(home)
+
+    monkeypatch.setattr("clicknick.app.filedialog.askdirectory", choose_after_project_change)
+
+    app._select_mirror_location()
+
+    assert other.pending_workspace is None
+    assert other.pairing.matches == []
+    app.mirror_location_selection_var.set.assert_not_called()
+
+
+def test_a_plc_name_entered_after_the_click_window_closed_is_not_written(monkeypatch) -> None:
+    write_name = MagicMock()
+    monkeypatch.setattr("pyclickplc.project.write_plc_name", write_name)
+    session = ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True)
+    app = _setup_app(session)
+    app._current_plc_name = MagicMock(return_value=None)
+    app.plc_name_var = MagicMock()
+
+    def answer_after_close(*_args, **_options):
+        session.close()  # CLICK's window closed while the prompt was up
+        app._session = None
+        return "Line 1"
+
+    monkeypatch.setattr("clicknick.app.simpledialog.askstring", answer_after_close)
+
+    assert app._ensure_plc_name_for_workspace() is None
+    write_name.assert_not_called()
+
+
+def test_setup_confirmed_after_the_click_window_closed_writes_nothing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    config = _config(tmp_path / "Desktop", "IMHERE")
+    config.workspace_path.mkdir(parents=True)
+    (config.workspace_path / "notes.txt").write_text("kept\n", encoding="utf-8")
+    save_config = MagicMock(return_value=config.sidecar_path)
+    remember = MagicMock()
+    monkeypatch.setattr(
+        "clicknick.services.workspace_mirror.save_project_workspace_config", save_config
+    )
+    monkeypatch.setattr("clicknick.services.workspace_mirror.remember_project_sidecar", remember)
+    session = ConnectionSession(ClickConnection("1", 2, "IMHERE.ckp"), has_database=True)
+    session.setup_window = MagicMock()
+    session.pending_workspace = config
+    session.use_workspace = MagicMock()
+    app = _setup_app(session)
+    app._ensure_plc_name_for_workspace = MagicMock(return_value="IMHERE")
+    app._workspace_source_dir = MagicMock(return_value=None)
+    app._start_analysis_build = MagicMock()
+
+    def confirm_after_close(*_args, **_options):
+        session.close()  # CLICK's window closed while the question was up
+        app._session = None
+        return True
+
+    monkeypatch.setattr("clicknick.app.messagebox.askokcancel", confirm_after_close)
+
+    app._apply_workspace_mirror_setup()
+
+    save_config.assert_not_called()
+    remember.assert_not_called()
+    session.use_workspace.assert_not_called()
+    app._start_analysis_build.assert_not_called()
+
+
 def test_open_workspace_uses_single_active_folder(tmp_path: Path) -> None:
     workspace = tmp_path / "LaserBall Workspace"
     app = ClickNickApp.__new__(ClickNickApp)

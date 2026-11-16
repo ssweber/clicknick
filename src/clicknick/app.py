@@ -111,6 +111,16 @@ class ClickNickApp:
         window = session.setup_window if session is not None else None
         return window or self.root
 
+    def _setup_unchanged(self, session: ConnectionSession, window) -> bool:
+        """Whether *session* is still the connected one, with Workspace setup's *window*.
+
+        A dialog runs Tk's loop: CLICK's window can close or show another project
+        meanwhile, closing the session and its setup window. Workspace setup acts
+        after a dialog only when this holds, so it never writes one project's
+        choice into another's session, nor parents a dialog to a closed window.
+        """
+        return session is self._session and session.setup_window is window
+
     def _project_session(self) -> ConnectionSession | None:
         """The session once ClickNick has read CLICK's database for it, else None.
 
@@ -1020,15 +1030,19 @@ class ClickNickApp:
             self._update_status("Connect to a CLICK project first", "error")
             return None
 
+        window = session.setup_window
         parent = self._setup_parent()
         while True:
+            # Checked before each prompt too: the error box before it is a dialog
+            if not self._setup_unchanged(session, window):
+                return None
             value = simpledialog.askstring(
                 "Name PLC",
                 "This project needs a PLC name before it can use a durable workspace.\n\n"
                 "Enter a name (maximum 24 characters):",
                 parent=parent,
             )
-            if value is None:
+            if value is None or not self._setup_unchanged(session, window):
                 return None
             plc_name = value.strip()
             is_valid, error = validate_click_name(plc_name)
@@ -1053,11 +1067,8 @@ class ClickNickApp:
             )
             return plc_name
 
-    def _set_pending_workspace_config(self, config) -> None:
-        """Show one candidate configuration in the setup form."""
-        session = self._session
-        if session is None:
-            return
+    def _set_pending_workspace_config(self, session: ConnectionSession, config) -> None:
+        """Show one candidate configuration in *session*'s setup form."""
         session.pending_workspace = config
         matches = session.pairing.matches
         if all(known.sidecar_path != config.sidecar_path for known in matches):
@@ -1077,18 +1088,22 @@ class ClickNickApp:
 
     def _select_existing_workspace_config(self) -> None:
         """Browse an existing workspace folder and verify its PLC identity."""
+        session = self._session
+        if session is None:
+            return
+        window = session.setup_window
         plc_name = self._ensure_plc_name_for_workspace()
-        if plc_name is None:
+        if plc_name is None or not self._setup_unchanged(session, window):
             return
         parent = self._setup_parent()
-        pending = self._session.pending_workspace if self._session else None
+        pending = session.pending_workspace
         selected = filedialog.askdirectory(
             title=f"Find an existing workspace for {plc_name}",
             initialdir=pending.workspace_path.parent if pending is not None else None,
             mustexist=True,
             parent=parent,
         )
-        if not selected:
+        if not selected or not self._setup_unchanged(session, window):
             return
 
         from .services.workspace_mirror import (
@@ -1108,15 +1123,19 @@ class ClickNickApp:
                 parent=parent,
             )
             return
-        self._set_pending_workspace_config(config)
+        self._set_pending_workspace_config(session, config)
 
     def _select_mirror_location(self) -> None:
         """Choose a home and preview the PLC-named workspace destination."""
+        session = self._session
+        if session is None:
+            return
+        window = session.setup_window
         plc_name = self._ensure_plc_name_for_workspace()
-        if plc_name is None:
+        if plc_name is None or not self._setup_unchanged(session, window):
             return
         parent = self._setup_parent()
-        pending = self._session.pending_workspace if self._session else None
+        pending = session.pending_workspace
         initial_dir = pending.workspace_path.parent if pending is not None else None
         selected = filedialog.askdirectory(
             title=f"Choose workspace home for {plc_name}",
@@ -1124,7 +1143,7 @@ class ClickNickApp:
             mustexist=True,
             parent=parent,
         )
-        if not selected:
+        if not selected or not self._setup_unchanged(session, window):
             return
 
         from .services.workspace_mirror import (
@@ -1148,17 +1167,20 @@ class ClickNickApp:
                 plc_name=plc_name,
                 workspace_path=workspace_path,
             )
-        self._set_pending_workspace_config(config)
+        self._set_pending_workspace_config(session, config)
 
     def _on_workspace_config_selected(self, _event=None) -> None:
         """Preview a known matching workspace selected by the user."""
+        session = self._session
+        if session is None:
+            return
         selected = self.mirror_project_selection_var.get().strip()
         config = next(
-            (match for match in self._pairing.matches if str(match.workspace_path) == selected),
+            (match for match in session.pairing.matches if str(match.workspace_path) == selected),
             None,
         )
         if config is not None:
-            self._set_pending_workspace_config(config)
+            self._set_pending_workspace_config(session, config)
 
     def _earlier_save_build_error(self) -> str | None:
         """The build's error when it failed and the workspace is an earlier save's, else None."""
@@ -1178,6 +1200,7 @@ class ClickNickApp:
         if session is None:
             self._update_status("Connect to a CLICK project first", "error")
             return
+        window = session.setup_window
         config = session.pending_workspace
         if config is None:
             messagebox.showinfo(
@@ -1202,6 +1225,8 @@ class ClickNickApp:
         plc_name = self._ensure_plc_name_for_workspace()
         if plc_name is None:
             self._update_status("Connect to a CLICK project first", "error")
+            return
+        if not self._setup_unchanged(session, window):
             return
         if config.plc_name.casefold() != plc_name.casefold():
             messagebox.showerror(
@@ -1230,7 +1255,7 @@ class ClickNickApp:
                 "or replace existing tests, documentation, or editor settings.",
                 parent=dialog_parent,
             )
-            if not confirmed:
+            if not confirmed or not self._setup_unchanged(session, window):
                 return
 
         from .services.workspace_mirror import (
@@ -2326,6 +2351,8 @@ class ClickNickApp:
                 return False
             self._data = None
         if still_wanted is not None and not still_wanted():
+            # The previous data closed: autocomplete must not keep offering it
+            self.nickname_manager.set_store(None)
             return False
         store.start_file_monitoring(self.root)
         self._data = DataSession(store)
