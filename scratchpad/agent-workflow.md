@@ -457,7 +457,7 @@ This means the agent can run the full tractability loop autonomously — `explor
 
 **Flags:**
 ```
-clicknick-live tag set-flag <tag> <flag>      # readonly, external, final, public, lock
+clicknick-live tag set-flag <tag> <flag>      # readonly, external, final, public
 clicknick-live tag clear-flag <tag> <flag>
 ```
 

@@ -27,7 +27,7 @@ from .dispatch import _resolve_identifier
 if TYPE_CHECKING:
     from .dispatch import DispatchContext
 
-_BOOL_FLAGS = ("readonly", "external", "final", "public", "lock")
+_BOOL_FLAGS = ("readonly", "external", "final", "public")
 
 
 def _get_meta(ctx: DispatchContext, identifier: str) -> tuple[int, str | None, TagMeta, str]:
