@@ -35,6 +35,10 @@ IMPORT_NICKNAME = 32900
 # Program > Address Picker (Ctrl+T; "Address Picker" in the string table): CLICK's editor of
 # nicknames and address comments (probe of 2026-11-16)
 ADDRESS_PICKER = 32834
+# System Configuration ("System Configuration" in the string table): the PLC's modules and the
+# project's PLC Name, which it shows from Project.ini's [Sec20] Key1. Its OK saves setup into
+# the project and is never pressed; Cancel closes it (live probe C2, 2026-11-16)
+SYSTEM_CONFIGURATION = 32827
 # PLC > Read Data from PLC: it reads the PLC's data values and saves them to a file. Write
 # Data into PLC, beside it, writes a file's values into the PLC and is never sent (string
 # table, probe of 2026-11-16)
@@ -61,6 +65,7 @@ ALLOWED_COMMANDS = {
     IMPORT_NICKNAME: "Import Nickname",
     READ_DATA_FROM_PLC: "Read Data from PLC",
     ADDRESS_PICKER: "Address Picker",
+    SYSTEM_CONFIGURATION: "System Configuration",
     OUT_DIALOG: "Out...",
     MATH_DIALOG: "Math...",
     COPY_DIALOG: "Copy...",

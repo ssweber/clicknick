@@ -239,6 +239,8 @@ class FakeClick(cd.Desktop):
         self.writes_data = writes_data
         self.open_gap = open_gap
         self.save_clears = save_clears
+        self.plc_name = ""  # What System Configuration shows: read at an open
+        self.system_config_shown = False
         self.last_folder = tmp_path / "last folder"
         self.editor_keys: Callable[[int], None] = lambda vk: None
         self.ckps: dict[Path, dict[str, bytes]] = {}  # Each saved project's files
@@ -526,6 +528,7 @@ class FakeClick(cd.Desktop):
                     old.unlink()
             for file, data in self.ckps[path].items():
                 (temp / file).write_bytes(data)
+            self.plc_name = plc_name_in(self.ckps[path].get("Project.ini", b""))
             self.opened.append(path)
             main.title = f"CLICK Programming Software (Version4.00) - {path.name} - [Main Program]"
             self._drop(reading)
@@ -616,6 +619,47 @@ class FakeClick(cd.Desktop):
             )
         for control in form.controls:
             control.id = control.hwnd  # A Delphi form's controls have no ids of their own
+
+    def _show_system_config(self) -> None:
+        """System Configuration as live probe C2 dumped it: its PLC Name shows the value of
+        the first [Sec20] section's first Key1 in the Project.ini CLICK last opened, section
+        and key matched in any case (``plc_name``); the first time, a notice with one OK
+        comes over it. OK is never to be pressed."""
+        assert self.main is not None
+        main = self.main
+        main.enabled = False
+        form = self._window("TfrmSystemConfig", "System Configuration", main.hwnd)
+        self._control(form, "TEdit", "", 0, value=self.plc_name)
+        self._control(form, "TCheckBox", "Start-up I/O Config Check", 0)
+
+        def ok() -> None:
+            raise AssertionError("System Configuration's OK was pressed")
+
+        def cancel() -> None:
+            self._drop(form)
+            main.enabled = True
+
+        for text, action in (("View I/O MODBUS Addresses", None), ("OK", ok), ("Cancel", cancel)):
+            self._control(
+                form,
+                "TButton",
+                text,
+                0,
+                on_press=None if action is None else lambda a=action: self._later("press", a),
+            )
+        if not self.system_config_shown:
+            self.system_config_shown = True
+            form.enabled = False
+            notice = self._window("TfrmInformationSystemConfigDlg", "System Configuration", form.hwnd)
+            self._control(notice, "TButton", "OK", 0, on_press=ok)
+
+            def close() -> None:
+                self._drop(notice)
+                form.enabled = True
+
+            notice.on_close = lambda: self._later("notice_close", close)
+        for control in form.controls:
+            control.id = control.hwnd
 
     def _show_picker(self) -> None:
         assert self.main is not None
@@ -959,6 +1003,8 @@ class FakeClick(cd.Desktop):
             self._later("read_data", self._show_read_data)
         elif command_id == cd.ADDRESS_PICKER:
             self._later("picker", self._show_picker)
+        elif command_id == cd.SYSTEM_CONFIGURATION:
+            self._later("system_config", self._show_system_config)
         elif command_id == cd.DELETE:
 
             def delete() -> None:
@@ -1176,6 +1222,20 @@ class FakeClick(cd.Desktop):
 
     def temp_dir(self, hwnd: int) -> Path:
         return self.temp_root / f"CLICK ({hwnd:08X})"
+
+
+def plc_name_in(ini: bytes) -> str:
+    """The PLC Name CLICK shows for a Project.ini, as live probe C2 found: the first Key1 of
+    the first [Sec20] section, both in any case (runs p3 to p12); no [Sec20], none (p11)."""
+    section = None
+    for line in ini.decode("latin-1").splitlines():
+        if line.startswith("[") and line.endswith("]"):
+            if section == "sec20":
+                break
+            section = line[1:-1].lower()
+        elif section == "sec20" and line.lower().startswith("key1="):
+            return line[len("key1=") :]
+    return ""
 
 
 def judge_like_click(title: str, mode: str | None, values: dict[str, str]) -> object:
@@ -3014,19 +3074,33 @@ def run_reopen(fake: FakeClick, tmp_path: Path, exe: Path, *args: str) -> tuple[
 def test_reopen_copies_each_point(tmp_path, setup):
     _, exe = setup
     fake = FakeClick(tmp_path)
+    # Another CLICK's temp folder, which the runner reads and writes nothing in
+    other = fake.temp_root / "CLICK (00ABCDEF)"
+    other.mkdir()
+    theirs = {"Project.ini": b"[Project]\r\nmine\r\n", "Scr1.tmp": b"mine", "SC_.mdb": b"mine"}
+    for name, data in theirs.items():
+        (other / name).write_bytes(data)
     code, result = run_reopen(fake, tmp_path, exe, "--ini-add", r"[sec20]\nkey1=Probe")
     assert code == cr.EXIT_OK, result["reason"]
+    assert {p.name: p.read_bytes() for p in other.iterdir()} == theirs
     out = tmp_path / "out"
+    copied = [p for p in out.rglob("*") if p.is_file()]
+    assert copied and all(b"mine" not in p.read_bytes() for p in copied)
+    looks = "System Configuration"
     assert fake.commands == [
         "Disconnect",
-        "Save Project As",
-        "Save Project As",
-        "Open Project",
-        "Save Project As",
+        *("Save Project As", looks) * 2,
+        *("Open Project", looks),
+        *("Save Project As", looks),
     ]
     assert fake.opened == [(out / "second.ckp").resolve()]
     points = result["points"]
     assert list(points) == ["first", "second", "opened", "third"]
+    # CLICK shows the name it read at the open, the case of section and key aside; the
+    # notice over the first System Configuration was closed, and OK pressed on neither
+    assert [points[p]["plc_name"] for p in points] == ["", "", "Probe", "Probe"]
+    assert fake.events.count("notice_close") == 1
+    assert fake.pressed.count("Cancel") == 4
     assert points["first"]["project_ini"] == "[Project]\r\n"
     added = "[sec20]\r\nkey1=Probe\r\n"
     assert result["ini_added"] == added
@@ -3057,8 +3131,33 @@ def test_reopen_waits_for_the_open_to_begin(tmp_path, setup):
     code, result = run_reopen(fake, tmp_path, exe)
     assert code == cr.EXIT_OK, result["reason"]
     assert fake.opened == [(tmp_path / "out" / "second.ckp").resolve()]
-    assert fake.commands[-1] == "Save Project As"
+    assert fake.commands[-2:] == ["Save Project As", "System Configuration"]
     assert result["points"]["third"]["title"].endswith("- third.ckp - [Main Program]")
+
+
+@pytest.mark.parametrize(
+    ("lines", "name"),
+    [
+        # What System Configuration showed in live probe C2 (c2/live-p3 to live-p12)
+        ("[Sec20]\nKey1=UpperCase", "UpperCase"),
+        ("[sec20]\nkey1=LowerCase", "LowerCase"),
+        ("[SEC20]\nKEY1=AllCaps", "AllCaps"),
+        ("[Sec20]\nkey1=MixedKey", "MixedKey"),
+        ("[sec20]\nKey1=MixedSection", "MixedSection"),
+        ("[Sec20]\nKey1=Upper\n[sec20]\nkey1=Lower", "Upper"),
+        ("[sec20]\nkey1=Lower\n[Sec20]\nKey1=Upper", "Lower"),
+        ("[Sec20]\nKey1=FirstKey\nKEY1=SecondKey", "FirstKey"),
+        ("[PLCName]\nPLCName=Legacy", ""),
+        ("[PLCName]\nPLCName=Legacy\n[Sec20]\nKey1=Placeholder", "Placeholder"),
+    ],
+)
+def test_reopen_reads_the_plc_name_system_configuration_shows(tmp_path, setup, lines, name):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_reopen(fake, tmp_path, exe, "--ini-add", lines)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["points"]["opened"]["plc_name"] == name
+    assert result["points"]["third"]["plc_name"] == name
 
 
 def test_reopen_refuses_lines_that_are_not_ascii(tmp_path, setup):
@@ -3252,7 +3351,7 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_thirteen_commands():
+def test_the_allowlist_is_the_fourteen_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         32777: "Delete",
@@ -3264,6 +3363,7 @@ def test_the_allowlist_is_the_thirteen_commands():
         32900: "Import Nickname",
         32851: "Read Data from PLC",
         32834: "Address Picker",
+        32827: "System Configuration",
         50010: "Out...",
         50030: "Math...",
         50040: "Copy...",

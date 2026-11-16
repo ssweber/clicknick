@@ -65,7 +65,10 @@ in CLICK's temp folder (the runner's own CLICK's), saves as ``DIR/second.ckp``, 
 ``second.ckp`` by File > Open Project (32772; CLICK shows "Project Reading" meanwhile) and
 saves it as ``DIR/third.ckp``. At each point (``first``, ``second``, ``opened``, ``third``)
 CLICK's files are copied into ``DIR/<point>/click/``, and result.json keeps the main
-window's title, the status bar and Project.ini's text under ``points``.
+window's title, the status bar, Project.ini's text and the PLC Name that System
+Configuration (32827) shows (``plc_name``) under ``points``. System Configuration is closed
+by Cancel, never by OK (OK saves setup into the project); the notice it shows over itself the
+first time is closed by WM_CLOSE.
 
 ``read-data`` saves the PLC's data values through PLC > Read Data from PLC (32851): it
 presses All, waits for every memory type checked, presses Read, gives CLICK's Save dialog
@@ -168,6 +171,7 @@ from typing import Any
 
 from click_desktop import (
     ADDRESS_PICKER,
+    SYSTEM_CONFIGURATION,
     COPY_DIALOG,
     DELETE,
     DISCONNECT,
@@ -310,6 +314,15 @@ READING_DATA = Expect(
 # TStringGrid of every address (Address, Data Type, Nickname, Used, Initial Value, Retentive,
 # Address Comment), the memory types as tabs, filters, OK, Cancel and Help
 PICKER = Expect("picker", "TfrmTagDB", "Address Picker : Edit Mode", MAIN)
+# System Configuration, and the notice it shows over itself the first time it opens in a
+# CLICK (one OK button; live probe C2)
+SYSTEM_CONFIG = Expect("system_config", "TfrmSystemConfig", "System Configuration", MAIN)
+SYSTEM_CONFIG_NOTICE = Expect(
+    "system_config_notice",
+    "TfrmInformationSystemConfigDlg",
+    "System Configuration",
+    "system_config",
+)
 # The instruction dialog ``try`` has open, and the error box it may own after OK
 DIALOG = "dialog"
 ANSWER_BOX = "answer_box"
@@ -2205,7 +2218,8 @@ class Run:
         point (``first``, ``second``, ``opened``, ``third``) copies CLICK's files into
         ``DIR/<point>/click/`` (``copy_point``). Between ``first`` and ``second``,
         ``ini_add`` is added to the end of the Project.ini in CLICK's temp folder (the
-        runner's own CLICK's; ``edit_ini``).
+        runner's own CLICK's; ``edit_ini``). After each copy, ``plc_name`` is what System
+        Configuration shows (``read_plc_name``).
         """
         assert self.main is not None
         temp = self.desktop.temp_dir(self.main)
@@ -2218,12 +2232,54 @@ class Run:
             with self.step(f"{point}_save"):
                 self.save_as((self.s.out / f"{point}.ckp").resolve(), temp, prefix=f"{point}_")
                 self.copy_point(point, temp)
+                self.read_plc_name(point)
         with self.step("open"):
             self.open_project((self.s.out / "second.ckp").resolve(), temp)
             self.copy_point("opened", temp)
+            self.read_plc_name("opened")
         with self.step("third_save"):
             self.save_as((self.s.out / "third.ckp").resolve(), temp, prefix="third_")
             self.copy_point("third", temp)
+            self.read_plc_name("third")
+
+    def read_plc_name(self, point: str) -> None:
+        """Open System Configuration, keep the PLC Name it shows as *point*'s ``plc_name``,
+        and close it by Cancel.
+
+        The PLC Name is the form's one TEdit. The notice that comes over the form the first
+        time is closed by WM_CLOSE, as its title bar's close does; OK is pressed on neither.
+        """
+        self.wait("the main window alone", [], self.only_main)
+        self.command(SYSTEM_CONFIGURATION)
+        closed: set[int] = set()
+
+        def shown(found: dict[str, Window]) -> Window | None:
+            notice = found.get(SYSTEM_CONFIG_NOTICE.name)
+            if notice is not None:
+                if notice.hwnd not in closed:
+                    closed.add(notice.hwnd)
+                    self.log("close System Configuration's notice")
+                    self.desktop.close(notice.hwnd)
+                return None
+            form = found.get(SYSTEM_CONFIG.name)
+            return form if form is not None and form.enabled else None
+
+        form = self.wait(
+            "System Configuration", [SYSTEM_CONFIG, SYSTEM_CONFIG_NOTICE], shown
+        )
+        self.record(f"{point}_system_config")
+        controls = self.controls(form)
+        edits = [c for c in controls if c.cls == "TEdit"]
+        if len(edits) != 1:
+            raise Aborted(f"System Configuration has {len(edits)} TEdit(s), not one")
+        name = self.desktop.read_text(edits[0].hwnd)
+        if name is None:
+            raise Aborted("System Configuration's PLC Name did not answer")
+        self.result["points"][point]["plc_name"] = name
+        self.log(f"{point}: System Configuration shows the PLC Name {name!r}")
+        cancel = _require(_labelled(controls, "TButton", "Cancel"), "Cancel")
+        self.press(form, cancel)
+        self.wait("System Configuration to close", [SYSTEM_CONFIG], self.only_main)
 
     def edit_ini(self, ini: Path) -> None:
         """Add ``ini_add``'s lines (separated by ``\\n`` or line breaks) to the end of *ini*,
