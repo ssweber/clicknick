@@ -143,10 +143,7 @@ def _app(monkeypatch, *, answer=None, yes_no=False) -> tuple[ClickNickApp, list]
     app._data = None
     app._update_status = MagicMock()
     app.monitoring = False
-    app.monitor_task_id = None
-    app._watch_running = False
     app._status_after_id = None
-    app.overlay = None
     app._live_server = None
     app.start_button = MagicMock()
     app.nickname_manager = SimpleNamespace(set_store=MagicMock(), has_database_backend=lambda: True)
@@ -557,7 +554,6 @@ def test_stopped_monitoring_still_notices_click_closing(monkeypatch):
     assert editor.closed
     assert app._click is None
     assert app.root.pending(100) == 0
-    assert not app._watch_running
 
 
 def test_stopped_monitoring_still_notices_a_project_change(monkeypatch):
@@ -570,6 +566,33 @@ def test_stopped_monitoring_still_notices_a_project_change(monkeypatch):
     _assert_loads(app, ClickConnection("111", 222, "Next.ckp"))
     app.detector.detect_child_window.assert_not_called()
     assert app.root.pending(100) == 1
+
+
+def test_the_popup_goes_with_the_window_it_was_shown_over(monkeypatch):
+    overlay = MagicMock()
+    overlay.is_active.return_value = False
+    monkeypatch.setattr("clicknick.app.Overlay", MagicMock(return_value=overlay))
+    app, _prompts = _app(monkeypatch)
+    _open(app, FakeStore(is_database=False))
+    app.refresh_click_instances = MagicMock()
+    session = app._session
+    app.detector.detect_child_window.return_value = SimpleNamespace(
+        window_id=7, window_class="#32770", edit_control="Edit1"
+    )
+    app.detector.field_has_text = lambda _control, _window: False
+    app.detector.update_window_info = lambda *_args: SimpleNamespace(allowed_address_types=[])
+
+    app.button_start_monitoring()
+    assert session.overlay is overlay
+    overlay.show_combobox.assert_called_once_with([])
+
+    app.detector.check_window_exists = lambda _pid: False
+    (tick,) = app.root.take(100)
+    tick()
+
+    overlay.withdraw.assert_called_once_with()
+    assert session.overlay is None and app._session is None
+    assert app.root.pending(100) == 0
 
 
 def test_popup_detection_runs_only_while_monitoring(monkeypatch):
@@ -594,7 +617,7 @@ def test_connecting_starts_the_watch_before_data_loads(monkeypatch):
     app.connect_to_instance("111", "CLICK Programming Software - Main.ckp", "Main.ckp", 222)
     app.connect_to_instance("111", "CLICK Programming Software - Main.ckp", "Main.ckp", 222)
 
-    assert app._watch_running
+    # One watch, the second session's: closing the first ended its own
     assert app.root.pending(100) == 1
 
 

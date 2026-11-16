@@ -59,6 +59,58 @@ def test_a_session_builds_once_its_database_is_read(tmp_path, monkeypatch) -> No
     assert session.saved_program().session is session
 
 
+class _Scheduler:
+    """Records after() callbacks so a test can run them."""
+
+    def __init__(self) -> None:
+        self.scheduled: dict[str, object] = {}
+
+    def after(self, delay, callback):
+        assert delay == 100
+        after_id = f"after#{len(self.scheduled)}-{id(callback)}"
+        self.scheduled[after_id] = callback
+        return after_id
+
+    def after_cancel(self, after_id) -> None:
+        del self.scheduled[after_id]
+
+    def run_pending(self) -> None:
+        pending, self.scheduled = list(self.scheduled.values()), {}
+        for callback in pending:
+            callback()
+
+
+def test_the_watch_runs_until_the_session_closes() -> None:
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    scheduler = _Scheduler()
+    tick = MagicMock()
+
+    session.watch(scheduler, tick)
+    session.watch(scheduler, tick)  # One watch per session
+    assert tick.call_count == 1
+    scheduler.run_pending()
+    assert tick.call_count == 2 and len(scheduler.scheduled) == 1
+
+    overlay = MagicMock()
+    session.overlay = overlay
+    session.close()
+
+    assert scheduler.scheduled == {}
+    overlay.withdraw.assert_called_once_with()
+    assert session.overlay is None
+    session.watch(scheduler, tick)
+    assert tick.call_count == 2
+
+
+def test_a_tick_that_closes_the_session_is_its_last() -> None:
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
+    scheduler = _Scheduler()
+
+    session.watch(scheduler, session.close)
+
+    assert scheduler.scheduled == {}
+
+
 def test_a_cancelled_or_closed_load_no_longer_counts() -> None:
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"))
 

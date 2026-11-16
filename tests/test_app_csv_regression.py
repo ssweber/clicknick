@@ -76,11 +76,9 @@ def _make_app_stub() -> ClickNickApp:
     app._data = None
     app._update_status = MagicMock()
     app._on_data_ready = MagicMock()
-    app.overlay = None
     app._status_after_id = None
     app.root = MagicMock()
     app.monitoring = False
-    app._watch_running = False
     app.nickname_manager = SimpleNamespace(set_store=MagicMock())
     app.selected_instance_var = FakeVar("MyProject.ckp")
     app.refresh_click_instances = MagicMock()

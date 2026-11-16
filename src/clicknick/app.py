@@ -2166,8 +2166,6 @@ class ClickNickApp:
         # the user picks, changes it. The connection watch (_monitor_task) runs
         # whenever a CLICK window is connected, whatever this says.
         self.monitoring = True
-        self.monitor_task_id = None
-        self._watch_running = False
         self._status_after_id = None
 
         # Pending idle refresh of the title and Workspace details (_request_ui_refresh)
@@ -2225,9 +2223,6 @@ class ClickNickApp:
             self._live_server.start()
         except Exception as exc:  # noqa: BLE001 - never block app startup
             print(f"Live server failed to start: {exc}")
-
-        # Initialize overlay early (before UI creation)
-        self.overlay = None
 
         # Set the icon
         try:
@@ -2434,16 +2429,10 @@ class ClickNickApp:
         # Workspace setup's choice was for the closed session's PLC
         self._pending_workspace_config = None
 
-    def _hide_overlay(self) -> None:
-        if self.overlay is not None:
-            self.overlay.withdraw()
-            self.overlay = None
-
     def _handle_window_closed(self):
         """Handle when connected window is no longer available."""
         self._update_status("⚠ Connected ClickPLC window closed", "error")
         self._cancel_monitoring_status()
-        self._hide_overlay()
 
         self._close_session()
         # Database data belongs to the closed project; CSV data stays usable.
@@ -2587,23 +2576,24 @@ class ClickNickApp:
 
     def _handle_popup_window(self, window_id, window_class, edit_control):
         """Handle the detected popup window by showing or updating the nickname popup."""
+        session = self._session
+        if session is None:
+            return
         try:
             # Create overlay if it doesn't exist
-            if not self.overlay:
-                self.overlay = Overlay(
+            if not session.overlay:
+                session.overlay = Overlay(
                     self.root,
                     self.nickname_manager,
                 )
-                self.overlay.set_target_window(window_id, window_class, edit_control)
-            else:
-                # Update target window info
-                self.overlay.set_target_window(window_id, window_class, edit_control)
+            # Update target window info
+            session.overlay.set_target_window(window_id, window_class, edit_control)
 
             # Get allowed types for this window/control
             field_info = self.detector.update_window_info(window_class, edit_control)
 
             # Show the overlay with filtered nicknames
-            self.overlay.show_combobox(field_info.allowed_address_types)
+            session.overlay.show_combobox(field_info.allowed_address_types)
 
         except Exception as e:
             print(f"Error showing overlay: {e}")
@@ -2736,55 +2726,52 @@ class ClickNickApp:
         elif self.monitoring:
             self._update_status_monitoring()
 
-    def _handle_popup_detection(self) -> None:
+    def _handle_popup_detection(self, session: ConnectionSession) -> None:
         """Check for Click.exe child popups and show/hide overlay accordingly."""
-        child_info = self.detector.detect_child_window(self._click.pid)
+        child_info = self.detector.detect_child_window(session.click.pid)
         if child_info:
             if not self.detector.field_has_text(child_info.edit_control, child_info.window_id):
                 self._handle_popup_window(
                     child_info.window_id, child_info.window_class, child_info.edit_control
                 )
-        elif self.overlay:
-            self.overlay.withdraw()
+        elif session.overlay:
+            session.overlay.withdraw()
 
     def _monitor_task(self):
-        """Every 100 ms while a CLICK window is connected: notice it closing or
-        changing project and, while monitoring is on, its instruction popups.
+        """Every 100 ms while a CLICK window is connected (the session's watch):
+        notice it closing or changing project and, while monitoring is on, its
+        instruction popups.
 
-        Stop turns off only the popups; the watch ends when the connection does.
+        Stop turns off only the popups; the watch ends when the session does.
         Popups need loaded data.
         """
-        self.monitor_task_id = None
-        try:
-            click = self._click
-            if click is None:
-                return
-            if not self.detector.check_window_exists(click.pid):
-                self._handle_window_closed()
-                return
+        session = self._session
+        if session is None:
+            return
+        click = session.click
+        if not self.detector.check_window_exists(click.pid):
+            self._handle_window_closed()
+            return
 
-            current_title = self.detector.get_window_title(click.hwnd)
-            new_filename = self._parse_filename_from_title(current_title)
-            if new_filename and new_filename != click.filename:
-                self._handle_project_change(current_title, new_filename)
+        current_title = self.detector.get_window_title(click.hwnd)
+        new_filename = self._parse_filename_from_title(current_title)
+        if new_filename and new_filename != click.filename:
+            self._handle_project_change(current_title, new_filename)
+            # The new project's session watches from here, starting now
+            self._watch_connection()
+            return
 
-            if self.monitoring and self._data is not None:
-                if not (self.overlay and self.overlay.is_active()):
-                    self._handle_popup_detection()
-            else:
-                self._hide_overlay()
-        finally:
-            if self._click is None:
-                self._watch_running = False
-            else:
-                self.monitor_task_id = self.root.after(100, self._monitor_task)
+        if self.monitoring and self._data is not None:
+            if not (session.overlay and session.overlay.is_active()):
+                self._handle_popup_detection(session)
+        else:
+            session.hide_overlay()
 
     def _watch_connection(self) -> None:
-        """Start the connection watch (_monitor_task) unless it is running already."""
-        if self._watch_running or self._click is None:
-            return
-        self._watch_running = True
-        self._monitor_task()
+        """Start the connected session's watch (_monitor_task) unless it runs already."""
+        session = self._session
+        if session is not None:
+            session.watch(self.root, self._monitor_task)
 
     def _on_data_ready(self) -> None:
         """Data for the connected window is loaded: watch the window, and while
@@ -2815,7 +2802,6 @@ class ClickNickApp:
             if has_live_connection:
                 self._on_data_ready()
             else:
-                self._hide_overlay()
                 if self._session is not None:
                     self._close_session()
                     self.selected_instance_var.set("")
@@ -2876,7 +2862,6 @@ class ClickNickApp:
             return
         self._close_session()
 
-        self._hide_overlay()
         if user_picked:
             self.monitoring = True
             self._show_monitoring_button()
@@ -2916,7 +2901,8 @@ class ClickNickApp:
         """Turn off popup detection; the connection watch keeps running."""
         self.monitoring = False
         self._cancel_monitoring_status()
-        self._hide_overlay()
+        if self._session is not None:
+            self._session.hide_overlay()
         self._update_status("⏹ Stopped", "status")
         self._show_monitoring_button()
 
@@ -2942,12 +2928,7 @@ class ClickNickApp:
         if not self._close_data(prompt_save=True):
             return
         self._cancel_monitoring_status()
-        if self.monitor_task_id is not None:
-            self.root.after_cancel(self.monitor_task_id)
-            self.monitor_task_id = None
-        if self.overlay is not None:
-            self.overlay.destroy()
-            self.overlay = None
+        # Ends the connection watch and hides the popup; root.destroy() destroys it
         self._close_session()
         live_server = getattr(self, "_live_server", None)
         if live_server is not None:

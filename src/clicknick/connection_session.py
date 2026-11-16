@@ -91,10 +91,11 @@ class ConnectionSession:
 
     Resources managed (in teardown order):
     1. The database load in flight
-    2. Simulator window (with its console)
-    3. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
-    4. ScrWatcher (file polling)
-    5. AnalysisService (stale graph)
+    2. The connection watch (every 100 ms) and the autocomplete popup
+    3. Simulator window (with its console)
+    4. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
+    5. ScrWatcher (file polling)
+    6. AnalysisService (stale graph)
     """
 
     def __init__(
@@ -120,6 +121,8 @@ class ConnectionSession:
         # The durable workspace builds use, if any (load_workspace_pairing, use_workspace)
         self.pairing: WorkspacePairing = WorkspacePairing()
 
+        # The autocomplete popup over CLICK's instruction dialog, once one showed
+        self.overlay: Any | None = None
         self.analysis: AnalysisService | None = None
         self.scr_watcher: ScrWatcher | None = None
         self.simulator: Any | None = None
@@ -139,6 +142,9 @@ class ConnectionSession:
         self._closed = False
         # The database load in flight (begin_load); None once it is cancelled.
         self._load_token: object | None = None
+        # The connection watch (watch): the scheduler it runs on, and its next tick
+        self._watch_scheduler: tk.Misc | None = None
+        self._watch_id: str | None = None
 
     # -- Database load -----------------------------------------------------
 
@@ -154,6 +160,40 @@ class ConnectionSession:
     def cancel_load(self) -> None:
         """Drop the database load in flight: its result will not be used."""
         self._load_token = None
+
+    # -- Connection watch --------------------------------------------------
+
+    def watch(self, scheduler: tk.Misc, tick: Callable[[], None]) -> None:
+        """Run *tick* now and every 100 ms after, until the session closes.
+
+        A session has one watch: calling this again while it runs does nothing.
+        """
+        if self._closed or self._watch_scheduler is not None:
+            return
+        self._watch_scheduler = scheduler
+        self._watch_tick(tick)
+
+    def _watch_tick(self, tick: Callable[[], None]) -> None:
+        self._watch_id = None
+        try:
+            tick()
+        finally:
+            # A tick that closed the session (CLICK's window closed, or shows
+            # another project) was its last.
+            if not self._closed:
+                assert self._watch_scheduler is not None
+                self._watch_id = self._watch_scheduler.after(100, lambda: self._watch_tick(tick))
+
+    def _stop_watch(self) -> None:
+        if self._watch_id is not None and self._watch_scheduler is not None:
+            self._watch_scheduler.after_cancel(self._watch_id)
+        self._watch_id = None
+
+    def hide_overlay(self) -> None:
+        """Withdraw the autocomplete popup; the next popup is a new one."""
+        if self.overlay is not None:
+            self.overlay.withdraw()
+            self.overlay = None
 
     # -- Workspace pairing -------------------------------------------------
 
@@ -486,10 +526,12 @@ class ConnectionSession:
     # -- Teardown ----------------------------------------------------------
 
     def close(self) -> None:
-        """Drop the database load, close the simulation windows, and stop
-        simulating, watching and analysing."""
+        """Drop the database load, stop watching the window, hide the popup,
+        close the simulation windows, and stop simulating, watching and analysing."""
         self._closed = True
         self._load_token = None
+        self._stop_watch()
+        self.hide_overlay()
         self._close_windows()
         if self.simulation is not None:
             self.simulation.close()

@@ -331,7 +331,6 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
         _on_build_finished=Mock(),
         _show_instances=Mock(),
         _watch_connection=Mock(),
-        _hide_overlay=Mock(),
         nickname_manager=SimpleNamespace(
             has_database_backend=mdb_shared.has_database_backend, set_store=Mock()
         ),
@@ -483,7 +482,6 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
         _on_build_finished=Mock(),
         _show_instances=Mock(),
         _watch_connection=Mock(),
-        _hide_overlay=Mock(),
         _load_instance_database=lambda *_args: events.append("load"),
     )
     view._open_connection_session = lambda click, **kw: (
