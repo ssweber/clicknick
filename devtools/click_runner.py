@@ -2,7 +2,7 @@
 
     uv run python devtools/click_runner.py paste CSV --out DIR [--record]
     uv run python devtools/click_runner.py record --out DIR
-    uv run python devtools/click_runner.py try CASES.json --out DIR [--record]
+    uv run python devtools/click_runner.py try CASES.json --out DIR [--keep] [--record]
     uv run python devtools/click_runner.py import CSV --out DIR [--each-row] [--record]
 
 The runner starts its own CLICK, connects to the one PLC on the LAN (so the new project
@@ -33,6 +33,14 @@ otherwise, which stops the run. Edit > Delete then removes the instruction, and 
 Syntax Check must read as the empty program's did. All cases run in one CLICK, which is
 then disconnected and ended, as ``record`` ends it. result.json holds one entry per case
 under ``cases``, in the order tried, and an abort keeps the entries done before it.
+
+``try --keep`` also saves the project before each Delete, so what CLICK stores for an
+accepted instruction can be read: File > Save As ``DIR/saves/caseNN.ckp`` (NN the case's
+number), then CLICK's Scr*.tmp files and Project.ini are copied into
+``DIR/saves/caseNN/click/``. Once CLICK has ended (after an abort too), each copy is
+decoded into ``DIR/saves/caseNN/csv/``, and the tags each instruction holds are read as
+stored. Each save renames the project, so a Syntax Check is compared with the empty
+program's without the project's name.
 
 ``import`` imports a nickname CSV through CLICK's own File > Import > Nickname (32900) and
 reads what CLICK stored. With ``--each-row`` it then imports each row on its own, in a file
@@ -444,6 +452,13 @@ def _end_rung(text: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _unnamed(check: dict[str, Any]) -> str:
+    """A Syntax Check's text with its project's name (``check_syntax``'s ``project``) put
+    as ``<project>``, so checks of projects saved under other names compare."""
+    name = re.escape(check["project"])
+    return re.sub(rf"(?<!\w){name}(?!\w)", "<project>", check["text"])
+
+
 def _is_main(window: Window) -> bool:
     return (
         window.owner == 0
@@ -589,6 +604,7 @@ class Settings:
     csv: Path | None = None  # paste's ladder CSV, import's nickname CSV
     each_row: bool = False  # import: each row on its own too
     cases: Path | None = None  # try's CASES.json
+    keep: bool = False  # try: save each accepted case's project and decode it
     exe: Path = DEFAULT_EXE
     password: str = DEFAULT_PASSWORD
     user_type: str = DEFAULT_USER_TYPE
@@ -682,6 +698,43 @@ def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
     return _rows_by_address(rows)
 
 
+def _read_stored(scr: Path) -> dict[str, Any]:
+    """The instructions in the Scr*.tmp at *scr* with the tags CLICK stored for them.
+
+    Each rung is a list of its instructions: ``row`` (from 0), ``column``, ``class``,
+    ``type``, every scalar tag (``tags``, by its id in hex; a flag reads ``""``) and the
+    indexed tags that are not empty (``indexed``). ``error`` is laddercodec's framing error,
+    or None. This reads laddercodec's own walk of the file (private: no public reader keeps
+    the tags as stored), so a laddercodec that changes it fails here, not in the run.
+    """
+    from laddercodec.decode_program import _parse_header, _walk_until_framing_error
+
+    data = scr.read_bytes()
+    header = _parse_header(data)
+    records, error = _walk_until_framing_error(data, header)
+    rungs = []
+    for record in records:
+        rung = []
+        for row, column, name, type_code, tags, _, numbers, texts, _ in record.instructions:
+            indexed: dict[str, dict[str, object]] = {}
+            for tag, entries in [*numbers.items(), *texts.items()]:
+                filled = {str(index): value for index, value in entries.items() if value}
+                if filled:
+                    indexed[f"0x{tag:04X}"] = filled
+            rung.append(
+                {
+                    "row": row,
+                    "column": column,
+                    "class": name,
+                    "type": type_code,
+                    "tags": {f"0x{tag:04X}": value for tag, value in tags.items()},
+                    "indexed": indexed,
+                }
+            )
+        rungs.append(rung)
+    return {"program": header.name, "prog_idx": header.prog_idx, "rungs": rungs, "error": error}
+
+
 class Run:
     """One run of the runner against one CLICK it starts."""
 
@@ -694,6 +747,7 @@ class Run:
         decode: Callable[[Path, Path], Any] = _decode,
         read_nicknames: Callable[[Path, list[str]], dict[str, str | None]] = _read_nicknames,
         read_rows: Callable[[Path], dict[str, dict[str, Any]]] = _read_rows,
+        read_stored: Callable[[Path], dict[str, Any]] = _read_stored,
         stderr: Any = None,
     ) -> None:
         self.desktop = desktop
@@ -702,6 +756,7 @@ class Run:
         self.decode = decode
         self.read_nicknames = read_nicknames
         self.read_rows = read_rows
+        self.read_stored = read_stored
         self.cases: list[Case] = []
         self.nickname_addresses: list[str] = []
         # import's CSV: its header and each row with the line it starts on
@@ -742,7 +797,11 @@ class Run:
         }
         if settings.command == "try":
             self.result.update(
-                cases_file=settings.cases, nicknames=None, baseline_syntax_check=None, cases=[]
+                cases_file=settings.cases,
+                keep=settings.keep,
+                nicknames=None,
+                baseline_syntax_check=None,
+                cases=[],
             )
         if settings.command == "import":
             self.result.update(import_mode=IMPORT_MODE, each_row=settings.each_row, imports=[])
@@ -1333,7 +1392,8 @@ class Run:
             self.record("syntax_checked")
 
     def check_syntax(self) -> dict[str, Any]:
-        """Run Syntax Check and wait for its result in Output: its text and counts.
+        """Run Syntax Check and wait for its result in Output: its text, its counts, and the
+        project it names (``project``, the stem of the file the main window's title names).
 
         Output is emptied first (WM_SETTEXT), so a check that reads as the one before is
         still seen to finish; live probe 1 (2026-11-15) waited out a second check whose
@@ -1388,7 +1448,12 @@ class Run:
             timeout=self.s.paste_timeout,
         )
         self.log(f"Syntax Check: {match.group(0).strip()}")
-        return {"text": text, "errors": int(match.group(1)), "warnings": int(match.group(2))}
+        return {
+            "text": text,
+            "errors": int(match.group(1)),
+            "warnings": int(match.group(2)),
+            "project": Path(project).stem,
+        }
 
     # -- try: CLICK's instruction dialogs -------------------------------------
 
@@ -1434,7 +1499,8 @@ class Run:
         ``outcome`` (``accepted``, ``refused`` or ``other``), the box's ``code`` and
         ``message`` (an accepted case has them only if CLICK closed the dialog along with
         a box), ``syntax_check`` once the dialog closed (its text, counts, and the ``lines``
-        naming a code the empty program's check does not) and ``seconds``.
+        naming a code the empty program's check does not), ``kept`` (with ``keep``, an
+        accepted case's save: see ``keep_case``; otherwise None) and ``seconds``.
 
         A closed dialog is ``accepted`` only when its Syntax Check names rung 2 for the
         missing END, as an instruction in rung 1 makes it; otherwise the case is ``other``
@@ -1454,6 +1520,7 @@ class Run:
             "code": None,
             "message": None,
             "syntax_check": None,
+            "kept": None,
             "seconds": None,
         }
         self.result["cases"].append(entry)
@@ -1539,16 +1606,19 @@ class Run:
         ):
             entry["outcome"] = "refused"
         else:
-            self.placed(what, entry, baseline)
+            self.placed(what, label, entry, baseline)
         entry["seconds"] = round(time.monotonic() - began, 3)
 
-    def placed(self, what: str, entry: dict[str, Any], baseline: dict[str, Any]) -> None:
+    def placed(
+        self, what: str, label: str, entry: dict[str, Any], baseline: dict[str, Any]
+    ) -> None:
         """Check that the closed dialog left its instruction in rung 1, then delete it.
 
         A Syntax Check that does not name rung 2 for the missing END makes the case
-        ``other`` and stops the run: CLICK closed the dialog and placed nothing. Edit >
-        Delete then removes the instruction, and the next check must read as the empty
-        program's did.
+        ``other`` and stops the run: CLICK closed the dialog and placed nothing. With
+        ``keep``, the project is then saved (``keep_case``). Edit > Delete then removes the
+        instruction, and the next check must read as the empty program's did, but for the
+        project's name (a save renames it).
         """
         check = self.check_syntax()
         known = {m.group(1) for m in _SYNTAX_CODE.finditer(baseline["text"])}
@@ -1569,16 +1639,46 @@ class Run:
             )
         entry["outcome"] = "accepted"
         self.log(f"{what}: accepted")
+        if self.s.keep:
+            self.keep_case(label, entry)
         # Nothing outside the ladder view shows that Delete landed: the status bar, the title
         # and the main window's controls stay as they were (live probe 3). The check is the proof
         self.command(DELETE)
         self.wait(f"Delete after {what}", [], self.only_main)
         cleared = self.check_syntax()
-        if cleared["text"] != baseline["text"]:
+        if _unnamed(cleared) != _unnamed(baseline):
             raise Aborted(
                 f"after {what}, Delete did not leave the main program empty: its Syntax "
                 f"Check reads {cleared['text']!r}, the empty program's {baseline['text']!r}"
             )
+
+    def keep_case(self, label: str, entry: dict[str, Any]) -> None:
+        """Save the project with the case's instruction in it as ``DIR/saves/<label>.ckp``.
+
+        CLICK's Scr*.tmp files and Project.ini are copied into ``DIR/saves/<label>/click/``
+        as ``paste`` copies them; the copy is decoded once CLICK has ended
+        (``decode_kept``). The case's ``kept``: ``ckp`` and ``click`` (the files copied), then
+        from the decoding ``csv`` (the files written into ``DIR/saves/<label>/csv/``),
+        ``main`` (main.csv's lines after its header), ``legacy`` (the rungs laddercodec
+        lists as held in a legacy encoding or unreadable), ``stored`` (each Scr*.tmp's
+        instructions with their tags as stored: ``_read_stored``) and ``error`` (why the
+        copy could not be read, or None).
+        """
+        assert self.main is not None
+        saves = self.s.out / "saves"
+        saves.mkdir(exist_ok=True)
+        temp = self.desktop.temp_dir(self.main)
+        ckp = (saves / f"{label}.ckp").resolve()
+        self.save_as(ckp, temp, prefix=f"{label}_")
+        entry["kept"] = {
+            "ckp": ckp,
+            "click": self.copy_temp(temp, saves / label / "click"),
+            "csv": None,
+            "main": None,
+            "legacy": None,
+            "stored": None,
+            "error": None,
+        }
 
     def answer_box(
         self,
@@ -1827,58 +1927,66 @@ class Run:
         ckp = (self.s.out / f"{self.s.csv.stem}.ckp").resolve()
         temp = self.desktop.temp_dir(self.main)
         with self.step("save"):
-            unsaved = _scr_state(temp)
-            self.command(SAVE_PROJECT_AS)
-            dialog = self.wait("Save As", [SAVE_AS], lambda f: f.get(SAVE_AS.name))
-            self.record("save_as")
-            controls = self.controls(dialog)
-            boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == 1148}
-            name = _require(
-                next(
-                    (c for c in controls if c.cls == "Edit" and c.id == 1148 and c.parent in boxes),
-                    None,
-                ),
-                "the File name edit (1148)",
-            )
-            button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
-            self.desktop.set_text(name.hwnd, str(ckp))
-            if self.desktop.read_text(name.hwnd) != str(ckp):
-                raise Aborted("the File name edit did not take the path")
-            self.press(dialog, button)
-            last: list[object] = [None]
-
-            def saved(found: dict[str, Window]) -> bool:
-                # Saved once the title names the file, it exists, and CLICK's Scr*.tmp
-                # files differ from before Save As and are the same on two polls in a row
-                main = found.get(MAIN)
-                if main is None or _project_file(main.title) != ckp.name or not ckp.is_file():
-                    return False
-                if not self.only_main(found):
-                    return False
-                state = _scr_state(temp)
-                done = bool(state) and state != unsaved and state == last[0]
-                last[0] = state
-                return done
-
-            self.wait(f"the save to {ckp.name}", [SAVE_AS], saved, timeout=self.s.paste_timeout)
+            self.save_as(ckp, temp)
             stale = sorted(set(self._scr_before) & set(_scr_state(temp)))
             if stale:
                 raise Aborted(
                     f"{', '.join(name for name, _, _ in stale)} in CLICK's temp folder "
                     "predates the paste and the save left it as it was (from another run?)"
                 )
-            self.log(f"saved {ckp}")
             self.result["files"]["ckp"] = ckp
-            self.record("saved")
         with self.step("copy"):
-            self.copy_temp(temp)
+            self.result["files"]["click"] = self.copy_temp(temp, self.s.out / "click")
         return ckp
 
-    def copy_temp(self, temp: Path) -> None:
+    def save_as(self, ckp: Path, temp: Path, *, prefix: str = "") -> None:
+        """File > Save As to *ckp*, a file that does not exist, and wait until CLICK saved.
+
+        CLICK has saved once its title names the file, the file exists, and its Scr*.tmp
+        files in *temp* differ from before Save As and are the same on two polls in a row.
+        The dumps of ``--record`` are labelled *prefix* then ``save_as`` and ``saved``.
+        """
+        unsaved = _scr_state(temp)
+        self.command(SAVE_PROJECT_AS)
+        dialog = self.wait("Save As", [SAVE_AS], lambda f: f.get(SAVE_AS.name))
+        self.record(f"{prefix}save_as")
+        controls = self.controls(dialog)
+        boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == 1148}
+        name = _require(
+            next(
+                (c for c in controls if c.cls == "Edit" and c.id == 1148 and c.parent in boxes),
+                None,
+            ),
+            "the File name edit (1148)",
+        )
+        button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
+        self.desktop.set_text(name.hwnd, str(ckp))
+        if self.desktop.read_text(name.hwnd) != str(ckp):
+            raise Aborted("the File name edit did not take the path")
+        self.press(dialog, button)
+        last: list[object] = [None]
+
+        def saved(found: dict[str, Window]) -> bool:
+            main = found.get(MAIN)
+            if main is None or _project_file(main.title) != ckp.name or not ckp.is_file():
+                return False
+            if not self.only_main(found):
+                return False
+            state = _scr_state(temp)
+            done = bool(state) and state != unsaved and state == last[0]
+            last[0] = state
+            return done
+
+        self.wait(f"the save to {ckp.name}", [SAVE_AS], saved, timeout=self.s.paste_timeout)
+        self.log(f"saved {ckp}")
+        self.record(f"{prefix}saved")
+
+    def copy_temp(self, temp: Path, click_dir: Path) -> list[Path]:
+        """Copy CLICK's Scr*.tmp files and Project.ini from *temp* into *click_dir*, a new
+        folder; the files copied. No Scr*.tmp stops the run."""
         from clicknick.utils.click_temp import scr_files
 
-        click_dir = self.s.out / "click"
-        click_dir.mkdir()
+        click_dir.mkdir(parents=True)
         copied: list[Path] = []
         for path in [*scr_files(temp), temp / "Project.ini"]:
             if path.is_file():
@@ -1888,7 +1996,7 @@ class Run:
         if not any(p.name != "Project.ini" for p in copied):
             raise Aborted(f"no Scr*.tmp in {temp}")
         self.log(f"copied {', '.join(p.name for p in copied)} into {click_dir}")
-        self.result["files"]["click"] = copied
+        return copied
 
     def disconnect(self, *, label: str | None = "disconnected") -> None:
         self.command(DISCONNECT)
@@ -1934,6 +2042,38 @@ class Run:
             self.result["files"]["csv"] = files
             self.log(f"decoded {', '.join(p.name for p in files)}")
             self.check_landed(saved.main_csv)
+
+    def decode_kept(self) -> None:
+        """Decode each kept case's copy of CLICK's files and read the tags stored in it.
+
+        Every copy is read, after an abort too; one that cannot be read keeps why in its
+        ``error``, and any such copy fails the step once all are read.
+        """
+        from clicknick.utils.click_temp import scr_files
+
+        with self.step("decode"):
+            failed = []
+            for entry in self.result["cases"]:
+                kept = entry["kept"]
+                if kept is None:
+                    continue
+                folder = Path(kept["ckp"]).with_suffix("")
+                click = folder / "click"
+                try:
+                    saved = self.decode(click, folder / "csv")
+                    kept["csv"] = [saved.main_csv, *saved.subroutine_csvs]
+                    lines = saved.main_csv.read_text(encoding="utf-8").splitlines()
+                    kept["main"] = lines[1:]
+                    kept["legacy"] = [asdict(e) for e in saved.legacy_encodings]
+                    kept["stored"] = {p.name: self.read_stored(p) for p in scr_files(click)}
+                except Exception as exc:
+                    kept["error"] = f"{type(exc).__name__}: {exc}"
+                    failed.append(folder.name)
+                    self.log(f"{folder.name}: could not be read: {kept['error']}")
+                    continue
+                self.log(f"{folder.name}: main.csv {kept['main']!r}")
+            if failed:
+                raise RuntimeError(f"the copies of {', '.join(failed)} could not be read")
 
     def check_landed(self, main_csv: Path) -> None:
         """Abort unless the saved main program holds the rungs pasted.
@@ -2065,8 +2205,9 @@ class Run:
                 if self.s.command == "paste":
                     self.close()
                 else:
-                    # The new project was never saved: end CLICK rather than meet a
-                    # save prompt nobody has recorded yet (try leaves it changed, too)
+                    # The new project was never saved, or (try --keep) changed by a
+                    # Delete since: end CLICK rather than meet a save prompt nobody has
+                    # recorded yet (try leaves it changed, too)
                     with self.step("close"):
                         self.end_click()
                     if not self.result["click"]["closed"]:
@@ -2096,26 +2237,30 @@ class Run:
             except Exception as exc:
                 self.result.update(status="aborted", reason=f"decoding failed: {exc}")
                 self.log(f"ABORT: decoding failed: {exc}")
-        if self.s.command == "import" and self.result["click"]["closed"] is True:
-            self.read_after_click()
+        if self.result["click"]["closed"] is True:
+            if self.s.command == "import":
+                self.read_after_click(self.read_imports, "reading the copies of SC_.mdb")
+            elif self.s.command == "try" and self.s.keep:
+                self.read_after_click(self.decode_kept, "decoding the kept cases")
         if self.result["status"] is None:
             self.result["status"] = "ok"
         return self.finish()
 
-    def read_after_click(self) -> None:
-        """Read the copies of SC_.mdb once CLICK has ended, after an abort too.
+    def read_after_click(self, read: Callable[[], None], what: str) -> None:
+        """*read* the copies made while CLICK ran, once it has ended, after an abort too.
 
-        The imports done before an abort keep their rows; the step the abort names stays
-        the result's step. A read that fails stops a run that had not stopped.
+        The imports or cases done before an abort keep what was read of them; the step the
+        abort names stays the result's step. A read that fails (*what* says which) stops a
+        run that had not stopped.
         """
         stopped_at = self.result["step"] if self.result["status"] is not None else None
         try:
-            self.read_imports()
+            read()
             return
         except KeyboardInterrupt:
-            reason = "interrupted (Ctrl+C) while reading the copies of SC_.mdb"
+            reason = f"interrupted (Ctrl+C) while {what}"
         except Exception as exc:
-            reason = f"reading the copies of SC_.mdb failed: {type(exc).__name__}: {exc}"
+            reason = f"{what} failed: {type(exc).__name__}: {exc}"
         finally:
             if stopped_at is not None:
                 self.result["step"] = stopped_at
@@ -2247,6 +2392,11 @@ def _parser() -> argparse.ArgumentParser:
         "try", parents=[common], help="ask CLICK's instruction dialogs whether they accept cases"
     )
     tries.add_argument("cases", type=Path, help="the cases (JSON; see load_cases)")
+    tries.add_argument(
+        "--keep",
+        action="store_true",
+        help="save each accepted case's project into DIR/saves/ and decode it once CLICK ends",
+    )
     tries.add_argument("--record", action="store_true", help="also dump every window at each step")
     imports = commands.add_parser(
         "import",
@@ -2274,6 +2424,7 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         csv=args.csv.resolve() if args.command in ("paste", "import") else None,
         each_row=getattr(args, "each_row", False),
         cases=args.cases.resolve() if args.command == "try" else None,
+        keep=getattr(args, "keep", False),
         exe=args.click_exe,
         password=args.password or env.get("CLICK_RUNNER_PASSWORD") or DEFAULT_PASSWORD,
         user_type=args.user_type or env.get("CLICK_RUNNER_USER_TYPE") or DEFAULT_USER_TYPE,

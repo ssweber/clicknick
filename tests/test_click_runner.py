@@ -450,7 +450,10 @@ class FakeClick(cd.Desktop):
         def save() -> None:
             path = Path(name.value)
             path.write_bytes(b"ckp")
-            (self.temp_dir(main.hwnd) / "Scr1.tmp").write_bytes(self.pasted or b"empty")
+            # The main program: what was pasted, or the instruction try placed in rung 1
+            placed = f"placed {self.placed} ({path.name})".encode() if self.placed else None
+            scr = self.pasted or placed or b"empty"
+            (self.temp_dir(main.hwnd) / "Scr1.tmp").write_bytes(scr)
             main.title = f"CLICK Programming Software (Version4.00) - {path.name} - [Main Program]"
             self._drop(dialog)
             main.enabled = True
@@ -718,14 +721,17 @@ class FakeClick(cd.Desktop):
                 self._later("syntax_check", checked)
 
             def checked() -> None:
-                # As live probe 2 read it: an instruction on rung 1 moves the END error on
+                # As live probe 2 read it: an instruction on rung 1 moves the END error on.
+                # The total names the project as the title does (a save renames it)
                 rung = 1 if self.placed is None else 2
                 extra = self.syntax_lines.get(self.placed or "")
+                assert self.main is not None
+                project = Path(cr._project_file(self.main.title) or "").stem
                 output.value += (
                     f"Main Program : Rung {rung} : error C0201: No unconditional END "
                     "instruction in the Main Program.\r\n"
                     + (f"{extra}\r\n" if extra else "")
-                    + "\r\nNewProject4 - 1 error(s), 0 warning(s)\r\n"
+                    + f"\r\n{project} - 1 error(s), 0 warning(s)\r\n"
                 )
                 self.checked_tick = self.tick
 
@@ -2002,6 +2008,7 @@ def run_try(
     *args: str,
     timeout: float = 5,
     nicknames: Nicknames | None = None,
+    **run_args: object,
 ) -> tuple[int, dict]:
     file = tmp_path / "cases.json"
     file.write_text(json.dumps(cases), encoding="utf-8")
@@ -2014,6 +2021,7 @@ def run_try(
         prepare=Prepare(),
         read_nicknames=nicknames or Nicknames(),
         stderr=io.StringIO(),
+        **run_args,
     )
     result_file = out / "result.json"
     return code, json.loads(result_file.read_text(encoding="utf-8")) if result_file.exists() else {}
@@ -2120,6 +2128,99 @@ def test_try_record_dumps_each_case(tmp_path, setup):
     assert result["nicknames"] is None and "nicknames" not in result["timings"]
     labels = {p.name.split("-")[1] for p in (tmp_path / "out" / "record").glob("*.json")}
     assert {"baseline", "case01_filled", "case01_answer", "case02_answer"} <= labels
+
+
+class Stored:
+    """read_stored for the fake's Scr*.tmp, which holds text; raises for the files named."""
+
+    def __init__(self, *, fails: tuple[str, ...] = ()) -> None:
+        self.read: list[Path] = []
+        self.fails = fails
+
+    def __call__(self, scr: Path) -> dict[str, object]:
+        self.read.append(scr)
+        if scr.parent.parent.name in self.fails:
+            raise ValueError("Not an SC-SCR file")
+        return {"text": scr.read_text(encoding="utf-8")}
+
+
+def test_try_keep_saves_each_accepted_case(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    stored = Stored()
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES}, "--keep", read_stored=stored)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["keep"] is True
+    saves = tmp_path / "out" / "saves"
+    kept = {c["row"] + c["case"]: c["kept"] for c in result["cases"]}
+    accepted = [c for c in result["cases"] if c["outcome"] == "accepted"]
+    assert [Path(c["kept"]["ckp"]).name for c in accepted] == [
+        "case01.ckp",
+        "case03.ckp",
+        "case04.ckp",
+    ]
+    assert all(c["kept"] is None for c in result["cases"] if c["outcome"] != "accepted")
+    assert len(kept) == len(TRY_CASES)
+    # Each save is the project with that case's instruction in rung 1, copied as it was then
+    for case, title in zip(accepted, ["Math", "Math", "Copy"], strict=True):
+        folder = Path(case["kept"]["ckp"]).with_suffix("")
+        assert folder.parent == saves and Path(case["kept"]["ckp"]).read_bytes() == b"ckp"
+        assert sorted(p.name for p in (folder / "click").iterdir()) == ["Project.ini", "Scr1.tmp"]
+        text = f"placed {title} ({folder.name}.ckp)"
+        assert case["kept"]["stored"] == {"Scr1.tmp": {"text": text}}
+        assert case["kept"]["csv"] == [str(folder / "csv" / "main.csv")]
+        assert case["kept"]["main"] and "X001" in case["kept"]["main"][0]
+        assert case["kept"]["legacy"] == [] and case["kept"]["error"] is None
+    # Saved before each Delete; each later check names the project as last saved
+    first = ["Syntax Check", "Math...", "Syntax Check", "Save Project As", "Delete"]
+    assert fake.commands[:5] == first
+    assert fake.commands.count("Save Project As") == 3
+    assert accepted[1]["syntax_check"]["project"] == "case01"
+    assert result["baseline_syntax_check"]["project"] == "NewProject4"
+    # Decoded once CLICK had ended, which the runner ended rather than closed
+    assert fake.terminated and not fake.exited_cleanly
+    assert list(result["timings"])[-4:] == ["try", "disconnect", "close", "decode"]
+    assert [p.parent.parent.name for p in stored.read] == ["case01", "case03", "case04"]
+
+
+def test_try_without_keep_saves_nothing(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:1]}, read_stored=Stored())
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["keep"] is False and result["cases"][0]["kept"] is None
+    assert not fake.saved and not (tmp_path / "out" / "saves").exists()
+    assert "decode" not in result["timings"]
+
+
+def test_a_kept_case_that_cannot_be_read_fails_once_all_are_read(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_try(
+        fake, tmp_path, exe, {"cases": TRY_CASES}, "--keep", read_stored=Stored(fails=("case03",))
+    )
+    assert code == cr.EXIT_ABORTED
+    assert result["status"] == "aborted" and result["step"] == "decode"
+    assert result["reason"] == (
+        "decoding the kept cases failed: RuntimeError: the copies of case03 could not be read"
+    )
+    by_name = {Path(c["kept"]["ckp"]).stem: c["kept"] for c in result["cases"] if c["kept"]}
+    assert by_name["case03"]["error"] == "ValueError: Not an SC-SCR file"
+    assert by_name["case04"]["error"] is None and by_name["case04"]["stored"]
+
+
+def test_the_cases_kept_before_an_abort_are_decoded(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, delete_works=False)
+    out = tmp_path / "out"
+    code, result = run_try(
+        fake, tmp_path, exe, {"cases": TRY_CASES}, "--keep", read_stored=Stored()
+    )
+    assert_aborted(fake, out, code, result, "Delete did not leave the main program empty")
+    assert result["step"] == "try"
+    (case,) = result["cases"]
+    assert case["kept"]["stored"] == {"Scr1.tmp": {"text": "placed Math (case01.ckp)"}}
+    assert case["kept"]["error"] is None
 
 
 def test_a_box_that_closes_the_dialog_is_an_acceptance(tmp_path, setup):
