@@ -1,13 +1,61 @@
-# Address types each edit control accepts
+from dataclasses import dataclass
+
+# Address types each edit control accepts. For CLICK v4's Receive, Send, Out, Set and Reset they
+# are the banks the Address Picker leaves open when a field's "..." button opens it ("Address
+# Picker : Pickup Mode" greys the others), as live probes found them (2026-11-16); the other
+# lists were not probed
 BITS = ["X", "Y", "C", "T", "CT", "SC"]
+COILS = ["Y", "C", "SC"]  # Out, Set and Reset
 COMPARE = ["DS", "TD", "SD", "DD", "DH", "CTD", "DF"]
 MATH = ["DS", "TD", "SD", "DD", "CTD", "DF"]
 SEARCH = ["DS", "TD", "SD", "DD", "CTD", "DF", "DH", "XD", "YD", "TXT"]
 ANY = [*BITS, "DS", "TD", "SD", "DD", "CTD", "DF", "DH", "XD", "YD", "TXT"]
-RECEIVE_LOCAL = [*BITS, "DS", "TD", "SD"]
-SEND_LOCAL = ["Y", "C", "DS", "TD", "SD", "DD", "CTD", "DF", "DH", "YD", "TXT"]
 STATUS_BIT = ["C"]
 EXCEPTION_CODE = ["DS", "DD"]
+
+
+@dataclass(frozen=True)
+class ByChoice:
+    """Address types that follow the item a drop-down list of the same dialog shows.
+
+    *control* names the list as the overlay names controls (``ComboBox2``); *types* maps each
+    item to the address types the field takes with it. A list that cannot be read, or shows
+    another item, gives every item's types (``every``).
+    """
+
+    control: str
+    types: dict[str, list[str]]
+
+    @property
+    def every(self) -> list[str]:
+        """The address types of all items, each once, in the order the items give them."""
+        return list(dict.fromkeys(t for types in self.types.values() for t in types))
+
+    def shown(self, item: str) -> list[str]:
+        """The address types the field takes while the list shows *item*."""
+        return self.types.get(item, self.every)
+
+
+# Receive's Starting Master Address, by Modbus Function Code (v4 lists it as ComboBox2)
+RECEIVE_LOCAL = ByChoice(
+    "ComboBox2",
+    {
+        "01 - Read Coil Status": ["Y", "C"],
+        "02 - Read Input Status": ["Y", "C"],
+        "03 - Read Holding Registers": ["DS", "DD", "DH", "DF", "YD", "TXT"],
+        "04 - Read Input Registers": ["DS", "DD", "DH", "DF", "YD", "TXT"],
+    },
+)
+# Send's Starting Master Address, by Modbus Function Code (v4 lists it as ComboBox2)
+SEND_LOCAL = ByChoice(
+    "ComboBox2",
+    {
+        "05 - Write Single Coil": BITS,
+        "06 - Write Single Register": ["DS", "DH", "XD", "YD", "TD", "SD", "TXT"],
+        "15 - Write Multiple Coils": BITS,
+        "16 - Write Multiple Registers": ["DS", "DD", "DH", "DF", "TD", "CTD", "SD", "TXT"],
+    },
+)
 
 DIALOG_CLASS = "#32770"
 
@@ -33,16 +81,18 @@ def window_key(window_class: str, title: str) -> str:
 
 
 # Each CLICK window (see window_key) -> its edit controls (AHK ClassNN without the leading T)
-# -> the address types they accept
+# -> the address types they accept, or a ByChoice for types that follow a list of the dialog.
+# A v4 dialog's edits are numbered over every Edit window in it, hidden ones and those inside
+# other controls included: Receive's and Send's IP address control holds Edit2 to Edit5
 CLICK_PLC_WINDOW_MAPPING = {
     # CLICK v2/v3 instruction dialogs (Delphi forms)
     "frmContactNO": {"Edit1": BITS},  # "Contact Normally Open"
     "frmContactNC": {"Edit1": BITS},  # "Contact Normally Closed"
     "frmEdgeContact": {"Edit1": BITS},  # "Edge Contact"
     "frmContactCompare": {"Edit1": COMPARE, "Edit2": COMPARE},  # "Compare (A with B)"
-    "frmOut": {"Edit2": BITS, "Edit1": BITS},  # "Out"
-    "frmSet": {"Edit2": BITS, "Edit1": BITS},  # "Set"
-    "frmCoilReset": {"Edit2": BITS, "Edit1": BITS},  # "Reset"
+    "frmOut": {"Edit2": COILS, "Edit1": COILS},  # "Out"
+    "frmSet": {"Edit2": COILS, "Edit1": COILS},  # "Set"
+    "frmCoilReset": {"Edit2": COILS, "Edit1": COILS},  # "Reset"
     "frmTimer": {  # "Timer"
         "Edit3": ["T"],  # Timer BIT address
         "Edit2": ["DS"],  # Timer value (DS)
@@ -56,14 +106,14 @@ CLICK_PLC_WINDOW_MAPPING = {
     "frmCopy": {"Edit1": ANY, "Edit2": ANY, "Edit3": ANY, "Edit4": ANY},  # "Copy instruction"
     "frmSearch": {"Edit1": SEARCH},  # "Search instruction"
     "frmRD": {  # Receive
-        "Edit20": RECEIVE_LOCAL,  # Local
+        "Edit20": RECEIVE_LOCAL.every,  # Local; every code's banks, as no v2/v3 was probed
         "Edit6": STATUS_BIT,  # Receiving
         "Edit7": STATUS_BIT,  # Success
         "Edit5": STATUS_BIT,  # Error
         "Edit4": EXCEPTION_CODE,  # Exception Code
     },
     "frmSD": {  # Send
-        "Edit16": SEND_LOCAL,  # Local
+        "Edit16": SEND_LOCAL.every,  # Local; every code's banks, as no v2/v3 was probed
         "Edit4": STATUS_BIT,  # Sending
         "Edit3": STATUS_BIT,  # Success
         "Edit2": STATUS_BIT,  # Error
@@ -74,9 +124,18 @@ CLICK_PLC_WINDOW_MAPPING = {
     "Contact Normally Closed": {"Edit1": BITS},
     "Edge Contact": {"Edit1": BITS},
     "Compare (A with B)": {"Edit1": COMPARE, "Edit2": COMPARE},
-    "Out": {"Edit1": BITS, "Edit2": BITS},
-    "Set": {"Edit1": BITS, "Edit2": BITS},
-    "Reset": {"Edit1": BITS, "Edit2": BITS},
+    "Out": {
+        "Edit1": COILS,  # Bit Memory Address1
+        "Edit2": COILS,  # Bit Memory Address2 (Out/Toggle only)
+        # Delay Setting, open for Debounce, Flasher and Timed (Timed: Edit3 and Edit4 only);
+        # the labels change with the output type, the banks do not
+        "Edit3": ["DS"],  # On Time (or a constant)
+        "Edit4": ["TD"],  # On Timer Number
+        "Edit5": ["DS"],  # Off Time (or a constant)
+        "Edit6": ["TD"],  # Off Timer Number
+    },
+    "Set": {"Edit1": COILS, "Edit2": COILS},
+    "Reset": {"Edit1": COILS, "Edit2": COILS},
     "Timer": {"Edit1": ["T"], "Edit2": ["DS"]},  # Timer Number, Set Point
     "Counter": {"Edit1": ["CT"], "Edit2": ["DS", "DD"]},  # Counter Number, Set Point
     "Math": {"Edit1": MATH},  # Result; the formula is a RichEdit
@@ -84,18 +143,18 @@ CLICK_PLC_WINDOW_MAPPING = {
     "Copy": {"Edit1": ANY, "Edit2": ANY, "Edit3": ANY, "Edit4": ANY},  # Source and Destination
     "Search": {"Edit1": SEARCH},
     "Receive": {
-        "Edit5": RECEIVE_LOCAL,  # Starting Master Address
-        "Edit11": STATUS_BIT,  # Receiving
-        "Edit12": STATUS_BIT,  # Success
-        "Edit13": STATUS_BIT,  # Error
-        "Edit14": EXCEPTION_CODE,  # Exception Response
+        "Edit9": RECEIVE_LOCAL,  # Starting Master Address
+        "Edit15": STATUS_BIT,  # Receiving
+        "Edit16": STATUS_BIT,  # Success
+        "Edit17": STATUS_BIT,  # Error
+        "Edit18": EXCEPTION_CODE,  # Exception Response
     },
     "Send": {
-        "Edit5": SEND_LOCAL,  # Starting Master Address
-        "Edit11": STATUS_BIT,  # Sending
-        "Edit12": STATUS_BIT,  # Success
-        "Edit13": STATUS_BIT,  # Error
-        "Edit14": EXCEPTION_CODE,  # Exception Response
+        "Edit9": SEND_LOCAL,  # Starting Master Address
+        "Edit15": STATUS_BIT,  # Sending
+        "Edit16": STATUS_BIT,  # Success
+        "Edit17": STATUS_BIT,  # Error
+        "Edit18": EXCEPTION_CODE,  # Exception Response
     },
     # Every version
     "Find": {"Edit1": ANY, "Edit2": ANY, "Edit3": ANY},  # Find / Replace (#32770)

@@ -541,7 +541,7 @@ class ConnectionController:
             session.overlay.set_target_window(window_id, window_class, edit_control)
 
             # Get allowed types for this window/control
-            field_info = app.detector.update_window_info(window_class, edit_control)
+            field_info = app.detector.update_window_info(window_class, edit_control, window_id)
 
             # Show the overlay with filtered nicknames
             session.overlay.show_combobox(field_info.allowed_address_types)

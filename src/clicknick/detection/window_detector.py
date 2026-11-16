@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 
 from ..utils.win32_utils import WIN32
-from .window_mapping import DIALOG_CLASS, unprefixed, window_key
+from .window_mapping import DIALOG_CLASS, ByChoice, unprefixed, window_key
 
 
 @dataclass
@@ -38,8 +38,6 @@ class ClickWindowDetector:
 
     def __init__(self, window_mapping: dict, clicknick):
         self.window_mapping = window_mapping
-        self.current_window: str | None = None
-        self.current_field: str | None = None
 
     def check_window_exists(self, window_pid: str) -> bool:
         """
@@ -182,14 +180,6 @@ class ClickWindowDetector:
             print(f"Error getting window handle: {e}")
             return None
 
-    def update(self) -> WindowFieldInfo:
-        """
-        Update window and field detection.
-        Returns: WindowFieldInfo with validity and allowed address types
-        """
-        # Get the current window and field info
-        return self.update_window_info(self.current_window, self.current_field)
-
     def get_window_title(self, window_id: int) -> str | None:
         """Get current title of a specific window."""
         try:
@@ -197,22 +187,25 @@ class ClickWindowDetector:
         except Exception:
             return None
 
-    def update_window_info(self, window_class: str, field: str) -> WindowFieldInfo:
+    def update_window_info(self, window_class: str, field: str, window_id: int) -> WindowFieldInfo:
         """
         Update window and field detection with provided window and field.
+
+        A field whose types follow a list of the dialog (``ByChoice``) reads that list from
+        the window *window_id*.
         Returns: WindowFieldInfo with validity and allowed address types
         """
-        self.current_window = window_class
-        self.current_field = field
-
         # Early return if no valid window
-        if not self.current_window or self.current_window not in self.window_mapping:
+        if not window_class or window_class not in self.window_mapping:
             return WindowFieldInfo(False, [])
 
         # Return result
-        fields = self.window_mapping.get(self.current_window, {})
-        if not self.current_field or unprefixed(self.current_field) not in fields:
+        fields = self.window_mapping.get(window_class, {})
+        if not field or unprefixed(field) not in fields:
             return WindowFieldInfo(False, [])
 
         # Get allowed address types
-        return WindowFieldInfo(True, fields[unprefixed(self.current_field)])
+        types = fields[unprefixed(field)]
+        if isinstance(types, ByChoice):
+            types = types.shown(WIN32.get_control_text(window_id, types.control))
+        return WindowFieldInfo(True, types)
