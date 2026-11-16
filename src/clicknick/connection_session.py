@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .ladder.program import LegacyEncoding
     from .services.analysis_service import AnalysisService
     from .services.scr_watcher import ScrWatcher
+    from .services.workspace_mirror import ProjectWorkspaceConfig, WorkspacePairing
     from .simulation_session import SimulationSession
 
 # A temporary workspace lives in CLICK's folder for the window, so a session opening
@@ -101,7 +102,6 @@ class ConnectionSession:
         click: ClickConnection,
         *,
         has_database: bool = False,
-        workspace_dir: Path | None = None,
         on_sync_status_changed: Callable[[int], None] | None = None,
         on_build_finished: Callable[[], None] | None = None,
     ) -> None:
@@ -115,7 +115,10 @@ class ConnectionSession:
         # nothing that needs a build (the simulation, Review Changes' comparison)
         # starts.
         self.has_database = has_database
-        self.workspace_dir = workspace_dir.resolve() if workspace_dir is not None else None
+        from .services.workspace_mirror import WorkspacePairing
+
+        # The durable workspace builds use, if any (load_workspace_pairing, use_workspace)
+        self.pairing: WorkspacePairing = WorkspacePairing()
 
         self.analysis: AnalysisService | None = None
         self.scr_watcher: ScrWatcher | None = None
@@ -152,6 +155,29 @@ class ConnectionSession:
         """Drop the database load in flight: its result will not be used."""
         self._load_token = None
 
+    # -- Workspace pairing -------------------------------------------------
+
+    @property
+    def workspace_dir(self) -> Path | None:
+        """The paired durable workspace, which builds write; None for a temporary one."""
+        config = self.pairing.config
+        return config.workspace_path.resolve() if config is not None else None
+
+    def plc_name(self) -> str | None:
+        """CLICK's PLC name for the project, from Project.ini (None without one)."""
+        from pyclickplc.project import read_plc_name
+
+        try:
+            return read_plc_name(self.project_ini)
+        except (OSError, ValueError):
+            return None
+
+    def load_workspace_pairing(self) -> None:
+        """Pair the user's preferred workspace for the project's PLC name."""
+        from .services.workspace_mirror import pair_workspace
+
+        self.pairing = pair_workspace(self.plc_name())
+
     @property
     def synced_pending(self) -> int:
         return self.scr_watcher.synced_pending if self.scr_watcher else 0
@@ -173,14 +199,16 @@ class ConnectionSession:
 
         analysis = self.analysis
         assert analysis is not None
-        persistent_workspace = self.workspace_dir is not None
-        persist = self.workspace_dir or (request.scr_folder / "pyrung_project")
+        # Read once: Workspace setup may pair another one on the Tk thread meanwhile.
+        workspace_dir = self.workspace_dir
+        persistent_workspace = workspace_dir is not None
+        persist = workspace_dir or (request.scr_folder / "pyrung_project")
 
         error: str | None = None
         try:
             from .services.program_check_selection import ProgramCheckSelection
 
-            selection = ProgramCheckSelection(self.workspace_dir)
+            selection = ProgramCheckSelection(workspace_dir)
             analysis.check_selection = selection
             with _BUILD_GATE:
                 # Closed while waiting: the session that replaced this one owns the folder.
@@ -266,13 +294,7 @@ class ConnectionSession:
 
     def _simulation_key(self) -> str:
         """The PLC name simulator settings are remembered under, else the project's name."""
-        from pyclickplc.project import read_plc_name
-
-        try:
-            plc_name = read_plc_name(self.project_ini)
-        except (OSError, ValueError):
-            plc_name = None
-        return plc_name or self.click.project_name
+        return self.plc_name() or self.click.project_name
 
     def ensure_simulation(
         self, scheduler: tk.Misc, *, on_retry_analysis: Callable[[], None] | None = None
@@ -303,13 +325,19 @@ class ConnectionSession:
                 pass
             self.simulator = None
 
-    def use_workspace(self, workspace_dir: Path) -> None:
-        """Move future analysis builds (and simulator settings) to a durable workspace.
+    def use_workspace(self, config: ProjectWorkspaceConfig) -> None:
+        """Pair the durable workspace *config*, for future analysis builds (and
+        simulator settings).
 
         A running simulation relaunches from the new workspace once its
         analysis rebuild finishes.
         """
-        self.workspace_dir = workspace_dir.resolve()
+        from .services.workspace_mirror import WorkspacePairing
+
+        known = [
+            match for match in self.pairing.matches if match.sidecar_path != config.sidecar_path
+        ]
+        self.pairing = WorkspacePairing(config, [*known, config])
         if self.analysis is not None:
             self.analysis.invalidate()
         if self.simulation is not None:

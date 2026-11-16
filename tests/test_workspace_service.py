@@ -16,6 +16,7 @@ from clicknick.live.rung_commands import _get_project_dir
 from clicknick.services.analysis_service import AnalysisStatus
 from clicknick.services.project_workspace import record_generated_plc_source
 from clicknick.services.rung_diff import WORKSPACE_SOURCE
+from clicknick.services.workspace_mirror import ProjectWorkspaceConfig, WorkspacePairing
 from clicknick.services.workspace_service import (
     WorkspaceState,
     get_workspace_status,
@@ -102,8 +103,7 @@ def test_generated_workspace_opens_after_analysis_failure(tmp_path: Path) -> Non
     app = ClickNickApp.__new__(ClickNickApp)
 
     app._request_ui_refresh = MagicMock()
-    app._session = SimpleNamespace(analysis=analysis)
-    app._workspace_config = None
+    app._session = SimpleNamespace(analysis=analysis, pairing=WorkspacePairing())
     app._open_folder = MagicMock()
 
     assert app._open_workspace_menu_options() == ("Open Temporary Workspace", "normal")
@@ -163,9 +163,8 @@ def test_connection_session_builds_into_configured_workspace(tmp_path, monkeypat
     scr_folder = tmp_path / "click-temp"
     workspace = tmp_path / "durable" / "Example Workspace"
     db_path = scr_folder / "SC_.mdb"
-    session = ConnectionSession(
-        ClickConnection("1", 2, "Example.ckp"), has_database=True, workspace_dir=workspace
-    )
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), has_database=True)
+    session.pairing = WorkspacePairing(ProjectWorkspaceConfig("Example", workspace))
     session.analysis = MagicMock()
 
     class _InlineThread:
@@ -447,7 +446,7 @@ def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> 
     session.start_analysis(root)
     session.reload_workspace_from_click(root)
     session.simulation = None
-    session.use_workspace(tmp_path / "Line1 Workspace")
+    session.use_workspace(ProjectWorkspaceConfig("Line1", tmp_path / "Line1 Workspace"))
     session.start_analysis(root)
     _settle(session.scr_watcher)
     assert session.saved_program().save_count == 1
@@ -704,9 +703,16 @@ def test_switching_workspace_moves_and_restarts_the_simulation(tmp_path, monkeyp
     session.simulation = MagicMock()
     monkeypatch.setattr(session, "_simulation_key", lambda: "Line1")
     workspace = tmp_path / "Example Workspace"
+    known = ProjectWorkspaceConfig("Line1", tmp_path / "Other Workspace")
+    session.pairing = WorkspacePairing(None, [known], "Multiple workspaces are known")
 
-    session.use_workspace(workspace)
+    session.use_workspace(ProjectWorkspaceConfig("Line1", workspace))
 
+    assert session.workspace_dir == workspace.resolve()
+    assert session.pairing == WorkspacePairing(
+        ProjectWorkspaceConfig("Line1", workspace),
+        [known, ProjectWorkspaceConfig("Line1", workspace)],
+    )
     session.analysis.invalidate.assert_called_once_with()
     session.simulation.set_state_location.assert_called_once_with("Line1", workspace.resolve())
     session.simulation.relaunch.assert_called_once_with()
@@ -869,9 +875,8 @@ def test_a_malformed_pyproject_does_not_fail_a_published_build(tmp_path, monkeyp
     workspace = tmp_path / "Line1 Workspace"
     workspace.mkdir()
     (workspace / "pyproject.toml").write_text("[tool.pyrung\nbroken = ", encoding="utf-8")
-    session = ConnectionSession(
-        ClickConnection("1", 2, "Example.ckp"), has_database=True, workspace_dir=workspace
-    )
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), has_database=True)
+    session.pairing = WorkspacePairing(ProjectWorkspaceConfig("Example", workspace))
     session.analysis = MagicMock()
     session.analysis.build.return_value = True
     monkeypatch.setattr("clicknick.connection_session.threading.Thread", _InlineThread)

@@ -153,9 +153,8 @@ def _app(monkeypatch, *, answer=None, yes_no=False) -> tuple[ClickNickApp, list]
     app.click_instances = [_instance("111", 222, "Main.ckp")]
     app.instances_combobox = {}
     app.selected_instance_var = FakeVar("Main.ckp")
-    app._load_workspace_pairing = MagicMock()
-    app._reset_workspace_pairing = MagicMock()
-    app._workspace_config = None
+    # CLICK's folder is not read
+    monkeypatch.setattr(ConnectionSession, "load_workspace_pairing", lambda _self: None)
     app._load_instance_database = MagicMock()
     app._remove_stale_compare_copies = MagicMock()
     app.detector = SimpleNamespace(

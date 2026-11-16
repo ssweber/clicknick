@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
     from .connection_session import ConnectionSession
     from .data_session import DataSession
-    from .services.workspace_mirror import ProjectWorkspaceConfig
+    from .services.workspace_mirror import WorkspacePairing
     from .views.review_changes_window import ProposalSource
 
 # Set DPI awareness for better UI rendering
@@ -90,15 +90,20 @@ class ClickNickApp:
     # changing any of these refreshes them (see _refresh_ui).
     _data: _ShownState[DataSession | None] = _ShownState()
     _session: _ShownState[ConnectionSession | None] = _ShownState()
-    _workspace_config: _ShownState[ProjectWorkspaceConfig | None] = _ShownState()
-    _workspace_matches: _ShownState[list[ProjectWorkspaceConfig]] = _ShownState()
-    _workspace_mirror_error: _ShownState[str | None] = _ShownState()
 
     @property
     def _click(self) -> ClickConnection | None:
         """The connected CLICK window, as its session holds it (None when none is)."""
         session = self._session
         return session.click if session is not None else None
+
+    @property
+    def _pairing(self) -> WorkspacePairing:
+        """The connected project's durable workspace, as its session holds it."""
+        from .services.workspace_mirror import WorkspacePairing
+
+        session = self._session
+        return session.pairing if session is not None else WorkspacePairing()
 
     def _project_session(self) -> ConnectionSession | None:
         """The session once ClickNick has read CLICK's database for it, else None.
@@ -124,7 +129,7 @@ class ClickNickApp:
         return analysis.project_dir if analysis else None
 
     def _configured_workspace_dir(self) -> Path | None:
-        config = self._workspace_config
+        config = self._pairing.config
         return config.workspace_path if config is not None else None
 
     def _workspace_display_dir(self) -> Path | None:
@@ -136,17 +141,8 @@ class ClickNickApp:
 
         None when the project has no name or its Project.ini cannot be read.
         """
-        click = getattr(self, "_click", None)
-        if click is None:
-            return None
-        from pyclickplc.project import read_plc_name
-
-        from .utils.click_temp import click_temp_dir
-
-        try:
-            return read_plc_name(click_temp_dir(click.hwnd) / "Project.ini")
-        except (OSError, ValueError):
-            return None
+        session = self._session
+        return session.plc_name() if session is not None else None
 
     @staticmethod
     def _format_workspace_time(value) -> str:
@@ -161,15 +157,13 @@ class ClickNickApp:
         from .services.workspace_mirror import get_workspace_directory_info
 
         return get_workspace_directory_info(
-            self._workspace_config,
+            self._pairing.config,
             self._workspace_source_dir(),
         )
 
     def _open_workspace_menu_options(self) -> tuple[str, str]:
         """Return the label and state for opening the active workspace."""
-        label = (
-            "Open Workspace" if self._workspace_config is not None else "Open Temporary Workspace"
-        )
+        label = "Open Workspace" if self._pairing.config is not None else "Open Temporary Workspace"
         workspace_dir = self._workspace_display_dir()
         state = tk.NORMAL if workspace_dir is not None and workspace_dir.is_dir() else tk.DISABLED
         return label, state
@@ -266,12 +260,13 @@ class ClickNickApp:
             self._workspace_refresh_after_id = None
 
         active_dir = self._workspace_display_dir()
-        self.mirror_status_var.set("Durable" if self._workspace_config else "Temporary")
-        self.mirror_detail_var.set(self._workspace_mirror_error or "")
+        pairing = self._pairing
+        self.mirror_status_var.set("Durable" if pairing.config else "Temporary")
+        self.mirror_detail_var.set(pairing.error or "")
         self.mirror_path_var.set(str(active_dir) if active_dir else "Not available")
-        if self._workspace_config:
+        if pairing.config:
             setup_status = "✓ Configured"
-        elif len(getattr(self, "_workspace_matches", [])) > 1:
+        elif len(pairing.matches) > 1:
             setup_status = "Choose workspace"
         else:
             setup_status = "Not configured"
@@ -1056,8 +1051,9 @@ class ClickNickApp:
     def _set_pending_workspace_config(self, config) -> None:
         """Show one candidate configuration in the setup form."""
         self._pending_workspace_config = config
-        if all(known.sidecar_path != config.sidecar_path for known in self._workspace_matches):
-            self._workspace_matches.append(config)
+        matches = self._pairing.matches
+        if all(known.sidecar_path != config.sidecar_path for known in matches):
+            matches.append(config)
         if config.sidecar_path.is_file():
             self.mirror_project_selection_var.set(str(config.workspace_path))
             self.mirror_location_selection_var.set("")
@@ -1068,7 +1064,7 @@ class ClickNickApp:
             self.workspace_setup_action_var.set("Create Workspace")
         if hasattr(self, "workspace_config_combobox"):
             self.workspace_config_combobox.configure(
-                values=[str(match.workspace_path) for match in self._workspace_matches]
+                values=[str(match.workspace_path) for match in matches]
             )
 
     def _select_existing_workspace_config(self) -> None:
@@ -1150,7 +1146,7 @@ class ClickNickApp:
         """Preview a known matching workspace selected by the user."""
         selected = self.mirror_project_selection_var.get().strip()
         config = next(
-            (match for match in self._workspace_matches if str(match.workspace_path) == selected),
+            (match for match in self._pairing.matches if str(match.workspace_path) == selected),
             None,
         )
         if config is not None:
@@ -1213,7 +1209,7 @@ class ClickNickApp:
             messagebox.showerror("Setup Workspace", str(exc), parent=dialog_parent)
             self._update_status(f"Workspace setup failed: {exc}", "error")
             return
-        current_mirror = self._workspace_config.workspace_path if self._workspace_config else None
+        current_mirror = session.pairing.config.workspace_path if session.pairing.config else None
         same_mirror = (
             current_mirror is not None and mirror_path.resolve() == current_mirror.resolve()
         )
@@ -1242,23 +1238,18 @@ class ClickNickApp:
             mirror_path.mkdir(parents=True, exist_ok=True)
             if changing_location:
                 sync_workspace_to_mirror(source, mirror_path)
-            sidecar = save_project_workspace_config(config)
-            remember_project_sidecar(sidecar, preferred_for=plc_name)
+            remember_project_sidecar(save_project_workspace_config(config), preferred_for=plc_name)
         except (OSError, ValueError) as exc:
             messagebox.showerror("Setup Workspace", str(exc), parent=dialog_parent)
             self._update_status(f"Workspace setup failed: {exc}", "error")
             return
 
-        self._workspace_config = config
-        self._workspace_matches = [
-            match for match in self._workspace_matches if match.sidecar_path != sidecar
-        ] + [config]
-        self._workspace_mirror_error = None
         self.mirror_project_selection_var.set(str(mirror_path.resolve()))
         self.mirror_location_selection_var.set("")
         self.workspace_setup_action_var.set("Use Workspace")
-        session.use_workspace(mirror_path)
+        session.use_workspace(config)
         session.record_rung_stage(0)
+        self._request_ui_refresh()
         self._update_status(f"Workspace configured: {mirror_path}", "connected")
         self._start_analysis_build()
 
@@ -1325,7 +1316,7 @@ class ClickNickApp:
             existing_row,
             textvariable=self.mirror_project_selection_var,
             state="readonly",
-            values=[str(match.workspace_path) for match in self._workspace_matches],
+            values=[str(match.workspace_path) for match in self._pairing.matches],
         )
         self.workspace_config_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.workspace_config_combobox.bind(
@@ -1391,7 +1382,7 @@ class ClickNickApp:
         if self._ensure_plc_name_for_workspace() is None:
             return
 
-        config = self._workspace_config
+        config = self._pairing.config
         self._pending_workspace_config = config
         self.mirror_project_selection_var.set(str(config.workspace_path) if config else "")
         self.mirror_location_selection_var.set("")
@@ -2148,13 +2139,6 @@ class ClickNickApp:
             self._session.record_rung_stage(count)
         self._request_ui_refresh()
 
-    def _reset_workspace_pairing(self) -> None:
-        """Forget the durable workspace paired with the connected project."""
-        self._workspace_config = None
-        self._workspace_mirror_error = None
-        self._workspace_matches = []
-        self._pending_workspace_config = None
-
     def __init__(self):
         # Create main window
         self.root = tk.Tk()
@@ -2189,7 +2173,8 @@ class ClickNickApp:
         # Pending idle refresh of the title and Workspace details (_request_ui_refresh)
         self._ui_refresh_id = None
 
-        self._reset_workspace_pairing()
+        # The workspace chosen in Workspace setup and not applied yet
+        self._pending_workspace_config = None
 
         self.filter_strategies = {
             "none": NoneFilter(),
@@ -2359,40 +2344,6 @@ class ClickNickApp:
         self.root.deiconify()
         self._main_window_shown = True
 
-    def _load_workspace_pairing(self) -> None:
-        """Load the user's preferred workspace for the connected PLC name."""
-        from .services.workspace_mirror import (
-            find_project_configs,
-            preferred_project_config,
-        )
-
-        if getattr(self, "_mirror_setup_window", None) is not None:
-            self._close_mirror_setup_window()
-        self._reset_workspace_pairing()
-        plc_name = self._current_plc_name()
-        if not plc_name:
-            return
-        matches = find_project_configs(plc_name)
-        self._workspace_matches = matches
-        if len(matches) == 1:
-            if matches[0].workspace_path.is_dir():
-                self._workspace_config = matches[0]
-            else:
-                self._workspace_mirror_error = (
-                    f"Workspace folder not found: {matches[0].workspace_path}"
-                )
-        elif len(matches) > 1:
-            self._workspace_config = preferred_project_config(plc_name, matches)
-            if (
-                self._workspace_config is not None
-                and not self._workspace_config.workspace_path.is_dir()
-            ):
-                self._workspace_config = None
-            if self._workspace_config is None:
-                self._workspace_mirror_error = (
-                    "Multiple workspaces are known for this PLC. Choose one in Workspace setup."
-                )
-
     def _report_legacy_encodings(self) -> None:
         """Say once which rungs CLICK holds in an old encoding or ClickNick cannot read.
 
@@ -2480,6 +2431,8 @@ class ClickNickApp:
         if session is not None:
             session.close()
             self._session = None
+        # Workspace setup's choice was for the closed session's PLC
+        self._pending_workspace_config = None
 
     def _hide_overlay(self) -> None:
         if self.overlay is not None:
@@ -2497,7 +2450,6 @@ class ClickNickApp:
         if self.using_database:
             self._close_data(prompt_save=False)
 
-        self._reset_workspace_pairing()
         self.selected_instance_var.set("")
 
         self.root.after(2000, self.refresh_click_instances)
@@ -2567,15 +2519,18 @@ class ClickNickApp:
         """
         from .connection_session import ConnectionSession
 
-        self._session = session = ConnectionSession(
+        # Workspace setup shows the closed session's PLC
+        if getattr(self, "_mirror_setup_window", None) is not None:
+            self._close_mirror_setup_window()
+        session = ConnectionSession(
             click,
             has_database=has_database,
             on_sync_status_changed=self._on_sync_status_changed,
             on_build_finished=self._on_build_finished,
         )
-        self._load_workspace_pairing()
-        workspace = self._configured_workspace_dir()
-        session.workspace_dir = workspace.resolve() if workspace is not None else None
+        session.load_workspace_pairing()
+        self._pending_workspace_config = None
+        self._session = session
 
     def _load_instance_database(self, session: ConnectionSession) -> None:
         """Select a backend and load a private store before attaching it to Tk.
@@ -2863,7 +2818,6 @@ class ClickNickApp:
                 self._hide_overlay()
                 if self._session is not None:
                     self._close_session()
-                    self._reset_workspace_pairing()
                     self.selected_instance_var.set("")
             return True
         except Exception as e:

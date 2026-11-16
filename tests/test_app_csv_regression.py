@@ -204,8 +204,8 @@ def test_project_change_loads_new_database_off_the_ui_thread(monkeypatch):
     app._data = DataSession(FakeAddressStore(is_database=True))
     app.click_instances = []
     app.instances_combobox = {}
-    app._load_workspace_pairing = MagicMock()
-    app._workspace_config = None
+    # CLICK's folder is not read
+    monkeypatch.setattr(ConnectionSession, "load_workspace_pairing", lambda _self: None)
     app._load_instance_database = MagicMock()
     app.nickname_manager.has_database_backend = lambda: True
 

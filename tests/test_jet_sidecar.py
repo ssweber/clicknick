@@ -318,13 +318,15 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
     from clicknick.connection_session import ClickConnection
 
     monkeypatch.setenv("CLICKNICK_DB_BACKEND", "none")
+    # CLICK's folder is not read
+    monkeypatch.setattr(
+        "clicknick.connection_session.ConnectionSession.load_workspace_pairing", lambda _self: None
+    )
     view = SimpleNamespace(
         root=Mock(),
         _session=None,
         _data=None,
         monitoring=False,
-        _load_workspace_pairing=Mock(),
-        _configured_workspace_dir=lambda: None,
         _on_sync_status_changed=Mock(),
         _on_build_finished=Mock(),
         _show_instances=Mock(),
@@ -463,6 +465,10 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
     from clicknick.connection_session import ClickConnection
 
     events = []
+    # CLICK's folder is not read
+    monkeypatch.setattr(
+        "clicknick.connection_session.ConnectionSession.load_workspace_pairing", lambda _self: None
+    )
     previous = Mock()
     previous.close.side_effect = lambda: events.append("close session")
     data = Mock()
@@ -473,8 +479,6 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
         _data=data,
         monitoring=False,
         nickname_manager=Mock(),
-        _load_workspace_pairing=Mock(),
-        _configured_workspace_dir=lambda: None,
         _on_sync_status_changed=Mock(),
         _on_build_finished=Mock(),
         _show_instances=Mock(),
