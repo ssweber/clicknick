@@ -168,6 +168,7 @@ class FakeClick(cd.Desktop):
         writes_data: bool = True,
         open_gap: int = 0,
         save_clears: bool = False,
+        system_config_notice: bool = False,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -239,7 +240,7 @@ class FakeClick(cd.Desktop):
         self.writes_data = writes_data
         self.open_gap = open_gap
         self.save_clears = save_clears
-        self.plc_name = ""  # What System Configuration shows: read at an open
+        self.system_config_notice = system_config_notice
         self.system_config_shown = False
         self.last_folder = tmp_path / "last folder"
         self.editor_keys: Callable[[int], None] = lambda vk: None
@@ -528,7 +529,6 @@ class FakeClick(cd.Desktop):
                     old.unlink()
             for file, data in self.ckps[path].items():
                 (temp / file).write_bytes(data)
-            self.plc_name = plc_name_in(self.ckps[path].get("Project.ini", b""))
             self.opened.append(path)
             main.title = f"CLICK Programming Software (Version4.00) - {path.name} - [Main Program]"
             self._drop(reading)
@@ -621,15 +621,20 @@ class FakeClick(cd.Desktop):
             control.id = control.hwnd  # A Delphi form's controls have no ids of their own
 
     def _show_system_config(self) -> None:
-        """System Configuration as live probe C2 dumped it: its PLC Name shows the value of
-        the first [Sec20] section's first Key1 in the Project.ini CLICK last opened, section
-        and key matched in any case (``plc_name``); the first time, a notice with one OK
-        comes over it. OK is never to be pressed."""
+        """System Configuration as live probe C2 dumped it: its PLC Name shows the first
+        [Sec20] section's first Key1 in the temp folder's Project.ini (``plc_name_in``). Live
+        run c2/live-r1 showed the name added at ``second``, before any open; whether the save
+        or System Configuration read it, that run does not tell. With *system_config_notice*,
+        a notice with one OK comes over the first one, as at the probe's first, made while
+        connected (live-r1's first, made disconnected, had none). OK is never to be pressed.
+        """
         assert self.main is not None
         main = self.main
         main.enabled = False
         form = self._window("TfrmSystemConfig", "System Configuration", main.hwnd)
-        self._control(form, "TEdit", "", 0, value=self.plc_name)
+        ini = self.temp_dir(main.hwnd) / "Project.ini"
+        name = plc_name_in(ini.read_bytes() if ini.is_file() else b"")
+        self._control(form, "TEdit", "", 0, value=name)
         self._control(form, "TCheckBox", "Start-up I/O Config Check", 0)
 
         def ok() -> None:
@@ -647,7 +652,7 @@ class FakeClick(cd.Desktop):
                 0,
                 on_press=None if action is None else lambda a=action: self._later("press", a),
             )
-        if not self.system_config_shown:
+        if self.system_config_notice and not self.system_config_shown:
             self.system_config_shown = True
             form.enabled = False
             notice = self._window("TfrmInformationSystemConfigDlg", "System Configuration", form.hwnd)
@@ -3096,10 +3101,8 @@ def test_reopen_copies_each_point(tmp_path, setup):
     assert fake.opened == [(out / "second.ckp").resolve()]
     points = result["points"]
     assert list(points) == ["first", "second", "opened", "third"]
-    # CLICK shows the name it read at the open, the case of section and key aside; the
-    # notice over the first System Configuration was closed, and OK pressed on neither
-    assert [points[p]["plc_name"] for p in points] == ["", "", "Probe", "Probe"]
-    assert fake.events.count("notice_close") == 1
+    # Live run c2/live-r1 showed the name from second on, the case of section and key aside
+    assert [points[p]["plc_name"] for p in points] == ["", "Probe", "Probe", "Probe"]
     assert fake.pressed.count("Cancel") == 4
     assert points["first"]["project_ini"] == "[Project]\r\n"
     added = "[sec20]\r\nkey1=Probe\r\n"
@@ -3158,6 +3161,16 @@ def test_reopen_reads_the_plc_name_system_configuration_shows(tmp_path, setup, l
     assert code == cr.EXIT_OK, result["reason"]
     assert result["points"]["opened"]["plc_name"] == name
     assert result["points"]["third"]["plc_name"] == name
+
+
+def test_reopen_closes_system_configurations_notice_without_ok(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, system_config_notice=True)
+    code, result = run_reopen(fake, tmp_path, exe, "--ini-add", r"[Sec20]\nKey1=Probe")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.events.count("notice_close") == 1
+    assert "OK" not in fake.pressed[fake.pressed.index("&Yes") + 1 :]
+    assert result["points"]["third"]["plc_name"] == "Probe"
 
 
 def test_reopen_refuses_lines_that_are_not_ascii(tmp_path, setup):
