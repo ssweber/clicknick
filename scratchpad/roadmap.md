@@ -123,6 +123,28 @@ Picker, and job G (one Write Data into PLC of pyclickplc's TXT-only file, by a s
 dialogs are probed (the file sets the memory types; Cancel in its Open dialog closes the form), the write did
 not run.
 
+**Small jobs (BOB job `runner-small`, 2026-11-16):** run by probes kept in the job folder (subclasses of the
+runner's `Run`; the runner is unchanged), results in its RESULTS.md. What they answered:
+- Rule table A8 and A10: CLICK accepts a block Copy TXT1..TXT2 into TXT11 and a hex Math into YD0 or YD1, by
+  dialog and by paste (the save decodes to the pasted rungs, and Syntax Check reports only the missing END).
+  The one pasted Copy (block TXT1..TXT2) lacks the flag 0x1201 that every dialog-made Copy kept so far
+  carries; CLICK kept it without the flag and its Syntax Check passed it. pyrung still refuses both.
+- Address Picker lists for a Copy pack and unpack destination (with no source, and after an X, C, DH or DS
+  source) and a hex Math result: no SC or SD in any of these 8 (`sc_sd_writable.json` now holds 12 fields).
+  15 `try` cases agree. laddercodec takes the same banks; it cites OBJ-004 for an SD hex Math result, CLICK
+  OBJ-003.
+- Section D: Syntax Check reports C0001 for both bridges and C000A for pins sharing the reset's contact, a pin
+  fed from a tee and a reset wire that also feeds an output (laddercodec predicts C000A, C0205 and C0001 for
+  the bridge with a reset, does not capture the two pin shapes, and gives C0205 for the third). An unwired
+  timer or counter reset is C0202, which laddercodec's `check()` does not report; the rule table's D3 entry
+  for laddercodec ("drops the pin") is stale, as laddercodec keeps the reset row. The D2 rungs draw no error
+  beyond the missing END, yet the Syntax Check rewrites two of them: a NOP
+  on a row of its own beside a coil's rung is dropped, and a rung of only wires is wired through column AF
+  (laddercodec reads that as a NOP). The paste and a save before the check hold them as pasted. laddercodec's
+  decoder drops a wires-only last rung (`_is_trailing_placeholder`), so the runner then reports that the
+  paste did not land.
+- Q2, for Save As and File > Open: answered in the item's text below and in "Open user checks".
+
 **Where it runs (Sam, 2026-11-15, replacing the plan's Sandbox-first rule):** on the CLICK installed on Sam's
 desktop, while he is away, as long as it is deterministic. Windows Sandbox is the fallback, and is needed only
 if the desktop cannot work.
@@ -163,7 +185,12 @@ what CLICK turns constants such as `005`, `+5` and `0ffh` into (for laddercodec)
 plan's "Only Sam can do these" (leading zeros and spaces in an address, a bare space as a Text initial value,
 whether CLICK strips spaces from nicknames and comments). The two answers that bear on pyclickplc's reader go
 to Sam. 4d answers the spaces in an address, the bare space, the edge spaces and leading zeros for CLICK's CSV
-import only; a value typed in CLICK is still open (Q7). Open, New and Save As (Q2) were not run.
+import only; a value typed in CLICK is still open (Q7). Save As and Open (Q2) ran (job `runner-small`):
+Save As leaves SC_.mdb's bytes as they were and changes the title last, about 0.7 s after Save. File > Open
+deletes the temp folder's files, SC_.mdb included (the title goes bare), writes a new SC_.mdb (65,536 to
+81,920 bytes) before the title names the project, and writes SC_.mdb once more about 0.1 s after the title
+is final, while Project Reading still shows. Its rows were read only once the step had settled, after that
+last write. New was not run: New Project (32771) is not on the allowlist.
 
 ### 4b. User checks a mock can automate today (nothing; wording goes to Sam)
 
@@ -192,9 +219,10 @@ rung 1 (the missing END moves from rung 1 to rung 2); it is then deleted again. 
 A10, B1 to B6 and B8 of pyrung's and laddercodec's rule table, with controls that tell a refusal's reason
 apart (for example, X001..X016 packs into DH but not into DS). A run of 66 cases takes about 4.5 minutes:
 CLICK ignores a Syntax Check posted soon after the last one, and nothing it shows says when it would take one,
-so most checks are posted again after 2 s. Left: section D, and the rows only Sam can answer. Section C is
-not wanted (Sam, 2026-11-16: "those all seem correct"). E1: a new project's SC_.mdb holds SD19 to SD26
-(`_RTC_Month` on SD21) only once the Address Picker has been closed by OK (job E, item 4).
+so most checks are posted again after 2 s. Section D ran as pastes (job `runner-small`, item 4). Left: the
+rows only Sam can answer. Section C is not wanted (Sam, 2026-11-16: "those all seem correct"). E1: a new
+project's SC_.mdb holds SD19 to SD26 (`_RTC_Month` on SD21) only once the Address Picker has been closed by
+OK (job E, item 4).
 
 `try --keep` saves the project after each accepted case and decodes the save, so what CLICK stores for a
 constant can be read (job B, item 4: Math in decimal and hex, Copy into DS, DH, DF and TXT). Row A6's gaps were
@@ -386,9 +414,12 @@ smoke test, and what the rest find goes into bugfix releases. Items marked (4b) 
 waits on the CLICK runner (item 4). A check that is walked or automated is deleted here.
 
 ### Questions only CLICK can answer
-- Q2 (runner): does CLICK rewrite SC_.mdb on File > Open and Save As, and before or after the window title
-  changes? (How soon kept edits are checked against the new project's database.) Sam: SC_.mdb changes every
-  time you edit in CLICK's Address Editor.
+- Q2 (runner): whether SC_.mdb holds the opened project's rows when the title names it, on File > Open; and
+  what CLICK writes on New Project, and when its title changes. (How soon kept edits are checked against the
+  new project's database.) Sam: SC_.mdb changes every time you edit in CLICK's Address Editor. The rest is
+  answered (item 4): Save As does not rewrite SC_.mdb; Open writes a new one before the title names the new
+  project and writes it once more after, while Project Reading still shows. A reader that goes by the title
+  alone can catch that last write.
 - Q6: after deleting all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the step
   wording say to click the first empty rung? Sam (2026-11-16): "there are always empty rungs". Not to be
   automated.
