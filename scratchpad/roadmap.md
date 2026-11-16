@@ -149,13 +149,14 @@ CLICK save.
 ### 4c. The editor's answers for the rule table (done for Math, Copy and Out)
 
 `click_runner.py try devtools/editor_cases.json --out DIR` opens CLICK's Math, Copy and Out dialogs from the
-ribbon's commands (50030, 50040, 50010), fills them, presses OK and records whether CLICK accepts each case or
-which error box it shows (`OBJ-...`). An accepted one is checked with Syntax Check and deleted again. The cases
-cover rows A1 to A10, B1 to B6 and B8 of pyrung's and laddercodec's rule table, with controls that tell a
-refusal's reason apart (for example, X and Y pack only into DH). A run of 59 cases takes about 5 minutes,
-mostly waiting out the Syntax Check CLICK drops after each Delete (5 s each). Left: the Receive dialog (B7),
-section D, and the rows only Sam can answer. E1 is not in a new project's SC_.mdb; CLICK's `PLCType.ini`
-names SD21 `_RTC_Month`.
+ribbon's commands (50030, 50040, 50010), fills them, presses OK and records whether CLICK refuses each case
+(its `OBJ-...` box) or accepts it. An accepted case counts only when Syntax Check shows the instruction in
+rung 1 (the missing END moves from rung 1 to rung 2); it is then deleted again. The cases cover rows A1 to
+A10, B1 to B6 and B8 of pyrung's and laddercodec's rule table, with controls that tell a refusal's reason
+apart (for example, X packs into DH but not into DS, DD or DF). A run of 66 cases takes about 4.5 minutes:
+CLICK ignores a Syntax Check posted soon after the last one, and nothing it shows says when it would take one,
+so most checks are posted again after 2 s. Left: the Receive dialog (B7), section D, and the rows only Sam can
+answer. E1 is not in a new project's SC_.mdb; CLICK's `PLCType.ini` names SD21 `_RTC_Month`.
 
 ## 5. ConnectionSession owns the window and project (done)
 
