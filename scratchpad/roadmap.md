@@ -183,7 +183,7 @@ What a script cannot judge is the wording: collect each notice into one page for
 Not without CLICK: the overlay, project change and Save As, Review Changes paste steps, and Sync racing a
 CLICK save.
 
-### 4c. The editor's answers for the rule table (done for Math, Copy and Out)
+### 4c. The editor's answers for the rule table (done for Math, Copy, Out and Receive)
 
 `click_runner.py try devtools/editor_cases.json --out DIR` opens CLICK's Math, Copy and Out dialogs from the
 ribbon's commands (50030, 50040, 50010), fills them, presses OK and records whether CLICK refuses each case
@@ -192,13 +192,56 @@ rung 1 (the missing END moves from rung 1 to rung 2); it is then deleted again. 
 A10, B1 to B6 and B8 of pyrung's and laddercodec's rule table, with controls that tell a refusal's reason
 apart (for example, X001..X016 packs into DH but not into DS). A run of 66 cases takes about 4.5 minutes:
 CLICK ignores a Syntax Check posted soon after the last one, and nothing it shows says when it would take one,
-so most checks are posted again after 2 s. Left: the Receive dialog (B7), section D, and the rows only Sam can
-answer. Section C is not wanted (Sam, 2026-11-16: "those all seem correct"). E1: a new project's SC_.mdb holds
-SD19 to SD26 (`_RTC_Month` on SD21) only once the Address Picker has been closed by OK (job E, item 4).
+so most checks are posted again after 2 s. Left: section D, and the rows only Sam can answer. Section C is
+not wanted (Sam, 2026-11-16: "those all seem correct"). E1: a new project's SC_.mdb holds SD19 to SD26
+(`_RTC_Month` on SD21) only once the Address Picker has been closed by OK (job E, item 4).
 
 `try --keep` saves the project after each accepted case and decodes the save, so what CLICK stores for a
 constant can be read (job B, item 4: Math in decimal and hex, Copy into DS, DH, DF and TXT). Row A6's gaps were
 run as plain `try` cases.
+
+Long runs (BOB job `runner-grids`, 2026-11-16): `try` appends each case's answer to `DIR/cases.jsonl` as it
+comes, and `--resume PREV_DIR` carries those answers and tries only the cases left, in a CLICK of its own (a
+case that stopped two runs, Ctrl+C aside, is not tried again); `--stop-after N` ends a run cleanly. A case's
+id is its `case` label. A field or list closed for entry, or one that reads back otherwise, makes a case
+`not_taken` (once Cancel has closed the dialog) instead of stopping the run; a field CLICK does not answer
+stops it, and the case is tried again on resume, as is one whose Delete or save failed after CLICK answered
+it. Nothing starts CLICK again by itself: an unexpected window still stops the run, and the connect after an
+aborted connected run fails once. `try` also drives Receive (50060, B7): its lists are picked by Up and Down
+keys sent to the list (`choices`), and COM Port Setup is never pressed. laddercodec's `preflight.json` (92
+cases, stopped after 40 and resumed) and `risky.json` (67) ran whole, with `--keep`; their answers are in the
+job folder as `<grid>.answers.json`, for laddercodec. What they answered:
+- Receive's Starting Master Address, with Function Code 01: Y001 and C1 accepted; X001, T1, CT1, SC1 and DS1
+  refused (OBJ-004). With 03 (slave address 400001): DS1, DD1, DH1, DF1, TXT1 and YD0 accepted; TD1, SD1, XD0,
+  CTD1 and C1 refused (OBJ-004). A 984 slave address outside the function's range is refused first (OBJ-010).
+  A Receive's answer holds every open field as OK found it. Number of Master Addresses into TXT1: 1 refused
+  (OBJ-010, range 2 to 250), 3 refused (OBJ-029, even only), 2 and 4 accepted; left unset, it held 2 at OK
+  (the dialog opens with 1) and was accepted. Into DS1, 1 and 2 are accepted.
+- A single Copy or Pack destination with a space at either end is accepted and stored with the space
+  (laddercodec decodes the save as `raw(...)`); the edge space of a Copy source and of a Math field is
+  dropped.
+- A hex Math takes `0` and `5` without `h` (as job B found), and refuses `SUM(X001:X002)`, which laddercodec
+  accepts.
+- Each dialog's edit limit (EM_GETLIMITTEXT) is now in the answers: Math result 26, formula 500, Copy source
+  130, a Copy destination, range end or Out address 16. The runner sets text by WM_SETTEXT, which no limit
+  stops, so three risky cases set more text than a user can type (a 129-character quoted Copy source, the
+  quoted Out texts); CLICK refused them.
+
+The Address Picker a field's "..." button opens ("Address Picker : Pickup Mode", owned by the dialog) greys
+the banks the field does not take and lists only the addresses it takes. For a Copy single or block
+destination and a decimal Math result it lists the 29 SD of pyclickplc's `WRITABLE_SD` and no SC; for Out, the
+25 SC of laddercodec's `WRITABLE_SC` and no SD. 28 new `try` cases (listed and unlisted SD and SC in each
+field) agreed with the lists: an unlisted SD is refused in Copy (OBJ-004) and Math (OBJ-003), a Block range
+that reaches an unlisted SD by OBJ-018 (or OBJ-004 past SD215), an unlisted SC in Out by OBJ-003. So
+laddercodec's `copy_sd_single`, `math_sd` and `out_sc` sweeps (3,000 cases) are answered without running them
+(`sc_sd_writable.json`); in `copy_sd_block` every SD a block reaches must be listed (SDn and SDn+1 for the
+two-address blocks tried). Only Copy destinations and the decimal Math result were probed for SD. laddercodec
+accepts every SD in those fields today. The picker's Find box did not move its grid in Pickup Mode; Page Down
+and Page Up keys sent to the grid did. Left: the other grids (about 4 s a case), and the next instructions in
+laddercodec's order (Compare contact, Timer, Counter, Search, Shift, For, Drum), whose ribbon ids are known
+but not allowlisted. Left too: ClickNick's `RECEIVE_LOCAL` (`detection/window_mapping.py`), the banks
+autocomplete offers for a Receive's Starting Master Address, lists X, T, CT, SC, TD and SD, which CLICK
+refused there in the cases tried, and lacks DD, DH, DF, TXT and YD, which it accepted (for FC 03).
 
 ### 4d. Importing a nickname CSV into CLICK (done)
 
