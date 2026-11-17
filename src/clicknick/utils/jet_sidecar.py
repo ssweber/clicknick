@@ -1,7 +1,9 @@
-"""Optional Jet access through Windows' existing x86 PowerShell host.
+"""Optional Jet access to a project's MDB, through the 32-bit PowerShell that Windows has.
 
-One process serves serialized, complete operations. Each request opens and closes
-its own MDB connection; no transaction is held while the user edits nicknames.
+ClickNick uses it when the user chooses the Jet backend, or when no Access ODBC driver is
+installed. One PowerShell process runs the requests one at a time, and each runs to the
+end. Each request opens and closes its own MDB connection, so no transaction stays open
+while the user edits nicknames.
 """
 
 from __future__ import annotations
@@ -25,11 +27,15 @@ MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 
 
 class JetError(RuntimeError):
-    """A reported Jet/provider failure."""
+    """Raised when a Jet database operation fails or cannot be started."""
 
 
 class JetTransportError(JetError):
-    """Worker failure: a save may have committed before its response was lost."""
+    """Raised when the Jet worker times out, exits or sends a response that is not valid.
+
+    If the request was a save, the save may have been committed even though its response was
+    lost.
+    """
 
 
 def powershell_path() -> Path:
@@ -39,12 +45,20 @@ def powershell_path() -> Path:
 
 
 def is_available() -> bool:
-    """Cheap candidate check; the real capability test opens the project's MDB."""
+    """Return True on Windows if 32-bit Windows PowerShell exists.
+
+    This check is cheap. Only opening the project's MDB shows that Jet works.
+    """
     return os.name == "nt" and powershell_path().is_file()
 
 
 class JetWorker:
-    """Manage a reusable worker with bounded pipe IO and no automatic write retry."""
+    """Runs one 32-bit PowerShell worker and sends it requests through its pipes.
+
+    The worker starts again for the next request after it exits. Requests and responses
+    have a size limit and a timeout. A failed request is not sent again, because a save
+    may have been committed.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -193,7 +207,10 @@ atexit.register(_worker.close)
 
 
 class JetConnection:
-    """A logical connection; the worker opens the file only during each operation."""
+    """A connection to an MDB that does not keep the file open.
+
+    The worker opens the file for each request and closes it again.
+    """
 
     backend_name = BACKEND_NAME
 

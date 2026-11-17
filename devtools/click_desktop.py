@@ -25,51 +25,50 @@ from ctypes import wintypes
 from dataclasses import dataclass
 from pathlib import Path
 
-# CLICK v4's command ids, from CLICK.exe's string table (probe of 2026-11-15)
+# CLICK v4's command ids, from CLICK.exe's string table
 PASTE = 0xE125  # MFC's ID_EDIT_PASTE
-DELETE = 32777  # Edit > Delete: the instruction under the ladder's cursor
+DELETE = 32777  # Edit > Delete deletes the instruction under the ladder's cursor
 SYNTAX_CHECK = 32846
-OPEN_PROJECT = 32772  # File > Open Project ("Open Project" in the string table, 2026-11-16)
+OPEN_PROJECT = 32772  # File > Open Project. The string table calls it "Open Project".
 SAVE_PROJECT = 32898
 SAVE_PROJECT_AS = 32899
 DISCONNECT = 32850
-# File > Import > Nickname ("Import to Address Picker" in the string table). It opens an Open
-# dialog with three import modes, and it writes the rows into SC_.mdb (live probe of 2026-11-15)
+# File > Import > Nickname. The string table calls it "Import to Address Picker". It opens an
+# Open dialog with three import modes, and CLICK writes the imported rows into SC_.mdb.
 IMPORT_NICKNAME = 32900
-# Program > Address Picker (Ctrl+T; "Address Picker" in the string table): CLICK's editor of
-# nicknames and address comments (probe of 2026-11-16)
+# Program > Address Picker (Ctrl+T) opens CLICK's editor of nicknames and address comments.
+# The string table calls it "Address Picker".
 ADDRESS_PICKER = 32834
-# System Configuration ("System Configuration" in the string table): the PLC's modules and the
-# project's PLC Name, which it shows from Project.ini's [Sec20] Key1. Its OK saves setup into
-# the project, so the runner never presses OK. Cancel closes it (live probe C2, 2026-11-16)
+# System Configuration opens a dialog that shows the PLC's modules and the project's PLC Name.
+# CLICK reads the PLC Name from Project.ini's [Sec20] Key1. The dialog's OK button saves the
+# setup into the project, so the runner never presses OK. Cancel closes the dialog.
 SYSTEM_CONFIGURATION = 32827
-# PLC > Read Data from PLC reads the PLC's data values and saves them to a file. Write
-# Data into PLC, beside it, writes a file's values into the PLC. The runner never sends it
-# (string table, probe of 2026-11-16)
+# PLC > Read Data from PLC reads the PLC's data values and saves them to a file. Write Data
+# into PLC, next to it in the menu, writes a file's values into the PLC. The runner never sends
+# Write Data into PLC.
 READ_DATA_FROM_PLC = 32851
 WRITE_DATA_INTO_PLC = 32852
 READ_PROJECT_FROM_PLC = 32853
 WRITE_PROJECT_INTO_PLC = 32854
-# The ribbon's Instruction tab opens an instruction's dialog at the ladder's cursor.
-# These ids are in no string table. CLICK.exe builds the ribbon in code and pushes each
-# button's id beside its label ("Math..."). Read the same way, the code gives 32850 for
-# "Disconnect..." and 32853 for "Read Project from PLC...", the same as the string table
-# (probe of 2026-11-15).
+# Each button on the ribbon's Instruction tab opens an instruction's dialog at the ladder's
+# cursor. Their ids are in no string table. CLICK.exe builds the ribbon in code, and that code
+# pushes each button's id next to the button's label ("Math..."). The ids below were read from
+# that code. The same reading gives 32850 for "Disconnect..." and 32853 for "Read Project from
+# PLC...", and both match the string table.
 OUT_DIALOG = 50010
 MATH_DIALOG = 50030
 COPY_DIALOG = 50040
-# "Receive..." pushes 50060, and "Send..." pushes 50061, the same way. Live probes r1 and r2
-# (2026-11-16) opened the Receive dialog with 50060 (Inst_RD.dll's template, titled "Receive")
+# In the same code, "Receive..." pushes 50060 and "Send..." pushes 50061. 50060 opens the
+# Receive dialog, which is Inst_RD.dll's template and is titled "Receive".
 RECEIVE_DIALOG = 50060
-# The ribbon's Contact(NO), Compare and Search push 50001, 50004 and 50041 the same way. Live
-# probes d1 to d3 (2026-11-17, job copy-encodings) used those ids to open "Contact Normally
-# Open" (Inst_ContactNO.dll), "Compare (A with B)" (Inst_Compare.dll) and "Search"
-# (Inst_Search.dll)
+# In the same code, the ribbon's Contact(NO), Compare and Search buttons push 50001, 50004 and
+# 50041. These ids open "Contact Normally Open" (Inst_ContactNO.dll), "Compare (A with B)"
+# (Inst_Compare.dll) and "Search" (Inst_Search.dll).
 CONTACT_NO_DIALOG = 50001
 COMPARE_DIALOG = 50004
 SEARCH_DIALOG = 50041
-# MFC's ID_EDIT_COPY. Edit > Copy puts what is selected in the ladder on the clipboard and
-# nothing else (live probe d2, 2026-11-17, job copy-encodings)
+# This is MFC's ID_EDIT_COPY. Edit > Copy puts what is selected in the ladder on the clipboard, and
+# nothing else.
 EDIT_COPY = 0xE122
 
 ALLOWED_COMMANDS = {
@@ -94,9 +93,8 @@ ALLOWED_COMMANDS = {
     EDIT_COPY: "Copy",
 }
 
-# The ladder view is the one visible child of CLICK's main window that has this class (live
-# probe d2, 2026-11-17). It is the only window that gets a posted mouse click
-# (``Desktop.click_ladder``)
+# The ladder view is the one visible child of CLICK's main window that has this class. It is the
+# only window that the runner posts a mouse click to (``Desktop.click_ladder``).
 LADDER_VIEW_CLASS = "AfxFrameOrView100u"
 
 _NEVER = {
@@ -197,7 +195,10 @@ class Desktop(ABC):
 
     @abstractmethod
     def click_windows(self) -> list[int]:
-        """Return every window ClickNick takes for a CLICK main window (``find_click_hwnds``)."""
+        """Return every window that ClickNick takes to be a CLICK main window.
+
+        ``find_click_hwnds`` decides which windows those are.
+        """
 
     @abstractmethod
     def input_desktop(self) -> str | None:
@@ -208,7 +209,10 @@ class Desktop(ABC):
 
     @abstractmethod
     def launch(self, exe: Path) -> int:
-        """Start *exe* in its own folder and return its pid. It ends when the runner ends."""
+        """Start *exe* in its own folder and return its pid.
+
+        The process ends when the runner ends.
+        """
 
     @abstractmethod
     def alive(self, pid: int) -> bool:
@@ -375,7 +379,8 @@ _MAX_PANES = 32
 SRCCOPY = 0x00CC0020
 CAPTUREBLT = 0x40000000
 _MESSAGE_TIMEOUT_MS = 5000
-# How often, and how far apart, opening the clipboard is tried: another program may hold it
+# How many times read_clipboard tries to open the clipboard, and how many seconds it waits
+# between tries. Another program may have the clipboard open.
 _CLIPBOARD_TRIES = 20
 _CLIPBOARD_DELAY = 0.05
 _ULONG_PTR = ctypes.c_size_t
@@ -590,7 +595,7 @@ def capture_screen(left: int, top: int, width: int, height: int) -> bytes:
     header.biWidth = width
     header.biHeight = -height  # Top-down
     header.biPlanes = 1
-    header.biBitCount = 32  # A 32-bit DIB section, so a 16-bit display (RDP) reads the same
+    header.biBitCount = 32  # So that a 16-bit display (RDP) gives the same 32-bit pixels
     bits = ctypes.c_void_p()
     screen = user32.GetDC(None)
     if not screen:
@@ -617,13 +622,14 @@ def capture_screen(left: int, top: int, width: int, height: int) -> bytes:
 class Win32Desktop(Desktop):
     """The real desktop.
 
-    It posts each message or sends it with a timeout, so that a hung CLICK cannot hang it.
+    It posts each message or sends it with a timeout, so that a hung CLICK cannot hang the
+    runner.
     """
 
     def __init__(self) -> None:
         self._user32 = _user32()
         self._processes: dict[int, subprocess.Popen[bytes]] = {}
-        self._jobs: dict[int, int] = {}  # Kept open for as long as the runner runs
+        self._jobs: dict[int, int] = {}  # Open while the runner runs. Closing one kills CLICK.
 
     def _send(self, hwnd: int, msg: int, wparam: int = 0, lparam: object = 0) -> int | None:
         result = _ULONG_PTR()
@@ -695,7 +701,7 @@ class Win32Desktop(Desktop):
             handle = int(process._handle)  # pyright: ignore[reportAttributeAccessIssue]
             self._jobs[process.pid] = kill_on_close(handle)
         except BaseException:
-            process.kill()  # A CLICK that could outlive the runner does not run at all
+            process.kill()  # Without the job, CLICK could outlive the runner, so it must not run
             process.wait()
             raise
         self._processes[process.pid] = process
@@ -758,7 +764,7 @@ class Win32Desktop(Desktop):
                     )
                 )
             except win32gui.error:
-                pass  # It closed while being listed
+                pass  # The child closed while EnumChildWindows was listing it
             return True
 
         try:
@@ -814,7 +820,7 @@ class Win32Desktop(Desktop):
         import win32process
 
         if win32gui.GetClassName(hwnd) != "msctls_statusbar32":
-            return None  # SB_* means nothing known to any other class
+            return None  # Only a status bar is known to handle the SB_ messages
         parts = self._send(hwnd, SB_GETPARTS)
         if not parts:
             return None
@@ -896,9 +902,9 @@ class Win32Desktop(Desktop):
         )
 
     def screenshot(self, hwnd: int, path: Path) -> bool:
-        """Copy *hwnd*'s rectangle from the screen, as it shows (windows on top included).
+        """Copy *hwnd*'s rectangle from the screen as it shows, with any windows on top of it.
 
-        It sends CLICK no message. PrintWindow would send one, and it waits forever on a hung
+        It sends CLICK no message. PrintWindow would send one and would wait forever on a hung
         CLICK.
         """
         import win32gui
@@ -921,8 +927,10 @@ class Win32Desktop(Desktop):
         clear_clipboard(0)
 
     def read_clipboard(self) -> bytes | None:
-        """CLICK's format is the one ``clicknick.ladder.clipboard`` pastes in (522, in the
-        private range CF_PRIVATEFIRST to CF_PRIVATELAST: it has no registered name)."""
+        """Read the clipboard in the format that ``clicknick.ladder.clipboard`` pastes in.
+
+        That format is 522. It lies in the private range CF_PRIVATEFIRST to CF_PRIVATELAST, and
+        it has no registered name."""
         import win32clipboard
 
         from clicknick.ladder.clipboard import CLICK_CLIPBOARD_FORMAT
