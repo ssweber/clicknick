@@ -25,7 +25,7 @@ Run the saved program without the PLC, and keep it current as you edit.
     - In RUN, **RUN Time Edit** loads the program and keeps every value, timer and force. **Stop and Write** goes through STOP and back to RUN. It keeps retentive values and forces and clears the rest.
     - In STOP or while stepping, **Write** loads the program and keeps the values and the mode.
 
-The Simulator offers an edit to the workspace's ladder source (`src/plc/`) the same way.
+When you edit the workspace's ladder source (`src/plc/`), the Simulator offers the new program the same way.
 
 The rules:
 

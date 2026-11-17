@@ -56,8 +56,9 @@ workspaces are written to the folders the user chooses.
   in the workspace folder. The child runs the workspace's `run.py` and starts two listeners.
   The first is a Modbus TCP listener on `127.0.0.1`, on port 502 unless the user picks another.
   The second is a command listener on `localhost`, with a port chosen by Windows. The Console and
-  `pyrung live` use the command listener. Like the editor listener, it is unauthenticated, and
-  other local users and processes that can reach the port can connect. ClickNick connects to the
+  `pyrung live` use the command listener. Both listeners are unauthenticated, like the editor
+  listener. Other local users and processes that can reach either port can connect. ClickNick
+  connects to the
   Modbus listener to show the simulated values. The Dataview editor does the same while it is
   open. Neither listener exists until the simulation starts. The child keeps running after
   the Simulator window closes. It stops when the user stops it, or when ClickNick disconnects
@@ -132,7 +133,7 @@ install-time scripts.
 
 If a script piped into PowerShell is against policy, install uv with
 `winget install --id astral-sh.uv`. If your policy prefers pip, install ClickNick into a
-virtual environment using Python 3.11 or newer. See [Install](../install.md).
+virtual environment using Python 3.13 or 3.14. See [Install](../install.md).
 
 To update: `uv tool upgrade clicknick`.
 
