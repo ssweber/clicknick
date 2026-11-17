@@ -9,20 +9,31 @@ import pytest
 from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
-from clicknick.live.dispatch import dispatch
+from clicknick.live.dispatch import DispatchContext, dispatch
 from clicknick.live.server import LiveServer, _Request
+from clicknick.models.address_row import AddressRow
 
 
 class MockDataSource:
     supports_used_field = True
     file_path = "test.mdb"
     is_read_only = False
+    is_database = True
+
+    def __init__(self, rows=None) -> None:
+        self._rows = rows or {}
 
     def load_all_addresses(self):
-        return {}
+        return self._rows
 
     def save_changes(self, rows):
         return len(rows)
+
+
+class CsvSource(MockDataSource):
+    supports_used_field = False
+    file_path = "nicknames.csv"
+    is_database = False
 
 
 class FakeRoot:
@@ -42,12 +53,49 @@ class FakeRoot:
             callback()
 
 
-def _edited_store() -> AddressStore:
-    store = AddressStore(MockDataSource())
+def _edited_store(source: MockDataSource | None = None) -> AddressStore:
+    store = AddressStore(source or MockDataSource())
     store.load_initial_data()
     with store.edit_session("edit") as session:
         session.set_field(get_addr_key("DS", 1), "nickname", "Level")
     return store
+
+
+def _prompt(store: AddressStore) -> tuple[str, list[str]]:
+    """Run prompt-save on *store*. Return the reply and the text of each dialog shown."""
+    shown: list[str] = []
+    ctx = DispatchContext(store=store, show_save_prompt=lambda _title, text: shown.append(text))
+    return dispatch(ctx, "prompt-save"), shown
+
+
+@pytest.mark.parametrize(
+    ("source", "entry"),
+    [
+        (MockDataSource(), "Use File > Sync All there to write them to CLICK's database."),
+        (CsvSource(), "Use File > Save All there to write them to the CSV file."),
+    ],
+)
+def test_prompt_save_names_the_menu_entry_for_the_data_loaded(source, entry):
+    reply, shown = _prompt(_edited_store(source))
+
+    assert reply == "prompted: 1 row with unsaved edits"
+    assert shown == [f"1 row in the Address Editor has unsaved edits.\n\n{entry}"]
+
+
+def test_prompt_save_does_not_blame_the_edits_for_errors_in_other_rows():
+    duplicate = {
+        get_addr_key("DS", address): AddressRow(memory_type="DS", address=address, nickname="Dup")
+        for address in (7, 8)
+    }
+    store = _edited_store(MockDataSource(duplicate))  # The edit is to DS1, which has no error.
+
+    with pytest.raises(ValueError) as refused:
+        _prompt(store)
+
+    assert str(refused.value) == (
+        "The Address Editor shows errors in 2 rows. Sync writes nothing while any row has an"
+        " error. Fix those rows first."
+    )
 
 
 def test_prompt_save_answers_before_the_dialog_opens(monkeypatch):
@@ -64,7 +112,7 @@ def test_prompt_save_answers_before_the_dialog_opens(monkeypatch):
 
     server._drain()
 
-    assert first.done.is_set() and first.result.startswith("prompted: 1 unsaved change")
+    assert first.done.is_set() and first.result == "prompted: 1 row with unsaved edits"
     assert second.done.is_set()
     assert shown == []
     root.run_idle()

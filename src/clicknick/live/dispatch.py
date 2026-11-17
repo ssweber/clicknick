@@ -409,6 +409,11 @@ workflow:
   prompt-save"""
 
 
+def _rows(count: int) -> str:
+    """Return "1 row" or "<count> rows"."""
+    return "1 row" if count == 1 else f"{count} rows"
+
+
 def _format_help() -> str:
     from ..services.physical_response import cli_usage
 
@@ -459,17 +464,23 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     if verb == "prompt-save":
         if ctx.store is None or not ctx.store.has_unsaved_changes():
             return "no pending changes"
-        count = len(ctx.store.get_dirty_keys())
+        save = "Sync" if ctx.store.is_database else "Save"
         if ctx.store.has_errors():
-            raise ValueError(f"{count} unsaved change(s) have validation errors — fix errors first")
+            # The errors may be in rows that have no unsaved edit. Sync still refuses them.
+            bad = sum(row.has_reportable_error for row in ctx.store.visible_state.values())
+            raise ValueError(
+                f"The Address Editor shows errors in {_rows(bad)}. {save} writes nothing"
+                " while any row has an error. Fix those rows first."
+            )
+        count = len(ctx.store.get_dirty_keys())
         if ctx.show_save_prompt is not None:
+            target = "CLICK's database" if ctx.store.is_database else "the CSV file"
             ctx.show_save_prompt(
                 "Unsaved Changes",
-                f"You have {count} unsaved change{'s' if count != 1 else ''} "
-                f"in the Address Editor.\n\n"
-                f"Use File → Sync to write them to the Click database.",
+                f"{_rows(count)} in the Address Editor {'has' if count == 1 else 'have'}"
+                f" unsaved edits.\n\nUse File > {save} All there to write them to {target}.",
             )
-        return f"prompted: {count} unsaved change{'s' if count != 1 else ''}"
+        return f"prompted: {_rows(count)} with unsaved edits"
 
     if ctx.store is None:
         raise ValueError("no project loaded (connect a CLICK project or load a CSV first)")
