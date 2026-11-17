@@ -925,7 +925,7 @@ class TestExternalDatabaseUpdate:
 
 
 class TestDerivedStateStaysConsistent:
-    """Derived state (validation, dirty, block colors) must match a fresh computation.
+    """Check that derived state (validation, dirty, block colors) matches a fresh computation.
 
     Regression tests for bugs A-C from the 2026-10 state review, plus the
     Sync/Discard undo-history rules.
@@ -933,7 +933,7 @@ class TestDerivedStateStaysConsistent:
 
     @pytest.fixture
     def named_store(self):
-        """Store with two distinct C nicknames loaded from the database."""
+        """Return a store with two distinct C nicknames loaded from the database."""
         rows = {
             get_addr_key("C", 1): AddressRow(memory_type="C", address=1, nickname="Alpha"),
             get_addr_key("C", 2): AddressRow(memory_type="C", address=2, nickname="Beta"),
@@ -1090,7 +1090,7 @@ class TestDerivedStateStaysConsistent:
 
     @staticmethod
     def _fresh_comment_validity(store):
-        """Comment validity a freshly loaded store computes for the same content."""
+        """Return the comment validity that a freshly loaded store computes for the same content."""
         rows = {
             key: AddressRow(memory_type=row.memory_type, address=row.address, comment=row.comment)
             for key, row in store.visible_state.items()
@@ -1135,7 +1135,7 @@ class TestDerivedStateStaysConsistent:
         assert not s.has_errors()
 
     def test_reload_after_sync_changes_nothing(self, named_store):
-        """The file monitor reloads after our own Sync; that must be a no-op."""
+        """When the file monitor reloads after our own Sync, the reload changes nothing."""
         c1 = get_addr_key("C", 1)
         source = named_store._data_source
 
@@ -1160,7 +1160,7 @@ class TestDerivedStateStaysConsistent:
 
 
 class LiveSource:
-    """A database CLICK writes too: rows change without the store being told."""
+    """A database that CLICK also writes. Its rows change without the store being told."""
 
     supports_used_field = True
     file_path = "live.mdb"
@@ -1351,14 +1351,14 @@ class TestSyncAgainstALiveDatabase:
 
 
 class CsvSource(LiveSource):
-    """A nickname CSV: rewritten whole, no Used field."""
+    """A nickname CSV. Sync rewrites the whole file, and the CSV has no Used field."""
 
     supports_used_field = False
     is_database = False
 
 
 class TestSyncListeners:
-    """Issue #36: the sync listeners hear every Sync that writes rows into CLICK's database."""
+    """Issue #36: every Sync that writes rows into CLICK's database notifies the sync listeners."""
 
     @staticmethod
     def _rename(store, addr_key, nickname="Typed"):
@@ -1446,7 +1446,7 @@ class TestSyncListeners:
 
 
 class TestUndoBookkeeping:
-    """store#10: a session that changes nothing is not an undo step; descriptions carry over."""
+    """store#10: a session that changes nothing adds no undo step. Descriptions carry over."""
 
     def test_session_that_changes_nothing_keeps_undo_and_redo(self, store_with_data):
         x1, x2 = get_addr_key("X", 1), get_addr_key("X", 2)

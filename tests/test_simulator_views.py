@@ -18,7 +18,7 @@ from clicknick.simulation_session import SimStatus  # noqa: E402
 
 @pytest.fixture(scope="module")
 def tk_root():
-    """One root for the whole module (per-test roots fail intermittently)."""
+    """Return one Tk root for the whole module. A root per test fails intermittently."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - no display
@@ -796,7 +796,7 @@ def _center(win, item) -> tuple[int, int]:
 
 
 def _label_center(win, tag: str) -> tuple[int, int]:
-    """The middle of the row's address text, the handle a link drag starts from."""
+    """Return the middle of the row's address text, where a link drag starts."""
     text = next(i for i in win._canvas.find_withtag(tag) if win._canvas.type(i) == "text")
     return _center(win, text)
 
@@ -974,7 +974,7 @@ def _labels_of(menu) -> list[str]:
 
 
 def _popup_menu(win, monkeypatch, open_menu):
-    """The menu *open_menu* builds, captured instead of posted."""
+    """Capture the menu that *open_menu* builds, instead of posting it."""
     shown = []
     monkeypatch.setattr(tk.Menu, "tk_popup", lambda self, *_a: shown.append(self))
     open_menu()

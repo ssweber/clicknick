@@ -52,7 +52,7 @@ class FakeWindow:
 
 @pytest.fixture
 def answers(monkeypatch):
-    """Queue answers for askyesnocancel; record each prompt."""
+    """Return queued answers for askyesnocancel, and record each prompt."""
     queue: list[bool | None] = []
     prompts: list[str] = []
 
