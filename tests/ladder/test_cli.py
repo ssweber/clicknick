@@ -15,6 +15,7 @@ from clicknick.ladder.cli import (
     _load_bin,
     _read_progress,
     _run_guided,
+    _save_and_compare,
     main,
 )
 from clicknick.ladder.clipboard import parse_click_major_version
@@ -507,6 +508,49 @@ class TestProgressLog:
         done = _read_progress(log)
         assert "fixture1" in done
         assert "fixture2" in done
+
+
+# ---------------------------------------------------------------------------
+# Comparing the rung copied back with the saved .bin
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("copied_back", "report"),
+    [
+        (b"\x01\x02\x03", "  case: the rung you copied back matches case.bin (3 bytes)\n"),
+        (
+            b"\x01\x09\x03",
+            "  case: 1 byte differs between the rung you copied back and case.bin."
+            " The first is at 0x0001.\n",
+        ),
+        (
+            b"\x01\x09\x09",
+            "  case: 2 bytes differ between the rung you copied back and case.bin."
+            " The first is at 0x0001.\n",
+        ),
+        (
+            b"\x01\x02",
+            "  case: the rung you copied back has 2 bytes, and case.bin has 3.\n",
+        ),
+    ],
+)
+def test_copied_back_rung_is_compared_with_the_saved_bin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    copied_back: bytes,
+    report: str,
+):
+    """The comparison is with the .bin saved before, not with the encoder's output."""
+    saved = tmp_path / "case.bin"
+    saved.write_bytes(b"\x01\x02\x03")
+    monkeypatch.setattr("clicknick.ladder.cli.read_from_clipboard", lambda: copied_back)
+
+    _save_and_compare("case", saved)
+
+    assert capsys.readouterr().out == report
+    assert saved.read_bytes() == b"\x01\x02\x03"
 
 
 # ---------------------------------------------------------------------------

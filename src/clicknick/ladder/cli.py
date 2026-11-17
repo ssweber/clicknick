@@ -179,7 +179,11 @@ def _load_bin(bin_path: Path, mdb_path: str | None) -> bytes:
 
 
 def _save_and_compare(name: str, bin_path: Path) -> None:
-    """Read clipboard, save as .bin, and report byte diff if .bin already exists."""
+    """Save the rung on the clipboard as *bin_path*, or compare it with that file.
+
+    If *bin_path* exists, an earlier run or ``clicknick-rung save`` wrote it. This compares
+    the clipboard's bytes with that file and leaves the file as it is.
+    """
     actual = read_from_clipboard()
 
     if not bin_path.exists():
@@ -189,12 +193,19 @@ def _save_and_compare(name: str, bin_path: Path) -> None:
 
     expected = bin_path.read_bytes()
     if actual == expected:
-        print(f"  {name}: exact match ({len(actual):,} bytes)")
+        print(f"  {name}: the rung you copied back matches {bin_path.name} ({len(actual):,} bytes)")
     elif len(actual) == len(expected):
         diffs = [i for i in range(len(actual)) if actual[i] != expected[i]]
-        print(f"  {name}: {len(diffs)} byte(s) differ from encoder, first at 0x{diffs[0]:04X}")
+        count = "1 byte differs" if len(diffs) == 1 else f"{len(diffs)} bytes differ"
+        print(
+            f"  {name}: {count} between the rung you copied back and {bin_path.name}."
+            f" The first is at 0x{diffs[0]:04X}."
+        )
     else:
-        print(f"  {name}: size differs (encoder {len(expected):,}, Click {len(actual):,} bytes)")
+        print(
+            f"  {name}: the rung you copied back has {len(actual):,} bytes,"
+            f" and {bin_path.name} has {len(expected):,}."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +274,10 @@ def _run_guided(
     print("For each fixture: encodes and copies to clipboard.")
     print("After pasting in Click, enter one of:")
     if save_copyback_bin:
-        print("  [w]orked  - paste worked, copy the rung back for comparison/saving")
+        print(
+            "  [w]orked  - paste worked. Copy the rung back from CLICK to save it as a .bin file,"
+            " or to compare it with the .bin file saved before"
+        )
     else:
         print("  [w]orked  - paste worked")
     print("  [c]rashed - Click crashed or errored")
