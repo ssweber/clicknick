@@ -1012,9 +1012,9 @@ class FakeDataviewWindow:
 
 
 def _two_click_folders(monkeypatch, tmp_path):
-    """Make two CLICK temp folders, and return the connected window's DataView folder.
+    """Make two CLICK temp folders, one for another window and one for the connected window.
 
-    The other window's folder sorts first, so a test fails if the code takes the first folder.
+    Return the connected window's DataView folder.
     """
     from clicknick.utils import click_temp
 

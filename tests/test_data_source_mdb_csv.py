@@ -58,8 +58,11 @@ class TestReadMdbCsv:
         assert row.retentive is True
 
     def test_keeps_rows_with_only_an_initial_value_or_retentive(self, tmp_path):
-        """Keep a row whose only content is an initial value or Retentive, as the database
-        reader does. Both use AddressRow.has_content, so a row that is only in use is dropped."""
+        """Keep a row whose only content is an initial value or Retentive.
+
+        read_mdb_csv keeps a row only if AddressRow.has_content is True, so it drops a row that
+        is only in use.
+        """
         csv_path = tmp_path / "Address.csv"
         csv_path.write_text(
             "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment\n"

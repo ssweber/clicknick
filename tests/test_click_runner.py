@@ -2829,7 +2829,7 @@ def test_try_records_each_answer(tmp_path, setup):
     assert result["nicknames"] == {"SD21": "_SD21", "SD23": None}
     log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
     assert "SD21: '_SD21'" in log and "SD23: no row" in log
-    # The project was never saved, so the runner disconnects and then ends CLICK
+    # The project was never saved, so the runner ends CLICK instead of closing it. It disconnects first.
     assert not fake.connected and fake.terminated and not fake.saved
     assert list(result["timings"])[-5:] == ["nicknames", "baseline", "try", "disconnect", "close"]
     assert all(c["seconds"] is not None for c in result["cases"])
@@ -4652,7 +4652,7 @@ def test_import_each_row(tmp_path, setup):
     assert fake.pressed.count("Delete Existing") == 5
     assert fake.typed[1148] == str(out / "rows" / "line006.csv")
     assert fake.commands == ["Import Nickname"] * 5 + ["Disconnect"]
-    # The project was never saved, so the runner disconnects and then ends CLICK
+    # The project was never saved, so the runner ends CLICK instead of closing it. It disconnects first.
     assert not fake.connected and fake.terminated and not fake.saved
     assert list(result["timings"])[-4:] == ["import", "disconnect", "close", "read"]
     log = (out / "run.log").read_text(encoding="utf-8")

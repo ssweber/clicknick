@@ -33,7 +33,7 @@ _VERSION = 1
 
 @dataclass(frozen=True)
 class BenchLink:
-    """A session-only change to the feedback wiring on one input.
+    """A change to the feedback wiring on one input that the program does not declare.
 
     *enable* is the CLICK address that drives the feedback, with an optional *trigger*
     value. ``None`` cuts the program's own link on that input. *response* holds pyrung's

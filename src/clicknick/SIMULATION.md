@@ -52,8 +52,10 @@ refusals rely on that split.
 
 ## Bench links and names
 
-- A bench link is session-only feedback wiring (`sim_state.BenchLink`, keyed by feedback address). Bench links
-  are desired state, like forces. ClickNick saves them. It applies them again over DAP after a launch. It adopts
+- A bench link is feedback wiring that the user adds in the Simulator and the program does not declare
+  (`sim_state.BenchLink`, keyed by feedback address). Bench links are desired state, like forces. ClickNick
+  saves them. It applies them again over DAP after every launch, until the user removes one or uses "Save to
+  project". It adopts
   them from the simulation when a frame's `linksRevision` changes, because the Console can edit them too.
 - "Save to project" in the Simulator window writes the link into the feedback's comment through the store
   (`services/link_annotation.py`). After a Sync and a rebuild, pyrung drops the bench copy, because the program
