@@ -1888,10 +1888,7 @@ class ReviewChangesWindow(tk.Toplevel):
             )
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
         except RuntimeError as exc:
-            self._status_var.set(
-                f"Could not copy to the clipboard: {exc}\nCheck that CLICK is running, then "
-                "copy again"
-            )
+            self._status_var.set(str(exc))  # The clipboard's errors say what to do
             return False
         except Exception as exc:
             self._status_var.set(f"Could not copy {name}: {exc}")
