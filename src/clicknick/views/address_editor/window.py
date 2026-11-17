@@ -1,7 +1,7 @@
 """Main window for the Address Editor.
 
 Tabbed editor for viewing, creating, and editing PLC address nicknames.
-Each tab displays all memory types in a unified view.
+Each tab shows every memory type in one table.
 """
 
 from __future__ import annotations
@@ -50,11 +50,9 @@ class AddressEditorWindow(tk.Toplevel):
         if not hasattr(self, "_edit_menu"):
             return
 
-        # Update Undo menu item (index 0)
         undo_state = "normal" if self._store.can_undo() else "disabled"
         self._edit_menu.entryconfig(0, state=undo_state)
 
-        # Update Redo menu item (index 1)
         redo_state = "normal" if self._store.can_redo() else "disabled"
         self._edit_menu.entryconfig(1, state=redo_state)
 
@@ -75,10 +73,8 @@ class AddressEditorWindow(tk.Toplevel):
 
         self.status_var.set(" | ".join(parts))
 
-        # Update sidebar button indicators
         self.sidebar.update_all_indicators()
 
-        # Update undo/redo menu states
         self._update_undo_redo_menu_states()
 
     def _refresh_navigation(self) -> None:
@@ -114,7 +110,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         sheet = panel.sheet
 
-        # Get selected rows from tksheet (returns set of row indices)
+        # tksheet returns the selected rows as a set of row indices.
         selected = sheet.get_selected_rows()
         if not selected:
             return []
@@ -166,7 +162,6 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel:
             return False, [], ""
 
-        # Convert display indices to row objects
         rows = []
         for display_idx in selected:
             if display_idx >= len(panel._displayed_rows):
@@ -174,7 +169,6 @@ class AddressEditorWindow(tk.Toplevel):
             row_idx = panel._displayed_rows[display_idx]
             rows.append(panel.rows[row_idx])
 
-        # Delegate business logic to service
         can_fill, reason = RowService.can_fill_down(rows)
         if not can_fill:
             return False, [], reason
@@ -206,7 +200,6 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel:
             return False, ""
 
-        # Convert display indices to row objects
         rows = []
         for display_idx in selected:
             if display_idx >= len(panel._displayed_rows):
@@ -214,7 +207,6 @@ class AddressEditorWindow(tk.Toplevel):
             row_idx = panel._displayed_rows[display_idx]
             rows.append(panel.rows[row_idx])
 
-        # Delegate business logic to service
         return RowService.can_clone_structure(rows)
 
     def _update_clone_button_state(self) -> None:
@@ -237,7 +229,6 @@ class AddressEditorWindow(tk.Toplevel):
         selected = self._get_selected_row_indices()
         block_size = len(selected)
 
-        # Ask for number of clones (UI concern)
         num_clones = simpledialog.askinteger(
             "Clone Structure",
             f"How many clones of the {block_size}-row structure?",
@@ -248,7 +239,6 @@ class AddressEditorWindow(tk.Toplevel):
         if not num_clones:
             return
 
-        # Validate destination rows (UI concern)
         last_display_idx = selected[-1]
         dest_start = last_display_idx + 1
         dest_count = block_size * num_clones
@@ -262,19 +252,18 @@ class AddressEditorWindow(tk.Toplevel):
             )
             return
 
-        # Get template and destination rows for validation
         template_rows = [panel.rows[panel._displayed_rows[idx]] for idx in selected]
         destination_rows = [
             panel.rows[panel._displayed_rows[dest_start + i]] for i in range(dest_count)
         ]
 
-        # Validate destination rows via service
         is_valid, error_msg = RowService.validate_clone_destination(template_rows, destination_rows)
         if not is_valid:
             messagebox.showerror("Clone Error", error_msg, parent=self)
             return
 
-        # Ask user about incrementing initial values (UI concern)
+        # Ask whether to increment initial values too. Ask only if a non-bit row's initial
+        # value equals the last number in its nickname.
         increment_initial_value = False
         for display_idx in selected:
             row_idx = panel._displayed_rows[display_idx]
@@ -296,14 +285,13 @@ class AddressEditorWindow(tk.Toplevel):
                     except ValueError:
                         pass
 
-        # Get template and destination keys
         template_keys = [panel.rows[panel._displayed_rows[idx]].addr_key for idx in selected]
         destination_keys = [
             panel.rows[panel._displayed_rows[dest_start + i]].addr_key for i in range(dest_count)
         ]
 
-        # Execute clone via service within edit_session
-        # edit_session handles validation, notification, and display refresh automatically
+        # When the edit session closes, the store validates the rows and notifies this window.
+        # The window then redraws its panels.
         with self._store.edit_session("Clone structure") as session:
             RowService.clone_structure(
                 session,
@@ -314,7 +302,6 @@ class AddressEditorWindow(tk.Toplevel):
                 increment_initial_value,
             )
 
-        # Update status
         self._update_status()
         self.status_var.set(f"Cloned {block_size}-row structure {num_clones} times")
 
@@ -328,13 +315,14 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel:
             return
 
-        # Get source row
+        # The first selected row is the source.
         selected = self._get_selected_row_indices()
         first_display_idx = selected[0]
         first_row_idx = panel._displayed_rows[first_display_idx]
         first_row = panel.rows[first_row_idx]
 
-        # Ask user about incrementing initial value (UI concern)
+        # Ask whether to increment the initial value too. Ask only if the source is not a bit
+        # and its initial value equals the last number in its nickname.
         increment_initial_value = False
         if first_row.initial_value and first_row.data_type != DataType.BIT:
             _, orig_num, _ = RowService.increment_nickname_suffix(first_row.nickname, 0)
@@ -352,11 +340,11 @@ class AddressEditorWindow(tk.Toplevel):
                 except ValueError:
                     pass
 
-        # Get target keys (rows_to_fill already excludes the source row)
+        # rows_to_fill does not include the source row.
         target_keys = [panel.rows[panel._displayed_rows[idx]].addr_key for idx in rows_to_fill]
 
-        # Execute fill down via service within edit_session
-        # edit_session handles validation, notification, and display refresh automatically
+        # When the edit session closes, the store validates the rows and notifies this window.
+        # The window then redraws its panels.
         with self._store.edit_session("Fill down") as session:
             RowService.fill_down(
                 session,
@@ -366,7 +354,6 @@ class AddressEditorWindow(tk.Toplevel):
                 increment_initial_value,
             )
 
-        # Update button states
         self._update_fill_down_button_state()
         self._update_status()
 
@@ -382,7 +369,6 @@ class AddressEditorWindow(tk.Toplevel):
         Args:
             panel: The AddressPanel to bind events on
         """
-        # Bind to selection events to update button states
         panel.sheet.bind("<<SheetSelect>>", self._update_button_states)
 
     def _on_type_selected(self, type_name: str) -> None:
@@ -403,7 +389,7 @@ class AddressEditorWindow(tk.Toplevel):
             panel.scroll_to_address(address, mem_type)
 
     def _has_unsaved_changes(self) -> bool:
-        """Check if any panel has unsaved changes."""
+        """Return True if the store has unsaved changes. Every tab shares the one store."""
         return self._store.has_unsaved_changes()
 
     def _is_using_mdb(self) -> bool:
@@ -427,13 +413,12 @@ class AddressEditorWindow(tk.Toplevel):
         return any(panel.sheet.MT.text_editor.open for panel, *_ in self._tabs.values())
 
     def _save_all(self) -> None:
-        """Save all changes to database."""
+        """Write every unsaved edit to CLICK's database or to the CSV file."""
         if not self.commit_open_cell_editor():
             return
         save_label = self._get_save_label()
         action_verb = "synced" if self._is_using_mdb() else "saved"
 
-        # Check for validation errors (across all shared data)
         if self._store.has_errors():
             messagebox.showerror(
                 "Validation Errors",
@@ -467,11 +452,11 @@ class AddressEditorWindow(tk.Toplevel):
             messagebox.showerror(f"{save_label} Error", str(e), parent=self)
 
     def _refresh_all(self) -> None:
-        """Refresh all tab panels by discarding changes.
+        """Discard every unsaved edit, after the user confirms, and redraw the tabs.
 
-        With skeleton architecture, discard_all_changes() resets skeleton rows
-        in-place and notifies all observers. Panels refresh automatically via
-        _on_address_store_changed().
+        discard_all_changes() returns every row to the value that the data source holds.
+        It then notifies the store's observers. This window is one of them, so
+        _on_address_store_changed() redraws the panels.
         """
         if self._store.has_unsaved_changes():
             result = messagebox.askyesno(
@@ -483,8 +468,6 @@ class AddressEditorWindow(tk.Toplevel):
                 return
 
         try:
-            # Discard shared data - resets skeleton rows and notifies all windows
-            # _on_address_store_changed() will refresh all panels automatically
             self._store.discard_all_changes()
             self.status_var.set(f"Refreshed - {len(self._store.all_nicknames)} nicknames loaded")
 
@@ -508,8 +491,7 @@ class AddressEditorWindow(tk.Toplevel):
             return
 
         try:
-            # Discard shared data - resets rows in-place and notifies all windows
-            # The notification triggers _on_address_store_changed which refreshes panels
+            # The store notifies this window, and _on_address_store_changed() redraws the panels.
             self._store.discard_all_changes()
 
             self._update_status()
@@ -520,7 +502,6 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _export_to_csv(self) -> None:
         """Export address data to CSV file."""
-        # Show export dialog
         dialog = ExportCsvDialog(self)
         self.wait_window(dialog)
 
@@ -531,7 +512,6 @@ class AddressEditorWindow(tk.Toplevel):
 
         try:
             if export_mode == "all":
-                # Export all rows from shared data using CsvDataSource
                 csv_source = CsvDataSource(str(file_path))
                 count = csv_source.save_changes(list(self._store.visible_state.values()))
                 messagebox.showinfo(
@@ -540,7 +520,6 @@ class AddressEditorWindow(tk.Toplevel):
                     parent=self,
                 )
             elif export_mode == "visible":
-                # Export only visible rows from current panel
                 panel = self._get_current_panel()
                 if not panel:
                     messagebox.showerror(
@@ -550,7 +529,7 @@ class AddressEditorWindow(tk.Toplevel):
                     )
                     return
 
-                # Get visible rows (respects current filters)
+                # The displayed rows are the ones that pass the tab's filters.
                 visible_rows = [panel.rows[idx] for idx in panel._displayed_rows]
                 csv_source = CsvDataSource(str(file_path))
                 count = csv_source.save_changes(visible_rows)
@@ -565,7 +544,6 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _import_from_csv(self) -> None:
         """Import address data from CSV file with merge options."""
-        # Show import dialog
         dialog = ImportCsvDialog(self)
         self.wait_window(dialog)
 
@@ -575,14 +553,12 @@ class AddressEditorWindow(tk.Toplevel):
         csv_path, selected_blocks, import_options_per_block = dialog.result
 
         try:
-            # Apply merge via ImportService within edit_session
-            # edit_session handles validation and notification automatically
+            # When the edit session closes, the store validates the rows and notifies this
+            # window. The window then redraws its panels.
             with self._store.edit_session("Import from CSV") as session:
                 updated_count = ImportService.merge_blocks(
                     self._store, session, selected_blocks, import_options_per_block
                 )
-
-            # edit_session exited - validation and notification happened automatically
 
             self._update_status()
 
@@ -604,7 +580,7 @@ class AddressEditorWindow(tk.Toplevel):
             messagebox.showerror("Import Error", str(e), parent=self)
 
     def _create_tooltip(self, widget: tk.Widget, text: str) -> None:
-        """Create a simple tooltip for a widget.
+        """Attach a tooltip to a widget. The tooltip shows only while the widget is disabled.
 
         Args:
             widget: The widget to attach the tooltip to
@@ -614,7 +590,6 @@ class AddressEditorWindow(tk.Toplevel):
 
         def show_tooltip(event):
             nonlocal tooltip
-            # Only show when disabled
             if str(widget.cget("state")) == "disabled":
                 x = widget.winfo_rootx() + 20
                 y = widget.winfo_rooty() + widget.winfo_height() + 5
@@ -649,7 +624,6 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel:
             return
 
-        # Get the actual rows for validation
         selected_rows = []
         for display_idx in selected_display_rows:
             if display_idx < len(panel._displayed_rows):
@@ -666,7 +640,6 @@ class AddressEditorWindow(tk.Toplevel):
             )
             return
 
-        # Create validation callback for duplicate block names
         def validate_block_name(name: str) -> tuple[bool, str]:
             view = self._store.get_unified_view()
             if view is None:
@@ -675,7 +648,6 @@ class AddressEditorWindow(tk.Toplevel):
                 return True, ""
             return False, f"Block name '{name}' already exists.\nBlock names must be unique."
 
-        # Show the Add Block dialog with validation
         dialog = AddBlockDialog(
             self, validate_name=validate_block_name, row_count=len(selected_rows)
         )
@@ -686,21 +658,19 @@ class AddressEditorWindow(tk.Toplevel):
 
         block_name, color = dialog.result
 
-        # Tag the T/CT row when the selection interleaves T/TD or CT/CTD rows. The store's
-        # pair cascade then writes the matching _D tags.
+        # If the selection holds both T and TD rows (or CT and CTD), tag the T or CT rows. The
+        # store then adds the same tags to the TD or CTD rows, with _D after the block name.
         first_key, last_key = RowService.block_tag_keys(selected_rows)
         visible = self._store.visible_state
         first_row = visible[first_key]
         last_row = visible[last_key]
 
-        # Helper to append tag to comment
         def make_new_comment(current: str, tag: str) -> str:
             return f"{current} {tag}" if current else tag
 
-        # Modify comments within edit_session
-        # edit_session automatically handles:
-        # - Interleaved pair sync (T1→TD1)
-        # - Validation, block colors, observer notification
+        # When the edit session closes, the store adds a matching tag to the other row of each
+        # tagged T/TD or CT/CTD pair (T1 and TD1). It then validates the rows, recomputes the
+        # block colors and notifies its observers.
         with self._store.edit_session("Add block tag") as session:
             if first_key == last_key:
                 # Single row - self-closing tag
@@ -723,11 +693,11 @@ class AddressEditorWindow(tk.Toplevel):
     def _on_remove_block_clicked(self) -> None:
         """Handle Remove Block button click.
 
-        Removes the block tag from the selected row's comment.
-        edit_session automatically handles:
-        - Paired tag sync (removing closing tag when opening is removed)
-        - Interleaved pair sync (T1→TD1)
-        - Validation, block colors, observer notification
+        Remove the block tag from the comment of the first selected row, if that tag opens a
+        block or closes itself. When the edit session closes, the store removes the block's
+        closing tag, if it has one. It also removes the matching tags from the other rows of
+        any T/TD or CT/CTD pairs (T1 and TD1). It then validates the rows, recomputes the block
+        colors and notifies its observers.
         """
         selected_display_rows = self._get_selected_row_indices()
         if not selected_display_rows:
@@ -749,7 +719,6 @@ class AddressEditorWindow(tk.Toplevel):
         if block_tag.tag_type not in ("open", "self-closing"):
             return
 
-        # Remove the tag - edit_session handles paired tag and interleaved sync
         with self._store.edit_session("Remove block tag") as session:
             new_comment = remove_block_tag(first_row.comment)
             session.set_field(first_row.addr_key, "comment", new_comment)
@@ -768,9 +737,10 @@ class AddressEditorWindow(tk.Toplevel):
     def _on_outline_select(self, path: str, leaves: list[tuple[str, int]]) -> None:
         """Handle selection from outline tree.
 
-        For single leaf nodes (exact nickname match): scrolls to address.
-        For folder nodes (multiple children), filter by path prefix using the ^ anchor. A
-        nickname with others under it filters to itself and them (`tree:`).
+        If the item has one address and *path* is that address's nickname, scroll to its row.
+        Otherwise show all rows and filter the nicknames by *path* as a prefix, using the ^
+        anchor. If the item is a nickname that has others under it, the filter is `tree:`
+        and the nickname. That filter shows the item's own row and the rows under it.
 
         Args:
             path: Filter prefix for folders or exact nickname for leaves
@@ -783,22 +753,18 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel:
             return
 
-        # Check if this is a single leaf (exact nickname match)
         if len(leaves) == 1:
             memory_type, address = leaves[0]
             addr_key = get_addr_key(memory_type, address)
             row = self._store.visible_state.get(addr_key)
             nickname = row.nickname if row else ""
-            # If path matches the nickname exactly, just scroll (don't filter)
             if path == nickname:
                 panel.scroll_to_address(address, memory_type)
                 panel.sheet.focus_set()
                 return
 
-        # Folder node - clear row filters and apply prefix filter
         panel.row_filter_var.set("all")
 
-        # Enable text filter and set prefix pattern with ^ anchor
         panel.filter_enabled_var.set(True)
         if path:
             rows = (self._store.visible_state.get(get_addr_key(mt, a)) for mt, a in leaves)
@@ -827,7 +793,6 @@ class AddressEditorWindow(tk.Toplevel):
         if not panel:
             return
 
-        # Jump to first address in the block
         memory_type, address = leaves[0]
         panel.scroll_to_address(address, memory_type)
 
@@ -844,21 +809,18 @@ class AddressEditorWindow(tk.Toplevel):
             old_text: Current segment text
             new_text: New segment text
             is_array: True if renaming an array node
-            exact: True to rename only the nickname prefix + old_text
+            exact: True to rename only the nickname prefix + old_text, and not the nicknames
+                that continue it
         """
-        # Build the regex pattern and replacement template
         pattern, replacement_template = build_rename_pattern(prefix, old_text, is_array, exact)
 
-        # Format the replacement template with the new text
         replacement = rename_replacement(replacement_template, new_text)
 
-        # Get the current panel
         panel = self._get_current_panel()
         if not panel:
             messagebox.showerror("No Active Panel", "Open a tab, then rename again.", parent=self)
             return
 
-        # Use the direct regex replacement method
         replacements_made = panel.sheet.regex_replace_all_direct(
             pattern,
             replacement,
@@ -874,7 +836,6 @@ class AddressEditorWindow(tk.Toplevel):
             panel.row_filter_var.set("changed")
             panel._apply_filters()
 
-        # Show confirmation
         if replacements_made > 0:
             messagebox.showinfo(
                 "Rename Complete",
@@ -889,7 +850,6 @@ class AddressEditorWindow(tk.Toplevel):
     def _toggle_nav(self) -> None:
         """Toggle the outline window visibility."""
         if self._nav_window is None:
-            # Create outline window
             self._nav_window = NavWindow(
                 self,
                 on_outline_select=self._on_outline_select,
@@ -899,11 +859,9 @@ class AddressEditorWindow(tk.Toplevel):
             self._refresh_navigation()
             self._tag_browser_var.set(True)
         elif self._nav_window.winfo_viewable():
-            # Hide it
             self._nav_window.withdraw()
             self._tag_browser_var.set(False)
         else:
-            # Show it
             self._refresh_navigation()
             self._nav_window.deiconify()
             self._nav_window._dock_to_parent()
@@ -930,7 +888,6 @@ class AddressEditorWindow(tk.Toplevel):
             panel: The panel to configure
             state: The state to apply
         """
-        # Apply filter settings
         panel.filter_enabled_var.set(state.filter_enabled)
         panel.filter_var.set(state.filter_text)
         panel.row_filter_var.set(state.row_filter)
@@ -941,10 +898,8 @@ class AddressEditorWindow(tk.Toplevel):
         panel._toggle_used_column()
         panel._toggle_init_ret_columns()
 
-        # Apply filters
         panel._apply_filters()
 
-        # Scroll to saved position if any
         if state.scroll_row_index > 0:
             panel._scroll_to_row(min(state.scroll_row_index, len(panel._displayed_rows) - 1))
 
@@ -958,11 +913,9 @@ class AddressEditorWindow(tk.Toplevel):
             True if tab was created successfully.
         """
         try:
-            # Generate tab name
             self._tab_counter += 1
             tab_name = f"Tab {self._tab_counter}"
 
-            # Create state (clone or fresh)
             if clone_from is not None:
                 state = clone_from.clone()
                 state.name = tab_name
@@ -970,13 +923,11 @@ class AddressEditorWindow(tk.Toplevel):
                 state = TabState.fresh()
                 state.name = tab_name
 
-            # Get or build unified view
             unified_view = self._store.get_unified_view()
             if unified_view is None:
                 unified_view = build_unified_view(self._store.visible_state)
                 self._store.set_unified_view(unified_view)
 
-            # Create unified panel
             panel = AddressPanel(
                 self.notebook,
                 self._store,
@@ -984,23 +935,19 @@ class AddressEditorWindow(tk.Toplevel):
                 get_analysis_service=self._get_analysis_service,
             )
 
-            # Add to notebook
             self.notebook.add(panel, text=tab_name)
 
-            # Track the tab
             tab_id = str(panel)
             self._tabs[tab_id] = (panel, state)
 
-            # Select the new tab
             self.notebook.select(panel)
 
-            # Initialize panel with unified view data
             panel.initialize_from_view(unified_view.rows)
 
-            # Apply state to panel (filters, column visibility, scroll) to the built view
+            # Apply the tab's filters, column visibility and scroll position after the rows
+            # are loaded.
             self._apply_state_to_panel(panel, state)
 
-            # Bind selection events for Add Block button
             self._bind_panel_selection(panel)
 
             return True
@@ -1028,7 +975,6 @@ class AddressEditorWindow(tk.Toplevel):
         # Get the tab widget name
         tab_id = self.notebook.tabs()[tab_index]
 
-        # Remove from tracking
         if tab_id in self._tabs:
             del self._tabs[tab_id]
 
@@ -1043,28 +989,23 @@ class AddressEditorWindow(tk.Toplevel):
         try:
             current = self.notebook.select()
             if current:
-                # Get the tab index
                 tab_index = self.notebook.index(current)
 
-                # Remove from tracking
                 if current in self._tabs:
                     del self._tabs[current]
 
-                # Remove the tab
                 self.notebook.forget(tab_index)
 
-                # Update status
                 self._update_status()
         except Exception:
             pass
 
     def _on_tab_changed(self, event=None) -> None:
         """Handle tab selection change."""
-        # Update Add Block button state for new tab
         self._update_add_block_button_state()
         self._update_status()
 
-        # Sync menu filter enabled state with current panel
+        # Make the View menu's Filter Enabled check mark match the newly selected tab.
         panel = self._get_current_panel()
         if panel:
             self._filter_enabled_var.set(panel.filter_enabled_var.get())
@@ -1082,7 +1023,6 @@ class AddressEditorWindow(tk.Toplevel):
         state.hide_used_column = panel.hide_used_var.get()
         state.hide_init_ret_columns = panel.hide_init_ret_var.get()
 
-        # Save scroll position
         try:
             start_row, _end_row = panel.sheet.visible_rows
             state.scroll_row_index = start_row
@@ -1091,15 +1031,14 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _on_new_tab_clicked(self) -> None:
         """Handle New Tab button click."""
-        # Get current panel and state for potential cloning
         current_panel = self._get_current_panel()
         current_state = self._get_current_state()
 
-        # Save current panel state BEFORE asking user (so clone has current values)
+        # Save the tab's settings before asking, so that a clone copies its current filters and
+        # scroll position.
         if current_panel and current_state:
             self._save_state_from_panel(current_panel, current_state)
 
-        # Ask user how to create the tab
         result = ask_new_tab(self)
 
         if result is None:
@@ -1133,14 +1072,11 @@ class AddressEditorWindow(tk.Toplevel):
         """
         for _tab_id, (panel, _state) in self._tabs.items():
             if affected_indices is not None:
-                # Targeted refresh - only update specific rows (validation done by edit_session)
                 panel.refresh_targeted(affected_indices)
             else:
-                # Full refresh - needed for external MDB changes or unknown scope
-                # Validation is handled by edit_session
+                # No keys means the sender does not say which rows changed, so redraw them all.
                 panel.refresh_from_external()
 
-        # Refresh outline if visible (deferred until idle)
         if self._nav_window is not None and self._nav_window.winfo_viewable():
             self.after_idle(self._refresh_navigation)
 
@@ -1173,14 +1109,12 @@ class AddressEditorWindow(tk.Toplevel):
         # The window was opened to Sync something staged elsewhere, so the button closes it too.
         what = f"{save_label} and Close" if self._close_after_sync else f"{save_label} All"
 
-        # Update menu item
         if hasattr(self, "_file_menu") and hasattr(self, "_save_menu_index"):
             try:
                 self._file_menu.entryconfig(self._save_menu_index, label=what)
             except Exception:
                 pass
 
-        # Update button
         if hasattr(self, "save_btn"):
             self.save_btn.configure(text=f"💾 {what}")
 
@@ -1219,7 +1153,7 @@ class AddressEditorWindow(tk.Toplevel):
         self._file_menu.add_command(label="Export to CSV...", command=self._export_to_csv)
         self._file_menu.add_separator()
         self._file_menu.add_command(label="Refresh", command=self._refresh_all)
-        # Save menu item - will be updated after data loads
+        # _update_save_ui_labels() relabels this item once the data has loaded.
         self._save_menu_index = self._file_menu.index("end") + 1
         self._file_menu.add_command(label="Save All", command=self._save_all, accelerator="Ctrl+S")
         self._file_menu.add_command(label="Discard Changes", command=self._discard_changes)
@@ -1246,7 +1180,6 @@ class AddressEditorWindow(tk.Toplevel):
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
 
-        # Filter enabled toggle (checkbutton)
         self._filter_enabled_var = tk.BooleanVar(value=True)
         view_menu.add_checkbutton(
             label="Filter Enabled",
@@ -1256,7 +1189,6 @@ class AddressEditorWindow(tk.Toplevel):
         )
         view_menu.add_separator()
 
-        # Tag Browser toggle (checkbutton)
         self._tag_browser_var = tk.BooleanVar(value=False)
         view_menu.add_checkbutton(
             label="Tag Browser",
@@ -1266,23 +1198,21 @@ class AddressEditorWindow(tk.Toplevel):
 
     def _on_filter_toggle_key(self, event=None) -> str:
         """Handle Ctrl+Space keyboard shortcut to toggle filter."""
-        # Toggle the variable (menu checkbutton will update automatically)
+        # The View menu's check mark follows the variable.
         self._filter_enabled_var.set(not self._filter_enabled_var.get())
         self._on_filter_toggle()
         return "break"  # Prevent event propagation
 
     def _create_widgets(self) -> None:
         """Create all window widgets."""
-        # Main container
         main_frame = ttk.Frame(self)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Status bar at very bottom
         self.status_var = tk.StringVar(value="Ready")
         status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(fill=tk.X, side=tk.BOTTOM)
 
-        # Sidebar on left - buttons now scroll to sections instead of switching panels
+        # The sidebar's buttons scroll the current tab to a memory type's section.
         self.sidebar = JumpSidebar(
             main_frame,
             on_type_select=self._on_type_selected,
@@ -1291,25 +1221,21 @@ class AddressEditorWindow(tk.Toplevel):
         )
         self.sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5)
 
-        # Center container (full remaining space - outline is external)
+        # The Tag Browser is a separate window, so this frame fills the rest of the window.
         center_frame = ttk.Frame(main_frame)
         center_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Tabbed notebook for address panels (each tab shows ALL memory types)
         self.notebook = CustomNotebook(
             center_frame,
             on_close_callback=self._on_tab_close_request,
         )
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        # Bind tab change event
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
-        # Footer toolbar at bottom of center
         footer = ttk.Frame(center_frame)
         footer.pack(fill=tk.X, pady=(5, 0))
 
-        # Add Block button
         self.add_block_btn = ttk.Button(
             footer,
             text="+ Add Block",
@@ -1317,10 +1243,8 @@ class AddressEditorWindow(tk.Toplevel):
             state="disabled",
         )
         self.add_block_btn.pack(side=tk.LEFT)
-        # Create tooltip for the button
         self._create_tooltip(self.add_block_btn, "Select rows to define block")
 
-        # Fill Down button
         self.fill_down_btn = ttk.Button(
             footer,
             text="↓ Fill Down",
@@ -1328,13 +1252,11 @@ class AddressEditorWindow(tk.Toplevel):
             state="disabled",
         )
         self.fill_down_btn.pack(side=tk.LEFT, padx=(5, 0))
-        # Create tooltip for the button
         self._create_tooltip(
             self.fill_down_btn,
             "Fill empty rows with incrementing nicknames (e.g., Alm1 → Alm2, Alm3...)",
         )
 
-        # Clone Structure button
         self.clone_btn = ttk.Button(
             footer,
             text="⧉ Clone",
@@ -1342,20 +1264,18 @@ class AddressEditorWindow(tk.Toplevel):
             state="disabled",
         )
         self.clone_btn.pack(side=tk.LEFT, padx=(5, 0))
-        # Create tooltip for the button
         self._create_tooltip(
             self.clone_btn,
             "Clone selected row pattern into empty rows below",
         )
 
-        # Save button (right side) - will be updated after data loads
+        # _update_save_ui_labels() relabels this button once the data has loaded.
         self.save_btn = ttk.Button(footer, text="💾 Save All", command=self._save_all)
         self.save_btn.pack(side=tk.RIGHT)
 
     def _load_initial_data(self) -> None:
         """Load initial data from the database."""
         try:
-            # Load initial data if not already loaded
             if not self._store.is_initialized():
                 self._store.load_initial_data()
 
@@ -1364,10 +1284,8 @@ class AddressEditorWindow(tk.Toplevel):
 
             self.status_var.set(f"Connected - {len(self._store.all_nicknames)} nicknames loaded")
 
-            # Update Save/Sync labels based on data source type
             self._update_save_ui_labels()
 
-            # Create first tab with fresh state
             self._create_new_tab(clone_from=None)
 
         except Exception as e:
@@ -1389,7 +1307,6 @@ class AddressEditorWindow(tk.Toplevel):
         if flag_path.exists():
             return
 
-        # Content
         popup_text = (
             "Address Editor\n\n"
             "This tool edits address information in CLICK's temporary database.\n"
@@ -1409,18 +1326,15 @@ class AddressEditorWindow(tk.Toplevel):
 
         parts = [base_title]
 
-        # Add Click project filename if available
         click_filename = self._get_click_filename()
         if click_filename:
             parts.append(click_filename)
 
-        # Add data source info
         try:
             file_path = self._store._data_source.file_path
             if file_path:
                 filename = Path(file_path).name
                 parts.append(filename)
-                # Add source type indicator
                 if file_path.lower().endswith(".mdb"):
                     parts.append("DB")
                 elif file_path.lower().endswith(".csv"):
@@ -1445,9 +1359,11 @@ class AddressEditorWindow(tk.Toplevel):
         Args:
             parent: Parent widget (main app window)
             session: DataSession holding the AddressStore this window edits
-            get_click_filename: The connected Click project's filename (e.g., "MyProject.ckp")
-            get_analysis_service: The connection's AnalysisService, for program-analysis
-                filter prefixes (None when there is none).
+            get_click_filename: Returns the filename of the project that CLICK has open
+                (e.g., "MyProject.ckp").
+            get_analysis_service: Returns the connection's AnalysisService, or None if there
+                is none. The filter prefixes that read the program, such as `input:` and
+                `upstream:`, need it.
             on_synced: Called with the saved addr_keys after a successful save.
             get_synced_pending: Count of tags synced to CLICK but not yet saved there.
             close_after_sync: True if the window was opened to Sync edits staged elsewhere.
@@ -1466,7 +1382,7 @@ class AddressEditorWindow(tk.Toplevel):
         self.title(self._get_window_title())
         self.geometry("1025x700")
 
-        # Tab tracking: maps tab widget name to (panel, state) tuple
+        # Maps each tab's widget name to its panel and state.
         self._tabs: dict[str, tuple[AddressPanel, TabState]] = {}
         self._tab_counter = 0  # For generating unique tab names
         self._nav_window: NavWindow | None = None
@@ -1476,13 +1392,11 @@ class AddressEditorWindow(tk.Toplevel):
         self._load_initial_data()
         self._show_address_editor_popup()
 
-        # Register as observer for shared data changes
         self._store.add_observer(self._on_address_store_changed)
 
         # Register with the session, which closes all windows when data is replaced.
         session.register_editor(self)
 
-        # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
 
         # Keyboard shortcuts
@@ -1502,16 +1416,17 @@ class AddressEditorWindow(tk.Toplevel):
         self._init_after_id = self.after(100, self._toggle_nav)
 
     def refresh_title(self) -> None:
-        """Show the project that CLICK has open now. The app calls this when the project changes."""
+        """Update the window title. The app calls this when CLICK opens a different project."""
         self.title(self._get_window_title())
 
     def commit_open_cell_editor(self) -> bool:
-        """Commit the text typed in an open cell editor, so it is an edit like any other.
+        """Commit the text typed in any open cell editor, as an ordinary edit.
 
         DataSession calls this before it closes the window or replaces its data.
 
-        Return False, after telling the user, if an editor is still open. tksheet commits
-        nothing while the application has no focus.
+        If an editor is still open afterwards, warn the user and return False. Otherwise
+        return True. tksheet commits nothing while the application does not have focus, so
+        this method takes focus and tries a second time.
         """
         for panel, *_ in self._tabs.values():
             mt = panel.sheet.MT
@@ -1546,17 +1461,16 @@ class AddressEditorWindow(tk.Toplevel):
         self.destroy()
 
     def _raise_and_focus(self) -> None:
-        """Surface the mapped editor and give it keyboard focus."""
+        """Show the editor window, raise it above other windows and give it keyboard focus."""
         self.deiconify()
         self.lift()
         self.focus_force()
 
     def apply_row_filter(self, row_filter: str) -> None:
-        """Switch the current tab to a row filter (e.g. 'changed') and surface it.
+        """Set the current tab's row filter (e.g. 'changed') and bring the window to the front.
 
-        Used by ``clicknick-cli tag apply`` to drop the engineer straight onto
-        the rows it just changed. Clears any text filter so nothing is hidden,
-        then raises the window.
+        ``clicknick-cli tag apply`` calls this to show the user the rows that it changed.
+        This method also clears the text filter, so that the text filter hides none of them.
         """
         panel = self._get_current_panel()
         if panel is None:
@@ -1566,8 +1480,8 @@ class AddressEditorWindow(tk.Toplevel):
         panel.row_filter_var.set(row_filter)
         panel._apply_filters()
 
-        # A newly-created Toplevel may not be mapped until Tk returns idle;
-        # Windows can ignore activation requests made before then.
+        # Tk may not map a new Toplevel until it is idle. Windows can ignore a request to
+        # activate the window before then.
         self.after_idle(self._raise_and_focus)
 
     def refresh_sync_status(self) -> None:
