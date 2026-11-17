@@ -1,4 +1,4 @@
-"""DataView folder discovery and CDV verification for a CLICK project."""
+"""Find the DataView folder of a CLICK project and verify its CDV files."""
 
 from __future__ import annotations
 
@@ -10,20 +10,20 @@ from ..utils.click_temp import click_temp_dir, temp_root
 
 
 def click_dataview_folder(hwnd: int) -> Path | None:
-    """The DataView folder of the CLICK window *hwnd*, or None when it has none.
+    """Return the DataView folder of the CLICK window *hwnd*, or None if it has none.
 
-    Only that window's ``CLICK (hwnd)`` folder: another window's, or one a
-    crash left behind, holds another project's .cdv files.
+    Only that window's ``CLICK (hwnd)`` folder counts. Another window's folder, or one that
+    a crash left behind, holds another project's .cdv files.
     """
     folder = click_temp_dir(hwnd) / "DataView"
     return folder if folder.is_dir() else None
 
 
 def csv_dataview_folder(csv_path: Path | str) -> Path | None:
-    """The folder holding the CSV *csv_path*, or None when it is gone or is CLICK's own.
+    """Return the folder that holds the CSV *csv_path*, or None if it is gone or is CLICK's own.
 
-    A CSV copied into a ``CLICK (hwnd)`` temp folder lives only as long as that
-    window, so its folder is not somewhere to open or save .cdv files.
+    A CSV copied into a ``CLICK (hwnd)`` temp folder lives only as long as that window, so
+    its folder is not a place to open or save .cdv files.
     """
     folder = Path(csv_path).parent
     if not folder.is_dir():
@@ -43,7 +43,7 @@ def list_cdv_files(dataview_folder: Path | str) -> list[Path]:
 
 
 def check_cdv_files(dataview_folder: Path | None) -> tuple[list[str], int]:
-    """Verify all CDV files in a DataView folder (none checked without one)."""
+    """Verify all CDV files in a DataView folder. Check none if *dataview_folder* is None."""
     issues: list[str] = []
     files_checked = 0
 

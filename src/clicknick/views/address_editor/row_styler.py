@@ -191,7 +191,7 @@ class AddressRowStyler:
     # --- Internal Methods ---
 
     def _apply_highlights(self) -> None:
-        """Apply all highlight_cells calls, for every row (a filter change restyles nothing)."""
+        """Apply all highlight_cells calls, for every row. A filter change restyles nothing."""
         for data_idx in range(len(self._get_rows())):
             self._apply_row_highlights(data_idx)
 
