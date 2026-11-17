@@ -18,8 +18,8 @@ class TestDataviewFolderDiscovery:
     def test_the_connected_windows_folder_not_the_first_click_folder(self, monkeypatch, tmp_path):
         """A folder of another window sorts first and is never taken.
 
-    The same holds for a folder that a crash left behind.
-    """
+        The same holds for a folder that a crash left behind.
+        """
         monkeypatch.setattr(click_temp, "_windows_temp_path", lambda: str(tmp_path))
         other = tmp_path / "CLICK (0001A2B4)" / "DataView"
         connected = tmp_path / "CLICK (00C40F12)" / "DataView"

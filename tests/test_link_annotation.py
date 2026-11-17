@@ -108,7 +108,7 @@ def test_the_workspace_snapshot_names_the_feedbacks_its_program_links(tmp_path):
         AddressRow("X", 1, nickname="Start", comment="[link=Cmd, timed=100ms] Start PB"),
         AddressRow("X", 2, nickname="Begin", comment="Begin PB"),
         AddressRow("X", 3, comment="[link=Cmd, on_delay=2s]"),
-        AddressRow("X", 4, nickname="Door", comment="[link=Cmd]"),  # This link has no response, so no link runs.
+        AddressRow("X", 4, nickname="Door", comment="[link=Cmd]"),  # no response, so no link runs
     ]
     CsvDataSource(str(tmp_path / "nicknames.csv")).save_changes(rows)
 
