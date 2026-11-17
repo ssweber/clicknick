@@ -40,7 +40,8 @@ def test_comment_has_link_compares_the_response():
         comment, BenchLink("Y001", response=response(on_delay="3s")), ("Motor_Run",)
     )
     assert not comment_has_link("Aux contact", AUX, ("Motor_Run",))
-    # The simulation writes a number its own way and leaves out a default.
+    # The response still matches when the comment writes 1 as 1.0 and states the default
+    # ramp_off=0.
     level = BenchLink("Y002", response=response(ramp_on="1"))
     assert comment_has_link("[link=Fill, ramp_on=1.0, ramp_off=0] Level", level, ("Fill",))
 

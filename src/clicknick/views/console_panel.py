@@ -141,7 +141,7 @@ class ConsolePanel(ttk.Frame):
 
         The command may come from a panel that has since closed. Stop still cancels it,
         through this panel's own connection. Only a command that this panel sent writes its
-        output here, so only that command keeps Pop out off.
+        output here, so Pop out is disabled only while such a command runs.
         """
         busy = self.busy
         if busy == (self._busy_tick >= 0):
@@ -186,7 +186,8 @@ class ConsolePanel(ttk.Frame):
         """Handle a command that the user submitted in ConsoleInput."""
         self._append_output(f">>> {command}\n", "prompt")
         if self._simulation.writing:
-            # The write reads what pyrung has forced and linked, so a command now would race it.
+            # The write reads what pyrung has forced and linked. A command sent during the
+            # write could change those while the write reads them.
             self._append_output(
                 "Writing the program to the simulation... Send it again once it is written.\n",
                 "error",
@@ -194,7 +195,8 @@ class ConsolePanel(ttk.Frame):
             return
         subs = [s.strip() for s in command.split(";") if s.strip()]
         verbs = [sub.split(None, 1)[0].lower() for sub in subs]
-        # The program changes only when ClickNick writes it, so it knows which names apply.
+        # Refuse autoreload. The program must change only when ClickNick writes it, so that
+        # ClickNick knows which names apply.
         if "autoreload" in verbs:
             self._append_output(
                 "autoreload stays off in ClickNick. When the program changes, the Simulator "
@@ -336,7 +338,8 @@ class ConsolePanel(ttk.Frame):
         # is being dragged.
         self._divider = tk.Frame(self, height=1, background=_DIVIDER)
         self._divider.pack(fill=tk.X)
-        # Header: what this pane is, then its actions, VS Code panel style.
+        # The header shows the pane's title on the left and its actions on the right, in the
+        # style of a VS Code panel.
         header = ttk.Frame(self, padding=(8, 2, 4, 2))
         header.pack(fill=tk.X)
         title = ttk.Label(header, text="CONSOLE", foreground="gray")

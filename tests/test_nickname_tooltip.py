@@ -1,4 +1,5 @@
-"""The overlay tooltip and the Tag Browser suffix show Retentive and the initial value alike."""
+"""Tests that the overlay tooltip and the Tag Browser's suffix show Retentive and the initial
+value in the same way."""
 
 import pytest
 from pyclickplc.banks import PAIRED_RETENTIVE_TYPES, DataType
@@ -84,7 +85,8 @@ class _Source:
         return len(rows)
 
 
-# (memory type, data type, retentive, its T/CT row's retentive or None, initial value)
+# Each case holds the memory type, the data type, Retentive, the Retentive of the paired T or
+# CT row (None if the case has no paired row) and the initial value.
 _CASES = [
     ("C", DataType.BIT, True, None, "1"),
     ("C", DataType.BIT, False, None, "1"),
