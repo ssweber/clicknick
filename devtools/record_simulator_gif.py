@@ -756,7 +756,9 @@ class Driver:
         menu.invoke(drawn.rows[label][0])
         menu.destroy()
         yield 0.1
-        yield from self.wait_until(lambda: not self.win._console.busy, label, 30)
+        yield from self.wait_until(
+            lambda: not self.win._console.busy, f"the Console command from {label!r}", 30
+        )
 
     def park(self) -> Scene:
         """Move the pointer into the empty rack, off anything worth watching."""
@@ -984,10 +986,30 @@ def main() -> None:
         "--from-capture", type=Path, help="encode this saved recording instead of recording"
     )
     defaults = Encoding()
-    parser.add_argument("--speed", type=float, default=defaults.speed)
-    parser.add_argument("--fps", type=float, default=defaults.fps)
-    parser.add_argument("--ticker-fps", type=float, default=defaults.ticker_fps)
-    parser.add_argument("--colors", type=int, default=defaults.colors)
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=defaults.speed,
+        help="playback speed, as a multiple of the recording",
+    )
+    parser.add_argument(
+        "--fps",
+        type=float,
+        default=defaults.fps,
+        help="the most frames per second for a moving pointer or typing",
+    )
+    parser.add_argument(
+        "--ticker-fps",
+        type=float,
+        default=defaults.ticker_fps,
+        help="how many times a second the scan counter may change",
+    )
+    parser.add_argument(
+        "--colors",
+        type=int,
+        default=defaults.colors,
+        help="palette size. Fewer colors roughen text edges",
+    )
     args = parser.parse_args()
     if sys.platform != "win32":
         parser.error("Windows only")

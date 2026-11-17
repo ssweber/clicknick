@@ -711,7 +711,9 @@ def load_cases(path: Path) -> tuple[list[Case], list[str]]:
             raise ValueError(f"{where} needs a 'row' and a 'case'")
         where = f"case {number} ({row} {name})"
         if name in numbers:
-            raise ValueError(f"{where}: case {numbers[name]} has the same 'case', its id")
+            raise ValueError(
+                f"{where} has the same 'case' id as case {numbers[name]}. Give each case its own 'case'."
+            )
         numbers[name] = number
         instruction = INSTRUCTIONS.get(entry.get("instruction"))  # pyright: ignore[reportArgumentType]
         if instruction is None:
@@ -1199,7 +1201,11 @@ def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
     connection = create_access_connection(mdb)
     if not isinstance(connection, pyodbc.Connection):
         connection.close()
-        raise RuntimeError("reading SC_.mdb as stored needs an Access ODBC driver")
+        raise RuntimeError(
+            "reading SC_.mdb exactly as stored needs a Microsoft Access ODBC driver, and "
+            "ClickNick could open it only through Windows Jet. Install the driver for this "
+            "Python and run again."
+        )
     try:
         cursor = connection.cursor()
         cursor.execute(
@@ -1390,7 +1396,9 @@ class Run:
             # dump of such a window gets no edit text and no PNG
             answers = self.desktop.idle(window.hwnd, IDLE_TIMEOUT)
             if not answers:
-                self.log(f"{window.hwnd} does not answer: its dump has no edit text and no PNG")
+                self.log(
+                    f"window {window.hwnd} does not answer. Its dump has no edit text and no PNG."
+                )
             controls = []
             for control in self.desktop.controls(window.hwnd):
                 row = asdict(control)
@@ -1408,7 +1416,7 @@ class Run:
                     written.append(base.with_suffix(".png"))
             except Exception as exc:  # A screenshot is optional
                 if self.desktop.exists(window.hwnd):
-                    self.log(f"no screenshot of {window.hwnd}: {exc}")
+                    self.log(f"no screenshot of window {window.hwnd}: {exc}")
         self.log(f"dumped {len(written) - count} file(s) as {label} into {folder}")
 
     def record(self, label: str) -> None:
@@ -1462,7 +1470,9 @@ class Run:
                 for window in unexpected:
                     if window.hwnd not in self._tolerated:
                         self._tolerated.add(window.hwnd)
-                        self.log(f"before the main window: {_describe(window)}")
+                        self.log(
+                            f"a window was open before the main window appeared: {_describe(window)}"
+                        )
             elif self.main is None:
                 self.main = found[MAIN].hwnd
                 self.result["click"]["main_hwnd"] = self.main
@@ -1481,13 +1491,13 @@ class Run:
             now = time.monotonic()
             if now > deadline:
                 reason = f"timed out after {limit:g} s waiting for {what}"
-                raise Aborted(f"{on_timeout()}; {reason}" if on_timeout else reason)
+                raise Aborted(f"{on_timeout()}. The runner {reason}" if on_timeout else reason)
             if now >= next_status and self.main is not None:
                 next_status = now + STATUS_EVERY
                 if self.desktop.idle(self.main, IDLE_TIMEOUT):
                     self.status_bar(None)
                 else:
-                    self.log(f"CLICK does not answer; still waiting for {what}")
+                    self.log(f"CLICK does not answer. The runner is still waiting for {what}.")
             time.sleep(self.s.poll)
 
     def check_error_boxes(self, windows: list[Window]) -> None:
@@ -1508,7 +1518,7 @@ class Run:
         for window in windows:
             if window.cls == TOOLTIP_CLASS and window.hwnd not in self._tooltips:
                 self._tooltips.add(window.hwnd)
-                self.log(f"a tooltip, let be: {_describe(window)}")
+                self.log(f"ignoring a tooltip: {_describe(window)}")
         return [w for w in windows if w.cls != TOOLTIP_CLASS]
 
     def only_main(self, found: dict[str, Window]) -> bool:
@@ -1590,18 +1600,25 @@ class Run:
         name = self.desktop.input_desktop()
         if name != "Default":
             raise Refused(
-                "the input desktop is locked or cannot be opened"
+                "the input desktop is locked or cannot be opened. Unlock the screen and run again."
                 if name is None
-                else f"the input desktop is {name!r}, not 'Default' (is the screen locked?)"
+                else f"the input desktop is {name!r}, not 'Default'. The screen may be locked. "
+                "Unlock it and run again."
             )
         pids = self.desktop.click_processes()
         if pids:
-            raise Refused(f"CLICK is already running (CLICK.exe pid {', '.join(map(str, pids))})")
+            raise Refused(
+                f"CLICK is already running (CLICK.exe pid {', '.join(map(str, pids))}). "
+                "Close CLICK and run again."
+            )
         hwnds = self.desktop.click_windows()
         if hwnds:
-            raise Refused(f"a CLICK window is already open (hwnd {', '.join(map(str, hwnds))})")
+            raise Refused(
+                f"a CLICK window is already open (hwnd {', '.join(map(str, hwnds))}). "
+                "Close CLICK and run again."
+            )
         if not self.s.exe.is_file():
-            raise Refused(f"CLICK not found at {self.s.exe}")
+            raise Refused(f"CLICK not found at {self.s.exe}. Give its path with --click-exe.")
         if self.s.command == "paste":
             assert self.s.csv is not None
             if not self.s.csv.is_file():
@@ -1628,10 +1645,14 @@ class Run:
             if contacts and not self.s.wire:
                 # A contact placed at column A leaves the cursor at column B, where Delete
                 # removes nothing
-                raise Refused(f"{', '.join(sorted(contacts))} is a contact: try it with --wire")
+                raise Refused(
+                    f"{', '.join(sorted(contacts))} is a contact. Run try with --wire to try it."
+                )
             if self.s.resume is not None:
                 if self.s.resume.resolve() == self.s.out.resolve():
-                    raise Refused("--resume names the run's own folder")
+                    raise Refused(
+                        "--resume names the same folder as --out. Give --resume the folder of an earlier run."
+                    )
                 self.load_resume()
             if self.s.keep and self.read_stored is _read_stored and not _reads_stored_tags():
                 raise Refused(
@@ -1651,7 +1672,10 @@ class Run:
             raise Refused(f"--ini-add is not ASCII: {self.s.ini_add!r}")
         for token in self.s.keys:
             if not token.startswith(("chars:", "text:", "find:")) and token not in _VIRTUAL_KEYS:
-                raise Refused(f"--key {token!r} is not a key the runner knows")
+                raise Refused(
+                    f"--key {token!r} is not a key the runner knows. "
+                    f"Use one of {', '.join(_VIRTUAL_KEYS)}, or chars:TEXT, text:TEXT or find:TEXT."
+                )
 
     def launch(self) -> None:
         with self.step("launch"):
@@ -1659,8 +1683,8 @@ class Run:
             self.result["click"]["pid"] = self.pid
             self.log(f"started {self.s.exe}, pid {self.pid}")
             found = self.wait(
-                "the main window with the What's New guide or Startup, "
-                "and any window open before it closed",
+                "the main window with the What's New guide or Startup, and for every window "
+                "that was open before the main window to close",
                 [GUIDE, STARTUP],
                 lambda f: (
                     f
@@ -1715,7 +1739,7 @@ class Run:
                     [STARTUP, CONNECT],
                     lambda f: _child(self.controls(connect), cls="SysListView32", id=20061),
                 ),
-                "the PLC list",
+                "the Connect dialog's PLC list",
             )
             last: list[int | None] = [None]
             since = [time.monotonic()]
@@ -1737,7 +1761,9 @@ class Run:
                 if items is None or time.monotonic() - since[0] < PLC_SETTLE:
                     return False
                 if items >= 2:
-                    raise Aborted(f"{lists(items)}; expected exactly 1")
+                    raise Aborted(
+                        f"{lists(items)}, and the runner connects only when it lists exactly 1"
+                    )
                 button = _child(self.controls(connect), cls="Button", id=1, text="Connect")
                 return items == 1 and button is not None and button.enabled
 
@@ -1751,7 +1777,8 @@ class Run:
             self.record("connect_dialog")
             controls = self.controls(connect)
             same_lan = _require(
-                _child(controls, cls="Button", id=20059), "'In the same LAN' (20059)"
+                _child(controls, cls="Button", id=20059),
+                "the Connect dialog's 'In the same LAN' (20059)",
             )
             if not (
                 same_lan.text.startswith("In the same LAN")
@@ -1759,15 +1786,19 @@ class Run:
                 and self.desktop.button_checked(same_lan.hwnd) == 1
             ):
                 raise Aborted(
-                    f"the Connect dialog does not scan the same LAN: {same_lan.text!r} "
-                    f"(visible {same_lan.visible}) is not checked"
+                    "the Connect dialog does not scan the same LAN. The runner needs button 20059 to "
+                    "read 'In the same LAN', to be visible and to be checked. "
+                    f"It reads {same_lan.text!r}, and visible is {same_lan.visible}."
                 )
             button = _require(
                 _child(controls, cls="Button", id=1, text="Connect"), "the Connect button"
             )
             items = self.desktop.list_view_items(plc_list.hwnd)
             if items != 1:
-                raise Aborted(f"{lists(items)} as Connect is about to be pressed; expected 1")
+                raise Aborted(
+                    f"{lists(items)} as Connect is about to be pressed, and the runner connects "
+                    "only when it lists exactly 1"
+                )
             self.press(connect, button)
             found = self.wait(
                 "Login or the read-project question",
@@ -1789,10 +1820,16 @@ class Run:
             )
             self.record("read_prompt")
             controls = self.controls(prompt)
-            dont_read = _require(_child(controls, cls="Button", id=1028), "'Don't read' (1028)")
+            dont_read = _require(
+                _child(controls, cls="Button", id=1028),
+                "the read-project question's 'Don't read' (1028)",
+            )
             if not dont_read.text.startswith("Don't read the project"):
                 raise Aborted(f"button 1028 reads {dont_read.text!r}, expected 'Don't read ...'")
-            ok = _require(_child(controls, cls="Button", id=1, text="OK"), "OK (1)")
+            ok = _require(
+                _child(controls, cls="Button", id=1, text="OK"),
+                "the read-project question's OK (1)",
+            )
             self.press(prompt, dont_read)
             try:
                 self.wait(
@@ -1803,7 +1840,9 @@ class Run:
             except ClickErrorBox:
                 raise
             except Aborted as exc:
-                raise Aborted(f"'Don't read' did not take: {exc}") from exc
+                raise Aborted(
+                    f"'Don't read' did not become checked after the press: {exc}"
+                ) from exc
             self.press(prompt, ok)
             self.connected = True
             self.wait("the main window, connected", [STARTUP, CONNECT, READ_PROMPT], self.only_main)
@@ -1856,9 +1895,15 @@ class Run:
     def login(self, login: Window) -> None:
         self.record("login")
         controls = self.controls(login)
-        user = _require(_child(controls, cls="Edit", id=20141), "User Type (20141)")
-        password = _require(_child(controls, cls="Edit", id=20142), "Password (20142)")
-        ok = _require(_child(controls, cls="Button", id=18002, text="OK"), "OK (18002)")
+        user = _require(
+            _child(controls, cls="Edit", id=20141), "the Login dialog's User Type (20141)"
+        )
+        password = _require(
+            _child(controls, cls="Edit", id=20142), "the Login dialog's Password (20142)"
+        )
+        ok = _require(
+            _child(controls, cls="Button", id=18002, text="OK"), "the Login dialog's OK (18002)"
+        )
         prefilled = self.desktop.read_text(user.hwnd)
         if prefilled is None:
             raise Aborted("User Type did not answer WM_GETTEXT")
@@ -1867,7 +1912,7 @@ class Run:
         else:
             self.desktop.set_text(user.hwnd, self.s.user_type)
             if self.desktop.read_text(user.hwnd) != self.s.user_type:
-                raise Aborted("User Type did not take the text set")
+                raise Aborted("User Type does not read back the text that the runner set in it")
             self.log(f"User Type: {self.s.user_type!r} (filled in by the runner)")
         if not self.desktop.set_text(password.hwnd, self.s.password):
             raise Aborted("Password did not answer WM_SETTEXT")
@@ -1897,8 +1942,8 @@ class Run:
             if prepared.mdb_error:
                 raise Aborted(f"cannot add the CSV's addresses to {mdb}: {prepared.mdb_error}")
             self.log(
-                f"{prepared.rung_count} rung(s), {len(prepared.payload)} bytes; "
-                f"{prepared.addresses_inserted} address(es) added to SC_.mdb"
+                f"encoded {prepared.rung_count} rung(s) in {len(prepared.payload)} bytes and added "
+                f"{prepared.addresses_inserted} address(es) to SC_.mdb"
             )
             self.result["rungs"] = {"pasted": prepared.rung_count, "saved_main": None, "same": None}
             self._scr_before = _scr_state(mdb.parent)
@@ -2013,7 +2058,9 @@ class Run:
                     len(posts) < SYNTAX_POSTS
                     and time.monotonic() - posts[-1] >= SYNTAX_REPOST_AFTER
                 ):
-                    self.log(f"Output is still empty after {SYNTAX_REPOST_AFTER:g} s: post again")
+                    self.log(
+                        f"Output is still empty after {SYNTAX_REPOST_AFTER:g} s. Posting Syntax Check again."
+                    )
                     self.command(SYNTAX_CHECK)
                     posts.append(time.monotonic())
                 return None
@@ -2098,7 +2145,7 @@ class Run:
                 entry = json.loads(line)
             except ValueError as exc:
                 if line_number == len(lines):
-                    self.log(f"{path} line {line_number} is cut short: left out")
+                    self.log(f"{path} line {line_number} is cut short. The runner leaves it out.")
                     continue
                 raise Refused(f"{path} line {line_number} is not JSON: {exc}") from exc
             case_id = entry.get("id") if isinstance(entry, dict) else None
@@ -2109,7 +2156,7 @@ class Run:
             asks = by_id[case_id][1].asks()
             if {key: entry.get(key, _ASKED_BEFORE.get(key)) for key in asks} != asks:
                 raise Refused(
-                    f"{path} line {line_number}: case {case_id!r} asks otherwise there than in "
+                    f"{path} line {line_number}: case {case_id!r} does not ask the same as in "
                     f"{self.s.cases}"
                 )
             if entry.get("wired", False) != self.s.wire:
@@ -2337,7 +2384,7 @@ class Run:
             missing = self.choose(what, dialog, dialog_expect, instruction.lists[name], item)
             if missing is not None:
                 if missing == _CLOSED:
-                    message = f"closed for entry{in_mode}: {name}"
+                    message = f"list {name} is closed for entry{in_mode}"
                 else:
                     message = f"{name}: {missing}"
                 self.not_taken(what, dialog, dialog_expect, entry, message)
@@ -2364,7 +2411,7 @@ class Run:
                 pressed = self.press_mode(what, dialog, dialog_expect, instruction, case.mode)
                 in_mode = f" in {case.mode} mode"
             else:
-                shut.append(f"mode {case.mode} closed for entry")
+                shut.append(f"mode {case.mode} is closed for entry")
         options: dict[str, tuple[Control, int]] = {}
         # Set the options wanted checked (1) first. Pressing a radio button unchecks its pair.
         # So when the case wants one button of a pair checked and the other unchecked, both
@@ -2381,7 +2428,7 @@ class Run:
             fields = self.field_controls(dialog, instruction, names)
             for name in list(closed):
                 if fields[name].visible and fields[name].enabled:
-                    self.log(f"{what}: {title}'s {name} field is open now: filled")
+                    self.log(f"{what}: {title}'s {name} field opened after a press. Filling it.")
                     typed[name] = self.fill(what, title, name, fields[name], case.fields[name])
                     closed.remove(name)
         # Check that each option still reads as asked, because a later option or field may
@@ -2391,7 +2438,7 @@ class Run:
             now = controls.get(button.id)
             name = f"option {button.text!r} ({button.id})"
             if now is None or not (now.visible and now.enabled):
-                shut.append(f"{name} closed for entry once the dialog was filled")
+                shut.append(f"{name} is closed for entry once the dialog is filled")
             elif (got := self.desktop.button_checked(button.hwnd)) != state:
                 shut.append(f"{name} reads {got} once the dialog was filled, not {state}")
         # Read the fields and then every list again, as OK will find them. With
@@ -2425,12 +2472,12 @@ class Run:
         if closed or shut or off:
             told = []
             if closed:
-                told.append(f"closed for entry{in_mode}: {', '.join(closed)}")
+                told.append(f"these fields are closed for entry{in_mode}: {', '.join(closed)}")
             told += shut
             if off:
-                told.append(f"reads back otherwise: {', '.join(off)}")
+                told.append(f"these read back other than the case asked: {', '.join(off)}")
             self.log(f"{what}: read back {entry['read_back']!r}")
-            self.not_taken(what, dialog, dialog_expect, entry, "; ".join(told))
+            self.not_taken(what, dialog, dialog_expect, entry, ". ".join(told))
             return
         ok = _require(
             _child(self.controls(dialog), cls="Button", id=1, text="OK"), f"{title}'s OK (1)"
@@ -2575,11 +2622,15 @@ class Run:
         button = shown[0] if shown else found[0]
         name = f"option {button.text!r} ({button.id})"
         if not (button.visible and button.enabled):
-            return OptionSet(button, False, f"{name} closed for entry")
+            return OptionSet(button, False, f"{name} is closed for entry")
         presses = 0
         while (checked := self.desktop.button_checked(button.hwnd)) != state:
             if state == 0 and checked == 1 and button.id in instruction.option_radios:
-                return OptionSet(button, False, f"{name}: a radio button cannot be unchecked")
+                return OptionSet(
+                    button,
+                    False,
+                    f"{name} is a checked radio button, and a press cannot uncheck it",
+                )
             if presses == OPTION_PRESSES:
                 raise Aborted(
                     f"{what}: {title}'s {name} does not read {state} after {presses} presses"
@@ -2938,7 +2989,7 @@ class Run:
             except OSError as exc:  # Another program (CLICK, copying) holds the clipboard
                 if str(exc) not in failures:
                     failures.add(str(exc))
-                    self.log(f"the clipboard: {exc}")
+                    self.log(f"cannot read the clipboard yet: {exc}")
                 return None
 
         data = self.wait(
@@ -2948,7 +2999,10 @@ class Run:
             on_timeout=lambda: f"{label}: Edit > Copy left no CLICK data on the clipboard",
         )
         path.write_bytes(data)
-        self.log(f"{label}: Edit > Copy put {len(data)} bytes on the clipboard: {path}")
+        self.log(
+            f"{label}: Edit > Copy put {len(data)} bytes on the clipboard. "
+            f"The runner wrote them to {path}."
+        )
         return path
 
     def answer_box(
@@ -3085,7 +3139,9 @@ class Run:
                 lambda f: self.desktop.button_checked(mode.hwnd) == 1,
             )
         file_name = self._file_name_edit(controls)
-        button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
+        button = _require(
+            _child(controls, cls="Button", id=1, text="&Open"), "the import Open dialog's Open (1)"
+        )
         self.fill_path(file_name, csv, [OPEN])
         self.wait(
             f"the Open dialog alone, {IMPORT_MODE!r} checked",
@@ -3126,8 +3182,9 @@ class Run:
             buttons = [c for c in controls if c.cls == "TButton"]
             if len(memos) != 1 or [b.text for b in buttons] != ["Ok"]:
                 raise Aborted(
-                    f"{label}: the error list is not one text with Ok: {len(memos)} text(s), "
-                    f"buttons {[b.text for b in buttons]!r}"
+                    f"{label}: the runner expects the error list to have one text and one Ok "
+                    f"button. It has {len(memos)} text(s) and the buttons "
+                    f"{[b.text for b in buttons]!r}."
                 )
             text = self.desktop.read_text(memos[0].hwnd)
             if text is None:
@@ -3169,8 +3226,11 @@ class Run:
         self.result["files"].setdefault("mdb", []).append(copy)
         changed = "changed" if entry["mdb_changed"] else "unchanged"
         shown = "already" if entry["mdb_changed_at_answer"] else "not yet"
-        after = "; changed after it" if entry["mdb_changed_after_answer"] else ""
-        self.log(f"{label}: SC_.mdb {changed} ({shown} when the answer showed{after}); copied")
+        after = ", and it changed after the answer" if entry["mdb_changed_after_answer"] else ""
+        self.log(
+            f"{label}: SC_.mdb {changed}. It had {shown} changed when the answer showed{after}. "
+            "The runner copied it."
+        )
         self.record(f"{label}_done")
         entry["seconds"] = round(time.monotonic() - began, 3)
 
@@ -3196,8 +3256,14 @@ class Run:
             self.command(READ_DATA_FROM_PLC)
             dialog = self.wait("Read Data from PLC", [READ_DATA], lambda f: f.get(READ_DATA.name))
             controls = self.controls(dialog)
-            every = _require(_labelled(controls, "TButton", "All"), "All")
-            read = _require(_labelled(controls, "TButton", "Read"), "Read")
+            every = _require(
+                _labelled(controls, "TButton", "All"),
+                "Read Data from PLC's All",
+            )
+            read = _require(
+                _labelled(controls, "TButton", "Read"),
+                "Read Data from PLC's Read",
+            )
             self.press(dialog, every)
             boxes = [c for c in controls if c.cls == "TCheckBox"]
 
@@ -3212,7 +3278,10 @@ class Run:
             dump = (self.s.out / "plcdata.csv").resolve()
             controls = self.controls(save)
             name = self._file_name_edit(controls)
-            button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
+            button = _require(
+                _child(controls, cls="Button", id=1, text="&Save"),
+                "the Read Data Save dialog's Save (1)",
+            )
             self.fill_path(name, dump, [READ_DATA, SAVE_DATA])
             self.press(save, button)
             last: list[int | None] = [None]
@@ -3251,7 +3320,10 @@ class Run:
             self.result["files"]["plc_data"] = dump
             self.log(f"read the PLC's data into {dump} ({dump.stat().st_size} bytes)")
             self.record("read")
-            close = _require(_labelled(self.controls(dialog), "TButton", "Close"), "Close")
+            close = _require(
+                _labelled(self.controls(dialog), "TButton", "Close"),
+                "Read Data from PLC's Close",
+            )
             self.press(dialog, close)
             self.wait("Read Data from PLC to close", [READ_DATA], self.only_main)
 
@@ -3286,7 +3358,10 @@ class Run:
                         next((c for c in now if c.cls == "Edit" and c.parent in boxes), None),
                         "the Find box",
                     )
-                    button = _require(_labelled(now, "TButton", "Find"), "Find")
+                    button = _require(
+                        _labelled(now, "TButton", "Find"),
+                        "the Address Picker's Find",
+                    )
                     answered = self.desktop.set_text(edit.hwnd, token[len("find:") :])
                     answered = answered and self.send_press(window, button)
                 elif token.startswith("chars:"):
@@ -3296,7 +3371,10 @@ class Run:
                 else:
                     answered = self.desktop.send_key(target.hwnd, _VIRTUAL_KEYS[token])
                 if not answered:
-                    raise Aborted(f"CLICK did not answer the key {token!r}")
+                    raise Aborted(
+                        f"CLICK did not answer the key {token!r} within 5 s. "
+                        "A box may have opened over the Address Picker."
+                    )
                 # The key was sent, not posted, so CLICK has handled it already. The run
                 # stops if a window has come over the picker
                 self.wait(
@@ -3307,7 +3385,10 @@ class Run:
                 self.after_key(window, token, at_open)
                 self.record(f"key{number:02d}")
             if self.s.ok:
-                ok = _require(_labelled(self.controls(window), "TButton", "OK"), "OK")
+                ok = _require(
+                    _labelled(self.controls(window), "TButton", "OK"),
+                    "the Address Picker's OK",
+                )
                 self.press(window, ok)
             else:
                 self.desktop.close(window.hwnd)
@@ -3435,7 +3516,10 @@ class Run:
             raise Aborted("System Configuration's PLC Name did not answer")
         self.result["points"][point]["plc_name"] = name
         self.log(f"{point}: System Configuration shows the PLC Name {name!r}")
-        cancel = _require(_labelled(controls, "TButton", "Cancel"), "Cancel")
+        cancel = _require(
+            _labelled(controls, "TButton", "Cancel"),
+            "System Configuration's Cancel",
+        )
         self.press(form, cancel)
         self.wait("System Configuration to close", [SYSTEM_CONFIG], self.only_main)
 
@@ -3486,7 +3570,9 @@ class Run:
         self.record("open")
         controls = self.controls(dialog)
         name = self._file_name_edit(controls)
-        button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
+        button = _require(
+            _child(controls, cls="Button", id=1, text="&Open"), "the Open dialog's Open (1)"
+        )
         self.fill_path(name, ckp, [OPEN])
         self.press(dialog, button)
         last: list[object] = [None]
@@ -3592,7 +3678,9 @@ class Run:
         self.record(f"{prefix}save_as")
         controls = self.controls(dialog)
         name = self._file_name_edit(controls)
-        button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
+        button = _require(
+            _child(controls, cls="Button", id=1, text="&Save"), "the Save As dialog's Save (1)"
+        )
         self.fill_path(name, ckp, [SAVE_AS])
         self.press(dialog, button)
         last: list[object] = [None]
@@ -3644,7 +3732,9 @@ class Run:
             _child(controls, cls="Static", id=65535, text="Disconnect from PLC?"),
             "'Disconnect from PLC?'",
         )
-        yes = _require(_child(controls, cls="Button", id=6, text="&Yes"), "Yes (6)")
+        yes = _require(
+            _child(controls, cls="Button", id=6, text="&Yes"), "the Disconnect question's Yes (6)"
+        )
         self.press(prompt, yes)
         self.wait("the main window, disconnected", [DISCONNECT_PROMPT], self.only_main)
         self.connected = False
@@ -3715,7 +3805,9 @@ class Run:
                 except Exception as exc:
                     kept["error"] = f"{type(exc).__name__}: {exc}"
                     failed.append(label)
-                    self.log(f"{label}: could not be read: {kept['error']}")
+                    self.log(
+                        f"{label}: the saved copy of CLICK's files could not be read: {kept['error']}"
+                    )
                     self.write_case(entry)
                     continue
                 self.log(f"{label}: main.csv {kept['main']!r}")
@@ -3764,15 +3856,16 @@ class Run:
         ]
         self.result["rungs"] = {"pasted": len(pasted), "saved_main": len(saved), "same": same}
         self.log(
-            f"saved main: {len(saved)} rung(s) for {len(pasted)} pasted; the first "
-            f"{len(pasted)} {'match' if same else 'differ from'} the CSV"
+            f"the saved main program has {len(saved)} rung(s), and {len(pasted)} were pasted. "
+            f"The first {len(pasted)} {'match' if same else 'differ from'} the CSV."
         )
         if len(saved) < len(pasted) or (
             not all(is_empty_rung(r) for r in pasted) and all(is_empty_rung(r) for r in saved)
         ):
             raise Aborted(
-                f"the paste did not land: the saved main program has {len(saved)} rung(s) "
-                f"({sum(not is_empty_rung(r) for r in saved)} not empty), {len(pasted)} pasted"
+                f"the paste did not land. The saved main program has {len(saved)} rung(s), "
+                f"{sum(not is_empty_rung(r) for r in saved)} of them not empty, "
+                f"and {len(pasted)} were pasted."
             )
 
     # -- cleanup --------------------------------------------------------------
@@ -3841,7 +3934,11 @@ class Run:
     def execute(self) -> dict[str, Any]:
         out = self.s.out
         if out.exists() and (not out.is_dir() or any(out.iterdir())):
-            self.result.update(status="refused", step="refuse", reason=f"{out} is not empty")
+            self.result.update(
+                status="refused",
+                step="refuse",
+                reason=f"{out} is a file or a folder that is not empty. Give --out a new or empty folder.",
+            )
             return self.finish(write=False)
         out.mkdir(parents=True, exist_ok=True)
         self.log_path = out / "run.log"
@@ -4083,12 +4180,18 @@ def _parser() -> argparse.ArgumentParser:
     paste.add_argument("csv", type=Path, help="the ladder CSV")
     paste.add_argument("--record", action="store_true", help="also dump every window at each step")
     commands.add_parser(
-        "record", parents=[common], help="connect, dump every window at each step, close"
+        "record",
+        parents=[common],
+        help="connect, dump every window at each step, then disconnect and end CLICK",
     )
     tries = commands.add_parser(
         "try", parents=[common], help="ask CLICK's instruction dialogs whether they accept cases"
     )
-    tries.add_argument("cases", type=Path, help="the cases (JSON; see load_cases)")
+    tries.add_argument(
+        "cases",
+        type=Path,
+        help="the cases file, in JSON. The docstring of load_cases in this file gives its layout",
+    )
     tries.add_argument(
         "--keep",
         action="store_true",
@@ -4135,7 +4238,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     reads.add_argument("--record", action="store_true", help="also dump every window at each step")
     pickers = commands.add_parser(
-        "picker", parents=[common], help="open CLICK's Address Picker and copy SC_.mdb around it"
+        "picker",
+        parents=[common],
+        help="copy SC_.mdb, open CLICK's Address Picker, send the keys, and copy SC_.mdb again once the picker closes",
     )
     pickers.add_argument(
         "--record", action="store_true", help="also dump every window at each step"
@@ -4154,7 +4259,7 @@ def _parser() -> argparse.ArgumentParser:
     reopens = commands.add_parser(
         "reopen",
         parents=[common],
-        help="save, edit Project.ini, save, open that save and save again, copying each point",
+        help="save, edit Project.ini, save, open that save and save again. Copy CLICK's files after each of these steps",
     )
     reopens.add_argument(
         "--ini-add",

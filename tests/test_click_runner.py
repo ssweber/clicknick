@@ -1859,7 +1859,7 @@ def test_a_paste_that_did_not_land_aborts(tmp_path, setup, monkeypatch, empty_ma
     code, result = run(fake, out, csv, exe, timeout=0.3)
     assert code == cr.EXIT_ABORTED
     assert result["status"] == "aborted" and result["step"] == "decode"
-    assert result["reason"].startswith("the paste did not land: the saved main program has")
+    assert result["reason"].startswith("the paste did not land. The saved main program has")
     assert result["rungs"]["same"] is False
     # CLICK itself had closed cleanly by then
     assert fake.exited_cleanly and not fake.terminated
@@ -1920,7 +1920,7 @@ def test_tooltips_are_let_be(tmp_path, setup):
     code, result = run(fake, out, csv, exe)
     assert code == cr.EXIT_OK, result["reason"]
     log = (out / "run.log").read_text(encoding="utf-8")
-    assert log.count("a tooltip, let be: 'tooltips_class32'") == 2
+    assert log.count("ignoring a tooltip: 'tooltips_class32'") == 2
 
 
 def test_no_guide_no_login_and_a_splash(tmp_path, setup):
@@ -1932,7 +1932,7 @@ def test_no_guide_no_login_and_a_splash(tmp_path, setup):
     assert "login" not in result["timings"]
     log = (out / "run.log").read_text(encoding="utf-8")
     assert "no Login dialog" in log
-    assert "before the main window: 'TfrmSplash'" in log
+    assert "a window was open before the main window appeared: 'TfrmSplash'" in log
 
 
 def test_a_splash_still_open_after_launch_aborts(tmp_path, setup):
@@ -1940,7 +1940,9 @@ def test_a_splash_still_open_after_launch_aborts(tmp_path, setup):
     fake = FakeClick(tmp_path, splash=True, stall="splash")
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe, timeout=0.3)
-    assert_aborted(fake, out, code, result, "and any window open before it closed")
+    assert_aborted(
+        fake, out, code, result, "for every window that was open before the main window to close"
+    )
     assert result["step"] == "launch"
 
 
@@ -1971,7 +1973,9 @@ def test_a_user_type_that_does_not_take_aborts(tmp_path, setup):
     fake.set_text = set_text
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
-    assert_aborted(fake, out, code, result, "User Type did not take the text set")
+    assert_aborted(
+        fake, out, code, result, "User Type does not read back the text that the runner set in it"
+    )
     assert result["step"] == "login"
     assert 20142 not in fake.typed and "OK" not in fake.pressed[2:]
 
@@ -2057,7 +2061,10 @@ def test_refuses_a_folder_that_is_not_empty(tmp_path, setup, capsys):
     (out / "keep.txt").write_text("mine", encoding="utf-8")
     code, result = run(fake, out, csv, exe, capsys=capsys)
     assert code == cr.EXIT_REFUSED
-    assert result["status"] == "refused" and "is not empty" in result["reason"]
+    assert (
+        result["status"] == "refused"
+        and "is a file or a folder that is not empty" in result["reason"]
+    )
     assert sorted(p.name for p in out.iterdir()) == ["keep.txt"]
     assert fake.pid is None
 
@@ -2236,7 +2243,13 @@ def test_two_plcs_abort(tmp_path, setup):
     fake = FakeClick(tmp_path, plc_rows=2)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
-    assert_aborted(fake, out, code, result, "the Connect dialog lists 2 PLC(s); expected exactly 1")
+    assert_aborted(
+        fake,
+        out,
+        code,
+        result,
+        "the Connect dialog lists 2 PLC(s), and the runner connects only when it lists exactly 1",
+    )
     assert "timed out" not in result["reason"]
     assert "Connect" not in fake.pressed
 
@@ -2248,7 +2261,13 @@ def test_a_second_plc_listed_late_aborts(tmp_path, setup, monkeypatch):
     fake = FakeClick(tmp_path, late_row=0.2)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe)
-    assert_aborted(fake, out, code, result, "the Connect dialog lists 2 PLC(s); expected exactly 1")
+    assert_aborted(
+        fake,
+        out,
+        code,
+        result,
+        "the Connect dialog lists 2 PLC(s), and the runner connects only when it lists exactly 1",
+    )
     assert "Connect" not in fake.pressed
 
 
@@ -2271,7 +2290,7 @@ def test_a_plc_listed_while_dumping_is_seen_before_connect(tmp_path, setup):
         out,
         code,
         result,
-        "the Connect dialog lists 2 PLC(s) as Connect is about to be pressed; expected 1",
+        "the Connect dialog lists 2 PLC(s) as Connect is about to be pressed, and the runner connects only when it lists exactly 1",
     )
     assert "Connect" not in fake.pressed
 
@@ -2295,7 +2314,7 @@ def test_no_plc_times_out(tmp_path, setup):
         out,
         code,
         result,
-        "the Connect dialog lists 0 PLC(s); timed out after 0.3 s waiting for one PLC in the list",
+        "the Connect dialog lists 0 PLC(s). The runner timed out after 0.3 s waiting for one PLC in the list",
     )
 
 
@@ -2339,7 +2358,7 @@ def test_plc_with_a_status_bar_that_cannot_be_read_aborts(tmp_path, setup):
         out,
         code,
         result,
-        "the status bar cannot be read to confirm the PLC named 'Conformance'; timed out",
+        "the status bar cannot be read to confirm the PLC named 'Conformance'. The runner timed out",
     )
     assert result["step"] == "dont_read" and result["plc"] is None
 
@@ -2378,7 +2397,7 @@ def test_dont_read_not_taking_aborts_before_ok(tmp_path, setup):
     fake = FakeClick(tmp_path, dont_read_takes=False)
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe, timeout=0.3)
-    assert_aborted(fake, out, code, result, "'Don't read' did not take")
+    assert_aborted(fake, out, code, result, "'Don't read' did not become checked after the press")
     assert fake.pressed[-1] == "Don't read the project from the PLC."
     assert not fake.connected
 
@@ -2577,9 +2596,9 @@ def test_a_hung_click_is_dumped_without_a_message_and_ended(tmp_path, setup, mon
     assert dumps and not list((out / "abort").glob("*.png"))
     assert all("edit_text" not in c for d in dumps for c in d["controls"])
     log = (out / "run.log").read_text(encoding="utf-8")
-    assert "does not answer: its dump has no edit text and no PNG" in log
+    assert "does not answer. Its dump has no edit text and no PNG." in log
     assert "not disconnecting: CLICK does not answer" in log
-    assert "CLICK does not answer; still waiting for the Syntax Check result" in log
+    assert "CLICK does not answer. The runner is still waiting for the Syntax Check result" in log
     assert "Disconnect" not in fake.commands
 
 
@@ -2847,7 +2866,7 @@ def test_a_syntax_check_that_never_starts_is_posted_again(tmp_path, setup, monke
     assert ignored == 2
     assert fake.commands.count("Syntax Check") == 1 + 2 * 2 + ignored
     log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
-    assert log.count("Output is still empty after 0.3 s: post again") == ignored
+    assert log.count("Output is still empty after 0.3 s. Posting Syntax Check again.") == ignored
 
 
 def test_no_syntax_check_is_posted_again_while_click_does_not_answer(tmp_path, setup, monkeypatch):
@@ -2861,7 +2880,7 @@ def test_no_syntax_check_is_posted_again_while_click_does_not_answer(tmp_path, s
     assert fake.events.count("check_ignored") == 1
     assert "WM_COMMAND" not in fake.sent_while_hung
     log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
-    assert log.count("post again") == 1
+    assert log.count("Posting Syntax Check again") == 1
 
 
 def test_try_record_dumps_each_case(tmp_path, setup):
@@ -3138,7 +3157,7 @@ def test_a_field_closed_in_the_mode_is_not_taken(tmp_path, setup):
     assert code == cr.EXIT_OK, result["reason"]
     first, second = result["cases"]
     assert first["outcome"] == "not_taken" and first["code"] is None
-    assert first["message"] == "closed for entry in single mode: source_end"
+    assert first["message"] == "these fields are closed for entry in single mode: source_end"
     assert first["read_back"] == {"source": "DS1", "destination": "DS3"}
     assert first["syntax_check"] is None
     # The runner never presses OK. It presses Cancel and tries the next case.
@@ -3169,7 +3188,7 @@ def test_a_field_closed_in_the_mode_is_not_taken(tmp_path, setup):
         ({"cases": TRY_CASES, "nicknames": ["SD99999"]}, "cannot read the cases"),
         (
             {"cases": [TRY_CASES[0], {**TRY_CASES[1], "case": TRY_CASES[0]["case"]}]},
-            "case 2 (A9 DS1 = DS2 + 1): case 1 has the same 'case', its id",
+            "case 2 (A9 DS1 = DS2 + 1) has the same 'case' id as case 1. Give each case its own 'case'.",
         ),
         ({"cases": [{**TRY_CASES[0], "choices": {"port": "x"}}]}, "Math has no list port"),
         ({"cases": [{**RECEIVE, "choices": {"port": ""}}]}, "'choices' must name lists"),
@@ -3320,19 +3339,19 @@ OPTION_ALL_LOST = cr.OPTION_PRESSES + 1
         # 1.5 into TXT1: 5019 and 5020 read Real Numbering and Exponential Numbering. 5036
         # reads Suppress zero, but it is hidden.
         (COPY_REAL, {"Copy Binary": 1}, "no option button shows 'Copy Binary'"),
-        (COPY_REAL, {"Suppress zero": 1}, "option 'Suppress zero' (5036) closed for entry"),
-        (COPY_REAL, {"5036": 1}, "option 'Suppress zero' (5036) closed for entry"),
+        (COPY_REAL, {"Suppress zero": 1}, "option 'Suppress zero' (5036) is closed for entry"),
+        (COPY_REAL, {"5036": 1}, "option 'Suppress zero' (5036) is closed for entry"),
         # CTD1 into DF1: Termination Code shows, but it is disabled
         (
             COPY_COUNT,
             {"Termination Code": 1},
-            "option 'Termination Code' (5021) closed for entry",
+            "option 'Termination Code' (5021) is closed for entry",
         ),
         # A press on a radio button only checks it, so the runner refuses to uncheck one
         (
             COPY_VALUE,
             {"Copy Value": 0},
-            "option 'Copy Value' (5019): a radio button cannot be unchecked",
+            "option 'Copy Value' (5019) is a checked radio button, and a press cannot uncheck it",
         ),
     ],
 )
@@ -3489,7 +3508,7 @@ def test_a_field_an_option_opens_is_filled_once_it_opens(tmp_path, setup):
     assert fake.entered[0][2]["termination_code"] == "$0D"
     assert fake.option_states[0][5021] == 1
     log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
-    assert "Copy's termination_code field is open now: filled" in log
+    assert "Copy's termination_code field opened after a press. Filling it." in log
 
 
 def test_a_field_open_after_filling_without_a_press_is_not_taken(tmp_path, setup):
@@ -3518,7 +3537,7 @@ def test_a_field_open_after_filling_without_a_press_is_not_taken(tmp_path, setup
     assert code == cr.EXIT_OK, result["reason"]
     (answer,) = result["cases"]
     assert answer["outcome"] == "not_taken"
-    assert answer["message"] == "closed for entry in single mode: termination_code"
+    assert answer["message"] == "these fields are closed for entry in single mode: termination_code"
     assert 5023 not in fake.typed
 
 
@@ -3530,7 +3549,7 @@ def test_a_field_no_option_opens_is_not_taken(tmp_path, setup):
     assert code == cr.EXIT_OK, result["reason"]
     (answer,) = result["cases"]
     assert answer["outcome"] == "not_taken"
-    assert answer["message"] == "closed for entry in single mode: termination_code"
+    assert answer["message"] == "these fields are closed for entry in single mode: termination_code"
 
 
 def test_the_dialog_s_controls_are_kept_as_ok_finds_them(tmp_path, setup):
@@ -3646,7 +3665,7 @@ def test_a_contact_is_refused_without_wire(tmp_path, setup):
     fake = FakeClick(tmp_path)
     code, result = run_try(fake, tmp_path, exe, {"cases": [COMPARE]})
     assert code == cr.EXIT_REFUSED
-    assert result["reason"] == "Compare (A with B) is a contact: try it with --wire"
+    assert result["reason"] == "Compare (A with B) is a contact. Run try with --wire to try it."
     assert fake.pid is None
 
 
@@ -3657,7 +3676,7 @@ def test_an_operator_closed_by_the_fields_is_not_taken(tmp_path, setup):
     code, result = run_try(fake, tmp_path, exe, {"cases": [case]}, "--wire")
     assert code == cr.EXIT_OK, result["reason"]
     (answer,) = result["cases"]
-    assert answer["outcome"] == "not_taken" and answer["message"] == "mode >= closed for entry"
+    assert answer["outcome"] == "not_taken" and answer["message"] == "mode >= is closed for entry"
     assert fake.entered == [] and "Cancel" in fake.pressed
     shown = {c["id"] for c in answer["controls"]}
     assert {5006, 5007} <= shown and not {5008, 5009, 5010, 5011} & shown
@@ -3681,7 +3700,10 @@ def test_a_field_closed_before_the_operator_names_the_mode_it_was_filled_in(tmp_
     assert code == cr.EXIT_OK, result["reason"]
     (answer,) = result["cases"]
     assert answer["outcome"] == "not_taken"
-    assert answer["message"] == "closed for entry in == mode: b; mode >= closed for entry"
+    assert (
+        answer["message"]
+        == "these fields are closed for entry in == mode: b. mode >= is closed for entry"
+    )
 
 
 @pytest.mark.parametrize("outcome", ["refused", "not_taken"])
@@ -4135,9 +4157,9 @@ def test_a_last_line_cut_short_is_left_out(tmp_path, setup):
     fake, code, result = try_again(tmp_path, exe, "b", cases, "--resume", str(log.parent))
     assert code == cr.EXIT_OK, result["reason"]
     assert result["carried"] == 2 and len(fake.entered) == 4
-    assert "line 3 is cut short: left out" in (tmp_path / "b" / "out" / "run.log").read_text(
-        encoding="utf-8"
-    )
+    assert "line 3 is cut short. The runner leaves it out." in (
+        tmp_path / "b" / "out" / "run.log"
+    ).read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
@@ -4145,9 +4167,9 @@ def test_a_last_line_cut_short_is_left_out(tmp_path, setup):
     [
         ("missing", "cannot read"),
         ("unknown", "case 'gone' is not in"),
-        ("asks", "asks otherwise there than in"),
+        ("asks", "does not ask the same as in"),
         ("garbled", "line 1 is not JSON"),
-        ("own", "--resume names the run's own folder"),
+        ("own", "--resume names the same folder as --out"),
     ],
 )
 def test_resume_refuses_answers_that_do_not_fit(tmp_path, setup, change, reason):
@@ -4237,7 +4259,7 @@ def test_a_field_that_reads_back_otherwise_is_not_taken(tmp_path, setup):
     assert code == cr.EXIT_OK, result["reason"]
     entry = result["cases"][0]
     assert entry["outcome"] == "not_taken"
-    assert entry["message"] == "reads back otherwise: source"
+    assert entry["message"] == "these read back other than the case asked: source"
     assert entry["read_back"] == {"source": "?", "destination": "DS1"}
     assert [e[0] for e in fake.entered] == ["Math"]  # OK was pressed only for the next case
 
@@ -4315,7 +4337,10 @@ def test_a_list_closed_for_entry_is_not_taken(tmp_path, setup):
     code, result = run_try(fake, tmp_path, exe, {"cases": [case, TRY_CASES[0]]})
     assert code == cr.EXIT_OK, result["reason"]
     first, second = result["cases"]
-    assert (first["outcome"], first["message"]) == ("not_taken", "closed for entry: word_swap")
+    assert (first["outcome"], first["message"]) == (
+        "not_taken",
+        "list word_swap is closed for entry",
+    )
     assert [k for k in fake.keys if k[0] == "ComboBox"] == []
     assert [e[0] for e in fake.entered] == ["Math"] and second["outcome"] == "accepted"
 
@@ -4327,7 +4352,10 @@ def test_a_list_that_changes_while_the_fields_are_filled_is_not_taken(tmp_path, 
     code, result = run_try(fake, tmp_path, exe, {"cases": [case]})
     assert code == cr.EXIT_OK, result["reason"]
     (entry,) = result["cases"]
-    assert (entry["outcome"], entry["message"]) == ("not_taken", "reads back otherwise: function")
+    assert (entry["outcome"], entry["message"]) == (
+        "not_taken",
+        "these read back other than the case asked: function",
+    )
     assert fake.entered == []
 
 
@@ -4657,7 +4685,10 @@ def test_import_each_row(tmp_path, setup):
     assert list(result["timings"])[-4:] == ["import", "disconnect", "close", "read"]
     log = (out / "run.log").read_text(encoding="utf-8")
     assert "line006: 1 row(s) stored" in log and "InitialValue='\\t'" in log
-    assert "SC_.mdb changed (already when the answer showed); copied" in log
+    assert (
+        "SC_.mdb changed. It had already changed when the answer showed. The runner copied it."
+        in log
+    )
 
 
 def test_import_once_without_each_row(tmp_path, setup):
@@ -4694,7 +4725,10 @@ def test_an_import_written_after_the_main_window_is_alone_is_waited_for(tmp_path
     assert whole["mdb_changed_at_answer"] is False and whole["mdb_changed"] is True
     assert whole["mdb_changed_after_answer"] is True
     log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
-    assert "SC_.mdb changed (not yet when the answer showed; changed after it); copied" in log
+    assert (
+        "SC_.mdb changed. It had not yet changed when the answer showed, and it changed after the answer. The runner copied it."
+        in log
+    )
 
 
 def test_a_mode_that_does_not_take_stops_the_import(tmp_path, setup):
@@ -5124,7 +5158,10 @@ def test_picker_refuses_a_key_it_does_not_know(tmp_path, setup):
     fake = FakeClick(tmp_path)
     code, result = run_command(fake, tmp_path, exe, "picker", "--key", "F9")
     assert code == cr.EXIT_REFUSED
-    assert result["reason"] == "--key 'F9' is not a key the runner knows"
+    assert result["reason"] == (
+        "--key 'F9' is not a key the runner knows. Use one of RETURN, ESCAPE, TAB, END, HOME, "
+        "LEFT, UP, RIGHT, DOWN, F2, or chars:TEXT, text:TEXT or find:TEXT."
+    )
     assert fake.pid is None
 
 
@@ -5141,7 +5178,7 @@ def test_picker_refuses_a_key_it_does_not_know(tmp_path, setup):
         (32853, "Read Project from PLC"),
         (32854, "Write Project into PLC"),
         (32852, "Write Data into PLC"),
-        (12345, "not on the runner's allowlist"),
+        (12345, "a command with no name in the runner"),
     ],
 )
 @pytest.mark.parametrize("desktop", ["win32", "fake"])
