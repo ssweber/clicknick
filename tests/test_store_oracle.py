@@ -232,8 +232,9 @@ def _assert_cascade_rules(
             assert new.retentive == old.retentive, (step, key, "retentive cascaded")
         if (key, "comment") not in caller_set and new.comment != old.comment:
             assert tag_changed, (step, key, "comment changed by a free-text edit")
-            # A cascade adds, renames or removes the tag; the rest stays as it was,
-            # but for a space it leaves at either end.
+            # A cascade may only add, rename or remove the block tag in a comment. The rest of
+            # the comment stays the same. A space left at either end where the tag was is
+            # trimmed, so both sides are compared after strip(" ").
             assert remove_block_tag(new.comment).strip(" ") == remove_block_tag(old.comment).strip(
                 " "
             ), (

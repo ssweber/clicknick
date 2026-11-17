@@ -40,7 +40,8 @@ OLD = _maps({"X001": "Start", "Y001": "Motor", "C1": "Mode", "DS1": "Speed", "DF
         ({"DF1": "Probe"}, "Temp", "Probe", "Temp -> Probe (DF1)"),
         # The name is not on a CLICK address, so pyrung carries it as it is.
         ({}, "Scratch", "Scratch", ""),
-        # An address with a nickname goes by the nickname; its address form is on none.
+        # In the old program Y001 is named "Motor". pyrung names it only "Motor", so a force
+        # named "Y001" points at no tag there. It is a name like "Scratch", carried over as it is.
         ({}, "Y001", "Y001", ""),
         # An unnamed address is its own name.
         ({}, "C2", "C2", ""),
