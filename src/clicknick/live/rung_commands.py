@@ -55,6 +55,11 @@ def _get_project_dir(ctx: DispatchContext) -> Path:
             if error:
                 raise ValueError(f"Could not build the workspace: {error}")
             raise ValueError("Could not build the workspace.")
+        if project_dir is not None:
+            # A build finished, and then the folder was deleted or moved.
+            raise ValueError(
+                f"The workspace folder {project_dir} is gone. Use Workspace > Reload from CLICK."
+            )
         raise ValueError(f"There is no workspace. {no_workspace_reason(ctx.get_session())}")
     return project_dir
 

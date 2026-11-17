@@ -13,7 +13,7 @@ from clicknick.data.address_store import AddressStore
 from clicknick.live.dispatch import DispatchContext, dispatch
 from clicknick.live.server import LiveServer, _Request
 from clicknick.models.address_row import AddressRow
-from clicknick.services.analysis_service import AnalysisService
+from clicknick.services.analysis_service import AnalysisService, AnalysisStatus
 
 
 class MockDataSource:
@@ -188,8 +188,11 @@ _NOT_LOADED = (
 _DATABASE_OFF = "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)"
 
 
-def _session_in(state: str, monkeypatch) -> ConnectionSession | None:
-    """Return the session of a window in *state*, or None for "no window"."""
+def _session_in(state: str, monkeypatch, tmp_path: Path) -> ConnectionSession | None:
+    """Return the session of a window in *state*, or None for "no window".
+
+    In the "folder gone" state, the workspace folder is *tmp_path*/gone, which does not exist.
+    """
     if state == "no window":
         return None
     session = ConnectionSession(ClickConnection("1", 2, "Main.ckp"))
@@ -206,6 +209,10 @@ def _session_in(state: str, monkeypatch) -> ConnectionSession | None:
         # invalidate() leaves an analysis with no workspace, as when the user pairs another one
         session.analysis = AnalysisService()
         session.analysis.invalidate()
+    elif state == "folder gone":
+        session.analysis = AnalysisService()
+        session.analysis._status = AnalysisStatus.READY
+        session.analysis._project_dir = tmp_path / "gone"
     elif state.startswith("failed"):
         session.analysis = AnalysisService()
         session.analysis.mark_failed("no Scr*.tmp files" if state == "failed with reason" else "")
@@ -232,12 +239,12 @@ def _server(session: ConnectionSession | None, store: AddressStore | None) -> Li
         ("load failed", f"{_NOT_LOADED}, or use File > Load Nicknames from CSV."),
     ],
 )
-def test_without_addresses_a_command_says_why(monkeypatch, state, advice):
+def test_without_addresses_a_command_says_why(monkeypatch, tmp_path, state, advice):
     """With a window connected, no addresses means that its database is loading or not loaded.
 
     Only with no window connected does the reply say to connect.
     """
-    server = _server(_session_in(state, monkeypatch), store=None)
+    server = _server(_session_in(state, monkeypatch, tmp_path), store=None)
 
     with pytest.raises(ValueError) as caught:
         server.dispatch_now("get DS1")
@@ -268,19 +275,24 @@ def test_without_addresses_a_command_says_why(monkeypatch, state, advice):
         ),
         ("failed with reason", "Could not build the workspace: no Scr*.tmp files"),
         ("failed without reason", "Could not build the workspace."),
+        (
+            "folder gone",
+            "The workspace folder {gone} is gone. Use Workspace > Reload from CLICK.",
+        ),
     ],
 )
-def test_without_a_workspace_a_command_says_why(monkeypatch, state, reason):
+def test_without_a_workspace_a_command_says_why(monkeypatch, tmp_path, state, reason):
     """A command that needs the workspace gives the reason that ClickNick's windows give.
 
-    It says to connect only when no window is connected.
+    It says to connect only when no window is connected. The windows have no reason for a
+    workspace folder that was deleted after its build, so the reply names the folder.
     """
-    server = _server(_session_in(state, monkeypatch), store=_edited_store(CsvSource()))
+    server = _server(_session_in(state, monkeypatch, tmp_path), store=_edited_store(CsvSource()))
 
     with pytest.raises(ValueError) as caught:
         server.dispatch_now("rung list")
 
-    assert str(caught.value) == reason
+    assert str(caught.value) == reason.replace("{gone}", str(tmp_path / "gone"))
 
 
 def test_the_reason_follows_the_connected_session():
