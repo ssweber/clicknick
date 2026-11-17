@@ -630,7 +630,7 @@ def scan_sources(
             not decode_exec,
             "; ".join(decode_exec)
             if decode_exec
-            else "no module both decodes a blob and executes it; the PowerShell worker is Base64 of a shipped .ps1, hashed above",
+            else "no module both decodes a blob and executes it. The PowerShell worker is Base64 of a shipped .ps1, hashed above",
         )
     )
     return checks, urls, subprocess_targets, dynamic_exec
@@ -694,7 +694,7 @@ def dependency_checks(dists: list[Dist], vulns: list[dict] | None) -> list[Check
             not unpinned,
             "; ".join(unpinned)
             if unpinned
-            else f"{len(dists) - 1} distributions pinned with ==; a fresh install matches this table",
+            else f"{len(dists) - 1} distributions pinned with ==. A fresh install matches this table",
         )
     )
     if vulns is None:
@@ -819,7 +819,7 @@ def render(rep: Report) -> str:
     if not rep.is_release:
         status += (
             "<p class='bad'>Development build, not a release. Version numbers and hashes here "
-            "belong to an untagged commit; use the report attached to a tagged release for review.</p>"
+            "belong to an untagged commit. Use the report attached to a tagged release for review.</p>"
         )
 
     rows = []

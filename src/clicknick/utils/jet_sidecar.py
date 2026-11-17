@@ -106,7 +106,7 @@ class JetWorker:
             self._stop()
             message = "Jet database worker timed out or disconnected."
             if op == "save":
-                message += " Save outcome is unknown; reload the database before retrying."
+                message += " The save outcome is unknown. Reload the database before retrying."
             if detail:
                 message += f" PowerShell: {detail}"
             raise JetTransportError(message) from exc
