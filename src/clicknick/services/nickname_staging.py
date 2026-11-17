@@ -84,7 +84,7 @@ class NicknamePlan:
         return ", ".join(parts)
 
     def describe(self, limit: int) -> list[str]:
-        """Return one line per change, ``X001 nickname: "" -> "Start"``, up to *limit* lines."""
+        """Return one line per change, ``X001 nickname: '' -> 'Start'``, up to *limit* lines."""
         lines = [
             f"{change.display_address} {change.field}: {change.old!r} -> {change.new!r}"
             for change in self.changes[:limit]

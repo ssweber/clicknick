@@ -195,7 +195,9 @@ def test_analysis_filters_use_the_current_analysis(tk_root, store) -> None:
     panel = AddressPanel(frame, store, get_analysis_service=lambda: current[0])
     try:
         assert panel._resolve_analysis_prefix("input", None) == {1}
-        current[0] = new  # A new connection session's build
+        # After a project change, a new ConnectionSession has its own analysis service.
+        # The panel reads the getter each time, so it uses the new session's roles.
+        current[0] = new
         assert panel._resolve_analysis_prefix("input", None) == {2}
     finally:
         frame.destroy()

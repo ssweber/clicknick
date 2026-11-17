@@ -240,7 +240,8 @@ class FakeDap:
     def restore_link(self, feedback):
         self.calls.append(("restore_link", feedback))
         if self.bench.pop(self._tag(feedback), None) is None:
-            raise DapRequestError(f"{self._tag(feedback)} has no bench change")  # as pyrung
+            # pyrung also refuses to restore a link that has no bench change.
+            raise DapRequestError(f"{self._tag(feedback)} has no bench change")
         self.links_revision += 1
 
     def set_links(self, *, bench=None, enabled=None):
@@ -2572,6 +2573,8 @@ def test_run_time_edit_keeps_every_value_and_the_force(on_pyrung):
     on_pyrung.scheduler.run_ready()
     dap.scan(1)
 
+    # Both counters read 6 before the write, and the program adds 1 each scan.
+    # RUN Time Edit keeps every value, so both read 7 after one scan.
     assert (dap.tag("Ret"), dap.tag("NonRet"), dap.tag("Light")) == (7, 7, True)
     assert dict(dap._adapter._runner.forces) == {"Light": True}
     assert on_pyrung.sim.program_change is None
@@ -2584,6 +2587,8 @@ def test_stop_and_write_clears_non_retentive_values_and_keeps_the_force(on_pyrun
     on_pyrung.scheduler.run_ready()
     dap.scan(1)
 
+    # Stop and Write clears non-retentive values. NonRet starts again from 0 and reads 1
+    # after the scan, while Ret reads 7. The Light force survives.
     assert (dap.tag("Ret"), dap.tag("NonRet"), dap.tag("Light")) == (7, 1, True)
     assert dict(dap._adapter._runner.forces) == {"Light": True}
     assert dap.mode == "run"

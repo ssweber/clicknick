@@ -282,10 +282,11 @@ def test_receive_and_send_ip_address_has_no_popup(monkeypatch, title, octet):
     assert found is None
 
 
-# CLICK v4's answers for a Receive's Starting Master Address, its flags and its exception
-# field (`try` runs rx2 of BOB job runner-grids and t1 of job autocomplete-fields), and for
-# Out's address (t1): what is tried, the Function Code shown, whether OK took it. Each refusal
-# was OBJ-004 "The entered address cannot be used in this instruction."
+# These rows are what CLICK v4 answered when the runner typed each address into a field and
+# pressed OK. Each row holds the dialog, the field's control id, the Function Code shown, the
+# address, and whether OK accepted it. The fields are the Receive dialog's Starting Master
+# Address, its flags and its exception field, plus Out's address. Every refusal was OBJ-004
+# "The entered address cannot be used in this instruction."
 TRY_ANSWERS = [
     ("Receive", 5016, "01 - Read Coil Status", "Y001", True),
     ("Receive", 5016, "01 - Read Coil Status", "C1", True),

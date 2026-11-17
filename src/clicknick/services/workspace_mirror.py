@@ -332,7 +332,10 @@ def _overlay_onto_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
         if keep_mirror_source and relative == PLC_PACKAGE_PATH:
             continue
         copied += _copy_tree(source / relative, mirror / relative, overwrite=True)
-    # An old record would ask for rungs to be pasted again that CLICK has already fixed.
+    # csv/legacy_encodings.json lists rungs that CLICK still stores in the old encoding.
+    # Review Changes steps through those rungs and pastes them again. Once CLICK has saved
+    # them again, the active workspace has no such file. A copy left in the mirror would make
+    # Review Changes paste rungs that CLICK has already converted, so the copy is deleted.
     from ..ladder.program import LEGACY_ENCODINGS_FILE
 
     legacy_record = Path("csv") / LEGACY_ENCODINGS_FILE

@@ -782,7 +782,13 @@ def _cell_editor_window(*, commits_without_focus: bool) -> tuple[DataviewEditorW
 
 @pytest.mark.parametrize("commits_without_focus", [True, False], ids=["focused", "no-focus"])
 def test_text_typed_in_a_cell_is_committed(commits_without_focus):
-    """The app asks this before a project change, so the text is asked about, not dropped."""
+    """Commit text that is still being typed in a cell before a project change.
+
+    Before a project change the app asks whether to keep unsaved Dataview edits. Text still
+    open in a cell editor counts as an edit, so the window commits it first. Otherwise it
+    would be dropped without the user being asked. With no focus the commit needs a second
+    try, and `tries` counts them.
+    """
     window, tries = _cell_editor_window(commits_without_focus=commits_without_focus)
 
     assert window.commit_open_cell_editor()
