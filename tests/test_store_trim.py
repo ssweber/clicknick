@@ -1,7 +1,8 @@
-"""A nickname or comment is stored as CLICK stores it: without a space at either end.
+"""A nickname or comment is stored as CLICK stores it, without a space at either end.
 
-Loaded rows that hold one are trimmed by a staged edit, "Trim spaces", that Sync
-writes and Undo takes back; a value entered with one is stored without it.
+A loaded row that has a space at either end is trimmed by a staged edit, "Trim spaces".
+Sync writes that edit and Undo takes it back. A value that is entered with a space is
+stored without it.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ T1, TD1 = get_addr_key("T", 1), get_addr_key("TD", 1)
 
 
 class LiveSource:
-    """A database CLICK writes too: rows change without the store being told."""
+    """A database that CLICK writes to as well. Its rows change without the store being told."""
 
     supports_used_field = True
     file_path = "live.mdb"
@@ -170,7 +171,7 @@ class TestTrimOnLoad:
         assert store.undo_stack == []
 
     def test_no_system_name_of_clicks_has_an_edge_space(self):
-        """So trimming every loaded nickname never touches one of CLICK's own names."""
+        """Trimming every loaded nickname never touches one of CLICK's own names."""
         names = [
             name
             for guidance in AUTOMATIONDIRECT_SYSTEM_NICKNAMES.values()
@@ -235,7 +236,7 @@ class TestTrimOnLoad:
         assert source.rows[one].nickname == first
 
     def test_names_shown_as_loaded_are_exempt_duplicates_included(self):
-        """As before the trim: CLICK's data may repeat a system name it wrote."""
+        """Before the trim, CLICK's data may repeat a system name that CLICK wrote."""
         one, two = get_addr_key("SC", 1), get_addr_key("SC", 2)
         store, _source = _store(
             {one: AddressRow("SC", 1, nickname="log"), two: AddressRow("SC", 2, nickname="LOG")}
@@ -378,8 +379,8 @@ class TestTrimOnEntry:
 
     @pytest.mark.parametrize("comment", ["<Tm_D />  preset", "preset  <Tm_D />"])
     def test_a_pair_cascade_that_leaves_a_space_is_trimmed(self, comment):
-        # Removing the block from T1 removes its tag on TD1 too; the second of
-        # two spaces beside the tag would be left at an end of TD1's comment.
+        # Removing the block from T1 removes its tag on TD1 too. That would leave the
+        # second of two spaces beside the tag at an end of TD1's comment.
         store, _source = _store(
             {T1: AddressRow("T", 1, comment="<Tm />"), TD1: AddressRow("TD", 1, comment=comment)}
         )

@@ -769,7 +769,7 @@ class TestDisplayItemMethods:
 
 
 class TestArrayIndexDigits:
-    """An index keeps its digits as written; 01 and 1 are different names."""
+    """An index keeps its digits as written, so 01 and 1 are different names."""
 
     def test_leading_zero_is_kept(self):
         assert parse_segments("Pump01_Run") == [("Pump", "01"), ("Run", None)]

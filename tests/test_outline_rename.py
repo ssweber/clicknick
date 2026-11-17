@@ -445,7 +445,7 @@ class TestBuildRenamePattern:
 
 
 class TestRenameFromOutlineItems:
-    """Rename as the panel runs it: the item says which segment it renames and what precedes it."""
+    """Rename as the panel does. The item says which segment it renames and what precedes it."""
 
     @staticmethod
     def _rename(nicknames: list[str], text: str, new_text: str, occurrence: int = 0) -> list[str]:
@@ -564,7 +564,7 @@ class TestRenameFromOutlineItems:
 
 
 class TestDigitSegmentBetweenUnderscores:
-    """ "Zone_1_Temp" has a plain "1" segment: not the array "Zone1_Temp"."""
+    """ "Zone_1_Temp" has a plain "1" segment. It is not the array "Zone1_Temp"."""
 
     def test_stays_apart_from_the_array_and_renames_only_itself(self):
         nicks = ["Zone_1_Temp", "Zone_2_Temp", "Zone1_Temp", "Zone2_Temp"]

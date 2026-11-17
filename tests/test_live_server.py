@@ -26,7 +26,7 @@ class MockDataSource:
 
 
 class FakeRoot:
-    """Collects ``after`` callbacks; ``run_idle`` runs the ones due now."""
+    """Collect ``after`` callbacks. ``run_idle`` runs the ones that are due now."""
 
     def __init__(self) -> None:
         self.pending: list[tuple[int, object]] = []
@@ -83,7 +83,7 @@ def test_commands_know_whether_click_saved_the_project(tmp_path: Path):
 
 
 def _analysis(*, analysis_tags: dict[str, int], workspace_tags: dict[str, int]):
-    """A build that published the workspace with new names, then failed to analyse it."""
+    """Return a build that published the workspace with new names and then failed to analyse it."""
     return SimpleNamespace(
         is_available=bool(analysis_tags),
         tag_to_addr_key=analysis_tags,

@@ -1,4 +1,4 @@
-"""Review Changes follows the program in CLICK while it stays open, and steps through what differs."""
+"""Review Changes follows the program in CLICK while it is open. It steps through what differs."""
 
 from __future__ import annotations
 
@@ -51,12 +51,12 @@ def _without(*numbers: int) -> list[Rung]:
 
 
 def _rungs_differ(*numbers: int) -> ProgramChange:
-    """CLICK has the program without the proposed rungs *numbers*: they are new."""
+    """Compare a CLICK program that lacks the proposed rungs *numbers*, so those rungs are new."""
     return compare_rungs(_without(*numbers), RUNGS)
 
 
 def _rungs_removed(*numbers: int) -> ProgramChange:
-    """CLICK has all four rungs; the proposal is them without *numbers*."""
+    """Compare a CLICK program that has all four rungs with a proposal that lacks *numbers*."""
     return compare_rungs(RUNGS, _without(*numbers))
 
 
@@ -74,7 +74,7 @@ def _own_preferences(monkeypatch, tmp_path: Path) -> Path:
 
 
 class _Var:
-    """A Tk variable without Tk."""
+    """Stand in for a Tk variable without Tk."""
 
     def __init__(self, value: bool) -> None:
         self.value = value
@@ -87,7 +87,7 @@ class _Var:
 
 
 def _bare_window(folder_names: list[str] = NAMES):
-    """A window with mocks for widgets and nothing compared yet."""
+    """Return a window with mocks for its widgets and nothing compared yet."""
     window = ReviewChangesWindow.__new__(ReviewChangesWindow)
     window._folder = Path("bundle")
     window._source_dir = None
@@ -396,7 +396,7 @@ def test_new_subroutine_for_every_subroutine_when_click_cannot_be_compared(monke
 
 @pytest.fixture
 def adding(monkeypatch):
-    """A window on new subroutine b.csv, with CLICK and timers faked."""
+    """Return a window on new subroutine b.csv, with CLICK and timers faked."""
     csv_dir = Path("workspace/csv")
     window = _window(
         monkeypatch,
@@ -484,7 +484,7 @@ def test_first_time_tips_show_once(monkeypatch, tmp_path: Path) -> None:
 
 @pytest.fixture
 def copies(monkeypatch) -> list[tuple[tuple, int]]:
-    """What each copy put on the clipboard: (rungs, number of the first)."""
+    """Collect what each copy put on the clipboard, as (rungs, number of the first)."""
     made: list[tuple[tuple, int]] = []
 
     def _prepare(rungs, *, first_rung=1, **_kwargs):
@@ -500,7 +500,7 @@ def copies(monkeypatch) -> list[tuple[tuple, int]]:
 
 
 def _on_main(monkeypatch, change: ProgramChange, missing: frozenset[str] = frozenset()):
-    """A window whose only step is main.csv, differing from CLICK by *change*."""
+    """Return a window whose only step is main.csv, which differs from CLICK by *change*."""
     csv_dir = Path("workspace/csv")
     changes = {**_changes(dict.fromkeys(NAMES, False)), "main.csv": change}
     return _window(
@@ -598,7 +598,7 @@ def test_copy_switch_is_remembered_for_the_next_window(monkeypatch, _own_prefere
 
 
 def _folder_window(tmp_path: Path, source_dir: Path | None = None):
-    """A window on a real folder holding main.csv and nicknames.csv, nothing in CLICK."""
+    """Return a window on a real folder with main.csv and nicknames.csv and nothing in CLICK."""
     folder = tmp_path / "bundle"
     folder.mkdir(exist_ok=True)
     write_csv(folder / "main.csv", _coils("Y001", "Y002"))
@@ -964,16 +964,16 @@ def test_vs_click_column_counts_rungs(monkeypatch, change: ProgramChange, label:
 
 
 def _pieces(window) -> list[tuple[str, str | tuple[str, ...]]]:
-    """(text, tags) of each insert into the diff pane since it was last cleared."""
+    """Return (text, tags) for each insert into the diff pane since it was last cleared."""
     calls = window._text.method_calls
     last_clear = max(i for i, call in enumerate(calls) if call[0] == "delete")
     return [(call.args[1], call.args[2]) for call in calls[last_clear:] if call[0] == "insert"]
 
 
 def _inserted(window) -> list[tuple[str, str]]:
-    """(line, line tag) for everything put in the diff pane since it was last cleared.
+    """Return (line, line tag) for everything put in the diff pane since it was last cleared.
 
-    A line put in piece by piece (its gutter, its changed words) is joined.
+    A line that was put in piece by piece (its gutter, its changed words) is joined.
     """
     lines: list[tuple[str, str]] = []
     for text, tags in _pieces(window):
@@ -1084,7 +1084,7 @@ def test_pane_says_why_pyrung_could_not_convert_the_folder(monkeypatch) -> None:
 
 
 def _only_in_click_window(monkeypatch, *, saved_after: bool = False):
-    """main.csv and the subroutines differ; CLICK also has subroutines/old.csv.
+    """Return a window where main.csv and the subroutines differ and CLICK has subroutines/old.csv.
 
     With *saved_after*, a CLICK save (generation 2) makes the folder's programs match.
     """
@@ -1106,7 +1106,7 @@ OLD = len(NAMES)  # The row of subroutines/old.csv, after the folder's own
 
 
 def test_a_program_only_in_click_is_not_blamed_on_the_folder_pyrung_refused(monkeypatch) -> None:
-    """It has no rungs in the folder, so pyrung's failure there says nothing about it."""
+    """The program has no rungs in the folder, so pyrung's failure there says nothing about it."""
     window = _only_in_click_window(monkeypatch)
     window._before_sources = BundleSources({"subroutines/old.csv": "old source\n"})
     window._after_sources = BundleSources(error=_PYRUNG_REFUSES)
@@ -1304,7 +1304,7 @@ def test_a_copy_of_another_click_window_can_be_taken_again(monkeypatch) -> None:
 
 
 class _Database:
-    """CLICK's database as an AddressStore data source."""
+    """Serve CLICK's database as an AddressStore data source."""
 
     supports_used_field = True
     is_database = True
@@ -1319,14 +1319,17 @@ class _Database:
 
 
 def _project_store() -> AddressStore:
-    """CLICK's database names X001 Start, and nothing else."""
+    """Return a store on CLICK's database, which names X001 Start and nothing else."""
     store = AddressStore(_Database())
     store.load_initial_data()
     return store
 
 
 def _nicknames_window(tmp_path: Path, store: AddressStore | None):
-    """A folder whose nicknames.csv renames X001 to Start_PB and names X003 Jog."""
+    """Return a window on a folder whose nicknames.csv renames X001 to Start_PB.
+
+    The same file names X003 Jog.
+    """
     window = _folder_window(tmp_path)
     CsvDataSource(str(window._folder / "nicknames.csv")).save_changes(
         [AddressRow("X", 1, nickname="Start_PB"), AddressRow("X", 3, nickname="Jog")]
@@ -1527,7 +1530,7 @@ def test_no_notice_while_the_folder_still_holds_what_was_read(tmp_path: Path) ->
 
 
 def _legacy_click_copy(*rungs: int | None) -> ProgramChange:
-    """CLICK's copy reads the same as the proposal, but holds *rungs* in a legacy encoding."""
+    """Compare a CLICK copy that reads like the proposal but holds *rungs* in a legacy encoding."""
     return compare_rungs(RUNGS, RUNGS, [_legacy(rung) for rung in rungs])
 
 
@@ -1807,7 +1810,7 @@ def test_skipping_what_is_left_after_a_paste_finishes_the_program(monkeypatch, c
 
 
 def _three_changed(monkeypatch):
-    """Every program differs from CLICK in two places: r1 and r3 are new."""
+    """Return a window where every program differs from CLICK in two places: r1 and r3 are new."""
     csv_dir = Path("workspace/csv")
     return _window(
         monkeypatch,
@@ -2060,7 +2063,10 @@ def test_a_program_only_in_click_that_cannot_be_read_is_one_to_delete(monkeypatc
 
 
 def _stand_in_window(monkeypatch, click: list, proposed: list, rung: int):
-    """main.csv with CLICK's rung *rung* unreadable, and the folder holding *proposed*."""
+    """Return a window on main.csv.
+
+    CLICK's rung *rung* is unreadable and the folder has *proposed*.
+    """
     window = _on_main(monkeypatch, compare_rungs(click, proposed, [_unreadable(rung)]))
     window._programs["main.csv"] = ProposedProgram(
         "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
@@ -2234,7 +2240,7 @@ def _exported(monkeypatch, click: list[Rung], proposed: list[Rung], *, compared:
 
 
 def _export(window, proposed: list[Rung]) -> None:
-    """The folder is exported again holding *proposed* as main.csv; the window reloads."""
+    """Export the folder again with *proposed* as main.csv, and reload the window."""
     window.folder["main.csv"] = ProposedProgram(
         "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
     )
@@ -2242,7 +2248,7 @@ def _export(window, proposed: list[Rung]) -> None:
 
 
 def _save(window, click: list[Rung]) -> None:
-    """CLICK saves holding *click* as its main program."""
+    """Save in CLICK with *click* as its main program."""
     generation = window.current.generation + 1
     window.saves[str(generation)] = list(click)
     _change(
@@ -2574,7 +2580,7 @@ def test_a_csv_that_cannot_be_read_is_left_out(monkeypatch, copies) -> None:
 
 
 def _two_legacy() -> ProgramChange:
-    """CLICK holds rungs 1 and 3 in a legacy encoding: two differences."""
+    """Compare a CLICK program that holds rungs 1 and 3 in a legacy encoding: two differences."""
     return _legacy_click_copy(1, 3)
 
 

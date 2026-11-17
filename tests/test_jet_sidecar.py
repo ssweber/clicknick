@@ -319,7 +319,7 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
     from clicknick.connection_session import ClickConnection
 
     monkeypatch.setenv("CLICKNICK_DB_BACKEND", "none")
-    # CLICK's folder is not read
+    # Stub the pairing lookup so that the test does not read CLICK's folder.
     monkeypatch.setattr(
         "clicknick.connection_session.ConnectionSession.load_workspace_pairing", lambda _self: None
     )
@@ -349,7 +349,7 @@ def test_none_connects_through_existing_csv_flow(monkeypatch):
     connection.connect_to_instance(1, "CLICK", "project.ckp", 2)
     dialog.assert_called_once_with(view.root, "Address.csv", "project_Address.csv")
     connection.load_csv.assert_called_once_with("saved.csv")
-    # The session holds the window, and builds nothing without a database
+    # The session records the CLICK connection. It has no database, so it builds nothing.
     assert view._session.click == ClickConnection(1, 2, "project.ckp")
     assert not view._session.has_database
     probe.assert_not_called()
@@ -423,8 +423,8 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
     error = Mock()
     monkeypatch.setattr(connection_controller.messagebox, "showerror", error)
 
-    # Collect earlier tests' Tk objects here, on the Tk thread. Collected on the
-    # load thread, each waits about a second for a main loop that is not running.
+    # Collect earlier tests' Tk objects here, on the Tk thread. If the load thread
+    # collected them, each would wait about a second for a main loop that is not running.
     gc.collect()
     connection._load_instance_database(session)
     assert not session.has_database
@@ -463,7 +463,7 @@ def test_switch_closes_old_session_before_loading_new_database(monkeypatch):
     from clicknick.connection_session import ClickConnection
 
     events = []
-    # CLICK's folder is not read
+    # Stub the pairing lookup so that the test does not read CLICK's folder.
     monkeypatch.setattr(
         "clicknick.connection_session.ConnectionSession.load_workspace_pairing", lambda _self: None
     )
