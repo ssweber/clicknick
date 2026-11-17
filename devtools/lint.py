@@ -51,7 +51,7 @@ def main() -> int:
     print()
 
     if errcount != 0:
-        print(f"Lint failed with {errcount} error(s).")
+        print(f"Lint failed in {errcount} ruff step(s).")
     else:
         print("Lint passed.")
     print()
