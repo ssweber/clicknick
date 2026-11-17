@@ -170,13 +170,14 @@ class CustomNotebook(ttk.Notebook):
             "on_close_callback", None
         )
 
-        # The style belongs to one Tk interpreter; each root needs its own.
+        # A style belongs to one Tk interpreter, so each root needs its own.
         master = args[0] if args else kwargs.get("master")
         try:
             ttk.Style(master).layout("CustomNotebook")
         except tk.TclError:
             self.__initialize_custom_style(master)
-            # Tk deletes an image when its PhotoImage is collected; the root keeps them.
+            # Tk deletes an image when its PhotoImage is garbage collected, so the root
+            # keeps a reference to them.
             (master or tk._get_default_root())._root()._custom_notebook_images = self.images
 
         kwargs["style"] = "CustomNotebook"
