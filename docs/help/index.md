@@ -136,7 +136,7 @@ For another CLICK window, the nicknames and the deletion of programs it lacks st
 ClickNick does not directly edit the `.ckp` file. It works through the files and workflows CLICK exposes while a project is open:
 
 - Nickname and comment tools read and write CLICK's temporary `SC_.mdb` working database. Those changes become part of the project only when you save in CLICK.
-- After a Sync, CLICK redraws the nicknames in its ladder. CLICK keeps the names it shows in memory. So ClickNick runs CLICK's **File > Import > Nickname** on a file that holds only the header line. Nothing is imported, and CLICK reads every nickname again from `SC_.mdb`. CLICK then counts the project as changed and asks you to save it when you close it. If CLICK has a dialog open, ClickNick leaves CLICK alone and tells you. Close the dialog, then choose **Tools > Redraw Nicknames in CLICK**.
+- After a Sync, CLICK redraws the nicknames in its ladder. CLICK keeps the names it shows in memory. So ClickNick runs CLICK's **File > Import > Nickname** on a file that holds only the header line. Nothing is imported, and CLICK reads every nickname again from `SC_.mdb`. CLICK then counts the project as changed and asks you to save it when you close it. While the import runs, ClickNick shows "Redrawing nicknames in CLICK…" over CLICK's window. If you were working in ClickNick, CLICK comes to the front during the import. When the import ends, the ClickNick window that you were in comes back to the front, unless you moved to another window meanwhile. After **Sync and Close**, that window is gone. CLICK then stays in front. If CLICK has a dialog open, ClickNick leaves CLICK alone and tells you. Close the dialog, then choose **Tools > Redraw Nicknames in CLICK**. If you turn off **Tools > Redraw Ladder on Sync**, CLICK does not redraw after a Sync. Choose **Tools > Redraw Nicknames in CLICK** when you want the new names in CLICK's ladder. ClickNick turns the setting on again each time it starts.
 - Data View tools read and write temporary `.cdv` files. A Data View created in ClickNick must be imported into CLICK manually.
 - Ladder text edits stay in the workspace until you review them rung by rung in Review Changes and paste the ones you choose through CLICK's own ladder editor.
 - The Tag Browser is built from nickname data and stores nothing.
@@ -169,7 +169,7 @@ Load a nickname CSV manually, or save a copy of CLICK's project CSV when offered
 
 ## Common setup questions
 
-- Nicknames changed through the Address Editor appear in autocomplete immediately, and in CLICK's ladder after a Sync. If CLICK had a dialog open, close it, then choose **Tools > Redraw Nicknames in CLICK**. See [Where ClickNick writes](#where-clicknick-writes).
+- Nicknames changed through the Address Editor appear in autocomplete immediately, and in CLICK's ladder after a Sync. If CLICK had a dialog open, or you turned off **Tools > Redraw Ladder on Sync**, choose **Tools > Redraw Nicknames in CLICK**. Close CLICK's dialog first. See [Where ClickNick writes](#where-clicknick-writes).
 - ClickNick is beta software. Review Address Editor, Data View, and ladder changes before saving in CLICK.
 
 ## Project support

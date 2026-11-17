@@ -2,10 +2,14 @@
 
 The fake follows what CLICK v4.00 showed for File > Import > Nickname (live runs,
 2026-11-15 to 2026-11-17, ``devtools/click_runner.py``'s ``import_one``): an Open
-dialog owned by the main window with three import modes, Merge (Project priority)
-checked, the File name edit (1148 in ComboBox 1148), Open (1) and Cancel (2); a
-progress window titled "frmProgress" then "Import - <mode>"; then a box "Import
-Database" reading "Completed!" with OK, or the "Import Error List".
+dialog with three import modes, Merge (Project priority) checked, the File name edit
+(1148 in ComboBox 1148), Open (1) and Cancel (2); a progress window titled "frmProgress"
+then "Import - <mode>"; then a box "Import Database" reading "Completed!" with OK, or the
+"Import Error List".
+
+CLICK's main window owns the Open dialog only if CLICK was active at the command. When
+another program was active, the dialog had no owner (live run on CLICK v4.00,
+2026-11-17).
 """
 
 from __future__ import annotations
@@ -72,7 +76,16 @@ class FakeClick:
         self.imported_mode: str | None = None
         self.imported_path: Path | None = None
         self.foreground_window = OWN_WINDOW
-        self.click_takes_foreground = True
+        self.refuses_foreground = False  # Windows does not let CLICK's window be activated
+        self.foreground_at_command: int | None = None
+        # Windows switches the foreground this many seconds after set_foreground
+        self.switch_delay = 0.0
+        self.switch: tuple[int, float] | None = None
+        # The owner of the Open dialog: CLICK's main window if CLICK was active at the
+        # command, else none. The import's later windows have the same owner unless
+        # later_owner says otherwise.
+        self.open_owner = MAIN
+        self.later_owner: int | None = None
         self.popups: dict[int, int] = {}  # GetLastActivePopup
         self.foreground_set: list[int] = []
         self.holds_file = False  # CLICK keeps the CSV open (answer never comes)
@@ -85,9 +98,10 @@ class FakeClick:
         found = [Window(MAIN, "Afx:main", "CLICK Programming Software", 0, self.main_enabled)]
         found += self.extra
         if self.open_shown:
-            found.append(Window(OPEN, "#32770", self.open_title, MAIN, True))
+            found.append(Window(OPEN, "#32770", self.open_title, self.open_owner, True))
+        owner = self.open_owner if self.later_owner is None else self.later_owner
         if self.progress_title is not None:
-            found.append(Window(PROGRESS, "TfrmProgress", self.progress_title, MAIN, True))
+            found.append(Window(PROGRESS, "TfrmProgress", self.progress_title, owner, True))
             # Titled by the mode it imports in, from the next look on
             self.progress_title = f"Import - {self.imported_mode.removeprefix('Merge (')}"
             self.progress_title = self.progress_title.removesuffix(")")
@@ -95,9 +109,9 @@ class FakeClick:
                 self.answer = ERRORS if self.errors else DONE
             elif self.answer is not None:
                 if self.answer == DONE:
-                    found.append(Window(DONE, "#32770", "Import Database", MAIN, True))
+                    found.append(Window(DONE, "#32770", "Import Database", owner, True))
                 else:
-                    found.append(Window(ERRORS, "TfrmErrorList", "Import Error List", MAIN, True))
+                    found.append(Window(ERRORS, "TfrmErrorList", "Import Error List", owner, True))
         found.append(Window(950, "tooltips_class32", "", 0, True))  # Let be
         return found
 
@@ -132,9 +146,12 @@ class FakeClick:
 
     def post_command(self, hwnd: int, command_id: int) -> None:
         self.commands.append((hwnd, command_id))
+        self.foreground_at_command = self.foreground_window
+        click_active = self.foreground_window == MAIN
+        self.open_owner = MAIN if click_active else 0
         if self.opens_dialog:
             self.open_shown = True
-            if self.click_takes_foreground:
+            if click_active:
                 self.foreground_window = OPEN
 
     def press(self, hwnd: int) -> None:
@@ -175,6 +192,8 @@ class FakeClick:
         return True
 
     def foreground(self) -> int:
+        if self.switch is not None and self.time >= self.switch[1]:
+            self.foreground_window, self.switch = self.switch[0], None
         return self.foreground_window
 
     def window_pid(self, hwnd: int) -> int:
@@ -187,7 +206,12 @@ class FakeClick:
 
     def set_foreground(self, hwnd: int) -> None:
         self.foreground_set.append(hwnd)
-        self.foreground_window = hwnd
+        if self.refuses_foreground and hwnd == MAIN:
+            return
+        if self.switch_delay:
+            self.switch = (hwnd, self.time + self.switch_delay)
+        else:
+            self.foreground_window = hwnd
 
     # -- the clock ----------------------------------------------------------------
 
@@ -238,40 +262,79 @@ def test_windows_own_strings_in_another_language_do_not_matter(tmp_path) -> None
 # -- The foreground ----------------------------------------------------------------------
 
 
+def test_click_is_made_active_before_the_import_when_clicknick_is_active(tmp_path) -> None:
+    click = FakeClick()
+
+    result = _redraw(click, tmp_path)
+
+    assert result.outcome is RedrawOutcome.REFRESHED
+    assert click.foreground_at_command == MAIN
+    assert click.open_owner == MAIN
+    assert click.foreground_set == [MAIN, OWN_WINDOW]  # ClickNick gets the foreground back
+    assert click.foreground_window == OWN_WINDOW
+
+
 def test_the_foreground_goes_back_to_clicknicks_last_active_popup(tmp_path) -> None:
     click = FakeClick()
     click.popups[OWN_WINDOW] = OWN_POPUP  # "Successfully synced" showed meanwhile
 
     _redraw(click, tmp_path)
 
-    assert click.foreground_set == [OWN_POPUP]
+    assert click.foreground_set == [MAIN, OWN_POPUP]
 
 
-def test_the_foreground_goes_back_to_clicknicks_window(tmp_path) -> None:
+def test_the_redraw_ends_once_clicknick_has_the_foreground_back(tmp_path) -> None:
+    """Live, CLICK took the foreground back when ClickNick closed a window before the switch."""
     click = FakeClick()
+    click.switch_delay = 0.3
 
-    _redraw(click, tmp_path)
+    result = _redraw(click, tmp_path)
 
-    assert click.foreground_set == [OWN_WINDOW]
+    assert result.outcome is RedrawOutcome.REFRESHED
+    assert click.foreground_at_command == MAIN
+    assert click.foreground_set == [MAIN, OWN_WINDOW]
+    assert click.switch is None and click.foreground_window == OWN_WINDOW
 
 
-def test_the_foreground_stays_when_clicknick_did_not_have_it(tmp_path) -> None:
+def test_click_is_not_made_active_when_clicknick_is_not_active(tmp_path) -> None:
     click = FakeClick()
     click.foreground_window = 777
 
     _redraw(click, tmp_path)
 
     assert click.foreground_set == []
+    assert click.foreground_at_command == 777
 
 
-def test_the_foreground_stays_when_click_never_took_it(tmp_path) -> None:
+@pytest.mark.parametrize(
+    "later_owner", [None, OPEN], ids=["no owner at all", "later windows owned by the dialog"]
+)
+def test_the_import_redraws_when_click_is_not_active(tmp_path, later_owner) -> None:
+    """Regression: the Open dialog had no owner, and the redraw failed with 'CLICK showed "Open"'."""
+    click = FakeClick()
+    click.foreground_window = 777  # Another program is active
+    click.later_owner = later_owner
+
+    result = _redraw(click, tmp_path)
+
+    assert result.outcome is RedrawOutcome.REFRESHED
+    assert click.open_owner == 0
+    assert click.imported == [HEADER]
+    assert click.pressed == [OPEN_BUTTON, DONE_OK]
+
+
+def test_the_import_runs_when_windows_refuses_to_activate_click(tmp_path) -> None:
     click = FakeClick()
     click.popups[OWN_WINDOW] = OWN_POPUP
-    click.click_takes_foreground = False
+    click.refuses_foreground = True
 
-    _redraw(click, tmp_path)
+    result = _redraw(click, tmp_path)
 
-    assert click.foreground_set == []
+    assert result.outcome is RedrawOutcome.REFRESHED
+    assert click.open_owner == 0
+    # ClickNick kept the foreground, so it is not set back.
+    assert click.foreground_set == [MAIN]
+    assert click.time >= click_redraw.ACTIVATE_TIMEOUT
 
 
 def test_the_foreground_stays_when_the_user_moved_to_another_program(tmp_path) -> None:
@@ -287,7 +350,7 @@ def test_the_foreground_stays_when_the_user_moved_to_another_program(tmp_path) -
 
     _redraw(click, tmp_path)
 
-    assert click.foreground_set == []
+    assert click.foreground_set == [MAIN]  # Only to make CLICK active before the import
 
 
 # -- The import mode ---------------------------------------------------------------------
@@ -377,6 +440,40 @@ def test_busy_click_is_left_alone(tmp_path, setup, detail) -> None:
     assert result.detail == detail
     assert click.commands == []
     assert click.pressed == []
+    assert click.foreground_set == []  # CLICK is not made active either
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("change", "detail"),
+    [
+        (
+            lambda c: c.extra.append(Window(600, "#32770", "Out", MAIN, True)),
+            'CLICK shows "Out"',
+        ),
+        (lambda c: setattr(c, "main_enabled", False), "CLICK's window is disabled"),
+    ],
+    ids=["a dialog opens", "main window disabled"],
+)
+def test_click_is_checked_again_once_it_is_active(tmp_path, change, detail) -> None:
+    """A window that CLICK opens while it is made active would be taken for the import's."""
+    click = FakeClick()
+    real_set_foreground = click.set_foreground
+
+    def set_foreground(hwnd: int) -> None:
+        real_set_foreground(hwnd)
+        if hwnd == MAIN:
+            change(click)
+
+    click.set_foreground = set_foreground
+
+    result = _redraw(click, tmp_path)
+
+    assert result.outcome is RedrawOutcome.BUSY
+    assert result.detail == detail
+    assert click.commands == []
+    assert click.pressed == []
+    assert click.foreground_set == [MAIN, OWN_WINDOW]  # ClickNick gets the foreground back
     assert list(tmp_path.iterdir()) == []
 
 
@@ -406,13 +503,14 @@ def test_an_answer_other_than_completed_is_left_for_the_user(tmp_path) -> None:
     assert click.pressed == [OPEN_BUTTON]
 
 
-def test_an_unexpected_box_instead_of_the_open_dialog_is_left_alone(tmp_path) -> None:
+@pytest.mark.parametrize("owner", [MAIN, 0], ids=["owned by CLICK", "no owner"])
+def test_an_unexpected_box_instead_of_the_open_dialog_is_left_alone(tmp_path, owner) -> None:
     click = FakeClick()
     click.opens_dialog = False
 
     def box_instead(hwnd: int, command_id: int) -> None:
         click.commands.append((hwnd, command_id))
-        click.extra.append(Window(600, "#32770", "CLICK Programming Software", MAIN, True))
+        click.extra.append(Window(600, "#32770", "CLICK Programming Software", owner, True))
 
     click.post_command = box_instead
 
@@ -421,7 +519,27 @@ def test_an_unexpected_box_instead_of_the_open_dialog_is_left_alone(tmp_path) ->
     assert result.outcome is RedrawOutcome.FAILED
     assert result.detail == 'CLICK showed "CLICK Programming Software"'
     assert click.pressed == []
-    assert click.time < 2  # Told apart once DIALOG_GRACE has passed
+    # A dialog may still be the Open dialog being built until OPEN_TIMEOUT
+    assert click.time < click_redraw.OPEN_TIMEOUT + 1
+
+
+@pytest.mark.parametrize("owner", [MAIN, 0], ids=["owned by CLICK", "no owner"])
+def test_a_window_of_no_known_kind_fails_the_redraw_at_once(tmp_path, owner) -> None:
+    click = FakeClick()
+    real_post = click.post_command
+
+    def warning_too(hwnd: int, command_id: int) -> None:
+        real_post(hwnd, command_id)
+        click.extra.append(Window(600, "TMessageForm", "Warning", owner, True))
+
+    click.post_command = warning_too
+
+    result = _redraw(click, tmp_path)
+
+    assert result.outcome is RedrawOutcome.FAILED
+    assert result.detail == 'CLICK showed "Warning"'
+    assert click.pressed == []
+    assert click.time < 1
 
 
 def test_a_file_dialog_without_the_import_modes_is_never_cancelled(tmp_path) -> None:
@@ -488,6 +606,33 @@ def test_a_box_over_the_open_dialog_leaves_both_for_the_user(tmp_path) -> None:
 
 
 # -- Time-outs and failures --------------------------------------------------------------
+
+
+def test_import_modes_that_show_seconds_after_the_command_are_waited_for(tmp_path) -> None:
+    """Until OPEN_TIMEOUT passes, a dialog without the modes may be the Open dialog being built."""
+    click = FakeClick()
+    real_post_command = click.post_command
+    real_controls = click.controls
+    command_at: list[float] = []
+
+    def post_command(hwnd: int, command_id: int) -> None:
+        real_post_command(hwnd, command_id)
+        command_at.append(click.time)
+
+    def controls(hwnd: int) -> list[Control]:
+        found = real_controls(hwnd)
+        if hwnd == OPEN and click.time < command_at[0] + 3.0:
+            return [c for c in found if c.hwnd not in MODES]
+        return found
+
+    click.post_command = post_command
+    click.controls = controls
+
+    result = _redraw(click, tmp_path)
+
+    assert result.outcome is RedrawOutcome.REFRESHED
+    assert click.time >= command_at[0] + 3.0
+    assert click.pressed == [OPEN_BUTTON, DONE_OK]
 
 
 def test_no_open_dialog_times_out(tmp_path) -> None:

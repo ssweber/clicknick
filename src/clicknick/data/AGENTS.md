@@ -79,23 +79,47 @@ writes nothing and raises `RuntimeError`. This holds for every caller. For the d
 SC_.mdb, because CLICK writes that file while it is connected. So the rows that it writes hold CLICK's current
 values in the fields that the user did not change.
 
-CLICK's ladder paints nicknames from a table that TagDB.dll keeps in memory. CLICK shows the names from a
-Sync only after that table reloads, and no window message reloads it. `services/click_redraw.py` forces the
-reload. It imports a header-only CSV through CLICK's File > Import > Nickname (WM_COMMAND 32900, CLICK
-2.60-4.00) in Merge (Project priority) mode. The import leaves SC_.mdb as it was, but CLICK then counts the
-project as changed. The redraw starts only while CLICK shows its main window alone, enabled and answering. It
-presses only the mode's radio button, Open and the one button of the "Completed!" box. It recognises the
-import's Open dialog by its three import modes and its control ids, never by Windows' own strings. If the
-redraw fails while that dialog is the only other window open, it cancels the dialog. It leaves any other
-window to the user, including an Open dialog that it did not recognise. The tests drive it through a fake
-`ClickDesktop`. It was checked live after a Sync on CLICK 2.60, 3.43, 3.71, 3.92 and 4.00. `save_all_changes`
-calls the store's sync listeners (`add_sync_listener`) once it has written rows into the database. Every Sync
-path goes through `save_all_changes`: the Address Editor's Sync and Sync and Close, and Yes to a save prompt.
-The app's listener runs the redraw for the connected window off the Tk thread
-(`ConnectionController.redraw_nicknames`). If a redraw is asked for while one runs, the request waits and runs
-once, after that redraw ends. Tools > Redraw Nicknames in CLICK works the same way. A redraw's result and a
-waiting request belong to the CLICK window (its hwnd). If another window is connected, or none, ClickNick drops
-them. A skipped or failed redraw shows as a status line and never fails the Sync.
+CLICK's ladder paints nicknames from a table that TagDB.dll keeps in memory. CLICK shows the names from a Sync
+only after that table reloads, and no window message reloads it. `services/click_redraw.py` forces the reload.
+It imports a header-only CSV through CLICK's File > Import > Nickname (WM_COMMAND 32900, CLICK 2.60-4.00) in
+Merge (Project priority) mode. The import leaves SC_.mdb as it was, but CLICK then counts the project as
+changed.
+
+The redraw starts only while CLICK shows its main window alone, enabled and answering. If one of ClickNick's
+windows is the foreground window, the redraw first makes CLICK's main window the foreground window. Then it
+checks CLICK again. So every window that CLICK shows after the command comes from the import. At the end, if
+CLICK still has the foreground, the redraw gives the foreground to that ClickNick window's last active popup.
+It waits until Windows has switched. If that ClickNick window is gone, as after Sync and Close, CLICK keeps
+the foreground.
+
+CLICK's import makes the active window the owner of its windows. When another program is active, they have no
+owner. So the redraw tells the import's windows apart by class and title, never by owner. It recognises the
+Open dialog by its three import modes and its control ids, never by Windows' own strings. Until `OPEN_TIMEOUT`
+passes, it treats a dialog that does not show the modes yet as the Open dialog still being built. A window of
+any other kind fails the redraw. The redraw presses only the mode's radio button, Open and the one button of
+the "Completed!" box. If the redraw fails while the Open dialog is the only other window open, it cancels the
+dialog. It leaves any other window to the user, including an Open dialog that it did not recognise.
+
+The tests drive the redraw through a fake `ClickDesktop`. It was checked live after a Sync on CLICK 2.60,
+3.43, 3.71, 3.92 and 4.00. An agent's script checked it with CLICK not active, and with ClickNick active, on
+CLICK 2.60, 3.92 and 4.00 (2026-11-17). On CLICK 4.00 the script also checked a minimized CLICK. Its import
+shows the dialogs on screen, and CLICK stays minimized.
+
+While the redraw runs, ClickNick shows "Redrawing nicknames in CLICK…" over CLICK's main window
+(`views/redraw_splash.py`). For a minimized CLICK, the notice shows where CLICK's window would be restored.
+The notice never takes the focus or activates, because CLICK must stay the active window. ClickNick closes it
+before the status line shows the result. So it never hides a dialog that the redraw leaves to the user.
+
+`save_all_changes` calls the store's sync listeners (`add_sync_listener`) once it has written rows into the
+database. Every Sync path goes through `save_all_changes`: the Address Editor's Sync and Sync and Close, and
+Yes to a save prompt. The app's listener calls `ConnectionController.after_sync`. If Tools > Redraw Ladder on
+Sync is on (the default), `after_sync` runs the redraw for the connected window off the Tk thread
+(`ConnectionController.redraw_nicknames`). If the setting is off, nothing runs, and the status line tells the
+user to choose Tools > Redraw Nicknames in CLICK. The setting is in `AppSettings`. ClickNick does not save it.
+It is on again at each start. If a redraw is asked for while one runs, the request waits and runs once, after
+that redraw ends. Tools > Redraw Nicknames in CLICK works the same way, whatever the setting. A redraw's
+result and a waiting request belong to the CLICK window (its hwnd). If another window is connected, or none,
+ClickNick drops them. A skipped or failed redraw shows as a status line and never fails the Sync.
 
 ## Nicknames loaded with an error
 

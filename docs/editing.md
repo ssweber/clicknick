@@ -14,6 +14,8 @@ The Address Editor opens different address sections in separate windows, takes p
 
 After a Sync, CLICK redraws the renamed nicknames in its ladder. If CLICK had a dialog open, ClickNick tells you. Close the dialog, then choose **Tools > Redraw Nicknames in CLICK**.
 
+If you turn off **Tools > Redraw Ladder on Sync**, CLICK does not redraw after a Sync. CLICK then shows the new names only after you choose **Tools > Redraw Nicknames in CLICK**. ClickNick turns the setting on again each time it starts.
+
 ## Organize
 
 Give a range of addresses a name and a color. Blocks show up in the editor, in the Tag Browser, and as a unit you can drop into a Data View.
