@@ -516,7 +516,7 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _new_dataview(self) -> None:
         """Create a new unsaved dataview."""
-        dialog =NewDataviewDialog(self)
+        dialog = NewDataviewDialog(self)
         name = dialog.show()
 
         if not name:

@@ -275,7 +275,7 @@ class AddressPanel(ttk.Frame):
         if self._suppress_notifications:
             return
 
-        cells =getattr(event, "cells", None)
+        cells = getattr(event, "cells", None)
         if not cells:
             return
 
