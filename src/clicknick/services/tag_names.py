@@ -1,10 +1,10 @@
-"""The name pyrung gives each address, read by pyrung itself.
+"""Name each address the way pyrung does, by asking pyrung's own reader.
 
-A workspace's program and its simulation name each address by the tag pyrung
-reads from the workspace's ``nicknames.csv``. pyrung decides how it reads a
-nickname (whether it strips spaces, which rows it refuses), so ClickNick does
-not copy that rule: it asks pyrung's own reader (``TagMap.from_nickname_file``)
-and maps by what that gives. No tkinter, no store.
+A workspace's program and its simulation name each address by the tag that pyrung reads
+from the workspace's ``nicknames.csv``. pyrung decides how it reads a nickname, such as
+whether it strips spaces and which rows it refuses. ClickNick does not copy those rules.
+It calls pyrung's own reader (``TagMap.from_nickname_file``) and maps addresses by the
+result. This module uses no tkinter and no store.
 """
 
 from __future__ import annotations
@@ -23,16 +23,16 @@ def tag_names(
     rows: Mapping[int, AddressRow],
     keys: Iterable[int],
 ) -> dict[int, str]:
-    """The tag name of each address in *keys*, as the program read from *nickname_csv* has it.
+    """Return the tag name of each address in *keys*, as the program read from *nickname_csv*.
 
-    *rows* are the rows that file holds. An address pyrung reads a nickname
-    for has that tag name. A CLICK system point (SC, SD) keeps its nickname:
-    pyrung names those by names of its own (``sys.*``), which ClickNick does
-    not use. Any other address, and every address when there is no file, is
-    named by its display address (``"X001"``).
+    *rows* are the rows that the file holds. An address that pyrung reads a nickname for
+    gets that nickname as its tag name. A CLICK system point (SC, SD) keeps its nickname.
+    pyrung names those points with names of its own (``sys.*``), and ClickNick does not use
+    them. Any other address gets its display address (``"X001"``) as its name. So does
+    every address when there is no file.
 
-    Raises OSError when the file cannot be read and ValueError when pyrung
-    refuses it, as building the program from it would.
+    Raise OSError when the file cannot be read. Raise ValueError when pyrung refuses the
+    file, as building the program from it would.
     """
     user: dict[int, str] = {}
     system: set[int] = set()

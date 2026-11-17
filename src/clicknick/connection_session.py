@@ -1,7 +1,8 @@
-"""Connection session: owns the resources bound to a connected CLICK project.
+"""Define the session that owns the resources bound to a connected CLICK project.
 
-Created on connect, before CLICK's database loads, replaced on a project change,
-closed on disconnect. The address data itself lives in DataSession.
+ClickNick creates the session on connect, before CLICK's database loads. It replaces the
+session on a project change and closes it on disconnect. The address data itself lives in
+DataSession.
 """
 
 from __future__ import annotations
@@ -24,12 +25,12 @@ if TYPE_CHECKING:
     from .services.workspace_mirror import ProjectWorkspaceConfig, WorkspacePairing
     from .simulation_session import SimulationSession
 
-# A temporary workspace lives in CLICK's folder for the window, so a session opening
-# another project there writes where the closed session's last build may still be
-# writing. Builds of every session run one at a time.
+# A temporary workspace lives in CLICK's folder for the window. A session that opens another
+# project there writes where the closed session's last build may still be writing. So the
+# builds of every session run one at a time.
 _BUILD_GATE = threading.Lock()
 
-# Why a session builds nothing before ClickNick read CLICK's database (has_database)
+# The reason a session builds nothing before ClickNick has read CLICK's database (has_database)
 NO_DATABASE = (
     "ClickNick has not read this project's database (SC_.mdb, through Access ODBC "
     "or Jet). A build reads CLICK's program from its Scr*.tmp files and the "
@@ -39,21 +40,21 @@ NO_DATABASE = (
 
 @dataclass(frozen=True)
 class SavedProgram:
-    """The program CLICK last saved, as CSVs to compare with, at one moment.
+    """Describe the program CLICK last saved, as CSVs to compare with, at one moment.
 
-    A value different from the last one means a comparison may be out of date.
+    If a value differs from the last one, a comparison may be out of date.
     """
 
-    # A different session is a different project; None when nothing is connected
+    # A different session is a different project. This is None when nothing is connected
     # or ClickNick has not read the connected project's database.
     session: ConnectionSession | None = None
     generation: int = 0
-    # Saves CLICK made in this session, as the ScrWatcher saw them: the one signal
-    # that CLICK saved. Nothing ClickNick does (Sync, Reload, a retry) bumps it.
+    # Saves that CLICK made in this session, as the ScrWatcher saw them. This is the only
+    # signal that CLICK saved. Nothing ClickNick does (Sync, Reload, a retry) raises it.
     save_count: int = 0
     building: bool = False
     csv_dir: Path | None = None
-    # Why there is no csv_dir to compare with.
+    # The reason there is no csv_dir to compare with.
     note: str = "Connect to CLICK to see which programs changed"
 
 
@@ -61,7 +62,7 @@ class SavedProgram:
 class ClickConnection:
     """The CLICK window ClickNick is attached to.
 
-    Immutable: a project change produces a new value rather than editing
+    This class is immutable. A project change produces a new value instead of editing
     fields, so nothing can hold a half-updated connection.
     """
 
@@ -71,7 +72,7 @@ class ClickConnection:
 
     @property
     def project_name(self) -> str:
-        """The project filename without its .ckp extension."""
+        """Return the project filename without its .ckp extension."""
         return self.filename.removesuffix(".ckp")
 
 
@@ -82,13 +83,13 @@ class _BuildRequest:
     callbacks: list[tuple[tk.Tk | None, Callable[[bool, str | None], None]]] = field(
         default_factory=list
     )
-    # What AnalysisService.mark_building returned for it: the build serves every
-    # request made up to this one.
+    # What AnalysisService.mark_building returned for it. The build serves every request
+    # made up to this one.
     serves: int = 0
 
 
 class ConnectionSession:
-    """Owns the resources whose lifetime is bounded by a CLICK project connection.
+    """Own the resources whose lifetime is bounded by a CLICK project connection.
 
     Resources managed (in teardown order):
     1. The database load in flight
@@ -108,15 +109,14 @@ class ConnectionSession:
         on_sync_status_changed: Callable[[int], None] | None = None,
         on_build_finished: Callable[[], None] | None = None,
     ) -> None:
-        # The connected window, for the session's lifetime: a project change
-        # replaces the session.
+        # The connected window, for the session's lifetime. A project change replaces the
+        # session.
         self.click = click
-        # Whether ClickNick read CLICK's database for this project. A session
-        # opens before the database loads, and stays without one when there is
-        # no database backend or the load fails (the CSV fallback). The analysis
-        # reads SC_.mdb through ODBC or Jet, so until then nothing is built, and
-        # nothing that needs a build (the simulation, Review Changes' comparison)
-        # starts.
+        # Whether ClickNick read CLICK's database for this project. A session opens before the
+        # database loads. It stays without one when there is no database backend or the load
+        # fails (the CSV fallback). The analysis reads SC_.mdb through ODBC or Jet, so until
+        # the database is read nothing is built. Nothing that needs a build (the simulation,
+        # Review Changes' comparison) starts either.
         self.has_database = has_database
         from .services.workspace_mirror import WorkspacePairing
 
@@ -141,7 +141,7 @@ class ConnectionSession:
         self._legacy_reported: frozenset[tuple[str, str, str]] = frozenset()
         self._save_count = 0
 
-        # One build worker: requests made while it runs collapse into the next build.
+        # One build worker. Requests made while it runs merge into the next build.
         self._build_lock = threading.Lock()
         self._build_running = False
         self._next_build: _BuildRequest | None = None
@@ -155,16 +155,19 @@ class ConnectionSession:
     # -- Database load -----------------------------------------------------
 
     def begin_load(self) -> object:
-        """Note a database load starting; its result counts while ``loads(token)``."""
+        """Record that a database load is starting. Its result counts while ``loads(token)``."""
         self._load_token = token = object()
         return token
 
     def loads(self, token: object) -> bool:
-        """Whether the load *token* names is still wanted: not cancelled, session open."""
+        """Return whether the load that *token* names is still wanted.
+
+        A load is wanted if it is not cancelled and the session is open.
+        """
         return not self._closed and self._load_token is token
 
     def cancel_load(self) -> None:
-        """Drop the database load in flight: its result will not be used."""
+        """Drop the database load in flight. Its result will not be used."""
         self._load_token = None
 
     # -- Connection watch --------------------------------------------------
@@ -172,7 +175,7 @@ class ConnectionSession:
     def watch(self, scheduler: tk.Misc, tick: Callable[[], None]) -> None:
         """Run *tick* now and every 100 ms after, until the session closes.
 
-        A session has one watch: calling this again while it runs does nothing.
+        A session has one watch. If you call this again while the watch runs, nothing happens.
         """
         if self._closed or self._watch_scheduler is not None:
             return
@@ -184,8 +187,8 @@ class ConnectionSession:
         try:
             tick()
         finally:
-            # A tick that closed the session (CLICK's window closed, or shows
-            # another project) was its last.
+            # A tick that closed the session was the last one. That happens when CLICK's
+            # window closed or shows another project.
             if not self._closed:
                 assert self._watch_scheduler is not None
                 self._watch_id = self._watch_scheduler.after(100, lambda: self._watch_tick(tick))
@@ -196,7 +199,7 @@ class ConnectionSession:
         self._watch_id = None
 
     def hide_overlay(self) -> None:
-        """Withdraw and destroy the autocomplete popup; the next popup is a new one."""
+        """Withdraw and destroy the autocomplete popup. The next popup is a new one."""
         overlay, self.overlay = self.overlay, None
         if overlay is not None:
             overlay.withdraw()
@@ -216,12 +219,12 @@ class ConnectionSession:
 
     @property
     def workspace_dir(self) -> Path | None:
-        """The paired durable workspace, which builds write; None for a temporary one."""
+        """Return the paired durable workspace that builds write to, or None for a temporary one."""
         config = self.pairing.config
         return config.workspace_path.resolve() if config is not None else None
 
     def plc_name(self) -> str | None:
-        """CLICK's PLC name for the project, from Project.ini (None without one)."""
+        """Return CLICK's PLC name for the project from Project.ini (None without one)."""
         from pyclickplc.project import read_plc_name
 
         try:
@@ -256,7 +259,7 @@ class ConnectionSession:
 
         analysis = self.analysis
         assert analysis is not None
-        # Read once: Workspace setup may pair another one on the Tk thread meanwhile.
+        # Read once, Workspace setup may pair another workspace on the Tk thread meanwhile.
         workspace_dir = self.workspace_dir
         persistent_workspace = workspace_dir is not None
         persist = workspace_dir or (request.scr_folder / "pyrung_project")
@@ -288,8 +291,8 @@ class ConnectionSession:
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
-            # Failed before build() ran, so nothing else will end the "building" status
-            # (unless a build queued since will).
+            # Failed before build() ran, so nothing else ends the "building" status. A build
+            # queued since then will.
             if analysis.status is AnalysisStatus.BUILDING:
                 analysis.mark_failed(error, traceback.format_exc(), serves=request.serves)
 
@@ -321,10 +324,10 @@ class ConnectionSession:
     ) -> None:
         """Queue an analysis build and optionally report completion on the Tk thread.
 
-        One worker thread runs builds one at a time, so two builds never write
-        the same project folder. Requests made while a build runs collapse into
-        a single follow-up build of the latest inputs; every caller's
-        on_complete hears the result of the build that served it.
+        One worker thread runs builds one at a time, so two builds never write the same
+        project folder. Requests made while a build runs merge into a single follow-up build
+        of the latest inputs. Every caller's on_complete receives the result of the build
+        that served it.
         """
         analysis = self.analysis
         assert analysis is not None
@@ -344,13 +347,13 @@ class ConnectionSession:
 
     @property
     def project_ini(self) -> Path:
-        """CLICK's Project.ini for the connected window (hardware and PLC name)."""
+        """Return CLICK's Project.ini for the connected window (hardware and PLC name)."""
         from .utils.click_temp import click_temp_dir
 
         return click_temp_dir(self.click.hwnd) / "Project.ini"
 
     def _simulation_key(self) -> str:
-        """The PLC name simulator settings are remembered under, else the project's name."""
+        """Return the PLC name that simulator settings are saved under, else the project's name."""
         return self.plc_name() or self.click.project_name
 
     def ensure_simulation(
@@ -384,11 +387,10 @@ class ConnectionSession:
             self.simulator = None
 
     def use_workspace(self, config: ProjectWorkspaceConfig) -> None:
-        """Pair the durable workspace *config*, for future analysis builds (and
-        simulator settings).
+        """Pair the durable workspace *config* for future analysis builds and simulator settings.
 
-        A running simulation relaunches from the new workspace once its
-        analysis rebuild finishes.
+        A running simulation relaunches from the new workspace once its analysis rebuild
+        finishes.
         """
         from .services.workspace_mirror import WorkspacePairing
 
@@ -435,7 +437,7 @@ class ConnectionSession:
             self._start_analysis_thread(*paths)
 
     def saved_program(self) -> SavedProgram:
-        """Where the program CLICK last saved can be read as CSVs, right now."""
+        """Return where the program CLICK last saved can be read as CSVs, right now."""
         from .services.analysis_service import AnalysisStatus
 
         if not self.has_database:
@@ -462,12 +464,11 @@ class ConnectionSession:
         return SavedProgram(self, generation, saves, note=reading)
 
     def legacy_encodings_to_report(self) -> tuple[LegacyEncoding, ...]:
-        """Every legacy encoding in CLICK's last save, when it holds one not reported yet.
+        """Return every legacy encoding in CLICK's last save, if it has one not reported yet.
 
-        Empty when nothing new turned up, so pasting a fix and saving does not
-        report the rest again. Each finding is keyed by its program, instruction
-        and token, not its rung number. Pasting rungs above it moves it, and that
-        is not news.
+        Return an empty result when nothing new turned up, so pasting a fix and saving does
+        not report the rest again. Each finding is keyed by its program, instruction and
+        token, not by its rung number. Pasting rungs above it moves it, and that is not news.
         """
         from .ladder.program import read_legacy_encodings
 
@@ -504,9 +505,9 @@ class ConnectionSession:
     def start_analysis(self, root: tk.Tk) -> None:
         """Build program analysis in the background and watch CLICK's saves.
 
-        A build already under way serves the request. The ScrWatcher is made
-        once per session, as it counts what was synced since CLICK last saved.
-        Nothing starts before ClickNick read CLICK's database (``has_database``).
+        A build that is already under way serves the request. The session makes the
+        ScrWatcher once, because it counts what was synced since CLICK last saved. Nothing
+        starts before ClickNick has read CLICK's database (``has_database``).
         """
         from .services.analysis_service import AnalysisStatus
         from .services.scr_watcher import ScrWatcher
@@ -525,8 +526,8 @@ class ConnectionSession:
             if paths is not None:
                 self.scr_watcher.watch(paths[0])
             return
-        # Watch even with nothing to build yet: CLICK may still be writing the project
-        # it is opening, and the build must follow once it has.
+        # Watch even with nothing to build yet. CLICK may still be writing the project it is
+        # opening, and the build must follow once it has finished.
         self.scr_watcher = ScrWatcher(
             paths[0] if paths is not None else click_temp_dir(self.click.hwnd),
             self._on_scr_changed,

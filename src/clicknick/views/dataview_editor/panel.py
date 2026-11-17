@@ -59,7 +59,7 @@ _MAX_REJECTIONS_SHOWN = 10
 
 
 class _UndoFrame(NamedTuple):
-    """The rows and their Write checks, as one undo step restores them."""
+    """Hold the rows and their Write checks, as one undo step restores them."""
 
     rows: list[DataViewRecord]
     checks: list[bool]
@@ -80,7 +80,7 @@ class DataviewPanel(ttk.Frame):
     """
 
     def _display_address(self, text: str) -> str | None:
-        """CLICK's form of an address (``x1`` -> ``X001``, ``xd0u`` -> ``XD0u``), or None."""
+        """Return CLICK's form of an address (``x1`` -> ``X001``, ``xd0u`` -> ``XD0u``), or None."""
         candidate = (text or "").strip()
         if not candidate:
             return None
@@ -91,7 +91,7 @@ class DataviewPanel(ttk.Frame):
         return normalize_address(candidate)
 
     def _canonical_address(self, address: str) -> str | None:
-        """Normalize an address for poll/write payloads."""
+        """Normalize an address for poll and write payloads."""
         normalized = self._display_address(address)
         return normalized.upper() if normalized else None
 
@@ -185,9 +185,9 @@ class DataviewPanel(ttk.Frame):
                 )
 
     def _names_for(self, address: str) -> tuple[str, str]:
-        """Nickname and comment for an address, read live from the address data.
+        """Return the nickname and comment for an address, read live from the address data.
 
-        Never stored on the row, so the sheet cannot show a stale name.
+        The row never stores them, so the sheet cannot show a stale name.
         """
         if not address or self.nickname_lookup is None:
             return "", ""
@@ -258,10 +258,10 @@ class DataviewPanel(ttk.Frame):
             )
 
     def _apply_force_edit(self, row_idx: int, text: str) -> None:
-        """Force (or, when cleared, release) the row's address through the simulator.
+        """Force the row's address through the simulator, or release it when the cell is cleared.
 
-        The cell then shows the simulator's forces again; a refused force never
-        appears, and the simulator reports why.
+        The cell then shows the simulator's forces again. A force that the simulator refuses
+        never appears, and the simulator reports why.
         """
         row = self.rows[row_idx]
         address = self._canonical_address(row.address)
@@ -276,7 +276,7 @@ class DataviewPanel(ttk.Frame):
         self._sync_force_cell(row_idx)
 
     def _row_values(self) -> list[tuple[object, ...]]:
-        """What a save writes for each row."""
+        """Return what a save writes for each row."""
         return [(row.address, row.data_type, row.new_value) for row in self.rows]
 
     def _snapshot(self) -> _UndoFrame:
@@ -287,13 +287,13 @@ class DataviewPanel(ttk.Frame):
         )
 
     def _push_undo(self, before: _UndoFrame) -> None:
-        """Record the state an edit started from; a new edit drops Redo."""
+        """Record the state an edit started from. A new edit drops Redo."""
         self._undo_stack.append(before)
         del self._undo_stack[:-MAX_UNDO_DEPTH]
         self._redo_stack.clear()
 
     def _mark_read(self, stamp: Stamp | None) -> None:
-        """The rows are the file's version ``stamp``, as just loaded, reloaded or saved."""
+        """Record that the rows are the file's version ``stamp``, just loaded, reloaded or saved."""
         self._saved_values = self._row_values()
         self._is_dirty = False
         self._based_on = stamp
@@ -563,7 +563,7 @@ class DataviewPanel(ttk.Frame):
         self._notify_addresses_changed()
 
     def _warn_rejected_pastes(self) -> None:
-        """Say which cells of a paste or fill kept their value because the new one was invalid."""
+        """Warn about the cells of a paste or fill that kept their value after an invalid new one."""
         rejected, self._rejected_pastes = self._rejected_pastes, []
         if not rejected or not self.winfo_exists():
             return
@@ -573,14 +573,17 @@ class DataviewPanel(ttk.Frame):
         messagebox.showwarning("Invalid New Value", "\n".join(shown), parent=self)
 
     def _on_paste_start(self, _event) -> None:
-        """A paste ends the batch before it: its warning is shown before this paste's own."""
+        """Warn about the previous paste's rejected cells before this paste adds its own."""
         self._warn_rejected_pastes()
 
     def _reject_new_value(self, row_idx: int, text: str, error: str) -> str | None:
-        """Refuse a New Value. Text typed in the cell editor is asked for again once tksheet
-        has closed the editor. A value pasted or filled keeps the cell
-        as it was and is listed in one warning, shown when the next paste starts or the
-        window is idle; clearing a cell is never refused."""
+        """Refuse a New Value.
+
+        If you typed the text in the cell editor, the panel asks for it again once tksheet has
+        closed the editor. If a paste or fill supplied the value, the cell keeps its old
+        value. The cell is listed in one warning that appears when the next paste starts or
+        the window is idle. Clearing a cell is never refused.
+        """
         if not self.sheet.MT.text_editor.open:
             if not self._rejected_pastes:
                 self._rejected_pastes_after_id = self.after_idle(self._warn_rejected_pastes)
@@ -745,7 +748,7 @@ class DataviewPanel(ttk.Frame):
         if not self.file_path or not self.file_path.exists():
             return
 
-        # Stamped before reading: a write during the read is then a change still to load.
+        # Stamp before reading. A write during the read then counts as a change still to load.
         stamp = self._stamp(self.file_path)
         try:
             self._file = DataViewFile.load(self.file_path)
@@ -857,7 +860,10 @@ class DataviewPanel(ttk.Frame):
         self.bind("<Destroy>", self._on_destroy)
 
     def reopen_rejected_edit(self) -> bool:
-        """Say why a New Value was refused and reopen its cell with the text typed; False if none."""
+        """Show why a New Value was refused and reopen its cell with the typed text.
+
+        Return False if no New Value was refused.
+        """
         rejected, self._rejected_edit = self._rejected_edit, None
         if rejected is None or not self.winfo_exists():
             return False
@@ -872,10 +878,11 @@ class DataviewPanel(ttk.Frame):
         return True
 
     def _rebase_frames(self, old: Stamp | None, new: Stamp | None) -> None:
-        """Undo/Redo steps from file version ``old`` now come from ``new``.
+        """Mark the Undo and Redo steps from file version ``old`` as coming from ``new``.
 
-        For a save, and for a reload that read the same rows: the file then holds nothing
-        those steps have not read. Steps from any other version keep theirs.
+        Call this after a save, or after a reload that read the same rows. The file then holds
+        nothing that those steps have not read. Steps from any other version keep their
+        version.
         """
 
         def rebase(frames: list[_UndoFrame]) -> list[_UndoFrame]:
@@ -885,7 +892,7 @@ class DataviewPanel(ttk.Frame):
         self._redo_stack = rebase(self._redo_stack)
 
     def _restore(self, frame: _UndoFrame) -> None:
-        """Put the rows back as a frame holds them and redraw the whole sheet from them."""
+        """Put the rows back as the frame holds them, and redraw the whole sheet from them."""
         self.rows = [dataclasses.replace(row) for row in frame.rows]
         self._write_checks = list(frame.checks)
         self._based_on = frame.based_on
@@ -896,7 +903,7 @@ class DataviewPanel(ttk.Frame):
         self._notify_addresses_changed()
 
     def undo(self) -> bool:
-        """Undo the last edit to the rows. Returns False when there is none."""
+        """Undo the last edit to the rows. Return False when there is none."""
         if not self._undo_stack:
             return False
         self._redo_stack.append(self._snapshot())
@@ -904,7 +911,7 @@ class DataviewPanel(ttk.Frame):
         return True
 
     def redo(self) -> bool:
-        """Redo the last undone edit. Returns False when there is none."""
+        """Redo the last undone edit. Return False when there is none."""
         if not self._redo_stack:
             return False
         self._undo_stack.append(self._snapshot())
@@ -916,10 +923,10 @@ class DataviewPanel(ttk.Frame):
         messagebox.showerror("Save Error", text, parent=self)
 
     def _changed_under_rows(self) -> bool:
-        """True when file_path is not the version the rows came from (CLICK writes .cdv files).
+        """Return True when file_path is not the version the rows came from.
 
-        Any other mtime or size counts, not only a later one: a restored older copy is a change.
-        A deleted file is not one.
+        CLICK writes .cdv files. Any other mtime or size counts, not only a later one, so a
+        restored older copy is a change. A deleted file is not a change.
         """
         if self.file_path is None:
             return False
@@ -927,7 +934,7 @@ class DataviewPanel(ttk.Frame):
         return stamp is not None and stamp != self._based_on
 
     def _reload_file(self) -> None:
-        """Reload the file from disk, as an undo step: Ctrl+Z brings the replaced rows back."""
+        """Reload the file from disk as an undo step. Ctrl+Z brings the replaced rows back."""
         if not self.file_path or not self.file_path.exists():
             return
 
@@ -952,8 +959,8 @@ class DataviewPanel(ttk.Frame):
         self._notify_addresses_changed()
 
     def _confirm_overwrite(self, path: Path) -> bool:
-        """Ask before saving over a change another program made; True to save."""
-        # The file monitor keeps running while the dialog is up; it must not ask too.
+        """Ask before saving over a change that another program made. Return True to save."""
+        # The file monitor keeps running while the dialog is up. It must not ask as well.
         self._reload_prompt_shown = True
         try:
             answer = messagebox.askyesnocancel(
@@ -970,14 +977,14 @@ class DataviewPanel(ttk.Frame):
         if answer is False:
             self._reload_file()
         else:
-            # The monitor does not ask about this change again. Save still asks,
-            # until a save succeeds or the file is reloaded.
+            # The monitor does not ask about this change again. Save still asks until a save
+            # succeeds or the file is reloaded.
             self._monitor_stamp = self._stamp(path)
         self.sheet.focus_set()
         return bool(answer)
 
     def _save_to(self, path: Path) -> bool:
-        """Write the rows to path; on failure say why and change nothing."""
+        """Write the rows to path. On failure, say why and change nothing."""
         if self.load_error is not None and path == self.file_path:
             self._show_save_error(
                 f"Could not read '{path.name}' when it was opened ({self.load_error}), "
@@ -1074,8 +1081,8 @@ class DataviewPanel(ttk.Frame):
     def _prompt_reload(self) -> None:
         """Offer to reload the file after another program changed it.
 
-        Declining changes nothing here: the rows still come from the older version, so
-        Save asks before writing over this one.
+        If you decline, nothing changes here. The rows still come from the older version, so
+        Save asks before it writes over the new one.
         """
         message = (
             f"'{self.name}' has been modified by another program.\n\nDo you want to reload it?"
@@ -1229,7 +1236,7 @@ class DataviewPanel(ttk.Frame):
         return None
 
     def _place_address(self, address: str) -> None:
-        """Put an address (already in CLICK's form) where the placement rules say."""
+        """Put an address (already in CLICK's form) where the placement rules place it."""
         # Get selection (checks both row and cell selection)
         selected_idx = self._get_selected_row_index()
 
@@ -1434,7 +1441,7 @@ class DataviewPanel(ttk.Frame):
         self._apply_column_visibility()
 
     def set_force_column_visible(self, visible: bool) -> None:
-        """Show or hide the simulator's Force column (hidden against a real PLC)."""
+        """Show or hide the simulator's Force column. It is hidden against a real PLC."""
         if visible == self._force_column_visible:
             return
         self._force_column_visible = visible
@@ -1461,7 +1468,7 @@ class DataviewPanel(ttk.Frame):
 
     @property
     def rows(self) -> list[DataViewRecord]:
-        """Rows of the open CDV file."""
+        """Return the rows of the open CDV file."""
         return self._file.rows
 
     @rows.setter

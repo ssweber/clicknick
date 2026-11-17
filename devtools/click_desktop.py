@@ -1,14 +1,16 @@
-"""The desktop calls the CLICK runner makes (devtools/click_runner.py), and their Win32 version.
+"""Define the desktop calls that the CLICK runner makes (devtools/click_runner.py).
 
-The runner drives CLICK only through ``Desktop``, so its logic is tested against a fake
-(tests/test_click_runner.py) and this Win32 version stays thin: each method is one or two
-Win32 calls with no decisions of its own.
+This module also holds the Win32 version of them.
 
-Every ``WM_COMMAND`` goes through ``Desktop.command``, which refuses any command outside
-``ALLOWED_COMMANDS``. Read Project, Write Project and Write Data are not in it, so the
-runner cannot read a project from the PLC or write anything into it; Read Data from PLC,
-which only reads the PLC's data values, is. The one mouse click the runner makes is posted to
-CLICK's ladder view, through ``Desktop.click_ladder``, which finds the view itself.
+The runner drives CLICK only through ``Desktop``. That lets tests/test_click_runner.py test
+the runner's logic against a fake. It also keeps the Win32 version thin: each method makes one
+or two Win32 calls and decides nothing.
+
+Every ``WM_COMMAND`` goes through ``Desktop.command``. It refuses any command outside
+``ALLOWED_COMMANDS``. Read Project, Write Project and Write Data are not in that set, so the
+runner cannot read a project from the PLC or write anything into it. Read Data from PLC is in
+the set, because it only reads the PLC's data values. The runner posts one kind of mouse click,
+to CLICK's ladder view through ``Desktop.click_ladder``, which finds the view itself.
 """
 
 from __future__ import annotations
@@ -32,40 +34,41 @@ SAVE_PROJECT = 32898
 SAVE_PROJECT_AS = 32899
 DISCONNECT = 32850
 # File > Import > Nickname ("Import to Address Picker" in the string table). It opens an Open
-# dialog with three import modes and writes the rows into SC_.mdb (live probe of 2026-11-15)
+# dialog with three import modes, and it writes the rows into SC_.mdb (live probe of 2026-11-15)
 IMPORT_NICKNAME = 32900
 # Program > Address Picker (Ctrl+T; "Address Picker" in the string table): CLICK's editor of
 # nicknames and address comments (probe of 2026-11-16)
 ADDRESS_PICKER = 32834
 # System Configuration ("System Configuration" in the string table): the PLC's modules and the
 # project's PLC Name, which it shows from Project.ini's [Sec20] Key1. Its OK saves setup into
-# the project and is never pressed; Cancel closes it (live probe C2, 2026-11-16)
+# the project, so the runner never presses OK. Cancel closes it (live probe C2, 2026-11-16)
 SYSTEM_CONFIGURATION = 32827
-# PLC > Read Data from PLC: it reads the PLC's data values and saves them to a file. Write
-# Data into PLC, beside it, writes a file's values into the PLC and is never sent (string
-# table, probe of 2026-11-16)
+# PLC > Read Data from PLC reads the PLC's data values and saves them to a file. Write
+# Data into PLC, beside it, writes a file's values into the PLC. The runner never sends it
+# (string table, probe of 2026-11-16)
 READ_DATA_FROM_PLC = 32851
 WRITE_DATA_INTO_PLC = 32852
 READ_PROJECT_FROM_PLC = 32853
 WRITE_PROJECT_INTO_PLC = 32854
-# The ribbon's Instruction tab, which opens an instruction's dialog at the ladder's cursor.
-# These ids are in no string table: CLICK.exe builds the ribbon in code, pushing each
-# button's id beside its label ("Math..."). The same reading gives 32850 for "Disconnect..."
-# and 32853 for "Read Project from PLC...", as the string table does (probe of 2026-11-15).
+# The ribbon's Instruction tab opens an instruction's dialog at the ladder's cursor.
+# These ids are in no string table. CLICK.exe builds the ribbon in code and pushes each
+# button's id beside its label ("Math..."). Read the same way, the code gives 32850 for
+# "Disconnect..." and 32853 for "Read Project from PLC...", the same as the string table
+# (probe of 2026-11-15).
 OUT_DIALOG = 50010
 MATH_DIALOG = 50030
 COPY_DIALOG = 50040
-# "Receive..." pushes 50060 (and "Send..." 50061) the same way; live probes r1 and r2
-# (2026-11-16) opened the Receive dialog by it (Inst_RD.dll's template, titled "Receive")
+# "Receive..." pushes 50060, and "Send..." pushes 50061, the same way. Live probes r1 and r2
+# (2026-11-16) opened the Receive dialog with 50060 (Inst_RD.dll's template, titled "Receive")
 RECEIVE_DIALOG = 50060
 # The ribbon's Contact(NO), Compare and Search push 50001, 50004 and 50041 the same way. Live
-# probes d1 to d3 (2026-11-17, job copy-encodings) opened "Contact Normally Open"
-# (Inst_ContactNO.dll), "Compare (A with B)" (Inst_Compare.dll) and "Search" (Inst_Search.dll)
-# by them
+# probes d1 to d3 (2026-11-17, job copy-encodings) used those ids to open "Contact Normally
+# Open" (Inst_ContactNO.dll), "Compare (A with B)" (Inst_Compare.dll) and "Search"
+# (Inst_Search.dll)
 CONTACT_NO_DIALOG = 50001
 COMPARE_DIALOG = 50004
 SEARCH_DIALOG = 50041
-# MFC's ID_EDIT_COPY: Edit > Copy puts what the ladder has selected on the clipboard, and
+# MFC's ID_EDIT_COPY. Edit > Copy puts what is selected in the ladder on the clipboard and
 # nothing else (live probe d2, 2026-11-17, job copy-encodings)
 EDIT_COPY = 0xE122
 
@@ -91,8 +94,9 @@ ALLOWED_COMMANDS = {
     EDIT_COPY: "Copy",
 }
 
-# The ladder view: the one visible child of CLICK's main window of this class (live probe d2,
-# 2026-11-17). The only window a mouse click is posted to (``Desktop.click_ladder``)
+# The ladder view is the one visible child of CLICK's main window that has this class (live
+# probe d2, 2026-11-17). It is the only window that gets a posted mouse click
+# (``Desktop.click_ladder``)
 LADDER_VIEW_CLASS = "AfxFrameOrView100u"
 
 _NEVER = {
@@ -103,15 +107,18 @@ _NEVER = {
 
 
 class ForbiddenCommandError(RuntimeError):
-    """A WM_COMMAND outside ALLOWED_COMMANDS."""
+    """Raised for a WM_COMMAND outside ALLOWED_COMMANDS."""
 
 
 class LadderViewError(RuntimeError):
-    """The main window has no one visible ladder view to click in."""
+    """Raised when the main window does not have exactly one visible ladder view to click in."""
 
 
 def check_command(command_id: int) -> str:
-    """The name of *command_id* if the runner may send it; raises ForbiddenCommandError if not."""
+    """Return the name of *command_id* if the runner may send it.
+
+    Raise ForbiddenCommandError if not.
+    """
     name = ALLOWED_COMMANDS.get(command_id)
     if name is None:
         what = _NEVER.get(command_id, "not on the runner's allowlist")
@@ -121,7 +128,7 @@ def check_command(command_id: int) -> str:
 
 @dataclass(frozen=True)
 class Window:
-    """A visible top-level window."""
+    """Describe a visible top-level window."""
 
     hwnd: int
     cls: str
@@ -133,10 +140,10 @@ class Window:
 
 @dataclass(frozen=True)
 class Control:
-    """A child window of a top-level window, at any depth.
+    """Describe a child window of a top-level window, at any depth.
 
-    *text* is GetWindowText, which is empty for another process's edit controls: read
-    those with ``Desktop.read_text``.
+    *text* is GetWindowText. It is empty for another process's edit controls. Read those
+    with ``Desktop.read_text``.
     """
 
     hwnd: int
@@ -150,13 +157,13 @@ class Control:
 
 
 class Desktop(ABC):
-    """What the runner may do on the desktop."""
+    """List what the runner may do on the desktop."""
 
     def command(self, hwnd: int, command_id: int) -> str:
-        """Post WM_COMMAND *command_id* to *hwnd*: the one way the runner sends a command.
+        """Post WM_COMMAND *command_id* to *hwnd* and return the command's name.
 
-        Raises ForbiddenCommandError, before anything is sent, for a command outside
-        ALLOWED_COMMANDS. Returns the command's name.
+        This is the only way the runner sends a command. It raises ForbiddenCommandError for a
+        command outside ALLOWED_COMMANDS, before it sends anything.
         """
         name = check_command(command_id)
         self._post_command(hwnd, command_id)
@@ -167,11 +174,11 @@ class Desktop(ABC):
 
     def click_ladder(self, main: int, x: int, y: int) -> int:
         """Post a left click (button down, then up) at the client point (*x*, *y*) of the
-        ladder view of the main window *main*: the one way the runner clicks.
+        ladder view of the main window *main*, and return the view's hwnd.
 
-        The view is the one visible child of *main* of class ``LADDER_VIEW_CLASS``; raises
-        LadderViewError, before anything is posted, when there is none or more than one.
-        Returns the view's hwnd.
+        This is the only way the runner clicks. The ladder view is the one visible child of
+        *main* that has class ``LADDER_VIEW_CLASS``. If there is none or more than one, this
+        raises LadderViewError before it posts anything.
         """
         views = [c for c in self.controls(main) if c.cls == LADDER_VIEW_CLASS and c.visible]
         if len(views) != 1:
@@ -186,72 +193,78 @@ class Desktop(ABC):
 
     @abstractmethod
     def click_processes(self) -> list[int]:
-        """Pids of every process whose image name is CLICK.exe, any version."""
+        """Return the pids of every process whose image name is CLICK.exe, in any version."""
 
     @abstractmethod
     def click_windows(self) -> list[int]:
-        """Every window ClickNick takes for a CLICK main window (``find_click_hwnds``)."""
+        """Return every window ClickNick takes for a CLICK main window (``find_click_hwnds``)."""
 
     @abstractmethod
     def input_desktop(self) -> str | None:
-        """The input desktop's name (``Default`` when unlocked), or None if it cannot be opened."""
+        """Return the input desktop's name, or None if it cannot be opened.
+
+        The name is ``Default`` when the desktop is unlocked.
+        """
 
     @abstractmethod
     def launch(self, exe: Path) -> int:
-        """Start *exe* in its own folder; its pid. It ends when the runner's process does."""
+        """Start *exe* in its own folder and return its pid. It ends when the runner ends."""
 
     @abstractmethod
     def alive(self, pid: int) -> bool:
-        """Whether the process the runner launched as *pid* is still running."""
+        """Return whether the process that the runner launched as *pid* is still running."""
 
     @abstractmethod
     def terminate(self, pid: int) -> None:
-        """End the process the runner launched as *pid*, without asking it."""
+        """End the process that the runner launched as *pid*, without asking it."""
 
     @abstractmethod
     def windows(self, pid: int) -> list[Window]:
-        """The visible top-level windows of *pid*."""
+        """Return the visible top-level windows of *pid*."""
 
     @abstractmethod
     def exists(self, hwnd: int) -> bool:
-        """Whether *hwnd* is still a window (IsWindow); it sends no message."""
+        """Return whether *hwnd* is still a window (IsWindow). It sends no message."""
 
     @abstractmethod
     def controls(self, hwnd: int) -> list[Control]:
-        """Every child window of *hwnd*, at any depth."""
+        """Return every child window of *hwnd*, at any depth."""
 
     @abstractmethod
     def read_text(self, hwnd: int) -> str | None:
-        """*hwnd*'s text by WM_GETTEXT, or None if it does not answer."""
+        """Return *hwnd*'s text by WM_GETTEXT, or None if it does not answer."""
 
     @abstractmethod
     def set_text(self, hwnd: int, text: str) -> bool:
-        """WM_SETTEXT; whether it was answered."""
+        """Send WM_SETTEXT and return whether *hwnd* answered."""
 
     @abstractmethod
     def button_checked(self, hwnd: int) -> int | None:
-        """BM_GETCHECK, or None if it does not answer."""
+        """Return the BM_GETCHECK result, or None if *hwnd* does not answer."""
 
     @abstractmethod
     def list_view_items(self, hwnd: int) -> int | None:
-        """A list view's LVM_GETITEMCOUNT, or None if it does not answer."""
+        """Return a list view's LVM_GETITEMCOUNT, or None if it does not answer."""
 
     @abstractmethod
     def combo_box(self, hwnd: int) -> tuple[list[str], int] | None:
-        """A ComboBox's items (CB_GETLBTEXT) and the index selected (CB_GETCURSEL, -1 for
-        none), or None if it does not answer. It only reads."""
+        """Return a ComboBox's items (CB_GETLBTEXT) and the selected index (CB_GETCURSEL, -1
+        for none), or None if it does not answer. It only reads."""
 
     @abstractmethod
     def edit_limit(self, hwnd: int) -> int | None:
-        """An edit's EM_GETLIMITTEXT, the most characters typing can put in it, or None if
-        it does not answer. WM_SETTEXT is not held to it."""
+        """Return an edit's EM_GETLIMITTEXT, or None if it does not answer.
+
+        That is the most characters that typing can put in the edit. WM_SETTEXT ignores it.
+        """
 
     @abstractmethod
     def status_bar(self, hwnd: int) -> list[str] | None:
-        """The pane texts of the common-control status bar *hwnd* (SB_GETTEXT), or None.
+        """Return the pane texts of the common-control status bar *hwnd* (SB_GETTEXT).
 
-        None when the bar does not answer. Raises OSError when the buffer SB_GETTEXT needs
-        in the bar's process cannot be used. It only reads; the buffer is freed again.
+        Return None when the bar does not answer. Raise OSError when the buffer that
+        SB_GETTEXT needs in the bar's process cannot be used. It only reads, and it frees the
+        buffer again.
         """
 
     @abstractmethod
@@ -260,11 +273,11 @@ class Desktop(ABC):
 
     @abstractmethod
     def send_press(self, hwnd: int) -> bool:
-        """Send BM_CLICK to the button *hwnd*; whether it was answered within 5 s.
+        """Send BM_CLICK to the button *hwnd* and return whether it answered within 5 s.
 
-        Sent, not posted, so the click has been handled when this returns True. False when
-        it was not answered in time, as when the click opens a modal box: the box is then
-        still open.
+        The message is sent, not posted, so the click has been handled when this returns True.
+        It returns False when the button did not answer in time. That happens when the click
+        opens a modal box, and the box is then still open.
         """
 
     @abstractmethod
@@ -273,29 +286,29 @@ class Desktop(ABC):
 
     @abstractmethod
     def send_key(self, hwnd: int, vk: int) -> bool:
-        """Send WM_KEYDOWN then WM_KEYUP for the virtual key *vk* to *hwnd*; whether both
-        were answered, each within 5 s.
+        """Send WM_KEYDOWN then WM_KEYUP for the virtual key *vk* to *hwnd*.
 
-        A message to that one window, as WM_SETTEXT is: no global input, so nothing reaches
-        another window, whatever has the focus. Sent, not posted, so the key has been handled
-        when this returns True. False when a message was not answered in time, as when the
-        key opens a modal box (the box is then still open); no WM_KEYUP follows a WM_KEYDOWN
-        that was not answered.
+        Return whether both were answered, each within 5 s. Like WM_SETTEXT, the messages go
+        to that one window and are not global input, so nothing reaches another window,
+        whatever has the focus. They are sent, not posted, so the key has been handled when
+        this returns True. It returns False when a message was not answered in time. That
+        happens when the key opens a modal box, and the box is then still open. If WM_KEYDOWN
+        was not answered, no WM_KEYUP follows.
         """
 
     @abstractmethod
     def send_chars(self, hwnd: int, text: str) -> bool:
-        """Send a WM_CHAR to *hwnd* for each character of *text*; whether all were answered."""
+        """Send a WM_CHAR to *hwnd* per character of *text*. Return whether each was answered."""
 
     @abstractmethod
     def idle(self, hwnd: int, timeout: float) -> bool:
-        """Whether *hwnd*'s thread answers WM_NULL within *timeout* seconds."""
+        """Return whether *hwnd*'s thread answers WM_NULL within *timeout* seconds."""
 
     @abstractmethod
     def screenshot(self, hwnd: int, path: Path) -> bool:
-        """Save the screen where *hwnd* is as a PNG at *path*; whether it could.
+        """Save the screen where *hwnd* is as a PNG at *path* and return whether it could.
 
-        It is the screen, not the window: whatever lies over CLICK there is in the PNG.
+        This saves the screen, not the window. Whatever lies over CLICK there is in the PNG.
         """
 
     @abstractmethod
@@ -304,15 +317,15 @@ class Desktop(ABC):
 
     @abstractmethod
     def empty_clipboard(self) -> None:
-        """Empty the clipboard, every format."""
+        """Empty the clipboard in every format."""
 
     @abstractmethod
     def read_clipboard(self) -> bytes | None:
-        """The clipboard's data in CLICK's format, or None if it holds none. It only reads."""
+        """Return the clipboard's data in CLICK's format, or None if it has none. It only reads."""
 
     @abstractmethod
     def temp_dir(self, hwnd: int) -> Path:
-        """The temp folder of the CLICK main window *hwnd* (``click_temp_dir``)."""
+        """Return the temp folder of the CLICK main window *hwnd* (``click_temp_dir``)."""
 
 
 # ---------------------------------------------------------------------------
@@ -411,7 +424,7 @@ def _user32():
 
 
 def _png(width: int, height: int, bgra: bytes) -> bytes:
-    """A PNG of top-down 32-bit BGRA pixels."""
+    """Return a PNG of top-down 32-bit BGRA pixels."""
     rgb = bytearray(width * height * 3)
     rgb[0::3] = bgra[2::4]
     rgb[1::3] = bgra[1::4]
@@ -504,8 +517,8 @@ class _ExtendedLimitInformation(ctypes.Structure):
 def kill_on_close(process: int) -> int:
     """Put the process handle *process* in a new job that kills it when the job closes.
 
-    Returns the job's handle. Windows closes it when this process ends, however it ends
-    (killed, Ctrl+Break, its console closed), and the process in the job dies with it.
+    Return the job's handle. Windows closes the handle when this process ends, however it ends
+    (killed, Ctrl+Break, its console closed). The process in the job then dies with it.
     """
     kernel32 = _kernel32()
     job = kernel32.CreateJobObjectW(None, None)
@@ -539,7 +552,7 @@ class _BitmapInfoHeader(ctypes.Structure):
 
 
 def capture_screen(left: int, top: int, width: int, height: int) -> bytes:
-    """The screen's pixels in a rectangle, as top-down 32-bit BGRA whatever the display's depth."""
+    """Return the screen's pixels in a rectangle as top-down 32-bit BGRA, at any display depth."""
     user32 = ctypes.WinDLL("user32", use_last_error=True)
     gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
     user32.GetDC.argtypes = [wintypes.HWND]
@@ -602,7 +615,7 @@ def capture_screen(left: int, top: int, width: int, height: int) -> bytes:
 
 
 class Win32Desktop(Desktop):
-    """The real desktop. Messages are posted or sent with a timeout, so a hung CLICK cannot hang it."""
+    """Act on the real desktop. Messages go with a timeout, so a hung CLICK cannot hang it."""
 
     def __init__(self) -> None:
         self._user32 = _user32()
@@ -793,7 +806,7 @@ class Win32Desktop(Desktop):
         return self._send(hwnd, EM_GETLIMITTEXT)
 
     def status_bar(self, hwnd: int) -> list[str] | None:
-        """SB_GETTEXT for each pane, through a buffer in the bar's process."""
+        """Send SB_GETTEXT for each pane, through a buffer in the bar's process."""
         import win32gui
         import win32process
 
@@ -882,7 +895,8 @@ class Win32Desktop(Desktop):
     def screenshot(self, hwnd: int, path: Path) -> bool:
         """Copy *hwnd*'s rectangle from the screen, as it shows (windows on top included).
 
-        It sends CLICK no message (PrintWindow would, and waits on a hung CLICK forever).
+        It sends CLICK no message. PrintWindow would send one, and it waits forever on a hung
+        CLICK.
         """
         import win32gui
 
