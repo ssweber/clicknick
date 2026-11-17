@@ -17,6 +17,7 @@
 - ClickNick no longer accepts an address with a stray `u`, such as `DS1u`, or with a digit character other than 0-9. It used to read these as `DS1`. CLICK rejects them too.
 - ClickNick no longer loads a nickname CSV that has the wrong Data Type for an address, or a row with more cells than the header. `TXT` now counts as a wrong Data Type, because CLICK writes `TEXT`. The error message gives the line number.
 - The Workspace setup window now closes when you close the CLICK window it belongs to. It already closed when that CLICK window opened another project.
+- About 90 messages, tooltips and help texts are reworded in shorter sentences. They say the same things as before. If a script of yours matches on ClickNick's message text, check it.
 
 ### Fixed
 
