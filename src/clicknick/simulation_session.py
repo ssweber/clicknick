@@ -2,7 +2,7 @@
 
 A ConnectionSession owns the session. The session has no tkinter code. It owns the pyrung
 DAP subprocess, which starts with a Modbus server, real-time pacing and STOP mode. It also
-owns the Modbus client that the Simulator window reads values through, the switch, analog
+owns the Modbus client that polls the values the Simulator window shows, the switch, analog
 and force settings and the bench links that the user chose, and the saving of those choices.
 The Simulator window (with its console) and the Dataview editor observe the session and call
 its methods. Neither of them owns the simulation.
