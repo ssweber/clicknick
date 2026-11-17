@@ -197,7 +197,7 @@ class ConsolePanel(ttk.Frame):
         # The program changes only when ClickNick writes it, so it knows which names apply.
         if "autoreload" in verbs:
             self._append_output(
-                "autoreload stays off in ClickNick: when the program changes, the Simulator "
+                "autoreload stays off in ClickNick. When the program changes, the Simulator "
                 "offers to write it.\n",
                 "error",
             )
