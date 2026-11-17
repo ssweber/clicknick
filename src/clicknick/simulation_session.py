@@ -1296,8 +1296,8 @@ class SimulationSession:
 
         if analysis is None:
             return (
-                "ClickNick has not started building the workspace. Connect to a CLICK "
-                "project, then save it in CLICK.",
+                "ClickNick has not started building the workspace. Save the project in "
+                "CLICK, then try again.",
                 None,
             )
         if analysis.status is AnalysisStatus.FAILED:

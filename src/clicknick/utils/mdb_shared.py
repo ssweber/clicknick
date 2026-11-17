@@ -51,6 +51,14 @@ def get_database_backend() -> str:
     return backend
 
 
+def database_access_off() -> bool:
+    """Whether CLICKNICK_DB_BACKEND is none, so that ClickNick never reads CLICK's database."""
+    try:
+        return get_database_backend() == "none"
+    except ValueError:
+        return False
+
+
 def uses_jet_backend() -> bool:
     """Determine whether connection startup should prepare the Jet worker."""
     backend = get_database_backend()

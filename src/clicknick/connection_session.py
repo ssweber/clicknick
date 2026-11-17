@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .utils.click_temp import scr_files
+from .utils.mdb_shared import database_access_off
 
 if TYPE_CHECKING:
     import tkinter as tk
@@ -32,6 +33,29 @@ if TYPE_CHECKING:
 _BUILD_GATE = threading.Lock()
 
 # The reason a session builds nothing before ClickNick has read CLICK's database (has_database)
+CONNECT_FIRST = "Connect to a CLICK window first"
+
+
+def no_database_reason(session: ConnectionSession | None) -> str:
+    """Say why ClickNick has not read CLICK's database for *session*, and what to do.
+
+    *session* is the connected window's session, or None when no window is connected. The
+    text has no final period, so that the status line can show it as it is.
+    """
+    if session is None:
+        return CONNECT_FIRST
+    if session.reading_database:
+        return "ClickNick is still reading CLICK's database. Try again when it has finished"
+    if database_access_off():
+        return "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)"
+    # The load failed or was cancelled, or the user loaded a CSV file instead. Picking the
+    # window again connects to it and loads its database.
+    return (
+        "ClickNick has not loaded CLICK's database for this project. Select the window in the "
+        "CLICK Windows list to load it"
+    )
+
+
 NO_DATABASE = (
     "ClickNick has not read this project's database, SC_.mdb, so it cannot build the "
     "workspace. The build reads the nicknames from that database."
@@ -468,7 +492,7 @@ class ConnectionSession:
         from .services.analysis_service import AnalysisStatus
 
         if not self.has_database:
-            return SavedProgram()
+            return SavedProgram(note=no_database_reason(self))
         reading = "Reading CLICK's program…"
         saves = self._save_count
         analysis = self.analysis

@@ -1167,6 +1167,114 @@ def test_database_repairs_refuse_csv_data(monkeypatch, action, command):
     )
 
 
+_READING = "ClickNick is still reading CLICK's database. Try again when it has finished"
+_NOT_LOADED = (
+    "ClickNick has not loaded CLICK's database for this project. Select the window in the "
+    "CLICK Windows list to load it"
+)
+_DATABASE_OFF = "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)"
+
+
+def _set_state(app: ClickNickApp, state: str) -> None:
+    """Put *app* in *state*: no window, a window whose database is still loading or not loaded,
+    or a window whose database is loaded but whose workspace build has not started.
+    """
+    if state == "no window":
+        app._session = None
+    elif state == "reading":
+        app._session.begin_load()
+    elif state == "not started":
+        app._session.has_database = True
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "_open_dataview_editor",
+        "_open_address_editor",
+        "_repair_system_nicknames",
+        "_upgrade_project",
+    ],
+)
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        (
+            "no window",
+            "No nicknames loaded. Connect to a CLICK window, or use File > Load Nicknames from CSV",
+        ),
+        ("reading", f"⚠ {_READING}"),
+        ("not loaded", f"⚠ {_NOT_LOADED}"),
+    ],
+)
+def test_without_nicknames_a_command_says_why(monkeypatch, action, state, expected):
+    """With a window connected, no nicknames means that its database is loading or not loaded.
+
+    Only with no window connected does the status say to connect or to load a CSV file.
+    """
+    app, prompts = _app(monkeypatch)
+    _set_state(app, state)
+
+    getattr(app, action)()
+
+    app._update_status.assert_called_once_with(expected, "error")
+    assert prompts == []
+
+
+@pytest.mark.parametrize(
+    ("action", "title", "lead"),
+    [
+        ("_run_program_checks", "Check Program", "Check Program needs the workspace."),
+        ("_choose_program_checks", "Check Settings", "Check Settings needs the workspace."),
+        ("_export_pyrung_project", "Export Workspace", "There is no workspace to export."),
+    ],
+)
+@pytest.mark.parametrize(
+    ("state", "reason"),
+    [
+        ("no window", "Connect to a CLICK window first."),
+        ("reading", f"{_READING}."),
+        ("not loaded", f"{_NOT_LOADED}."),
+        (
+            "not started",
+            "ClickNick has not started building the workspace. Save the project in CLICK, then "
+            "try again.",
+        ),
+    ],
+)
+def test_without_a_workspace_a_command_says_why(monkeypatch, action, title, lead, state, reason):
+    """A command that needs the workspace says why there is none.
+
+    It says to connect only when no window is connected.
+    """
+    app, _prompts = _app(monkeypatch)
+    shown = []
+    monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *args, **kwargs: shown.append(args))
+    _set_state(app, state)
+
+    if action == "_choose_program_checks":
+        app._choose_program_checks(app.root, MagicMock())
+    else:
+        getattr(app, action)()
+
+    assert shown == [(title, f"{lead}\n\n{reason}")]
+
+
+def test_with_database_access_off_the_status_says_so(monkeypatch):
+    """With CLICKNICK_DB_BACKEND set to none, selecting the window cannot load the database."""
+    monkeypatch.setenv("CLICKNICK_DB_BACKEND", "none")
+    app, _prompts = _app(monkeypatch)
+
+    app._workspace.review_changes()
+    app._data = DataSession(FakeStore(is_database=False, source_path="C:/tmp/Main_Address.csv"))
+    app._clean_mdb()
+
+    assert [call.args for call in app._update_status.call_args_list] == [
+        (f"⚠ {_DATABASE_OFF}", "error"),
+        (f"⚠ {_DATABASE_OFF}", "error"),
+    ]
+
+
 @pytest.mark.parametrize("keep", [True, False], ids=["keep", "discard"])
 def test_project_change_asks_about_dataview_edits_over_csv_data(monkeypatch, keep):
     """Over CSV data, a project change asks the same question as over database data.

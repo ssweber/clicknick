@@ -8,12 +8,11 @@ from typing import TYPE_CHECKING, Any, overload
 
 from .config import AppSettings
 from .connection_controller import (
-    NOT_CONNECTED,
     REDRAW_COMMAND,
     REDRAW_ON_SYNC,
     ConnectionController,
 )
-from .connection_session import ClickConnection, SavedProgram
+from .connection_session import ClickConnection, SavedProgram, no_database_reason
 from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
 from .detection.window_detector import ClickWindowDetector
@@ -27,6 +26,7 @@ from .utils.filters import (  # preserve lru_cache
     NoneFilter,
     PrefixFilter,
 )
+from .utils.mdb_shared import database_access_off
 from .views.dialogs import AboutDialog, OdbcWarningDialog
 from .widgets.tooltip import bind_tooltip
 from .workspace_controller import WorkspaceController
@@ -114,21 +114,39 @@ class ClickNickApp:
 
     def _report_no_project_session(self) -> None:
         """Show in the status line why ``_project_session`` returned None, and what to do."""
-        session = self._session
-        if session is None:
-            message = NOT_CONNECTED
-        elif session.reading_database:
-            message = (
-                "⚠ ClickNick is still reading CLICK's database. Try again when it has finished"
-            )
+        self._update_status(f"⚠ {no_database_reason(self._session)}", "error")
+
+    def _report_no_data(self) -> None:
+        """Show in the status line why no nicknames are loaded, and what to do.
+
+        With a CLICK window connected, the reason is its database: still loading, or not
+        loaded. With none, the user can connect or load a CSV file.
+        """
+        if self._session is None:
+            self._update_status(_NO_NICKNAMES, "error")
         else:
-            # The load failed or was cancelled, or the user loaded a CSV file instead.
-            # Picking the window again connects to it and loads its database.
-            message = (
-                "⚠ ClickNick has not loaded CLICK's database for this project. Select the "
-                "window in the CLICK Windows list to load it"
-            )
-        self._update_status(message, "error")
+            self._report_no_project_session()
+
+    def _no_workspace_reason(self) -> str:
+        """Say why the connected project has no workspace that a command can use, and what to do.
+
+        The text is one or more sentences, for a message box.
+        """
+        from .services.analysis_service import AnalysisStatus
+
+        session = self._project_session()
+        if session is None:
+            return f"{no_database_reason(self._session)}."
+        analysis = session.analysis
+        status = analysis.status if analysis is not None else None
+        if status is AnalysisStatus.FAILED:
+            return f"Could not build the workspace: {analysis.error}"
+        if status is AnalysisStatus.BUILDING:
+            return "ClickNick is still building the workspace. Try again when it finishes."
+        return (
+            "ClickNick has not started building the workspace. Save the project in CLICK, "
+            "then try again."
+        )
 
     @staticmethod
     def _format_workspace_time(value) -> str:
@@ -602,7 +620,7 @@ class ClickNickApp:
         """
         data = self._data
         if data is None:
-            self._update_status(_NO_NICKNAMES, "error")
+            self._report_no_data()
             return
 
         window = data.dataview_window
@@ -710,7 +728,7 @@ class ClickNickApp:
 
         data = self._data
         if data is None:
-            self._update_status(_NO_NICKNAMES, "error")
+            self._report_no_data()
             return
 
         try:
@@ -739,7 +757,7 @@ class ClickNickApp:
 
         store = self._get_store()
         if store is None:
-            self._update_status(_NO_NICKNAMES, "error")
+            self._report_no_data()
             return
 
         from .services.system_nickname_service import stage_system_nickname_repairs
@@ -778,7 +796,7 @@ class ClickNickApp:
         """Stage pyrung's rewrites of old annotation forms for review and Sync."""
         store = self._get_store()
         if store is None:
-            self._update_status(_NO_NICKNAMES, "error")
+            self._report_no_data()
             return
 
         from .services.comment_upgrade_service import stage_comment_upgrades
@@ -838,9 +856,7 @@ class ClickNickApp:
             else:
                 messagebox.showinfo(
                     "Check Program",
-                    "Check Program needs the workspace, and ClickNick has not built it.\n\n"
-                    "Connect to a CLICK window whose project has a saved program. ClickNick "
-                    "builds the workspace once it has read CLICK's database.",
+                    f"Check Program needs the workspace.\n\n{self._no_workspace_reason()}",
                     parent=self.root,
                 )
             return
@@ -875,7 +891,11 @@ class ClickNickApp:
         analysis = self._session.analysis if self._session else None
         selection = analysis.check_selection if analysis is not None else None
         if selection is None:
-            messagebox.showinfo("Check Settings", "Connect to a CLICK window first.", parent=parent)
+            messagebox.showinfo(
+                "Check Settings",
+                f"Check Settings needs the workspace.\n\n{self._no_workspace_reason()}",
+                parent=parent,
+            )
             return
         try:
             CheckSelectionWindow(parent, selection, on_saved)
@@ -1105,7 +1125,13 @@ class ClickNickApp:
         data = self._data
         if data is not None and data.store.is_database:
             return data.store
-        if data is not None and self._session is not None:
+        session = self._session
+        if (
+            data is not None
+            and session is not None
+            and not session.reading_database
+            and not database_access_off()
+        ):
             self._update_status(
                 f"⚠ {command} needs CLICK's database, and the nicknames loaded come from a "
                 "CSV file. Select the window in the CLICK Windows list to load the database",
@@ -1228,7 +1254,7 @@ class ClickNickApp:
         if analysis is None:
             messagebox.showinfo(
                 "Export Workspace",
-                "Connect to a CLICK project before exporting its workspace.",
+                f"There is no workspace to export.\n\n{self._no_workspace_reason()}",
                 parent=self.root,
             )
             return

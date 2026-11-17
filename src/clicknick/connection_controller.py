@@ -27,7 +27,7 @@ from dataclasses import replace
 from tkinter import messagebox
 from typing import TYPE_CHECKING, Protocol
 
-from .connection_session import ClickConnection
+from .connection_session import CONNECT_FIRST, ClickConnection
 from .data.address_store import AddressStore
 from .detection.window_detector import ClickInstance, ClickWindowDetector
 from .utils.mdb_shared import find_fallback_csv
@@ -53,7 +53,7 @@ REDRAW_COMMAND = "Redraw Nicknames in CLICK"
 # The Tools menu setting that redraws them after each Sync
 REDRAW_ON_SYNC = "Redraw Ladder on Sync"
 # The status line when a command needs a CLICK window and none is connected
-NOT_CONNECTED = "⚠ Connect to a CLICK window first"
+NOT_CONNECTED = f"⚠ {CONNECT_FIRST}"
 
 
 class ConnectionHost(Protocol):
