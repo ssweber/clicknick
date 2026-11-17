@@ -437,8 +437,8 @@ def _promote_older_backup(project_dir: Path, name: str) -> Path | None:
 def _back_up(project_dir: Path) -> tuple[int, Path | None]:
     """Make ``src/plc`` the newest backup without pruning. Return its file count and the slot made.
 
-    If any kept backup already holds the same tree, no new backup is made. The newest backup
-    only gets a new time, and an older one becomes the newest.
+    If a kept backup already holds the same tree, no new backup is made. If that backup is
+    the newest, it only gets a new time. If it is an older one, it becomes the newest.
     """
     source = plc_source_dir(project_dir)
     if not source.is_dir():

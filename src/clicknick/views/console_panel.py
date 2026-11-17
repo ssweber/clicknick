@@ -109,8 +109,8 @@ class ConsolePanel(ttk.Frame):
         except FileNotFoundError:
             return False, "Session not available (DAP may still be starting)"
         except (ConnectionRefusedError, OSError, EOFError) as exc:
-            # A DAP killed mid-command raises EOFError, because the socket closes before
-            # the result frame arrives.
+            # If the DAP is killed mid-command, send_command raises EOFError, because the
+            # socket closes before the result frame arrives.
             return False, f"Connection failed: {exc}"
 
     def _animate_prompt(self) -> None:

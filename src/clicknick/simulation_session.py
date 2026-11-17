@@ -1,15 +1,15 @@
 """Simulation session: one simulated PLC for the connected CLICK project.
 
-ConnectionSession owns this class. It has no tkinter code. It owns the pyrung DAP subprocess,
-which starts with a Modbus server, real-time pacing and STOP mode. It also owns the Modbus
-client that the Simulator window reads values through, the switch, analog and force settings
-and the bench links that the user chose, and the saving of those choices. The Simulator window
-(with its console) and the Dataview editor observe the session and call its methods. Neither
-of them owns the simulation.
+A ConnectionSession owns the session. The session has no tkinter code. It owns the pyrung
+DAP subprocess, which starts with a Modbus server, real-time pacing and STOP mode. It also
+owns the Modbus client that polls the values the Simulator window shows, the switch, analog
+and force settings and the bench links that the user chose, and the saving of those choices.
+The Simulator window (with its console) and the Dataview editor observe the session and call
+its methods. Neither of them owns the simulation.
 
-Two channels reach the simulated PLC. You read values over Modbus, exactly as from real
-hardware. Inputs (switches, analog values), mode, speed, stepping, forces and bench links go
-over DAP. X stays read-only over Modbus, as on a real CLICK.
+Two channels reach the simulated PLC. The session reads values over Modbus, exactly as from
+real hardware. Inputs (switches, analog values), mode, speed, stepping, forces and bench
+links go over DAP. X stays read-only over Modbus, as on a real CLICK.
 
 Every public method runs on the UI thread. Work that blocks runs on worker threads, and the
 results come back through ``scheduler.after(0, ...)``.
@@ -150,7 +150,7 @@ class SimEvent:
 ChangeCause = Literal["save", "rebuilt", "source", "unconverted"]
 #: How a changed program reaches the simulation, the same as when you write to a CLICK.
 #: In RUN it is ``run_time_edit`` or ``stop_and_write``. Otherwise it is ``write``. After a
-#: write failed it is ``restart``, which starts a new process.
+#: write fails, ``restart`` is offered as well. It starts a new process.
 ProgramAction = Literal["run_time_edit", "stop_and_write", "write", "restart"]
 
 
@@ -275,9 +275,9 @@ def _command_value(value: PlcValue) -> str:
 
 
 def _unavailable(exc: BaseException) -> bool:
-    """Return True if the simulation never answered.
+    """Return True if the simulation never answered because it stopped, died or hung.
 
-    It stopped, died or hung. It did not refuse.
+    Return False for any other error, such as a refusal.
     """
     from .services.dap_service import DapUnavailableError
 
@@ -1054,7 +1054,7 @@ class SimulationSession:
         )
 
     def _examine_build(self) -> bool:
-        """Accept a finished build that holds the program the simulation runs.
+        """Record a finished build as the running program if it holds the program that runs.
 
         After this, the session does not offer another build of the same program, such as a Sync
         or Reload from CLICK that leaves the program as it was. It compares each build once.
@@ -1924,9 +1924,10 @@ class SimulationSession:
         known: bool = True,
         released: tuple[str, ...] = (),
     ) -> None:
-        """Handle a failed write. If it is not *known*, pyrung never answered.
+        """Handle a failed write.
 
-        Then no one knows which program runs.
+        If *known* is False, pyrung never answered, so nobody knows which program the
+        simulation runs.
 
         *released* names what the reload's plan releases.
         """

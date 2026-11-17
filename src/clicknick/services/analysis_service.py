@@ -204,10 +204,10 @@ def _copy_missing(source: Path, destination: Path) -> None:
 def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
     """Keep the user's AGENTS.md / README.md pointing at pyrung's guidance file.
 
-    The file belongs to the user. If its pointer line is missing, put it back on top and
-    change nothing else. An older pyrung wrote some files whole, and they still carry that
-    pyrung's markers. Such a file is all stale guidance, so move it aside to
-    ``*.previous.md`` and put the fresh one in its place.
+    The file belongs to the user. If its pointer line is missing, put it back under the
+    file's title, or on top if the file has no title. Change nothing else. An older pyrung
+    wrote some files whole, and they still carry that pyrung's markers. Such a file is all
+    stale guidance, so move it aside to ``*.previous.md`` and put the fresh one in its place.
     """
     generated = source.read_text(encoding="utf-8")
     pointer = next(
@@ -436,8 +436,8 @@ class AnalysisService:
         # than this leaves the status BUILDING, because what it publishes is older than the
         # latest request.
         self._builds_asked = 0
-        # A request failed before it could be queued while a build ran. Its reason and
-        # detail are shown once the build that serves every request finishes.
+        # The reason and detail of a request that failed before it could be queued, while a
+        # build ran. They are shown once the build that serves every request finishes.
         self._failed_request: tuple[str, str | None] | None = None
 
     @property

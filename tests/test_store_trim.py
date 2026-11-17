@@ -171,7 +171,10 @@ class TestTrimOnLoad:
         assert store.undo_stack == []
 
     def test_no_system_name_of_clicks_has_an_edge_space(self):
-        """Trimming every loaded nickname never touches one of CLICK's own names."""
+        """No system name of CLICK's has a space at either end.
+
+        So trimming every loaded nickname never touches one of CLICK's own names.
+        """
         names = [
             name
             for guidance in AUTOMATIONDIRECT_SYSTEM_NICKNAMES.values()
@@ -236,7 +239,10 @@ class TestTrimOnLoad:
         assert source.rows[one].nickname == first
 
     def test_names_shown_as_loaded_are_exempt_duplicates_included(self):
-        """Before the trim, CLICK's data may repeat a system name that CLICK wrote."""
+        """Loaded names stay exempt from the duplicate check, as before ClickNick trimmed spaces.
+
+        CLICK's data may repeat a system name that CLICK wrote.
+        """
         one, two = get_addr_key("SC", 1), get_addr_key("SC", 2)
         store, _source = _store(
             {one: AddressRow("SC", 1, nickname="log"), two: AddressRow("SC", 2, nickname="LOG")}

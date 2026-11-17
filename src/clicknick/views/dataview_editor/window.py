@@ -70,7 +70,10 @@ class DataviewEditorWindow(tk.Toplevel):
                 break
 
     def _on_panel_modified(self, panel: DataviewPanel) -> None:
-        """Retitle the panel's tab, which need not be the current one (after a reload, say)."""
+        """Retitle the panel's tab.
+
+        It need not be the current tab, for example after the user answers Yes to Reload.
+        """
         self._update_tab_title(panel)
 
     def _iter_open_panels(self) -> list[DataviewPanel]:
@@ -399,7 +402,9 @@ class DataviewEditorWindow(tk.Toplevel):
         )
 
     def _commit_cell_editor(self, panel: DataviewPanel) -> bool:
-        """Commit the text typed in *panel*'s open cell editor. Return False if it stays open.
+        """Commit the text typed in *panel*'s open cell editor.
+
+        If the editor stays open, warn the user and return False.
 
         tksheet commits nothing while the focus is outside ClickNick, so text typed
         before switching to CLICK is still in the editor.
@@ -427,7 +432,8 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _write_checked(self) -> None:
         panel = self._get_current_panel()
-        # A button click leaves the focus in the cell editor, so commit it and write that value
+        # A button click leaves the focus in the cell editor. Commit the value typed there,
+        # then write it.
         if panel is None or not self._commit_cell_editor(panel):
             return
         self._write_payload(panel.get_write_rows())

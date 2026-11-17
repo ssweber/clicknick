@@ -5,7 +5,7 @@ kinds. Each kind's fields, labels, hints and checks come from pyrung's table.
 
 A bit enable (Y, C...) is a contact beside the driver. Normally open [O] drives the link
 while the bit is ON. Normally closed [/] drives it while the bit is OFF
-(``link=~Y001``). A word enable (DS...) drives the link while it equals a value.
+(``link=~Y001``). A word enable (DS...) drives the link while the word equals a value.
 
 The result is a BenchLink. The Simulator window hands it to the session.
 """

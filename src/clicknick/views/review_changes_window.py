@@ -357,10 +357,10 @@ class ReviewChangesWindow(tk.Toplevel):
     def _refresh_nicknames(self) -> bool:
         """Compare the folder's nicknames with the Address Editor's data.
 
-        Return True if the comparison changed. It makes two comparisons: one with the
+        Return True if the comparisons changed. It makes two comparisons: one with the
         rows as edited (what is left to stage) and one with CLICK's database (what it
-        still lacks). The result is None while there is no readable nicknames.csv, or no
-        data to stage the nicknames in.
+        still lacks). It stores None in place of both while there is no readable
+        nicknames.csv, or no data to stage the nicknames in.
         """
         store = self._get_project_store()
         rows = self._nickname_rows
@@ -430,11 +430,11 @@ class ReviewChangesWindow(tk.Toplevel):
         """Place what was pasted of the program in a new comparison against the same save.
 
         The folder was read again (exported again, say) before CLICK saved, so CLICK
-        still holds the pasted rungs. They are placed if the new comparison has the same
-        differences pasted, those leave the same rungs in CLICK, and a step that was
-        begun is still the next step, in the same place. Otherwise the program's steps
-        cannot be numbered from what CLICK holds. ClickNick then copies the program
-        whole until CLICK saves (_unplaced).
+        still holds the pasted rungs. They are placed if three things hold. The new
+        comparison has the same differences pasted. Those differences leave the same rungs
+        in CLICK. A step that was begun is still the next step, in the same place. Otherwise
+        the program's steps cannot be numbered from what CLICK holds. ClickNick then copies
+        the program whole until CLICK saves (_unplaced).
         """
         pasted = self._pasted.pop(name, frozenset())
         partial = self._partial.pop(name, 0)
@@ -784,11 +784,11 @@ class ReviewChangesWindow(tk.Toplevel):
     def _copied_whole_for_steps(self, name: str) -> int:
         """Return how many steps the program would take, if that count is why it is copied whole.
 
-        Return zero if the program is stepped through. Under "Whole program", every
-        program is copied whole anyway. A program keeps its steps in four cases: one
-        step is done, the user asked to step through it, its paste would be slow, or
-        CLICK holds some of its rungs in an old encoding. In the last case a whole paste
-        would re-paste the rungs of skipped differences from ClickNick's reading of them.
+        Return zero if the program keeps its steps. Also return zero if "Whole program" is
+        on, because every program is then copied whole anyway. A program keeps its steps in
+        four cases: one step is done, the user asked to step through it, its paste would be
+        slow, or CLICK holds some of its rungs in an old encoding. In the last case a whole
+        paste would re-paste the rungs of skipped differences from ClickNick's reading of them.
         """
         if self._copy_whole_var.get() or name in self._step_through or name in self._unplaced:
             return 0
@@ -1310,7 +1310,8 @@ class ReviewChangesWindow(tk.Toplevel):
             or self._nothing_to_copy(step)
             or self._empty_whole(name, step)
             or self._rest_skipped(name)
-            or name in self._only_in_click  # Nothing to copy: the user deletes it in CLICK
+            # A program only in CLICK has nothing to copy. The user deletes it there or keeps it.
+            or name in self._only_in_click
         ):
             self._action_btn.configure(state="normal", text="Next →")
         elif self._is_nickname_step(self._current_idx):
@@ -1370,7 +1371,8 @@ class ReviewChangesWindow(tk.Toplevel):
         step = self._current_step()
         if step is not None:
             total = len(self._program_steps(name))
-            # Steps of pasted differences and of the difference begun are already done
+            # The steps done are all the steps of pasted differences, and the steps of the
+            # difference begun that are done already
             partial = self._partial.get(name, 0)
             number = total - len(self._current_steps()) + partial + 1
             head = f"{name}, step {number} of {total}"
@@ -2506,8 +2508,8 @@ class ReviewChangesWindow(tk.Toplevel):
         taken and the window closes itself.
 
         For a plain folder, nicknames.csv is staged in the store that *get_project_store*
-        returns. That store holds the data of CLICK's database, and the callable returns
-        None when it has no such data. *open_staged_nicknames* opens the Address Editor on
+        returns. That store holds the data of CLICK's database. *get_project_store* returns
+        None when there is no such store. *open_staged_nicknames* opens the Address Editor on
         the staged nicknames so that the user can Sync.
         """
         super().__init__(parent)

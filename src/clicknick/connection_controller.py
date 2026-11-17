@@ -10,7 +10,7 @@ The state it changes stays on the app. The session is in ``ClickNickApp._session
 data is in ``ClickNickApp._data`` (through ``_open_data`` and ``_close_data``). The
 controller itself keeps only these: the window list, the user's monitoring choice, the
 Monitoring status still due after a load (``_status_after_id``), whether the ODBC warning
-has shown, and whether a redraw is running, with the one requested in the meantime.
+has shown, whether a redraw is running, and a redraw that was requested while it runs.
 """
 
 from __future__ import annotations
@@ -626,9 +626,9 @@ class ConnectionController:
         database and how to redraw them. A request made while a redraw runs waits and runs
         when the running one ends, because the running one may have read SC_.mdb before the
         Sync wrote it. If a redraw ends after another CLICK window, or none, is connected,
-        it shows nothing, and a request made for the earlier window does not run. A new
-        session on the same window (a project change) does not stop the status line or the
-        pending request.
+        it shows nothing, and a request made for the earlier window does not run. If a new
+        session starts on the same window after a project change, the redraw still shows its
+        result, and a pending request still runs.
         """
         session = self._app._session
         if session is None:

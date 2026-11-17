@@ -182,7 +182,10 @@ class DapService:
 
     @property
     def links_pending(self) -> dict[str, int]:
-        """Return the simulated ms left on each linked feedback's running delay, keyed as pyrung."""
+        """Return the simulated ms left on each linked feedback's running delay.
+
+        The keys are the names that pyrung reports.
+        """
         return dict(self._links_pending)
 
     @property

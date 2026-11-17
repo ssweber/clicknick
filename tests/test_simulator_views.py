@@ -18,7 +18,7 @@ from clicknick.simulation_session import SimStatus  # noqa: E402
 
 @pytest.fixture(scope="module")
 def tk_root():
-    """Return one Tk root for the whole module. A root per test fails intermittently."""
+    """Yield one Tk root for the whole module. A root per test fails intermittently."""
     try:
         root = tk.Tk()
     except tk.TclError as exc:  # pragma: no cover - no display

@@ -127,5 +127,6 @@ def test_linked_feedbacks_name_a_tag_as_pyrung_reads_it(tmp_path, nickname):
         entry.logical.name for entry in TagMap.from_nickname_file(tmp_path / "nicknames.csv").tags()
     ]
 
-    # If pyrung gives an address no tag, the code names the feedback by the address.
+    # If pyrung gives an address no tag, linked_feedbacks names the feedback by its address.
+    # The generated code does the same.
     assert linked_feedbacks(tmp_path) == set(pyrung_names or ["X001"])

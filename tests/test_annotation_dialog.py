@@ -13,7 +13,7 @@ from clicknick.widgets.annotation_dialog import AnnotationDialog  # noqa: E402
 
 @pytest.fixture(scope="module")
 def tk_root():
-    """Return one Tk root for the whole module. A root for each test fails intermittently."""
+    """Yield one Tk root for the whole module. A root for each test fails intermittently."""
     # Creating a root after another module destroyed its own sometimes fails to find
     # init.tcl. A second try works, and only a real lack of a display should skip.
     for attempt in range(3):
@@ -122,7 +122,8 @@ def test_each_kind_shows_its_own_keys_and_writes_only_those(open_dialog):
     _choose(dialog, "")
     assert not dialog._response_frame.winfo_manager()
     assert _preview(dialog) == "[link=Run]"
-    # Clearing the kind keeps the key values, so choosing delay again restores them.
+    # Each key keeps its value while other kinds are chosen, so choosing delay again restores
+    # on_delay.
     _choose(dialog, "delay")
     assert _preview(dialog) == "[link=Run, on_delay=1s]"
 
