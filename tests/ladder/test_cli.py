@@ -811,16 +811,22 @@ class TestMainArgparse:
     def test_save_clipboard_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
     ):
+        import win32clipboard
+
         out = tmp_path / "output.bin"
 
-        def _raise():
-            raise RuntimeError("No Click rung data on clipboard (format 522 not present).")
+        def _no_rungs(_format):
+            raise TypeError("Specified clipboard format is not available")
 
-        monkeypatch.setattr("clicknick.ladder.cli.read_from_clipboard", _raise)
+        # read_from_clipboard runs as it is. Only the Windows clipboard is faked.
+        monkeypatch.setattr(win32clipboard, "OpenClipboard", lambda *_a: None)
+        monkeypatch.setattr(win32clipboard, "GetClipboardData", _no_rungs)
+        monkeypatch.setattr(win32clipboard, "CloseClipboard", lambda: None)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
         with pytest.raises(SystemExit, match="1"):
             main()
-        assert "No Click rung data" in capsys.readouterr().err
+        assert capsys.readouterr().err == "Error: No Click rung data on clipboard.\n"
+        assert not out.exists()
 
     def test_load_bin_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         src = tmp_path / "rung.bin"
@@ -924,19 +930,16 @@ class TestMainArgparse:
         src = tmp_path / "rung.bin"
         src.write_bytes(b"\xaa")
 
-        def _raise(data):
-            raise RuntimeError("Click Programming Software not found. Is it running?")
-
-        monkeypatch.setattr(
-            "clicknick.ladder.cli.resolve_mdb_path",
-            lambda _mdb_path: (_ for _ in ()).throw(FileNotFoundError("no mdb")),
-        )
+        monkeypatch.setattr("clicknick.ladder.cli.resolve_mdb_path", lambda _mdb_path: None)
         monkeypatch.setattr("clicknick.ladder.cli.is_click_v4", lambda: True)
-        monkeypatch.setattr("clicknick.ladder.cli.copy_to_clipboard", _raise)
+        # copy_to_clipboard runs as it is and finds no CLICK window.
+        monkeypatch.setattr("clicknick.ladder.clipboard.find_click_hwnds", lambda: [])
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(src)])
         with pytest.raises(SystemExit, match="1"):
             main()
-        assert "Click Programming Software not found" in capsys.readouterr().err
+        assert capsys.readouterr().err == (
+            "Error: Click Programming Software not found. Is it running?\n"
+        )
 
     def test_guided_list(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         csv_file = tmp_path / "test.csv"
