@@ -24,7 +24,7 @@ class DapRequestError(RuntimeError):
 
 
 class DapUnavailableError(DapRequestError):
-    """Raised when the adapter never answers: it is not running, died or did not reply in time."""
+    """Raised when the adapter is not running, has died or did not reply in time."""
 
 
 class SimState(enum.Enum):
@@ -104,7 +104,7 @@ class DapService:
         self._tag_values: TagValues = {}
         self._scan_id: int | None = None
 
-        # Execution state reported by pyrungScanFrame (see the simulator contract).
+        # The execution state that each pyrungScanFrame reports.
         self._mode: str = "stop"
         self._running = False
         self._speed: float | None = None
@@ -121,7 +121,7 @@ class DapService:
 
     @property
     def scan_id(self) -> int | None:
-        """Scan id of the most recent scan frame / stop event."""
+        """Return the scan id from the latest scan frame or stopped event."""
         return self._scan_id
 
     @property
@@ -130,7 +130,7 @@ class DapService:
 
     @property
     def known_tags(self) -> frozenset[str]:
-        """All pyrung tag names seen so far (populated after first scan)."""
+        """Return every pyrung tag name seen so far. The set is empty until the first scan."""
         return frozenset(self._tag_types.keys())
 
     @property
@@ -157,7 +157,10 @@ class DapService:
 
     @property
     def speed(self) -> float | None:
-        """Return the pacing from the latest frame (0 = as fast as possible), or None before one."""
+        """Return the speed from the latest frame, as a multiple of wall time.
+
+        0 means as fast as possible. The value is None until a frame reports a speed.
+        """
         return self._speed
 
     @property
@@ -182,9 +185,9 @@ class DapService:
 
     @property
     def links_pending(self) -> dict[str, int]:
-        """Return the simulated ms left on each linked feedback's running delay.
+        """Return the simulated ms left on each delay that is running on a linked feedback.
 
-        The keys are the names that pyrung reports.
+        The keys are the feedback names that pyrung reports.
         """
         return dict(self._links_pending)
 
@@ -422,8 +425,8 @@ class DapService:
                 self._set_state(SimState.PAUSED)
             else:
                 self._set_state(SimState.PAUSED)
-            # A step or pause reports the scan it landed on; cache it before
-            # the trace fires on_tags so listeners pair values with this scan.
+            # A step or a pause reports the scan that it stopped on. Store that scan id before
+            # the trace calls on_tags, so that listeners pair the values with this scan.
             scan_id = body.get("scanId")
             if scan_id is not None:
                 self._scan_id = scan_id
@@ -515,8 +518,9 @@ class DapService:
         - *keep_forces_on_run* keeps forces through the STOP -> RUN transition instead of
           clearing them.
 
-        Autoreload stays off. If a file is rewritten under the process (a CLICK save, an
-        edit), nothing changes until :meth:`planned_reload`.
+        Autoreload stays off. If a program file changes while the simulation runs, after a
+        CLICK save or an edit, the simulation keeps the old program until you call
+        :meth:`planned_reload`.
         """
         if self._proc is not None:
             self.terminate()
@@ -577,7 +581,8 @@ class DapService:
             detail = f"{error_msg}\n{stderr}" if stderr else error_msg
             raise RuntimeError(f"DAP launch failed: {detail}")
 
-        # The adapter always answers this; no answer means it died or hung after launch.
+        # The adapter always answers configurationDone. If no answer comes, the adapter died
+        # or hung after launch.
         resp = self._send_and_wait("configurationDone")
         if resp is None or not resp.get("success"):
             stderr = self._drain_stderr()
@@ -688,10 +693,13 @@ class DapService:
         trigger: int | str | None = None,
         response: Response = (),
     ) -> dict[str, Any]:
-        """Add or replace the bench link on *feedback* (tags or CLICK addresses).
+        """Add or replace the bench link on *feedback*.
 
-        *response* holds pyrung's response keys as a comment writes them. Return
-        ``{text, command}``, where *command* is the equivalent console line.
+        A bench link wires a feedback to its command for this session only. The program does
+        not declare it. *feedback* and *enable* are tag names or CLICK addresses. *response*
+        holds pyrung's response keys in the form that a comment writes them, such as
+        ``(("on_delay", "2s"),)``. Return ``{text, command}``, where *command* is the
+        equivalent console line.
         """
         arguments: dict[str, Any] = {"feedback": feedback, "enable": enable}
         if trigger is not None:
@@ -710,7 +718,10 @@ class DapService:
     def set_links(
         self, *, bench: bool | None = None, enabled: Mapping[str, bool] | None = None
     ) -> dict[str, Any]:
-        """Turn all bench changes on or off, or set individual ones aside."""
+        """Turn every bench change on or off with *bench*, or single ones with *enabled*.
+
+        *enabled* maps a feedback name to True or False.
+        """
         arguments: dict[str, Any] = {}
         if bench is not None:
             arguments["bench"] = bench
@@ -719,7 +730,7 @@ class DapService:
         return self._request("pyrungSetLinks", arguments)
 
     def list_links(self) -> dict[str, Any]:
-        """Return ``{bench, revision, links: [...]}``, the program links and bench changes."""
+        """Return the program's links and the bench changes as ``{bench, revision, links}``."""
         return self._request("pyrungListLinks")
 
     # ------------------------------------------------------------------
@@ -730,10 +741,11 @@ class DapService:
         """Load the program files again, placing forces and bench changes as *plan* says.
 
         *plan* is ``{forces, links, declared}`` keyed by the running program's names
-        (``CarryPlan.as_dap``). Tag values, timers, counters and the mode stay. pyrung pauses
-        a running continue first. A reload that fails changes nothing. Return
-        ``{result, carried}``, which are pyrung's summary and what became of every force,
-        bench change and declared link.
+        (``CarryPlan.as_dap``). Tag values, timers, counters and the mode stay. If the
+        simulation is scanning continuously, pyrung pauses it first. If pyrung refuses the
+        reload, nothing changes in pyrung. Return ``{result, carried}``. *result* is
+        pyrung's summary, and *carried* says what became of every force, bench change and
+        declared link.
         """
         try:
             return self._request("pyrungReload", dict(plan), timeout=60.0)

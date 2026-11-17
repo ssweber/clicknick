@@ -71,10 +71,10 @@ def _flag_loaded_error(row: AddressRow) -> AddressRow:
     """Return *row* with loaded_with_error set when CLICK holds a nickname that breaks our rules.
 
     This applies to X, SC and SD nicknames. CLICK writes system nicknames, such as `log` on
-    SC (a reserved word), that ClickNick would refuse from the user. The flag exempts them
-    while the nickname stays as the database has it. Every base row passes through here on
-    load, reload and Sync, so the flag is the same whichever way the row arrived. It depends
-    on the row alone. Validation reports duplicates.
+    SC (a reserved word), that ClickNick would refuse from the user. While the row shows the
+    nickname that the database holds, the flag hides its validation errors. Every base row
+    passes through here on load, reload and Sync, so the flag is the same whichever way the
+    row arrived. It depends on the row alone. A duplicate name does not set it.
     """
     flagged = False
     if row.memory_type in SYSTEM_NICKNAME_TYPES and row.nickname:
@@ -129,7 +129,7 @@ class AddressStore:
     Manages all address data with support for:
     - Undo/Redo (Ctrl+Z/Y) with configurable depth
     - External database updates that preserve user edits
-    - Efficient dirty detection via reference equality
+    - Dirty detection by whether a row has an override
     - Observer pattern for view updates
 
     Usage:
@@ -164,7 +164,6 @@ class AddressStore:
         self._row_position: dict[int, int] = {}
         self._keys_by_type: dict[str, list[int]] = {}  # memory type -> keys in address order
 
-        # Undo/Redo stacks
         self.undo_stack: list[UndoFrame] = []
         self.redo_stack: list[UndoFrame] = []
 
@@ -176,10 +175,8 @@ class AddressStore:
         # Called after a Sync writes rows into CLICK's database (add_sync_listener)
         self._sync_listeners: list[Callable[[set[int]], None]] = []
 
-        # Track if initial data has been loaded
         self._initialized = False
 
-        # File monitoring
         self._file_monitor: FileMonitor | None = None
 
         # Cached unified view
@@ -243,8 +240,8 @@ class AddressStore:
         )
         system_bank: str | None = None
         if row.memory_type in SYSTEM_NICKNAME_TYPES:
-            # System nickname handling is intentionally narrow: only allow
-            # unchanged loaded values from PLC metadata.
+            # Apply pyclickplc's system-name rules narrowly. On X they apply only
+            # to an _IO name that is unchanged from the load.
             if row.memory_type == "X":
                 # X system nicknames are auto-generated _IO* signals.
                 if is_loaded_base_nickname and row.nickname.startswith("_IO"):
@@ -256,9 +253,10 @@ class AddressStore:
                 system_bank = row.memory_type
 
         if base_row is not None and _is_trimmed_loaded_nickname(row.nickname, base_row):
-            # A name CLICK loaded that breaks our rules is exempt as loaded
-            # (loaded_with_error). Shown trimmed, it is no longer what was loaded:
-            # only its format stays exempt, and it is checked for duplicates.
+            # CLICK may hold a nickname that breaks our rules. While the row shows it
+            # as loaded, loaded_with_error hides its errors. The trimmed name differs
+            # from the loaded one, so the flag is off. Skip the format rules for it,
+            # as the flag did, but check it for duplicates.
             if self.is_duplicate_nickname(row.nickname, addr_key):
                 nickname_valid, nickname_error = False, "Duplicate"
             else:
@@ -276,10 +274,8 @@ class AddressStore:
             row.comment, self.is_duplicate_block_name, addr_key
         )
 
-        # Validate initial value
         init_valid, init_error = validate_initial_value(row.initial_value, row.data_type)
 
-        # Overall validity
         is_valid = nickname_valid and comment_valid and init_valid
 
         # Only update if validation state changed
@@ -392,12 +388,16 @@ class AddressStore:
         """Drop override fields whose value the current base row already holds.
 
         A field that holds the base value is not an edit. is_dirty() only checks whether an
-        override exists, so it would report the row as changed, list it under "Changed" and
-        write it on Sync, although no cell differs. An override reaches this state in three
-        ways. You write a row's own value back, by re-typing the same text or by importing a
-        CSV that already matches the project. CLICK saves the value you typed. Or undo
-        restores a frame that was recorded before a save. Once the field is dropped, later
-        base changes to it show through. An override with no fields left is removed.
+        override exists. If such a field stayed, the row would count as changed. It would be
+        listed under "Changed" and written on Sync, although no cell differs. An override can
+        come to hold the base value in three ways:
+
+        - You type the value back, or import a CSV that already matches the project.
+        - CLICK saves the value you typed, so the base row now holds it.
+        - Undo restores a frame that was recorded before a save.
+
+        Once the field is dropped, later base changes to it show through. An override with no
+        fields left is removed.
         """
         override = self.user_overrides.get(addr_key)
         base_row = self.base_state.get(addr_key)
@@ -435,7 +435,6 @@ class AddressStore:
 
         color_map = compute_block_colors(view.rows)
 
-        # Update block_colors dict
         all_affected = set(affected)
         for row_idx, row in enumerate(view.rows):
             new_color = color_map.get(row_idx)
@@ -532,7 +531,10 @@ class AddressStore:
         self._notify_observers(affected)
 
     def _apply_database_rows(self, new_rows: Mapping[int, AddressRow]) -> None:
-        """Make a fresh read of the data source the base layer, then derive what changed."""
+        """Replace the base rows with *new_rows* from a fresh read of the data source.
+
+        Then bring derived state up to date for the rows that changed, and stage their trims.
+        """
         self.loaded_row_count = len(new_rows)
 
         changed: set[int] = set()
@@ -565,9 +567,9 @@ class AddressStore:
         Discard. A trim that the user undid is therefore staged again only when the data
         source changes that row. A field that the user already edits is left alone.
 
-        A nickname flagged ``loaded_with_error`` is trimmed too. After the trim it keeps only
-        the exemption of its format, and ``_validate_row`` checks it for duplicates like any
-        other nickname. No SC or SD name in pyclickplc's table has an edge space, so a
+        A nickname flagged ``loaded_with_error`` is trimmed too. After the trim,
+        ``_validate_row`` still skips the format rules for it, but checks it for duplicates
+        like any other nickname. No SC or SD name in pyclickplc's table has an edge space, so a
         documented name is never changed. CLICK generates the X ``_IO`` names, and no table
         checks them.
 
@@ -624,13 +626,11 @@ class AddressStore:
         self.visible_state = dict(self.base_state)
         self._rebuild_nickname_index()
 
-        # Validate all rows
         self._validate_all_rows()
 
         self._initialized = True
         self._stage_trims(self.base_state)
 
-        # Create file monitor
         self._file_monitor = FileMonitor(
             file_path=self._data_source.file_path,
             on_modified=self._on_database_update,
@@ -639,7 +639,7 @@ class AddressStore:
     def _matching_tag_key(self, addr_key: int, tag: BlockTag) -> int | None:
         """Return the key of the row whose open/close tag pairs with *tag* on *addr_key*.
 
-        The pairing uses the rows as they are now.
+        The pairing reads the visible rows, which do not include the open session's edits.
         """
         if tag.tag_type not in ("open", "close"):
             return None
@@ -652,14 +652,14 @@ class AddressStore:
         return None if match_idx is None else keys[match_idx]
 
     def _apply_cascades(self, session: EditSession) -> None:
-        """Write what the caller's edits imply for rows tied to the edited ones.
+        """Add to *session* the edits that the caller's edits force on related rows.
 
         - If the caller changes Retentive on a T/TD (CT/CTD) row, the same value is set on
           its pair. Setting the value that the row already has changes nothing on the pair.
         - If a row's block tag changed (the tag, not the comment text), the matching
-          open/close row's tag is renamed or removed. The T/TD pair of each of those two
-          rows follows (BlockService says how). A comment whose tag stayed the same changes
-          nothing else.
+          open/close row's tag is renamed or removed. Then BlockService.pair_tag_comment
+          updates the tag on the T/TD (CT/CTD) pair of each of those two rows. A comment
+          whose tag stayed the same changes nothing else.
 
         This method reads what the caller set once, before any cascade writes a builder.
         A cascade never writes a field that the caller set. Old tags come from the visible
@@ -753,7 +753,7 @@ class AddressStore:
             }
             if not changes or addr_key not in self.base_state:
                 continue
-            # On top of any existing override, so fields set in an earlier
+            # Merge onto any existing override, so that fields set in an earlier
             # session keep their values.
             merged = {**self.user_overrides.get(addr_key, {}), **changes}
             self.user_overrides[addr_key] = MappingProxyType(merged)
@@ -861,10 +861,10 @@ class AddressStore:
         old_overrides = self.user_overrides
         self.user_overrides = frame.overrides
 
-        # Find all keys that changed
         affected_keys = set(old_overrides.keys()) | set(self.user_overrides.keys())
 
-        # The restored frame may predate an external reload; _derive rebases it.
+        # The restored frame may be older than the last read of the data source.
+        # _derive drops each override field that the base row now holds.
         self._derive(affected_keys)
         return True
 
@@ -888,7 +888,8 @@ class AddressStore:
 
         affected_keys = set(old_overrides.keys()) | set(self.user_overrides.keys())
 
-        # The restored frame may predate an external reload; _derive rebases it.
+        # The restored frame may be older than the last read of the data source.
+        # _derive drops each override field that the base row now holds.
         self._derive(affected_keys)
         return True
 
@@ -927,8 +928,8 @@ class AddressStore:
 
     # --- Dirty State Queries ---
 
-    # _derive keeps every override field different from base, so presence in
-    # user_overrides is the dirty state.
+    # After _derive, every override field differs from base. A row is therefore
+    # dirty exactly when it has an entry in user_overrides.
 
     def is_dirty(self, addr_key: int) -> bool:
         """Check if a row has unsaved edits."""
@@ -1103,7 +1104,7 @@ class AddressStore:
             raise RuntimeError(f"Cannot save: {rows} validation errors. Fix them first.")
 
         if not writes_dirty_rows:
-            # CSV: needs all rows with content (rewrites entire file)
+            # The CSV data source rewrites the whole file, so it gets every row.
             self._data_source.save_changes(list(self.visible_state.values()))
         elif dirty_keys:
             self._data_source.save_changes([self.visible_state[key] for key in dirty_keys])
@@ -1117,8 +1118,9 @@ class AddressStore:
         affected_keys = set(self.user_overrides.keys())
         self.user_overrides.clear()
 
-        # Sync is a commit point. Undo frames hold override snapshots, not old
-        # values, so they cannot take synced edits back out of the database.
+        # Sync is a commit point. An undo frame holds a snapshot of the overrides. It
+        # does not hold the values that the database had before the Sync, so undo
+        # could not take synced edits back out of the database.
         self.undo_stack.clear()
         self.redo_stack.clear()
 
@@ -1132,7 +1134,7 @@ class AddressStore:
                 try:
                     listener(set(dirty_keys))
                 except Exception:
-                    # The rows are written: a listener's error never fails the Sync
+                    # The rows are already written, so a listener's error must not fail the Sync.
                     logger.exception("AddressStore sync listener %r failed", listener)
 
         return dirty_keys
@@ -1152,7 +1154,7 @@ class AddressStore:
         self.redo_stack.clear()
 
         self._derive(affected_keys)
-        # Back to the rows as loaded, so their trims are staged again as on load.
+        # The rows are back to their base values, so stage their trims again, as on load.
         self._stage_trims(self.base_state)
 
     # --- Statistics ---

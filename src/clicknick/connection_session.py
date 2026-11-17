@@ -25,9 +25,10 @@ if TYPE_CHECKING:
     from .services.workspace_mirror import ProjectWorkspaceConfig, WorkspacePairing
     from .simulation_session import SimulationSession
 
-# A temporary workspace lives in CLICK's folder for the window. A session that opens another
-# project there writes where the closed session's last build may still be writing. So the
-# builds of every session run one at a time.
+# A temporary workspace lives in CLICK's temporary folder for the window. When that window
+# opens another project, the new session builds into the same folder, and the last build of
+# the closed session may still be writing there. This lock makes the builds of all sessions
+# run one at a time.
 _BUILD_GATE = threading.Lock()
 
 # The reason a session builds nothing before ClickNick has read CLICK's database (has_database)
@@ -40,17 +41,19 @@ NO_DATABASE = (
 
 @dataclass(frozen=True)
 class SavedProgram:
-    """The program CLICK last saved, as CSVs to compare with, at one moment.
+    """Where to read the program that CLICK last saved, as CSVs to compare with, at one moment.
 
-    If a value differs from the last one, a comparison may be out of date.
+    If this value differs from the one read before, a comparison made earlier may be out of
+    date.
     """
 
     # A different session is a different project. This is None when nothing is connected
     # or ClickNick has not read the connected project's database.
     session: ConnectionSession | None = None
     generation: int = 0
-    # Saves that CLICK made in this session, as the ScrWatcher saw them. This is the only
-    # signal that CLICK saved. Nothing ClickNick does (Sync, Reload, a retry) raises it.
+    # The number of saves that CLICK made in this session, as the ScrWatcher saw them. Only a
+    # CLICK save raises this count. Nothing that ClickNick does, such as a Sync, a Reload or
+    # a retry, raises it.
     save_count: int = 0
     building: bool = False
     csv_dir: Path | None = None
@@ -83,8 +86,8 @@ class _BuildRequest:
     callbacks: list[tuple[tk.Tk | None, Callable[[bool, str | None], None]]] = field(
         default_factory=list
     )
-    # What AnalysisService.mark_building returned for it. The build serves every request
-    # made up to this one.
+    # The count that AnalysisService.mark_building returned when this request was made. The
+    # build for this request answers every request made up to and including this one.
     serves: int = 0
 
 
@@ -98,7 +101,7 @@ class ConnectionSession:
        (with its console)
     4. SimulationSession (pyrung DAP subprocess, its Modbus server and client)
     5. ScrWatcher (file polling)
-    6. AnalysisService (stale graph)
+    6. AnalysisService (its result is invalidated)
     """
 
     def __init__(
@@ -113,14 +116,15 @@ class ConnectionSession:
         # session.
         self.click = click
         # Whether ClickNick read CLICK's database for this project. A session opens before the
-        # database loads. It stays without one when there is no database backend or the load
-        # fails (the CSV fallback). The analysis reads SC_.mdb through ODBC or Jet, so until
-        # the database is read nothing is built. Nothing that needs a build (the simulation,
-        # Review Changes' comparison) starts either.
+        # database loads. This stays False if there is no database backend or the load fails,
+        # and ClickNick then falls back to CSV. The analysis reads SC_.mdb through ODBC or Jet,
+        # so nothing is built until the database is read. Nothing that needs a build starts
+        # either, such as the simulation or the comparison in Review Changes.
         self.has_database = has_database
         from .services.workspace_mirror import WorkspacePairing
 
-        # The durable workspace builds use, if any (load_workspace_pairing, use_workspace)
+        # The durable workspace that builds write to, if one is paired. load_workspace_pairing
+        # and use_workspace set it.
         self.pairing: WorkspacePairing = WorkspacePairing()
 
         # The autocomplete popup over CLICK's instruction dialog, once one showed
@@ -146,9 +150,11 @@ class ConnectionSession:
         self._build_running = False
         self._next_build: _BuildRequest | None = None
         self._closed = False
-        # The database load in flight (begin_load); None once it is cancelled.
+        # The token of the database load in flight, from begin_load. It is None once the load
+        # is cancelled.
         self._load_token: object | None = None
-        # The connection watch (watch): the scheduler it runs on, and its next tick
+        # The scheduler that the connection watch runs on, and the id of its next tick.
+        # watch() sets them.
         self._watch_scheduler: tk.Misc | None = None
         self._watch_id: str | None = None
 
@@ -275,7 +281,8 @@ class ConnectionSession:
             selection = ProgramCheckSelection(workspace_dir)
             analysis.check_selection = selection
             with _BUILD_GATE:
-                # Closed while waiting: the session that replaced this one owns the folder.
+                # If the session closed while this build waited for the lock, build nothing.
+                # The session that replaced this one owns the folder.
                 published = not self._closed and analysis.build(
                     request.scr_folder,
                     request.db_path,
@@ -287,8 +294,9 @@ class ConnectionSession:
                     try:
                         selection.sync(persist)
                     except Exception:
-                        # The workspace is published. A pyproject.toml that cannot be
-                        # read is reported when the checks run (Check Program).
+                        # The build has already stored its result and written the
+                        # workspace, so it does not fail here. Check Program reports a
+                        # pyproject.toml that cannot be read when it runs the checks.
                         traceback.print_exc()
             if not published:
                 error = "The project changed while converting. The conversion was discarded."
@@ -453,10 +461,12 @@ class ConnectionSession:
             return SavedProgram(self, save_count=saves, note=reading)
         generation = analysis.generation
         status = analysis.status
-        # Also while a build queued after a save waits for the one before it to finish.
+        # The status is BUILDING also while a build queued after a save waits for the build
+        # before it to finish.
         if status is AnalysisStatus.BUILDING:
             return SavedProgram(self, generation, saves, building=True, note=reading)
-        # A build that failed before publishing leaves the workspace of an earlier save.
+        # If a build failed before it stored its result, project_dir still holds the
+        # workspace of an earlier save.
         project_dir = analysis.project_dir if analysis.project_is_current else None
         csv_dir = project_dir / "csv" if project_dir is not None else None
         if csv_dir is not None and csv_dir.is_dir():
@@ -472,7 +482,8 @@ class ConnectionSession:
 
         Return an empty result when nothing new turned up, so pasting a fix and saving does
         not report the rest again. Each finding is keyed by its program, instruction and
-        token, not by its rung number. Pasting rungs above it moves it, and that is not news.
+        token, not by its rung number. Pasting rungs above a finding changes its rung number,
+        and that does not make it a new finding.
         """
         from .ladder.program import read_legacy_encodings
 
@@ -509,7 +520,8 @@ class ConnectionSession:
     def start_analysis(self, root: tk.Tk) -> None:
         """Build program analysis in the background and watch CLICK's saves.
 
-        A build that is already under way serves the request. The session makes the
+        If a build is already running, start no other, because that build answers this
+        request. The session makes the
         ScrWatcher once, because it counts what was synced since CLICK last saved. Nothing
         starts before ClickNick has read CLICK's database (``has_database``).
         """
@@ -526,7 +538,8 @@ class ConnectionSession:
                 self._start_analysis_thread(*paths)
 
         if self.scr_watcher is not None:
-            # Made before CLICK's database was found, it may watch another folder.
+            # A ScrWatcher made before CLICK's database was found may watch another folder.
+            # Point it at the database's folder.
             if paths is not None:
                 self.scr_watcher.watch(paths[0])
             return

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class WorkspaceState(enum.Enum):
-    """Small state vocabulary shared by workspace UI surfaces."""
+    """The states that a workspace status can be in."""
 
     UNAVAILABLE = "unavailable"
     PREPARING = "preparing"
@@ -25,7 +25,7 @@ class WorkspaceState(enum.Enum):
 
 @dataclass(frozen=True)
 class WorkspaceStatus:
-    """Presentation-neutral workspace state."""
+    """The status of the generated workspace, as plain data that any view can show."""
 
     state: WorkspaceState
     label: str

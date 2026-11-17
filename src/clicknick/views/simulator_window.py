@@ -1,15 +1,17 @@
-"""Draw the user's CLICK hardware as a rack of modules in the simulator window.
+"""The simulator window. It draws the user's CLICK hardware as a rack of modules.
 
-The window is a passive view of the connection's SimulationSession. Inputs are switches
-(Momentary pushbuttons or Maintained toggles, which you choose by right-click). Outputs
-are LEDs. Analog inputs take a value, and a slider when the tag has a range.
+The window shows the connection's SimulationSession and does not own the simulation.
+Inputs are switches. Right-click an input to choose a Momentary pushbutton or a Maintained
+toggle. Outputs are LEDs. You type a value for an analog input. It also gets a slider when
+its tag has a range.
 
-A slim CPU card carries the RUN / STEP / STOP mode switch and the PWR/RUN/ERR LEDs. The
-CPU's built-in I/O and option slots sit tight beside it as cards of their own, so the
+A slim CPU card shows the RUN / STEP / STOP mode switch and the PWR/RUN/ERR LEDs. The
+CPU's built-in I/O and option slots sit close beside it as cards of their own, so the
 whole housing looks as it does on the hardware.
 
 Values come from the session's Modbus reads. Forces, mode, speed and feedback links come
-from its DAP frames. Every action goes through the session.
+from the session's DAP (Debug Adapter Protocol) connection to the pyrung subprocess. Every
+action goes through the session.
 
 An input driven by a feedback link shows a chip that names its driver, instead of a
 switch. The chip is blue for the program's link and purple for a bench link. Hover the
@@ -17,8 +19,8 @@ chip to draw the wire to the driving terminal. You make, cut and save links to t
 project from the right-click menu, and the Wiring menu lists them all.
 
 Cards are compact and flow into rows in rack order. A full rack fits without horizontal
-scrolling: the CPU, two option slots, eight expansions and a placeholder card at each
-position.
+scrolling: the CPU, two option slots and eight expansions. A card that is not installed
+is still drawn in its place, off the rail. With no CPU, a "No CPU" card stands first.
 
 The command console is a resizable pane under the rack. Ctrl+` shows or hides it. It
 pops out into its own window, and closing that window docks it back.
@@ -58,27 +60,29 @@ if TYPE_CHECKING:
 
 CARD_W = 184
 CARD_GAP = 12
-#: Between cards in one housing: the CPU, its built-in I/O and its option slots.
+#: The gap between the cards of one housing. A housing holds the CPU, its built-in I/O and
+#: its option slots.
 HOUSING_GAP = 4
 ROW_GAP = 18
 MARGIN = 12
 HEADER_H = 36
-#: Between a card's header and its first section.
+#: The space between a card's header and its first section.
 BODY_PAD = 4
 ROW_H = 24
 ANALOG_ROW_H = 46
 SECTION_H = 18
-#: The slim CPU card: mode switch over the PWR/RUN/ERR LEDs.
+#: The width of the slim CPU card. The card shows the mode switch above the PWR/RUN/ERR LEDs.
 CPU_CARD_W = 96
 CPU_CARD_MIN_H = 164
-#: One position of the CPU's vertical mode switch.
+#: The height of one position of the CPU's vertical mode switch.
 MODE_ZONE_H = 16
 BADGE_W = 20
 #: The console pane's height when shown again after hiding, until the user sizes it.
 CONSOLE_H = 170
-#: The least the rack keeps when the console pane is dragged taller.
+#: The smallest height that the rack keeps when the user drags the console pane taller.
 MIN_RACK_H = 120
-#: The least the console pane keeps when its header is dragged down: header and command line.
+#: The smallest height that the console pane keeps when the user drags its header down. It
+#: leaves room for the header and the command line.
 MIN_CONSOLE_H = 70
 #: Characters of the PLC data file's name shown on its toolbar button.
 PLC_DATA_NAME_MAX = 24
@@ -90,7 +94,7 @@ _FONT_SMALL = ("Segoe UI", 8)
 _FONT_MONO = ("Consolas", 9)
 _FONT_TITLE = ("Segoe UI", 10, "bold")
 
-#: Top to bottom, as on the CPU: RUN up, STOP down.
+#: The switch positions from top to bottom, as on the CPU. RUN is at the top, STOP at the bottom.
 _POSITIONS: tuple[SwitchPosition, ...] = ("run", "step", "stop")
 _POSITION_COLORS = {"stop": P.MODE_STOP, "step": P.MODE_STEP, "run": P.MODE_RUN}
 
@@ -211,8 +215,9 @@ class SimulatorWindow(tk.Toplevel):
         x0, y0, x1, y1 = self._canvas.coords(info["led"])
         return (x0 + x1) / 2, (y0 + y1) / 2
 
-    # Drag from an output to an input (or analog input), or from an input to an output,
-    # to link them. The input is the feedback and the output its enable either way.
+    # The user links an output and an input (or analog input) by dragging the label of one onto
+    # the other, in either direction. Either way, the input is the link's feedback and the
+    # output is its enable, the tag that drives the input.
 
     def _link_anchor(self, address: str) -> tuple[float, float] | None:
         """Return where a link drag from *address* starts: its terminal or an analog row."""
@@ -232,10 +237,10 @@ class SimulatorWindow(tk.Toplevel):
     def _draw_label(
         self, x: float, cy: float, address: str, right: float, tag: str, *, link: bool = False
     ) -> None:
-        """Draw one line: the address, then the nickname cut to end at *right*.
+        """Draw the address and then the nickname, cut short so that the nickname ends at *right*.
 
-        The address and nickname are already on screen, so hovering shows the comment. It also
-        shows the full nickname if the nickname had to be cut. With neither, there is no tooltip.
+        The tooltip shows the comment, and the full nickname if the label had to cut it. If
+        there is no comment and the nickname is not cut, the label has no tooltip.
         """
         c = self._canvas
         address_item = c.create_text(
@@ -675,15 +680,17 @@ class SimulatorWindow(tk.Toplevel):
         target: dict[str, Any],
         end: tuple[float, float],
     ) -> list[float]:
-        """Return the points of a wire that stays in the gaps between cards, clear of other cards.
+        """Return the points of a wire that runs in the gaps between cards and crosses no card.
 
-        The wire leaves the source card through the gap on its left. Within one card, it runs
-        straight down that gap into the chip. From the card just right of the target, it runs
-        down the gap the two cards share, to the end of the target's row.
+        The wire leaves the source card through the gap on the card's left. If the target is
+        on the same card, the wire runs down that gap and into the chip. If the source card is
+        just right of the target's card, the wire runs down the gap between the two cards. It
+        stops at the right edge of the target's card, level with the target.
 
-        Otherwise it climbs into the space above the source's rack row. If the target is in
-        another rack row, the wire changes rows down the left margin, which is clear in every
-        row. Then it comes down the gap left of the target's card into the chip.
+        Otherwise the wire rises into the space above the source's rack row. If the target is
+        in another rack row, the wire runs along the left margin, which is clear in every row,
+        to the space above the target's rack row. Then it comes down the gap left of the
+        target's card and into the chip.
         """
         (sx, sy), (ex, ey) = start, end
         tx, tg, t_top = target["x"], target["gutter"], target["top"]
@@ -742,8 +749,8 @@ class SimulatorWindow(tk.Toplevel):
             window.lift()
         elif not self._console_shown():
             self._paned.add(self._console, weight=0)
-            # Lay the new pane out first. A sash set before that is overridden, which
-            # left the console as a sliver at the bottom.
+            # Lay out the new pane before setting the sash. Tk overrides a sash set earlier, and
+            # the console is then left as a sliver at the bottom.
             self._paned.update_idletasks()
             self._restore_console_height()
         self._console.focus_input()
@@ -845,8 +852,8 @@ class SimulatorWindow(tk.Toplevel):
         led = c.create_oval(
             x + 38, cy - 4, x + 46, cy + 4, fill=P.LED_OFF, outline=P.LED_RIM, tags=(tag,)
         )
-        # Shown instead of the switch while a feedback link drives this input.
-        # Solid for the program's link, dashed outline for a bench link.
+        # The link chip replaces the switch while a feedback link drives this input. The chip
+        # is solid for the program's link and has a dashed outline for a bench link.
         pill = _round_rect(
             c, x + 6, cy - 8, x + 36, cy + 8, 7, fill=P.LINK, outline="", state="hidden",
             tags=(tag,),
@@ -854,7 +861,8 @@ class SimulatorWindow(tk.Toplevel):
         pill_text = c.create_text(
             x + 21, cy, text="", fill=P.LINK_TEXT, font=_FONT_SMALL, state="hidden", tags=(tag,)
         )
-        # Around the switch while the program's link is cut: the switch stands in for it.
+        # This dashed outline shows around the switch while the program's link is cut on the
+        # bench. The switch then drives the input in place of the link.
         cut = _round_rect(
             c, x + 5, cy - 10, x + 35, cy + 10, 9, fill="", outline=P.LINK_CUT, width=2,
             dash=(3, 2), state="hidden", tags=(tag,),
@@ -1099,7 +1107,7 @@ class SimulatorWindow(tk.Toplevel):
         }[sim.switch_position]
 
     def _draw_cpu_card(self, x: float, y: float, card: Card, height: float) -> None:
-        """Draw the slim CPU card: the RUN / STEP / STOP switch over the PWR/RUN/ERR LEDs."""
+        """Draw the slim CPU card, with the RUN / STEP / STOP switch above the PWR/RUN/ERR LEDs."""
         c = self._canvas
         self._draw_card_frame(x, y, height, "CPU", card.model, width=CPU_CARD_W)
         sx, sy, zone = x + 12, y + HEADER_H + 10, MODE_ZONE_H
@@ -1147,7 +1155,10 @@ class SimulatorWindow(tk.Toplevel):
         return text if self._small.measure(text) <= self._card_w - 20 else model
 
     def _draw_card(self, x: float, y: float, card: Card) -> None:
-        """Draw a module's I/O. The CPU's own I/O is the card beside the slim CPU card."""
+        """Draw a module's card and its I/O rows.
+
+        This method also draws the CPU's built-in I/O, as a card beside the slim CPU card.
+        """
         inputs, outputs, analog_in, analog_out = self._card_parts(card)
         title = "Built-in I/O" if card.location == "cpu" and card.installed else card.title
         counts = (len(inputs), len(outputs), len(analog_in), len(analog_out))
@@ -1200,7 +1211,8 @@ class SimulatorWindow(tk.Toplevel):
         width = float(CARD_W)
         if layout is None:
             return width
-        # For each kind of row: where its label starts, and what sits right of the nickname.
+        # For each kind of row, give the x offset where its label starts and the width of what
+        # sits right of the nickname.
         rows = (("input", 52, BADGE_W), ("output", 26, BADGE_W), ("analog_in", 10, BADGE_W),
                 ("analog_out", 10, 74))  # fmt: skip
         for kind, start, right in rows:
@@ -1293,7 +1305,7 @@ class SimulatorWindow(tk.Toplevel):
             x, cy = info["x"], info["cy"]
             link = sim.driving_link(address)
             self._show_link_chip(info, link)
-            # While the link's delay counts, the chip counts down (simulated time).
+            # While the link's delay runs, the chip shows the time left, in simulated time.
             countdown = sim.link_countdown(address) if link is not None else None
             if countdown is not None:
                 c.itemconfigure(info["pill_text"], text=_countdown_text(countdown))
@@ -1462,7 +1474,8 @@ class SimulatorWindow(tk.Toplevel):
         for table in (self._inputs, self._outputs, self._analog_in, self._analog_out):
             table.clear()
         self._drawn_ranges.clear()
-        # Deleting the items under the pointer sends no <Leave>, and a drag's anchor is gone.
+        # Deleting the items under the pointer sends no <Leave> event, so reset the cursor here.
+        # A drag in progress has lost the item that it started from, so drop the drag.
         self._link_drag = None
         c.configure(cursor="")
         self._cpu_leds.clear()
@@ -1568,7 +1581,10 @@ class SimulatorWindow(tk.Toplevel):
             menu.add_command(label="Discard bench links", command=sim.discard_bench_links)
 
     def _on_wiring_select(self, _event: tk.Event | None = None) -> None:
-        """Draw the wire of the Wiring menu entry under the pointer. Draw none once it closes."""
+        """Draw the wire of the Wiring menu entry under the pointer.
+
+        Remove the wire when no entry is under the pointer, as when the menu closes.
+        """
         try:
             index = self._wiring_menu.index("active")
         except tk.TclError:
@@ -1595,7 +1611,10 @@ class SimulatorWindow(tk.Toplevel):
                 return
 
     def _browse_plc_data(self) -> None:
-        """Start the simulation from a CLICK data dump. The session watches the file for changes."""
+        """Ask for a PLC data CSV and start the simulation from it.
+
+        The session watches the file for changes.
+        """
         current = self._simulation.plc_data_path
         path = filedialog.askopenfilename(
             parent=self,
@@ -1625,7 +1644,7 @@ class SimulatorWindow(tk.Toplevel):
     # ------------------------------------------------------------------
 
     def _sliders_changed(self) -> bool:
-        """Return True if the simulation's ranges no longer match the analog sliders drawn."""
+        """Return True if a drawn analog slider's range differs from the simulation's range."""
         hints = self._simulation.tag_hints
         return any(
             _slider_range(hints.get(address, {})) != span
@@ -1648,7 +1667,10 @@ class SimulatorWindow(tk.Toplevel):
             self._redraw()
 
     def _follow_store(self) -> None:
-        """Observe the address data the app holds now. Loading a CSV replaces that data."""
+        """Observe the store that get_store() returns, and redraw if it is a different store.
+
+        Loading a CSV replaces the app's store.
+        """
         store = self._get_store()
         if store is self._observed_store:
             return
@@ -1670,7 +1692,8 @@ class SimulatorWindow(tk.Toplevel):
 
     def _hide_console(self) -> None:
         if self._console_shown():
-            # A pane dragged nearly shut comes back at the slim default, not as a sliver.
+            # If the user dragged the pane nearly shut, it comes back at the default height and
+            # not as a sliver.
             height = self._paned.winfo_height() - self._paned.sashpos(0)
             self._console_h = height if height >= MIN_CONSOLE_H else CONSOLE_H
             self._paned.forget(self._console)
@@ -1698,8 +1721,9 @@ class SimulatorWindow(tk.Toplevel):
             bar, textvariable=self._scan_var, style="SimScan.TLabel", width=11
         )
         self._scan_label.pack(side=tk.LEFT)
-        # Says who moved the mode switch, or what the simulation is doing. The CPU's
-        # switch shows the mode itself. Step/Run controls pack before it.
+        # This label says who moved the mode switch, or what the simulation is doing. The
+        # CPU's switch on the panel shows the mode. The Step and Run controls are packed
+        # between the scan count and this label.
         ttk.Label(bar, textvariable=self._status_var, foreground=P.MUTED).pack(
             side=tk.LEFT, padx=(12, 0)
         )
@@ -1720,7 +1744,7 @@ class SimulatorWindow(tk.Toplevel):
         run_for.pack(side=tk.LEFT)
         bind_tooltip(run_for, "Scan for a stretch of simulated time (500ms, 2 s) or N scans.")
 
-        # Shown only in RUN, because pacing applies to free-running only.
+        # Shown only in RUN, because the speed setting applies only while scans run freely.
         self._run_bar = ttk.Frame(bar)
         ttk.Label(self._run_bar, text="Speed").pack(side=tk.LEFT, padx=(0, 4))
         speed_box = ttk.Combobox(
@@ -1759,7 +1783,8 @@ class SimulatorWindow(tk.Toplevel):
         ttk.Button(bar, text="Dataview", command=self._open_dataview).pack(
             side=tk.RIGHT, padx=(0, 4)
         )
-        # Names the loaded file, which sets where both the panel and the console start.
+        # The button names the loaded PLC data file. The panel and the console both start from
+        # that file's values.
         self._plc_data_btn = ttk.Button(bar, text="PLC Data...", command=self._browse_plc_data)
         self._plc_data_btn.pack(side=tk.RIGHT, padx=(0, 4))
         bind_tooltip(
@@ -1799,7 +1824,7 @@ class SimulatorWindow(tk.Toplevel):
         self._banner = ttk.Frame(self)
 
     def _create_canvas(self) -> None:
-        # The rack over the console pane; the rack takes any height the window gains.
+        # The rack sits above the console pane. The rack takes any height that the window gains.
         self._paned = ttk.PanedWindow(self, orient=tk.VERTICAL)
         self._paned.pack(fill=tk.BOTH, expand=True)
         frame = ttk.Frame(self._paned)
@@ -1915,7 +1940,7 @@ class SimulatorWindow(tk.Toplevel):
         self._inputs: dict[str, dict[str, Any]] = {}
         self._outputs: dict[str, dict[str, Any]] = {}
         self._analog_in: dict[str, dict[str, Any]] = {}
-        # Each analog input's slider range as drawn (None: no slider).
+        # Each analog input's slider range as drawn, or None if it has no slider.
         self._drawn_ranges: dict[str, tuple[float, float] | None] = {}
         self._analog_out: dict[str, dict[str, Any]] = {}
         self._cpu_leds: dict[str, int] = {}
@@ -1933,7 +1958,7 @@ class SimulatorWindow(tk.Toplevel):
         self._note: str | None = None
         self._bench_var = tk.BooleanVar(value=True)
         self._link_vars: list[tk.BooleanVar] = []
-        # Wiring menu entry index -> the feedback whose wire it shows on hover.
+        # Maps a Wiring menu entry's index to the feedback input whose wire it shows on hover.
         self._wiring_entries: dict[int, str] = {}
         self._banner_key: tuple = ()
         self._tick_after_id: str | None = None
@@ -1959,7 +1984,8 @@ class SimulatorWindow(tk.Toplevel):
 
         self._create_toolbar()
         self._create_canvas()
-        # Open from the start, slim, so the simulation's startup shows in it.
+        # The console pane is open and small from the start, so that it shows the simulation
+        # starting up.
         self._console = self._new_console_panel()
         self._paned.add(self._console, weight=0)
         self.bind("<Control-grave>", lambda _e: self._toggle_console())
@@ -1968,7 +1994,8 @@ class SimulatorWindow(tk.Toplevel):
         self._observed_store = get_store()
         if self._observed_store is not None:
             self._observed_store.add_observer(self._on_store_changed)
-        # The opener turns the simulation on; the hardware shows either way.
+        # This window does not turn the simulation on. The app does that after it opens the
+        # window. The window draws the hardware whether or not the simulation is on.
         simulation.add_listener(self._on_simulation_event)
         simulation.refresh_layout()
         self._redraw()
@@ -1976,7 +2003,7 @@ class SimulatorWindow(tk.Toplevel):
 
     def _pop_out_console(self) -> None:
         """Move the console to its own window, transcript and history included."""
-        if self._console.running_here:  # its output arrives in this panel
+        if self._console.running_here:  # a command's output is still arriving in this panel
             return
         self._hide_console()
         self._console.close()

@@ -1,9 +1,9 @@
 """Test the CLICK runner (devtools/click_runner.py) against a fake CLICK.
 
 No test launches CLICK or sends anything to a window. ``FakeClick`` plays CLICK v4's
-dialog sequence as the probe of 2026-11-15 recorded it, with classes, titles, owners,
-control ids and texts from its dumps. A posted message takes effect on a later poll, as it
-does in CLICK.
+dialogs in the order that CLICK shows them. Their window classes, titles, owners, control
+ids and texts are copied from the real CLICK v4 windows. A posted message takes effect on a
+later poll, as it does in CLICK.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ class FakeControl:
     limit: int = 30000  # An edit's EM_GETLIMITTEXT
     on_press: Callable[[], None] | None = None
     on_key: Callable[[int], None] | None = None
-    on_send: Callable[[], None] | None = None  # A sent BM_CLICK, handled before it returns
+    on_send: Callable[[], None] | None = None  # Run when BM_CLICK is sent, not posted
 
 
 @dataclass
@@ -70,15 +70,15 @@ class FakeWindow:
     enabled: bool = True
     controls: list[FakeControl] = field(default_factory=list)
     on_close: Callable[[], None] | None = None
-    on_text: Callable[[], None] | None = None  # A field's text set (EN_CHANGE, sent)
+    on_text: Callable[[], None] | None = None  # Run when a field's text is set (EN_CHANGE)
 
 
-# Two of the rows CLICK's Address Picker writes into SC_.mdb on OK (live run e6), and two of
-# the words its editor refuses, whatever their case (live run f3)
+# SYSTEM_ROWS holds two of the system rows that CLICK's Address Picker writes into SC_.mdb on
+# OK. RESERVED holds two of the words that the Picker's editor refuses in any letter case.
 SYSTEM_ROWS = {"SD19": {"Nickname": "_RTC_Year(4 digits)"}, "SD26": {"Nickname": "_RTC_Second"}}
 RESERVED = {"MAX", "LOG"}
-# The Receive dialog's lists as live probes r1 and r2 dumped them: their items, and the one
-# selected as it opens
+# The drop-down lists of CLICK's Receive dialog, by control id. Each entry holds the list's
+# items and the index of the item that is selected when the dialog opens.
 RECEIVE_LISTS = {
     5000: (["CPU Port1", "CPU Port2", "CPU Port3", "WLAN Port"], 1),
     5001: (
@@ -93,16 +93,17 @@ RECEIVE_LISTS = {
     5002: (["Modbus 984 Addressing", "Modbus Hex Addressing", "CLICK Addressing"], 0),
     5003: (["ON", "OFF"], 1),
 }
-# EM_GETLIMITTEXT of the Receive fields live probe r1 read below the default
+# The Receive fields whose length limit (EM_GETLIMITTEXT) is below the default, by control id
 RECEIVE_LIMITS = {5014: 6, 5017: 4, 5020: 16, 5023: 16, 5026: 16, 5029: 16}
-# The Receive fields that open filled (live probe r1): Slave ID and Number of Bits
+# Slave ID and Number of Bits are the Receive fields that hold a value when the dialog opens
 RECEIVE_FILLED = {5014: "1", 5017: "1"}
-# Word Swap (5003) is open only for the register Function Codes (live probe r2: disabled
-# under 01 - Read Coil Status)
+# The Function Code items under which Word Swap (5003) is enabled: 03 and 04, which read
+# registers. CLICK disables Word Swap under the other codes.
 WORD_SWAP_OPEN_FOR = {2, 3}
-# The option buttons as live probes d1 and d3 (2026-11-17) dumped the dialogs as they open:
-# label, visible, enabled, checked. Copy's 5019 and 5020 are radio buttons, and so are 5036
-# and 5037; the rest are check boxes
+# The option buttons of the Copy and Search dialogs as they open, by control id. Each entry
+# holds the label, whether the button is visible, whether it is enabled and whether it is
+# checked. In Copy, 5019 and 5020 are a pair of radio buttons, and so are 5036 and 5037. The
+# rest are check boxes.
 OPTION_BUTTONS = {
     "Copy": {
         5019: ("Suppress zero", True, False, 1),
@@ -120,12 +121,12 @@ OPTION_RADIOS = {5019: 5020, 5020: 5019, 5036: 5037, 5037: 5036}
 
 
 def copy_options(source: str, destination: str) -> tuple[tuple[str, str], bool, bool, bool]:
-    """Return Copy's option buttons for the addresses in its fields.
+    """Return the state of Copy's option buttons for the addresses in its fields.
 
-    Live probes d1 (copy-1a to copy-5a: -5, 1.5, DS1 and DF1 into TXT1, CTD1 into DF1) and d4c
-    (TXT1 into TXT21) recorded them: 5019's and 5020's labels, whether they are enabled, whether
-    5036 and 5037 are visible, and whether Termination Code (5021) is enabled. A dialog without a
-    destination is as it opens (copy-0)."""
+    The tuple holds the labels of 5019 and 5020, whether 5019 and 5020 are enabled, whether 5036
+    and 5037 are visible, and whether Termination Code (5021) is enabled. The states copy what
+    CLICK showed for -5, 1.5, DS1 and DF1 copied into TXT1, CTD1 into DF1, and TXT1 into TXT21.
+    With no destination, the buttons are as the dialog opens them."""
     if not destination:
         return ("Suppress zero", "Do not suppress zero"), False, False, False
     if not destination.startswith("TXT"):
@@ -137,75 +138,83 @@ def copy_options(source: str, destination: str) -> tuple[tuple[str, str], bool, 
     return ("Copy Value", "Copy Binary"), True, True, True
 
 
-# The instructions --wire places as contacts: a rung of these alone has no coil (C0003)
+# The instructions that --wire places as contacts. A rung that holds only these has no coil,
+# and CLICK's Syntax Check reports C0003 for it.
 CONTACT_TITLES = ("Contact Normally Open", "Compare (A with B)")
 
 
 class FakeClick(cd.Desktop):
-    """Plays CLICK v4 as the probe saw it, with switches for what can go wrong.
+    """A fake CLICK v4, with switches that make it go wrong in known ways.
 
-    *surprise* names an event after which an unknown dialog appears; *stall* one whose
-    effect never happens; *hang_on* one after which CLICK stops answering for *hang_for*
-    seconds (Windows then titles its main window "... (Not Responding)"). *interrupt*
-    names a Desktop method that raises KeyboardInterrupt once; *fail* one that always
-    raises OSError. *late_row* lists a second PLC that many seconds after the first.
-    *status_bar* is whether the status bar reads, *plc_pane* whether it names the PLC
-    once connected. *leftover* names Scr*.tmp files already in the temp folder, as an
-    older CLICK with the same hwnd would leave them. *error_on* names an event after which
-    CLICK shows an error box (PTC-013, as live run 3 met it), owned by the Connect dialog
-    after "connect" (which then shows no Login) and by the main window otherwise.
+    *surprise* names an event after which an unknown dialog appears. *stall* names an event
+    whose effect never happens. *hang_on* names an event after which CLICK stops answering
+    for *hang_for* seconds. While CLICK hangs, Windows adds " (Not Responding)" to the title
+    of its main window. *interrupt* names a Desktop method that raises KeyboardInterrupt
+    once. *fail* names a Desktop method that always raises OSError. *late_row* is a number
+    of seconds. That long after the scan, the Connect dialog's list shows a second PLC.
+    With *status_bar* off, the status bar cannot be read. With *plc_pane* off, the status bar
+    does not name the PLC once CLICK is connected. *leftover* names Scr*.tmp files that are
+    in the temp folder before CLICK starts. An earlier CLICK whose main window had the same
+    hwnd would leave them there. *error_on* names an event after which CLICK shows its
+    PTC-013 error box. After "connect", the Connect dialog owns the box and no Login
+    follows. After any other event, the main window owns the box.
 
-    The ribbon's Math, Copy and Out commands open their dialogs as live probe 2 dumped them
-    (2026-11-15), and Contact(NO), Compare and Search as live probes d1 and d3 did
-    (2026-11-17). *judge* answers OK in one: None accepts, ``(code, message)`` refuses with
-    an error box, ``("warn", code, message)`` shows the box and then places the
-    instruction, ``"question"`` shows a Yes/No box with no code. Rung 1 holds what was
-    placed (``rung``), in order; a contact (``CONTACT_TITLES``) leaves the cursor at B, any
-    other instruction at AF. Syntax Check lists *syntax_lines*' line for each, keyed by the
-    dialog's title, and C0003 when the rung has no coil, as live probe d2 read it. Delete
-    removes the whole rung once a click on rung 1's number (``cr.RUNG1_POINT``, posted to
-    the ladder view) selected it, else the instruction under the cursor at AF, unless
-    *delete_works* is off. Edit > Copy of the selected rung puts ``copy_payload`` (by
-    default ``RUNG_CSV``'s payload) on the clipboard unless *copies* is off.
+    The ribbon's Math, Copy, Out, Contact(NO), Compare and Search commands open their
+    dialogs as CLICK lays them out. *judge* decides what happens when OK is pressed in one
+    of these dialogs. It returns None to accept, ``(code, message)`` to refuse with an error
+    box, ``("warn", code, message)`` to show the box and then place the instruction, or
+    ``"question"`` to show a Yes/No box with no code. ``rung`` lists the instructions placed
+    in rung 1, in order. After a contact (``CONTACT_TITLES``) the cursor is at column B, and
+    after any other instruction it is at AF. Syntax Check lists the line that
+    *syntax_lines* gives for each placed instruction, keyed by the dialog's title. It also
+    lists C0003 when the rung has no coil. If a click on rung 1's number
+    (``cr.RUNG1_POINT``, posted to the ladder view) has selected the rung, Delete removes
+    the whole rung. Otherwise Delete removes the instruction under the cursor at AF. With
+    *delete_works* off, Delete does nothing. Edit > Copy of the selected rung puts
+    ``copy_payload`` on the clipboard, or ``RUNG_CSV``'s payload if ``copy_payload`` is
+    None. With *copies* off, Edit > Copy does nothing.
     *ladder_views* is how many visible ladder views the main window has. Each dialog opens
-    with the button states ``INSTRUCTIONS`` names, or *opens_with*'s. With *places* off, a
-    closed dialog leaves nothing in rung 1.
-    *box_on_fill* is a text that, set into a dialog's field, makes CLICK show an error box
-    owned by the dialog at once. *quick_checks* ignores a Syntax Check posted within that
-    many polls of the last check's result, as live probe 3 found CLICK ignoring one posted
-    soon after (event ``check_ignored``).
+    with the button states that its ``cr.INSTRUCTIONS`` entry names, and *opens_with*
+    overrides them. With *places* off, a dialog closed by OK places nothing in rung 1.
+    When a field is set to the text *box_on_fill*, CLICK at once shows an error box that
+    the dialog owns. *quick_checks* is a number of polls. CLICK ignores a Syntax Check that
+    is posted within that many polls of the last check's result, and the fake records the
+    event ``check_ignored``. Real CLICK ignored a check posted soon after the last one.
 
-    Copy's option buttons open as ``OPTION_BUTTONS`` lists them and follow the fields as
-    live probes d1 and d4c recorded them with both filled (``copy_options``). Termination
-    Code's check opens the Termination code field. Compare hides >, <, >= and <= with a TXT
-    address in Data A (live probe d3). The first *lost_presses* presses of option buttons
-    are lost, as live probe d4c lost one (event ``lost_press``). With *slow_options*, the
-    dialog is busy (``idle`` False) for longer than ``cr.OPTION_WAIT`` after the first option
-    press, though the button reads its new state at once.
+    Copy's option buttons open as ``OPTION_BUTTONS`` lists them. When a field is set, the
+    buttons take the states that ``copy_options`` returns. Checking Termination Code
+    enables the Termination code field. Compare hides its >, <, >= and <= buttons when Data
+    A holds a TXT address. The first *lost_presses* presses on option buttons have no
+    effect, and each records the event ``lost_press``. Real CLICK lost such a press once.
+    With *slow_options*, the first press on an option button leaves the dialog busy
+    (``idle`` returns False) for longer than ``cr.OPTION_WAIT``. The button shows its new
+    state without waiting for that.
 
-    File > Import > Nickname opens the Open dialog as live probes 1 to 4 dumped it
-    (2026-11-15): Merge (Project priority) checked, the other modes beside it. Open hands the
-    file's bytes to *import_answer*, which returns the rows the import stores and the error
-    list's text (None for "Completed!"); the rows replace the table (Delete Existing) or are
-    merged into it, kept as JSON in SC_.mdb. *import_writes* is when SC_.mdb is written:
-    ``answer`` as the answer shows, ``ok`` once its OK is pressed, ``late`` ``LATE_WRITE_POLLS``
-    polls after the main window is alone again. *mode_takes* off leaves the mode as it was.
-    *import_as* names the mode CLICK imports in, whatever is checked. *import_box*
-    ``"question"`` shows a Yes/No box in place of the answer, and ``"twice"`` shows the same
-    answer again once the first is closed. ``imported`` lists each
-    import's mode and file.
+    File > Import > Nickname opens CLICK's Open dialog, with a radio button for each import
+    mode. Merge (Project priority) is checked when it opens. Open passes the file's bytes to
+    *import_answer*. That returns the rows that the import stores and the text of the error
+    list, or None to show "Completed!". The fake keeps the nickname table as JSON in
+    SC_.mdb. In Delete Existing mode the rows replace the table, and in the other modes
+    they are merged into it. *import_writes* says when the fake writes SC_.mdb. ``answer``
+    writes it when the answer shows, ``ok`` when the answer's OK is pressed, and ``late``
+    ``LATE_WRITE_POLLS`` polls after the answer closes. With *mode_takes* off, a press on a
+    mode's radio button does not change the checked mode. *import_as* names the mode that
+    CLICK imports in, whichever mode is checked. With *import_box* set to ``"question"``,
+    CLICK shows a Yes/No box in place of the answer. With ``"twice"``, it shows the answer
+    a second time after the first is closed. ``imported`` lists the mode and the file name
+    of each import.
 
-    PLC > Read Data from PLC opens its form, Save dialog and progress window as live probes d1
-    to d7 dumped them (2026-11-16); *writes_data* off makes the reading write no file.
-    *save_clears* makes the Save dialog empty its File name edit a few polls after it shows, as
-    live run d2/live-r1e found it; a reading with the edit empty writes ``plcdata.csv`` into
-    the folder it last saved in (``last_folder``), as live run d8 did. Program > Address Picker
-    opens a grid as live probes e1 to f3 dumped it: two Right keys and F2 open the editor on
-    the current row's Nickname cell, the Find box moves to an address's row, Enter takes the
-    editor's name unless it is a reserved word (``RESERVED``), and OK writes the names taken
-    into SC_.mdb with CLICK's system rows (``SYSTEM_ROWS``). Closing it without OK writes
-    nothing here; live runs e3 and e4 closed it so with nothing typed, and none closed it so
-    after typing.
+    PLC > Read Data from PLC opens CLICK's form, Save dialog and progress window. With
+    *writes_data* off, the reading writes no file. With *save_clears*, the Save dialog
+    empties its File name edit a few polls after it shows. Real CLICK did this once. If the
+    edit is empty when the reading runs, CLICK writes ``plcdata.csv`` into the folder that
+    it last saved in (``last_folder``). Program > Address Picker opens a grid. Two Right
+    keys and then F2 open the editor on the current row's Nickname cell. The Find box moves
+    to an address's row. Enter keeps the name in the editor unless it is a reserved word
+    (``RESERVED``). OK writes the kept names into SC_.mdb with CLICK's system rows
+    (``SYSTEM_ROWS``). Closing the Picker without OK writes nothing. That matches real
+    CLICK for a Picker closed with nothing typed. Nobody has closed it that way after
+    typing.
     """
 
     def __init__(
@@ -301,7 +310,7 @@ class FakeClick(cd.Desktop):
         self.saved = False
         self.pasted: bytes | None = None
         self.clipboard: bytes | None = None
-        self.copy_payload: bytes | None = None  # Edit > Copy's, else RUNG_CSV's
+        self.copy_payload: bytes | None = None  # None makes Edit > Copy use RUNG_CSV's payload
         self.commands: list[str] = []
         self.keys: list[tuple[str, int | str]] = []
         self.pressed: list[str] = []
@@ -320,16 +329,16 @@ class FakeClick(cd.Desktop):
         self.places = places
         self.box_on_fill = box_on_fill
         self.quick_checks = quick_checks
-        self.checked_tick: int | None = None  # The poll the last check's result showed on
+        self.checked_tick: int | None = None  # The poll that showed the last check's result
         self.rung: list[str] = []  # The titles of the instructions in rung 1, as placed
         self.cursor_column = "A"
         self.rung_selected = False
         self.clicks: list[tuple[int, int]] = []
         self.copied: list[list[str]] = []  # The rung each Edit > Copy copied
-        self.option_states: list[dict[int, int]] = []  # Each OK's option buttons, by id
+        self.option_states: list[dict[int, int]] = []  # The option states at each OK, by id
         self.lost_presses = lost_presses
         self.slow_options = slow_options
-        self.busy_until = 0.0  # ``idle`` reads False until then
+        self.busy_until = 0.0  # ``idle`` returns False until this time
         self.copies = copies
         self.ladder_views = ladder_views
         self.on_dialog: Callable[[FakeWindow], None] | None = None  # Run as a dialog opens
@@ -347,7 +356,7 @@ class FakeClick(cd.Desktop):
         self.system_config_shown = False
         self.ansi_fields = ansi_fields
         self.lists_follow_keys = lists_follow_keys
-        # A Receive whose Function Code goes back to 01 when a field is set
+        # If set, the Receive dialog's Function Code goes back to 01 whenever a field is set
         self.list_resets_on_fill = list_resets_on_fill
         self.receive_lists: dict[str, FakeControl] = {}
         self.last_folder = tmp_path / "last folder"
@@ -385,7 +394,9 @@ class FakeClick(cd.Desktop):
             self.wins.pop(window.hwnd, None)
 
     def _later(self, event: str, action: Callable[[], None], polls: int | None = None) -> None:
-        """Run *action* a few polls from now (*polls*, else ``lag``), as a posted message is."""
+        """Run *action* *polls* polls from now, or ``lag`` polls if *polls* is None.
+
+        A message posted to CLICK also takes effect on a later poll."""
 
         def run() -> None:
             if event == self.stall:
@@ -403,7 +414,7 @@ class FakeClick(cd.Desktop):
         self.queue.append((self.tick + (self.lag if polls is None else polls), run))
 
     def _show_error(self, event: str) -> None:
-        """Show CLICK's error box as live run 3 dumped it (live3/abort/04-abort-288099950.json)."""
+        """Show CLICK's PTC-013 error box, which reports a timeout while connecting to the PLC."""
         assert self.main is not None
         owner = self.connect_dialog if event == "connect" else self.main
         box = self._window("#32770", "CLICK Programming Software", owner.hwnd)
@@ -417,7 +428,7 @@ class FakeClick(cd.Desktop):
 
     def _check(self, method: str) -> None:
         if method == self.interrupt:
-            self.interrupt = None  # One Ctrl+C
+            self.interrupt = None  # Raise only once, like one Ctrl+C
             raise KeyboardInterrupt
         if method == self.fail:
             raise OSError(f"{method} failed")
@@ -450,7 +461,7 @@ class FakeClick(cd.Desktop):
         self._control(main, "Edit", "", 1005, parent=floating.hwnd, visible=False)
         self._control(main, "Afx:StatusBar:2e0000:8:10003:10", "", 59393)
         self._control(main, "msctls_statusbar32", "", 59393)
-        # The ladder view, and one hidden behind it
+        # The visible ladder views, and a hidden one behind them
         for _ in range(self.ladder_views):
             self._control(main, cd.LADDER_VIEW_CLASS, "", 59648)
         self._control(main, cd.LADDER_VIEW_CLASS, "", 59649, visible=False)
@@ -479,7 +490,7 @@ class FakeClick(cd.Desktop):
         assert self.main is not None
         startup = self._window("TfrmStartup", "Startup", self.main.hwnd)
         group = self._control(startup, "TGroupBox", "Select an Operation", 0)
-        # Listed middle, right, left, as CLICK's children are
+        # CLICK lists the three buttons in this order: middle, right, left
         lefts = {"middle": 891, "right": 1035, "left": 747}
         for name in list(lefts)[: self.options["startup_buttons"]]:
             if name == "right":
@@ -534,8 +545,8 @@ class FakeClick(cd.Desktop):
         )
         self._control(dialog, "Button", "Cancel", 2)
 
-        # The list is owner-drawn: CLICK paints its own highlight and reports no
-        # selection (live run 2, 2026-11-15)
+        # The PLC list is owner-drawn. CLICK paints its own highlight and reports no
+        # selection.
         def scanned() -> None:
             plcs.items = self.options["plc_rows"]
             if self.options["late_row"] is not None:
@@ -546,7 +557,7 @@ class FakeClick(cd.Desktop):
     def _after_connect(self) -> None:
         self.connect_dialog.enabled = False
         if self.error_on == "connect":
-            return  # The PLC did not answer: CLICK shows its error box instead
+            return  # The PLC did not answer, and CLICK shows its error box in place of Login
         if self.options["login"]:
             self._show_login()
         else:
@@ -606,7 +617,7 @@ class FakeClick(cd.Desktop):
         def save() -> None:
             path = Path(name.value)
             path.write_bytes(b"ckp")
-            # The main program: what was pasted, or the instruction try placed in rung 1
+            # The main program holds what was pasted, or else what ``try`` placed in rung 1
             placed = f"placed {self.placed} ({path.name})".encode() if self.placed else None
             scr = self.pasted or placed or b"empty"
             temp = self.temp_dir(main.hwnd)
@@ -626,8 +637,8 @@ class FakeClick(cd.Desktop):
 
         Opening puts the project's files in the temp folder.
 
-        With *open_gap*, Open closes the dialog at once and leaves the main window alone, still
-        titled as before, for *open_gap* polls before the open begins.
+        With *open_gap*, Open closes the dialog at once. For *open_gap* polls after that, the
+        main window is enabled, has no dialog and keeps its old title. Then the open begins.
         """
         assert self.main is not None
         main = self.main
@@ -638,7 +649,8 @@ class FakeClick(cd.Desktop):
         name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
 
         def read_file() -> None:
-            # CLICK titles the main window bare and shows Project Reading while it reads
+            # While CLICK reads the project, the main window's title names no project, and
+            # CLICK shows Project Reading
             self._drop(dialog)
             main.title = "CLICK Programming Software (Version4.00)"
             reading = self._window("#32770", "Project Reading", main.hwnd)
@@ -744,14 +756,15 @@ class FakeClick(cd.Desktop):
             control.id = control.hwnd  # A Delphi form's controls have no ids of their own
 
     def _show_system_config(self) -> None:
-        """Show System Configuration as live probe C2 dumped it.
+        """Show CLICK's System Configuration form.
 
-        Its PLC Name shows the first [Sec20] section's first Key1 in the temp folder's
-        Project.ini (``plc_name_in``). Live run c2/live-r1 showed the name added at ``second``,
-        before any open. Whether the save or System Configuration read it, that run does not
-        tell. With *system_config_notice*, a notice with one OK comes over the first one, as at
-        the probe's first, made while connected (live-r1's first, made disconnected, had none).
-        OK is never to be pressed.
+        Its PLC Name edit shows the first Key1 of the first [Sec20] section in the temp
+        folder's Project.ini (``plc_name_in``). In a real run, CLICK showed the added name at
+        the ``second`` point, before any open. That run cannot tell whether the save or System
+        Configuration read the name from Project.ini. With *system_config_notice*, a notice
+        with one OK button covers the first System Configuration form. Real CLICK showed that
+        notice over a first form opened while connected, and not over one opened disconnected.
+        The runner must never press OK, and a press fails the test.
         """
         assert self.main is not None
         main = self.main
@@ -873,7 +886,7 @@ class FakeClick(cd.Desktop):
             if not self.saved:
                 self._window("#32770", "CLICK Programming Software", self.main.hwnd)
                 return
-            # CLICK unloads the project first: its main window is titled bare (live run 4)
+            # CLICK unloads the project first, and its main window's title then names no project
             self.main.title = "CLICK Programming Software (Version4.00)"
             self._later("exit", exit)
 
@@ -890,7 +903,7 @@ class FakeClick(cd.Desktop):
         self._later("close", close)
 
     def _show_instruction(self, spec: cr.Instruction) -> None:
-        """Show an instruction dialog as live probe 2 dumped it: radios, edits, OK and Cancel."""
+        """Show the instruction dialog for *spec*, with its mode buttons, edits, OK and Cancel."""
         assert self.main is not None
         main = self.main
         title = spec.title
@@ -917,13 +930,13 @@ class FakeClick(cd.Desktop):
                 buttons[id].checked = state
             elif id not in spec.modes.values():
                 buttons[id] = self._control(dialog, "Button", f"button {id}", id, checked=state)
-        if title == "Copy":  # The Termination code field opens filled, and closed
+        if title == "Copy":  # The Termination code field opens holding $00, and disabled
             edits["termination_code"].value = "$00"
             edits["termination_code"].enabled = False
 
         def follow_fields() -> None:
-            # Copy's options follow its fields; Compare hides its order operators for a
-            # TXT address in Data A
+            # Copy's option buttons follow its fields. Compare hides its >, <, >= and <=
+            # buttons when Data A holds a TXT address.
             if title == "Compare (A with B)":
                 text = edits["a"].value.startswith("TXT")
                 for name in (">", "<", ">=", "<="):
@@ -968,8 +981,8 @@ class FakeClick(cd.Desktop):
             )
 
         def key(combo: FakeControl, vk: int) -> None:
-            # A drop-down list moves its selection by Home, Up and Down, and tells the
-            # dialog at once (CBN_SELCHANGE, sent)
+            # Home, Up and Down move a drop-down list's selection. The list tells the dialog
+            # at once, with a sent CBN_SELCHANGE.
             if not self.lists_follow_keys:
                 return
             last = len(combo.options) - 1
@@ -989,7 +1002,7 @@ class FakeClick(cd.Desktop):
             combo.on_key = lambda vk, c=combo: follow(c, vk)
         if title == "Receive":
             lists["word_swap"].enabled = lists["function"].selected in WORD_SWAP_OPEN_FOR
-            # Never to be pressed: it edits the project's port setup
+            # The runner must never press this button, because it edits the port setup
             self._control(dialog, "Button", "COM Port Setup", 5013)
         self.receive_lists = lists
 
@@ -999,14 +1012,14 @@ class FakeClick(cd.Desktop):
             if title == "Math":  # Picking a type empties Result and the formula
                 for edit in edits.values():
                     edit.value = ""
-            # As live probe 2 found the Copy dialog's "to" fields
+            # Each Copy mode disables one of the "to" fields, as CLICK does
             closed = {
                 "single": ("source_end",),
                 "pack": ("destination_end",),
                 "unpack": ("source_end",),
             }
             for key, edit in edits.items():
-                if key != "termination_code":  # Its check box opens it
+                if key != "termination_code":  # Its check box enables it
                     edit.enabled = key not in closed.get(name, ())
 
         for name, radio in radios.items():
@@ -1065,7 +1078,7 @@ class FakeClick(cd.Desktop):
             self.on_dialog(dialog)
 
     def _show_open(self) -> None:
-        """Show the Open dialog of File > Import > Nickname, as live probe 1 dumped it."""
+        """Show the Open dialog of File > Import > Nickname."""
         assert self.main is not None
         main = self.main
         main.enabled = False
@@ -1075,7 +1088,7 @@ class FakeClick(cd.Desktop):
         box = self._control(dialog, "ComboBox", "", 1148, parent=box_ex.hwnd)
         name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
         self._control(dialog, "Button", "Open as &read-only", 1040, visible=False, enabled=False)
-        # The template's panel: Delphi radio buttons, whose ids are their hwnds
+        # CLICK adds a panel of Delphi radio buttons to the dialog. Their ids are their hwnds.
         template = self._control(dialog, "#32770", "", 0)
         panel = self._control(dialog, "TPanel", "", 0, parent=template.hwnd)
         modes = {
@@ -1117,11 +1130,11 @@ class FakeClick(cd.Desktop):
             try:
                 table = json.loads(mdb.read_text(encoding="utf-8"))
             except ValueError:
-                table = {}  # A new project's SC_.mdb, b"mdb" here
+                table = {}  # A new project's SC_.mdb, which holds b"mdb" in this fake
             table = rows if mode == "Delete Existing" else {**table, **rows}
             mdb.write_text(json.dumps(table), encoding="utf-8")
 
-        # Titled by its Delphi form's name at first, then by the mode (live run 1)
+        # CLICK titles the progress window with its Delphi form's name, and later with the mode
         progress = self._window("TfrmProgress", "frmProgress", main.hwnd, enabled=False)
         self._control(progress, "TProgressBar", "", 0)
 
@@ -1181,8 +1194,8 @@ class FakeClick(cd.Desktop):
         if command_id == cd.PASTE:
 
             def paste() -> None:
-                # RUNG_CSV's one rung: the cursor moves down a rung; the steps stay as they
-                # were (live run 4)
+                # RUNG_CSV has one rung, so the cursor moves down one rung. The step count
+                # does not change.
                 self.pasted = self.clipboard
                 self.cursor_rung += 1
 
@@ -1196,14 +1209,15 @@ class FakeClick(cd.Desktop):
         elif command_id == cd.SYNTAX_CHECK:
 
             def checking() -> None:
-                # What the check lists comes first; the project's total is the last line
+                # The output lists what the check found first. The project's total is the
+                # last line.
                 output.visible = True
                 output.value = "Checking...\r\nNewProject40 - 0 error(s), 0 warning(s)\r\n"
                 self._later("syntax_check", checked)
 
             def checked() -> None:
-                # As live probe 2 read it: an instruction on rung 1 moves the END error on.
-                # The total names the project as the title does (a save renames it)
+                # An instruction on rung 1 moves the END error to rung 2. The total names
+                # the project from the window title, which a save changes.
                 lines = [self.syntax_lines[t] for t in self.rung if t in self.syntax_lines]
                 if self.rung and all(t in CONTACT_TITLES for t in self.rung):
                     lines.insert(
@@ -1242,8 +1256,8 @@ class FakeClick(cd.Desktop):
         elif command_id == cd.DELETE:
 
             def delete() -> None:
-                # A rung selected goes whole; otherwise what is under the cursor, an output
-                # instruction at AF
+                # A selected rung is deleted whole. Otherwise Delete removes the output
+                # instruction under the cursor at AF.
                 if not self.delete_works:
                     return
                 if self.rung_selected:
@@ -1299,7 +1313,7 @@ class FakeClick(cd.Desktop):
         assert pid == self.pid
         self._check("windows")
         hung = self.hung()
-        if not hung:  # A hung CLICK takes no posted message
+        if not hung:  # A hung CLICK handles no posted message
             self.tick += 1
             due = [item for item in self.queue if item[0] <= self.tick]
             self.queue = [item for item in self.queue if item[0] > self.tick]
@@ -1353,14 +1367,14 @@ class FakeClick(cd.Desktop):
             return None
         control = self._find(hwnd)
         if control.id == 20142:
-            return ""  # ES_PASSWORD: another process reads nothing
+            return ""  # Another process reads an ES_PASSWORD edit as empty
         edits = ("Edit", "TEdit", "RichEdit20W", "TMemo")
         return control.value if control.cls in edits else control.text
 
     def set_text(self, hwnd: int, text: str) -> bool:
         if not self._message("WM_SETTEXT"):
             return False
-        if self.ansi_fields:  # An ANSI dialog keeps what its code page has, "?" for the rest
+        if self.ansi_fields:  # An ANSI dialog turns a character outside its code page into "?"
             text = text.encode("cp1252", "replace").decode("cp1252")
         self._find(hwnd).value = text
         self.typed[self._find(hwnd).id] = text
@@ -1406,7 +1420,7 @@ class FakeClick(cd.Desktop):
         assert control.cls == "msctls_statusbar32", f"SB_GETTEXT sent to {control.cls}"
         if not self.status_readable or not self._message("SB_GETTEXT"):
             return None
-        # As live runs 2 (offline) and 4 (connected, then disconnected) read it
+        # The panes as CLICK shows them before connecting, while connected and after a disconnect
         mode = "RUN" if self.connected else "Offline" if self.went_offline else "-----"
         named = self.connected and self.options["plc_pane"]
         return [
@@ -1481,7 +1495,7 @@ class FakeClick(cd.Desktop):
         if not self.exists(hwnd):
             raise OSError(1400, "GetWindowRect", "Invalid window handle.")
         if self.hung():
-            self.sent_while_hung.append("screenshot")  # It would show Windows' ghost
+            self.sent_while_hung.append("screenshot")  # The shot would show Windows' ghost window
         path.write_bytes(b"\x89PNG fake")
         return True
 
@@ -1546,18 +1560,19 @@ def unknown_contact_payload() -> bytes:
 def unwalkable_payload() -> bytes:
     """Return ``RUNG_CSV``'s payload with a byte of row 0's cells changed.
 
-    laddercodec then cannot find the row's cell 0 and puts a marker rung in its place (from #38 on;
-    0.4.0 raises DecodeError). The byte's offset is that of the laddercodec this runs with."""
+    laddercodec then cannot find cell 0 of the row and decodes a marker rung in its place.
+    laddercodec 0.4.0 raised DecodeError instead. The offset of the byte is right for the
+    laddercodec version that these tests run with."""
     data = bytearray(rung_payload())
     data[0xA69] = 0xFF
     return bytes(data)
 
 
 def plc_name_in(ini: bytes) -> str:
-    """Return the PLC Name CLICK shows for a Project.ini, as live probe C2 found.
+    """Return the PLC Name that CLICK shows for a Project.ini.
 
-    It is the first Key1 of the first [Sec20] section, both in any case (runs p3 to p12). With no
-    [Sec20] there is no name (p11)."""
+    The name is the value of the first Key1 in the first [Sec20] section. CLICK matches the
+    section and the key in any letter case. With no [Sec20] section, there is no name."""
     section = None
     for line in ini.decode("latin-1").splitlines():
         if line.startswith("[") and line.endswith("]"):
@@ -1570,23 +1585,24 @@ def plc_name_in(ini: bytes) -> str:
 
 
 def judge_like_click(title: str, mode: str | None, values: dict[str, str]) -> object:
-    """Return what live CLICK answered to OK in an instruction dialog.
+    """Return what CLICK answers when OK is pressed in an instruction dialog.
 
-    It refused a Math result in SD1, an Out on X and a copy into YD (live probe 2, live run try4),
-    and a Math with no result."""
+    CLICK refuses a Math with no result, a Math result in SD, an Out on X, a Copy into YD, and a
+    Receive with Function Code 03 and a slave address that does not start with 4. None means
+    that CLICK accepts."""
     if title == "Math" and not values.get("result"):
         return ("OBJ-001", "Enter the result.")
     if title == "Math" and values["result"].startswith("SD"):
         return ("OBJ-003", "The entered address is outside the range.")
     if title == "Out" and values.get("address", "").startswith("X"):
         return ("OBJ-004", "The entered address cannot be used in this instruction.")
-    if title == "Copy" and values.get("destination", "").startswith("YD"):  # Live try4, B1
+    if title == "Copy" and values.get("destination", "").startswith("YD"):
         return ("OBJ-004", "The entered address cannot be used in this instruction.")
     if (
         title == "Receive"
         and values["function"].startswith("03")
         and not values.get("slave_address", "").startswith("4")
-    ):  # Live run rx1: a Function Code 03 with a slave address for 01
+    ):  # A Function Code 03 with a slave address meant for 01
         return ("OBJ-010", "The entered value is outside the range. Range: <400001> to <465535>")
     return None
 
@@ -1596,11 +1612,12 @@ LATE_WRITE_POLLS = 3
 
 
 def import_like_click(data: bytes) -> tuple[dict[str, dict], str | None]:
-    """Return the rows an import stores and its error list, as live probes 2 and 3 saw three cases.
+    """Return the rows that a CLICK import stores, and the text of its error list or None.
 
-    A line that is not six cells is refused. So is a quoted address with a space at an end, which
-    is listed twice for a file's first row. Any other row is stored under its address without the
-    spaces at its ends."""
+    The fake copies three cases seen in CLICK. A line that does not have six cells is refused.
+    So is a line whose quoted address has a space at either end, and the error list shows that
+    refusal twice for the file's first data row. Any other row is stored under its address, with
+    the spaces at the address's ends removed."""
     rows: dict[str, dict] = {}
     errors = ""
     lines = data.decode("latin-1").split("\r\n")
@@ -1608,7 +1625,7 @@ def import_like_click(data: bytes) -> tuple[dict[str, dict], str | None]:
         if not line:
             continue
         cells = next(csv_module.reader([line]))
-        if len(cells) != 6:  # As live probe 3 saw the second line of a quoted line break
+        if len(cells) != 6:  # Such as the line after a line break inside a quoted cell
             errors += (
                 f"Error : Unable to import to Database.\r\nLine {number} : {line}\r\n"
                 "Cause : The file format is not correct.\r\n\r\n"
@@ -1645,7 +1662,8 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     exe = tmp_path / "CLICK.exe"
     exe.write_bytes(b"")
     rungs = read_csv(csv)
-    # The fake's Scr1.tmp holds the pasted payload; decode it as the CSV's rungs
+    # The fake's Scr1.tmp holds the pasted payload, which is not a real program. Decode it as
+    # the CSV's rungs, and decode the fake's b"empty" as no rungs.
     monkeypatch.setattr(
         "clicknick.ladder.program.decode_program",
         lambda data: Program("Main Program", 1, rungs if data != b"empty" else []),
@@ -1656,7 +1674,7 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 class Prepare:
-    """A stand-in for prepare_csv_load without SC_.mdb. It records the MDB asked for.
+    """A stand-in for prepare_csv_load that ignores SC_.mdb and records which MDB was asked for.
 
     The fake's SC_.mdb is not a database."""
 
@@ -1678,7 +1696,9 @@ def run(
     paste_timeout: float | None = None,
     capsys: pytest.CaptureFixture[str] | None = None,
 ) -> tuple[int, dict]:
-    """Run the CLI on *fake*; the paste timeout is *timeout* unless given."""
+    """Run the CLI on *fake* and return its exit code and result.
+
+    The paste timeout is *timeout* unless *paste_timeout* is given."""
     argv = ["paste", str(csv)] if csv is not None else ["record"]
     argv += ["--out", str(out), "--click-exe", str(exe), "--timeout", str(timeout)]
     argv += ["--paste-timeout", str(timeout if paste_timeout is None else paste_timeout), *args]
@@ -1936,8 +1956,9 @@ def test_empty_user_type_is_filled_in(tmp_path, setup, monkeypatch):
 
 
 def test_a_user_type_that_does_not_take_aborts(tmp_path, setup):
-    """The brief's test list had an empty User Type abort the run. Sam ruled later that the runner
-    fills it in. The run aborts when a User Type does not take the text set."""
+    """The run aborts at login when the User Type edit does not keep the text that the runner sets.
+
+    The runner then types no password and does not press OK."""
     csv, exe = setup
     fake = FakeClick(tmp_path, prefilled_user="")
     real = fake.set_text
@@ -1988,7 +2009,8 @@ def test_record_dumps_each_step_and_ends_click(tmp_path, setup, capsys):
     user = next(c for c in login["controls"] if c["id"] == 20141)
     assert user["text"] == "" and user["edit_text"] == "admin"
     assert list((out / "record").glob("*-login-*.png"))
-    # Ended rather than closed: CLICK's temp folder stays, for CLICK to deal with
+    # record ends CLICK rather than closing it, so CLICK's temp folder stays. The runner leaves
+    # the folder for CLICK to deal with.
     assert_temp_left_to_click(fake, out, still_there=True)
 
 
@@ -2116,8 +2138,8 @@ def test_an_unexpected_dialog_after_saving_is_not_answered(tmp_path, setup):
 def test_a_click_error_box_aborts_with_its_code(tmp_path, setup, event, step):
     """A CLICK error box at connect, paste, save or disconnect aborts the run with its code.
 
-    The box is the one that live run 3 met during connect (PTC-013). Nothing is pressed in the
-    box and nothing is retried."""
+    The box is the PTC-013 box that CLICK shows when connecting to the PLC times out. Nothing is
+    pressed in the box and nothing is retried."""
     csv, exe = setup
     fake = FakeClick(tmp_path, error_on=event)
     out = tmp_path / "out"
@@ -2129,14 +2151,17 @@ def test_a_click_error_box_aborts_with_its_code(tmp_path, setup, event, step):
     assert result["click_error"] == "PTC-013" and result["step"] == step
     assert result["cleanup_click_error"] is None
     assert not fake.error_answered
-    assert fake.commands.count("Disconnect") <= 1  # Only the step's own
+    assert fake.commands.count("Disconnect") <= 1  # The cleanup sends no second Disconnect
     if event == "connect":
         assert "login" not in fake.events and result["plc"] is None
 
 
 def test_an_error_box_met_by_the_cleanup_is_not_what_stopped_the_run(tmp_path, setup):
-    """click_error tells a caller that the box stopped the run. A box met while the cleanup
-    disconnects after a timeout is kept apart from it."""
+    """An error box that the cleanup meets is reported apart from what stopped the run.
+
+    ``click_error`` names only a box that stopped the run. Here a timeout stops the run, and the
+    cleanup meets a box while it disconnects. The result reports that box in
+    ``cleanup_click_error`` and leaves ``click_error`` None."""
     csv, exe = setup
     fake = FakeClick(tmp_path, stall="syntax_check", error_on="disconnect")
     out = tmp_path / "out"
@@ -2165,7 +2190,7 @@ def test_click_error_reads_only_a_code_then_a_message():
 def test_a_window_that_closes_while_dumped_is_left_out_quietly(tmp_path, setup):
     """A window that closes between the listing and its screenshot is left out quietly.
 
-    The main window did this while CLICK closed in live run 4."""
+    CLICK's main window did this while CLICK closed."""
     csv, exe = setup
     fake = FakeClick(tmp_path, surprise="save")
     original = fake.idle
@@ -2184,8 +2209,8 @@ def test_a_window_that_closes_while_dumped_is_left_out_quietly(tmp_path, setup):
 
 
 def test_closing_click_retitles_its_main_window_first(tmp_path, setup):
-    """In live run 4, after WM_CLOSE the main window was titled "CLICK Programming Software
-    (Version4.00)" until it went. The close waits that out, and then the decode runs."""
+    """After WM_CLOSE, CLICK titles its main window "CLICK Programming Software (Version4.00)"
+    until the window goes. The runner waits until the window has gone, and then decodes."""
     csv, exe = setup
     fake = FakeClick(tmp_path)
     out = tmp_path / "out"
@@ -2202,7 +2227,7 @@ def test_a_timeout_aborts_and_disconnects(tmp_path, setup):
     code, result = run(fake, out, csv, exe, timeout=0.3)
     assert_aborted(fake, out, code, result, "timed out after 0.3 s waiting for the Syntax Check")
     assert result["step"] == "syntax_check"
-    # Connected with nothing else open: the cleanup disconnects before it ends CLICK
+    # CLICK is connected and has no dialog open, so the cleanup disconnects before it ends CLICK
     assert fake.commands[-1] == "Disconnect" and not fake.connected
 
 
@@ -2486,7 +2511,8 @@ def test_click_exiting_by_itself_aborts(tmp_path, setup):
 
 
 def test_a_slow_paste_is_waited_out_without_a_message(tmp_path, setup):
-    """CLICK freezes while it pastes, for longer than any dialog may take. Nothing is sent then."""
+    """CLICK freezes during the paste for longer than the dialog timeout. The runner waits and
+    sends CLICK nothing while it is frozen."""
     csv, exe = setup
     fake = FakeClick(tmp_path, hang_on="paste", hang_for=0.6)
     out = tmp_path / "out"
@@ -2520,7 +2546,7 @@ def test_a_paste_with_no_status_bar_to_read_ends_when_click_answers(tmp_path, se
     out = tmp_path / "out"
     code, result = run(fake, out, csv, exe, timeout=0.3)
     assert code == cr.EXIT_OK, result["reason"]
-    assert result["timings"]["dont_read"] >= 0.3  # Read until the wait timed out
+    assert result["timings"]["dont_read"] >= 0.3  # The runner read the bar until the wait ended
     assert result["status_bar"] == {
         "connected": None,
         "before_paste": None,
@@ -2535,8 +2561,9 @@ def test_a_paste_with_no_status_bar_to_read_ends_when_click_answers(tmp_path, se
 
 
 def test_a_hung_click_is_dumped_without_a_message_and_ended(tmp_path, setup, monkeypatch):
-    """CLICK stops answering for good. The dump sends it nothing and takes no screenshot
-    (Windows would show its ghost), the cleanup does not disconnect, and CLICK is ended."""
+    """When CLICK stops answering for good, the runner dumps its windows without a message and
+    ends CLICK. The dump takes no screenshot, because Windows would show its ghost window. The
+    cleanup does not disconnect."""
     csv, exe = setup
     monkeypatch.setattr(cr, "STATUS_EVERY", 0.05)
     fake = FakeClick(tmp_path, hang_on="syntax_check", hang_for=60)
@@ -2576,8 +2603,11 @@ def test_a_status_bar_out_of_reach_leaves_the_connection_unconfirmed(tmp_path, s
 
 
 def test_a_stale_scr_file_aborts(tmp_path, setup):
-    """CLICK's temp folder is never deleted, so a CLICK that gets an older CLICK's hwnd finds its
-    Scr*.tmp. A file that the save does not rewrite would be decoded with the project."""
+    """A leftover Scr*.tmp that the save does not rewrite aborts the run.
+
+    The runner never deletes CLICK's temp folder, and the folder is named after the main window's
+    hwnd. A CLICK whose main window gets an earlier CLICK's hwnd can find that CLICK's Scr*.tmp
+    files there. The runner would decode such a file as part of the project."""
     csv, exe = setup
     fake = FakeClick(tmp_path, leftover=("Scr2.tmp",))
     out = tmp_path / "out"
@@ -2613,7 +2643,7 @@ def test_a_paste_shows_by_the_cursor_or_the_steps():
     def bar(rung: int, steps: int) -> cr.StatusBar:
         return cr.StatusBar(("RUN", f"{steps:04d}/8000", "C2-03CPU", f"{rung}:1:A"))
 
-    assert bar(2, 0).shows_paste(bar(1, 0), 1)  # Live run 4: the steps stay
+    assert bar(2, 0).shows_paste(bar(1, 0), 1)  # The cursor moved and the step count stayed
     assert bar(1, 4).shows_paste(bar(1, 0), 1)
     assert not bar(1, 0).shows_paste(bar(1, 0), 1)
     assert not bar(2, 0).shows_paste(bar(1, 0), 2)
@@ -2682,7 +2712,8 @@ TRY_CASES = [
     },
     {"row": "B8", "case": "X001", "instruction": "out", "fields": {"address": "X001"}},
 ]
-# A Receive as it opens (CPU Port2, MODBUS, Function Code 01) into C1
+# A Receive that reads coils into C1, with the lists left as the dialog opens them (CPU Port2,
+# MODBUS, Function Code 01)
 RECEIVE = {
     "row": "B7",
     "case": "receive coils into C1",
@@ -2761,16 +2792,17 @@ def test_try_records_each_answer(tmp_path, setup):
     assert refused["message"] == "The entered address is outside the range."
     assert refused["syntax_check"] is None
     assert refused["fields"] == {"result": "SD1", "formula": "DS1 + 1"}
-    # Each mode is picked before the fields: picking Hex empties them
+    # The runner picks each mode before it fills the fields, because picking Hex empties them
     assert fake.entered[2] == ("Math", "hex", {"result": "YD0", "formula": "DH1 + DH2"})
     assert fake.entered[3][1] == "block" and fake.entered[4][1] == "block"
-    # An accepted case's own lines leave out the codes the empty program's check has
+    # An accepted case's lines leave out the codes that the check of the empty program reports
     assert result["cases"][0]["syntax_check"]["lines"] == []
     copy = result["cases"][3]["syntax_check"]
     assert copy["lines"] == ["Main Program : Rung 1 : warning W0301: x."]
     assert copy["errors"] == 1 and "Rung 2 : error C0201" in copy["text"]
     assert "Rung 1 : error C0201" in result["baseline_syntax_check"]["text"]
-    # Accepted: Syntax Check, Delete, Syntax Check; refused: the box's OK, then Cancel
+    # After an accepted case the runner sends Syntax Check, Delete and Syntax Check. After a
+    # refused case it presses the box's OK and then Cancel.
     assert fake.commands == [
         "Syntax Check",
         "Math...",
@@ -2797,7 +2829,7 @@ def test_try_records_each_answer(tmp_path, setup):
     assert result["nicknames"] == {"SD21": "_SD21", "SD23": None}
     log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
     assert "SD21: '_SD21'" in log and "SD23: no row" in log
-    # The project was never saved: CLICK is disconnected, then ended
+    # The project was never saved, so the runner disconnects and then ends CLICK
     assert not fake.connected and fake.terminated and not fake.saved
     assert list(result["timings"])[-5:] == ["nicknames", "baseline", "try", "disconnect", "close"]
     assert all(c["seconds"] is not None for c in result["cases"])
@@ -2810,7 +2842,7 @@ def test_a_syntax_check_that_never_starts_is_posted_again(tmp_path, setup, monke
     code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:3]})
     assert code == cr.EXIT_OK, result["reason"]
     assert [c["outcome"] for c in result["cases"]] == ["accepted", "refused", "accepted"]
-    # The check after each Delete follows the one before at once: CLICK ignores it
+    # The check after each Delete comes right after the check before it, and CLICK ignores it
     ignored = fake.events.count("check_ignored")
     assert ignored == 2
     assert fake.commands.count("Syntax Check") == 1 + 2 * 2 + ignored
@@ -2843,9 +2875,9 @@ def test_try_record_dumps_each_case(tmp_path, setup):
 
 
 class Stored:
-    """A stand-in for read_stored on the fake's Scr*.tmp, which holds text.
+    """A stand-in for read_stored that reads the fake's Scr*.tmp files as text.
 
-    It raises for the files named."""
+    It raises ValueError for a file in a case folder that *fails* names."""
 
     def __init__(self, *, fails: tuple[str, ...] = ()) -> None:
         self.read: list[Path] = []
@@ -2885,13 +2917,13 @@ def test_try_keep_saves_each_accepted_case(tmp_path, setup):
         assert case["kept"]["csv"] == [str(folder / "csv" / "main.csv")]
         assert case["kept"]["main"] and "X001" in case["kept"]["main"][0]
         assert case["kept"]["legacy"] == [] and case["kept"]["error"] is None
-    # Saved before each Delete; each later check names the project as last saved
+    # The runner saves before each Delete. Each later check names the project from the last save.
     first = ["Syntax Check", "Math...", "Syntax Check", "Save Project As", "Delete"]
     assert fake.commands[:5] == first
     assert fake.commands.count("Save Project As") == 3
     assert accepted[1]["syntax_check"]["project"] == "case01"
     assert result["baseline_syntax_check"]["project"] == "NewProject4"
-    # Decoded once CLICK had ended, which the runner ended rather than closed
+    # The runner decodes once CLICK has ended, and it ends CLICK rather than closing it
     assert fake.terminated and not fake.exited_cleanly
     assert list(result["timings"])[-4:] == ["try", "disconnect", "close", "decode"]
     assert [p.parent.parent.name for p in stored.read] == ["case01", "case03", "case04"]
@@ -2899,7 +2931,7 @@ def test_try_keep_saves_each_accepted_case(tmp_path, setup):
 
 @pytest.mark.skipif(not cr._reads_stored_tags(), reason="laddercodec 0.4.0 has no stored-tag walk")
 def test_read_stored_reads_the_tags_click_stored():
-    # Scr1.tmp of live run b/live-b2's case05 (copy 005 to DS1), as CLICK saved it
+    # The Scr1.tmp that CLICK saved for a Copy of 005 into DS1
     scr = Path(__file__).parent / "fixtures" / "click_runner" / "copy_5_ds1_Scr1.tmp"
     assert cr._read_stored(scr) == {
         "program": "Main Program",
@@ -3085,8 +3117,8 @@ def test_a_delete_that_leaves_the_instruction_aborts(tmp_path, setup):
     out = tmp_path / "out"
     code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES})
     assert_aborted(fake, out, code, result, "Delete did not leave the main program empty")
-    # CLICK accepted the case, but the run stopped after: the stop keeps the answer, and a
-    # resume tries the case again
+    # CLICK accepted the case, but then the run stopped. The stop records the answer, and a
+    # resume tries the case again.
     (entry,) = result["cases"]
     assert entry["outcome"] is None and entry["stops"][-1]["outcome"] == "accepted"
     assert entry["syntax_check"]["lines"] == []
@@ -3109,7 +3141,7 @@ def test_a_field_closed_in_the_mode_is_not_taken(tmp_path, setup):
     assert first["message"] == "closed for entry in single mode: source_end"
     assert first["read_back"] == {"source": "DS1", "destination": "DS3"}
     assert first["syntax_check"] is None
-    # OK is never pressed: Cancel closes the dialog, and the next case is tried
+    # The runner never presses OK. It presses Cancel and tries the next case.
     assert fake.entered == [("Math", "decimal", {"result": "DS1", "formula": "DS2 + 1"})]
     assert "Cancel" in fake.pressed and second["outcome"] == "accepted"
     assert fake.commands[:3] == ["Syntax Check", "Copy...", "Math..."]
@@ -3175,7 +3207,11 @@ def test_try_refuses_a_bad_cases_file(tmp_path, setup, cases, reason):
 
 
 def test_the_cases_file_loads():
-    """The checked-in cases for the rule table's rows."""
+    """The checked-in editor_cases.json loads, and it has cases for the table's rows.
+
+    The table is pyrung's and laddercodec's table of what CLICK's editor accepts. The rows
+    checked are A1 to A10, B1 to B6 and B8.
+    """
     cases, nicknames = cr.load_cases(Path(cd.__file__).parent / "editor_cases.json")
     rows = {case.row for case in cases}
     assert {"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"} <= rows
@@ -3187,8 +3223,8 @@ def test_the_cases_file_loads():
 # try: option buttons, operators after the fields, and the dialog's controls
 # ---------------------------------------------------------------------------
 
-# A number with a decimal point into TXT: Copy relabels 5019 and 5020 Real Numbering and
-# Exponential Numbering
+# A copy of a number with a decimal point into TXT. Copy relabels 5019 and 5020 as Real
+# Numbering and Exponential Numbering.
 COPY_REAL = {
     "row": "D1",
     "case": "1.5 to TXT1 exponential",
@@ -3197,8 +3233,8 @@ COPY_REAL = {
     "fields": {"source": "1.5", "destination": "TXT1"},
     "options": {"Exponential Numbering": 1},
 }
-# An integer into TXT: 5019 and 5020 read Copy Value and Copy Binary, and Suppress zero and
-# Do not suppress zero show beside them (5036, 5037)
+# A copy of an integer into TXT. 5019 and 5020 read Copy Value and Copy Binary, and Suppress
+# zero and Do not suppress zero (5036, 5037) show beside them.
 COPY_VALUE = {
     "row": "D3",
     "case": "DS1 to TXT1 binary",
@@ -3207,7 +3243,7 @@ COPY_VALUE = {
     "fields": {"source": "DS1", "destination": "TXT1"},
     "options": {"Copy Binary": 1},
 }
-# A count into a float: Termination Code shows, disabled (live d1 copy-5a)
+# A copy of a counter value into a float. Termination Code shows, but it is disabled.
 COPY_COUNT = {
     "row": "D4",
     "case": "CTD1 to DF1",
@@ -3215,7 +3251,8 @@ COPY_COUNT = {
     "mode": "single",
     "fields": {"source": "CTD1", "destination": "DF1"},
 }
-# TXT to TXT with a termination code: its field opens once Termination Code is checked
+# A copy of TXT into TXT with a termination code. The code's field is enabled once
+# Termination Code is checked.
 COPY_TERMINATED = {
     "row": "D2",
     "case": "TXT1 to TXT11 terminated",
@@ -3248,7 +3285,7 @@ def test_an_option_is_found_by_the_label_it_shows_now(tmp_path, setup):
     assert code == cr.EXIT_OK, result["reason"]
     (case,) = result["cases"]
     assert case["outcome"] == "accepted" and case["options"] == {"Exponential Numbering": 1}
-    # 5020 read "Do not suppress zero" as the dialog opened; the fields relabelled it
+    # 5020 read "Do not suppress zero" when the dialog opened, and the fields relabelled it
     assert fake.option_states == [{5019: 0, 5020: 1, 5036: 1, 5037: 0, 5021: 0, 5024: 0}]
     log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
     assert "option 'Exponential Numbering' (5020) reads 1 after 1 press(es)" in log
@@ -3280,18 +3317,18 @@ OPTION_ALL_LOST = cr.OPTION_PRESSES + 1
 @pytest.mark.parametrize(
     ("case", "options", "reason"),
     [
-        # 1.5 into TXT1 (d1 copy-2a): 5019 and 5020 read Real Numbering and Exponential
-        # Numbering, and 5036 reads Suppress zero, hidden
+        # 1.5 into TXT1: 5019 and 5020 read Real Numbering and Exponential Numbering. 5036
+        # reads Suppress zero, but it is hidden.
         (COPY_REAL, {"Copy Binary": 1}, "no option button shows 'Copy Binary'"),
         (COPY_REAL, {"Suppress zero": 1}, "option 'Suppress zero' (5036) closed for entry"),
         (COPY_REAL, {"5036": 1}, "option 'Suppress zero' (5036) closed for entry"),
-        # CTD1 into DF1 (d1 copy-5a): Termination Code shows, disabled
+        # CTD1 into DF1: Termination Code shows, but it is disabled
         (
             COPY_COUNT,
             {"Termination Code": 1},
             "option 'Termination Code' (5021) closed for entry",
         ),
-        # A radio button is checked by pressing it or its pair
+        # A press on a radio button only checks it, so the runner refuses to uncheck one
         (
             COPY_VALUE,
             {"Copy Value": 0},
@@ -3307,7 +3344,7 @@ def test_an_option_that_cannot_be_set_is_not_taken(tmp_path, setup, case, option
     assert code == cr.EXIT_OK, result["reason"]
     (answer,) = result["cases"]
     assert answer["outcome"] == "not_taken" and answer["message"] == reason
-    # Answered once Cancel closed the dialog; OK was never pressed, nor any option
+    # The runner answered once Cancel closed the dialog. It pressed neither OK nor any option.
     assert fake.entered == [] and "Cancel" in fake.pressed
     assert any(c["id"] == 5020 for c in answer["controls"])
     assert "option" not in fake.events
@@ -3326,13 +3363,15 @@ def test_an_option_is_found_by_the_copy_value_label(tmp_path, setup):
     "options",
     [
         {"Do not suppress zero": 1, "Suppress zero": 0},
-        # Asked 0 first: the pair asked 1 is pressed first, so Suppress zero reads 0 by then
+        # Here 0 is asked first. The runner presses the pair asked for 1 first, so Suppress
+        # zero already reads 0 when its turn comes.
         {"Suppress zero": 0, "Do not suppress zero": 1},
     ],
 )
 def test_a_label_shown_by_5036_and_hidden_5019_is_found_on_5036(tmp_path, setup, options):
-    """For an integer into TXT, Suppress zero and Do not suppress zero are 5036 and 5037, which
-    show, while 5019 and 5020 read Copy Value and Copy Binary."""
+    """For an integer copied into TXT, the runner finds Suppress zero and Do not suppress zero on
+    5036 and 5037. Those two buttons show then, and 5019 and 5020 read Copy Value and Copy
+    Binary."""
     _, exe = setup
     fake = FakeClick(tmp_path)
     case = {**COPY_VALUE, "options": options}
@@ -3343,8 +3382,10 @@ def test_a_label_shown_by_5036_and_hidden_5019_is_found_on_5036(tmp_path, setup,
 
 
 def test_two_visible_option_buttons_with_one_label_are_not_taken(tmp_path, setup):
-    """No recording shows two option buttons with one label. d1 shows 5036 only beside a 5019 that
-    reads Copy Value. Should CLICK ever show two, the runner does not pick one."""
+    """Two visible option buttons with the same label leave the case not taken.
+
+    CLICK has not been seen to show two such buttons. It shows 5036 only while 5019 reads Copy
+    Value. If CLICK ever shows two, the runner does not pick one."""
     _, exe = setup
     fake = FakeClick(tmp_path)
     case = {**COPY_VALUE, "options": {"Suppress zero": 1}}
@@ -3381,9 +3422,11 @@ def test_a_lost_option_press_is_pressed_again(tmp_path, setup):
 
 
 def test_an_option_is_read_again_before_it_is_pressed_again(tmp_path, setup):
-    """The dialog stays busy past the press's wait, though the button already reads as asked.
+    """The dialog stays busy for longer than the runner waits after a press, but the button
+    already reads as asked.
 
-    The runner does not press it again, which would uncheck it."""
+    The runner reads the button again and does not press it a second time, which would uncheck
+    it."""
     _, exe = setup
     fake = FakeClick(tmp_path, slow_options=True)
     code, result = run_try(fake, tmp_path, exe, {"cases": [COPY_TERMINATED]})
@@ -3457,7 +3500,7 @@ def test_a_field_open_after_filling_without_a_press_is_not_taken(tmp_path, setup
     _, exe = setup
     fake = FakeClick(tmp_path)
 
-    def opens_on_source(dialog: FakeWindow) -> None:  # 5023 opens once the source has text
+    def opens_on_source(dialog: FakeWindow) -> None:  # 5023 is enabled once the source has text
         follow = dialog.on_text
         assert follow is not None
         termination = next(c for c in dialog.controls if c.id == 5023)
@@ -3532,7 +3575,7 @@ def test_a_group_box_is_kept_in_the_controls(tmp_path, setup):
 
 
 def test_a_case_without_options_runs_as_before(tmp_path, setup):
-    """A case from an old cases file presses no options and wires nothing."""
+    """A case that names no options presses no option button and wires nothing."""
     _, exe = setup
     fake = FakeClick(tmp_path, lost_presses=OPTION_ALL_LOST)
     code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[3:4]})
@@ -3558,7 +3601,7 @@ def test_wire_places_an_output_behind_a_contact(tmp_path, setup):
     (case,) = result["cases"]
     assert case["outcome"] == "accepted" and case["wired"] is True and result["wire"] is True
     assert case["syntax_check"]["lines"] == []
-    # The contact first, at A, then Search, at AF; Delete then takes the selected rung
+    # The runner places the contact at A and then Search at AF. Delete removes the selected rung.
     assert fake.entered[0] == ("Contact Normally Open", None, {"address": cr.WIRE_CONTACT})
     assert fake.entered[1][:2] == ("Search", ">")
     assert fake.option_states[1] == {5021: 1, 5022: 0}
@@ -3581,7 +3624,7 @@ def test_wire_gives_a_contact_its_coil(tmp_path, setup):
     assert code == cr.EXIT_OK, result["reason"]
     (case,) = result["cases"]
     assert case["outcome"] == "accepted" and case["syntax_check"]["lines"] == []
-    # The operator is pressed once the fields are in
+    # The runner presses the operator after it fills the fields
     assert fake.entered == [
         ("Compare (A with B)", ">=", {"a": "DS1", "b": "DS2"}),
         ("Out", None, {"address": cr.WIRE_COIL}),
@@ -3618,12 +3661,14 @@ def test_an_operator_closed_by_the_fields_is_not_taken(tmp_path, setup):
     assert fake.entered == [] and "Cancel" in fake.pressed
     shown = {c["id"] for c in answer["controls"]}
     assert {5006, 5007} <= shown and not {5008, 5009, 5010, 5011} & shown
-    # No contact was placed for a contact, so there is no rung to delete
+    # The Compare contact was not placed, so there is no rung to delete
     assert "Delete" not in fake.commands and fake.clicks == []
 
 
 def test_a_field_closed_before_the_operator_names_the_mode_it_was_filled_in(tmp_path, setup):
-    """Compare's fields are filled in the mode it opened in (==), and its operator comes after."""
+    """The runner fills Compare's fields in the mode that the dialog opened in (==).
+
+    It picks the operator after that, so a field closed before then is reported with mode ==."""
     _, exe = setup
     fake = FakeClick(tmp_path)
 
@@ -3667,7 +3712,9 @@ def test_wire_stops_on_a_rung_that_does_not_check_clean(tmp_path, setup):
 
 
 def test_wire_stops_on_a_contact_with_no_coil(tmp_path, setup):
-    """A contact alone gets no coil. CLICK names C0003, which the empty program's check lacks."""
+    """The run stops when no coil is placed after the contact.
+
+    CLICK then reports C0003, which the check of the empty program does not report."""
     _, exe = setup
     fake = FakeClick(tmp_path)
     original = fake._show_instruction
@@ -3713,11 +3760,11 @@ def test_wire_keep_copies_each_accepted_rung(tmp_path, setup):
         kept = case["kept"]
         assert kept["clip"] == str(saves / f"case{number:02d}.clip.bin")
         assert Path(kept["clip"]).read_bytes() == rung_payload()
-        # Decoded as main.csv is written: its header, then the rung
+        # The clipboard's CSV has the same form as main.csv: the header, then the rung
         assert kept["clip_csv"] == str(saves / f"case{number:02d}.clip.csv")
         lines = Path(kept["clip_csv"]).read_text(encoding="utf-8").splitlines()
         assert lines == RUNG_CSV.splitlines() and kept["clip_error"] is None
-    # Saved, then copied, then deleted; the clipboard emptied before each Copy
+    # The runner saves, copies and then deletes, and it empties the clipboard before each Copy
     assert fake.commands[4:8] == ["Save Project As", "Copy", "Delete", "Syntax Check"]
     clipboard = [e for e in fake.events if e in ("empty_clipboard", "copy")]
     assert clipboard == ["empty_clipboard", "copy"] * 2
@@ -3747,8 +3794,8 @@ def test_wire_keep_records_a_clipboard_it_cannot_decode(tmp_path, setup):
     assert kept["error"] is None and kept["main"]
 
 
-# laddercodec writes a marker rung for a rung it cannot read, and warns, from ac7d910 (#38)
-# on; the 0.4.0 pinned refuses to write it (WriterError)
+# Newer laddercodec writes a marker rung for a rung that it cannot read, and warns. The
+# pinned 0.4.0 refuses to write such a rung and raises WriterError.
 WRITES_MARKERS = pytest.mark.skipif(
     not hasattr(laddercodec, "UndecodedRungWarning"),
     reason="this laddercodec writes no marker rung (#38)",
@@ -3759,7 +3806,9 @@ UNKNOWN_CONTACT = (
 
 
 def keep_clip(tmp_path: Path, exe: Path, payload: bytes) -> dict[str, Any]:
-    """Try SEARCH with ``--wire --keep``, Edit > Copy giving *payload*; return its kept entry."""
+    """Try SEARCH with ``--wire --keep`` while Edit > Copy gives *payload*.
+
+    Return the case's ``kept`` entry."""
     fake = FakeClick(tmp_path)
     fake.copy_payload = payload
     code, result = run_try(
@@ -3767,7 +3816,7 @@ def keep_clip(tmp_path: Path, exe: Path, payload: bytes) -> dict[str, Any]:
     )
     assert code == cr.EXIT_OK, result["reason"]
     kept = result["cases"][0]["kept"]
-    assert kept["error"] is None and kept["main"]  # The saved copy reads all the same
+    assert kept["error"] is None and kept["main"]  # The saved project still reads without error
     return kept
 
 
@@ -3776,7 +3825,8 @@ def logged(tmp_path: Path) -> str:
 
 
 def test_wire_keep_names_an_instruction_laddercodec_cannot_read_in_a_clipboard(tmp_path, setup):
-    """ClickNick names it before laddercodec writes the CSV, whatever laddercodec then does."""
+    """ClickNick names the instruction before laddercodec writes the CSV, whatever laddercodec
+    does after that."""
     _, exe = setup
     kept = keep_clip(tmp_path, exe, unknown_contact_payload())
     assert kept["clip_error"].startswith(f"{UNKNOWN_CONTACT}; laddercodec")
@@ -3786,13 +3836,15 @@ def test_wire_keep_names_an_instruction_laddercodec_cannot_read_in_a_clipboard(t
 
 
 def test_wire_keep_names_what_laddercodec_cannot_write(tmp_path, setup, monkeypatch):
-    """A laddercodec that cannot write the rung (0.4.0 raises WriterError for an unknown
-    condition) leaves no CSV, and the case says why after what it found."""
+    """If laddercodec cannot write the rung, no CSV is left.
+
+    The case's ``clip_error`` gives what ClickNick found and then laddercodec's reason.
+    laddercodec 0.4.0 raises WriterError for an unknown condition."""
     _, exe = setup
     from laddercodec.csv.writer import WriterError
 
     def write_csv(path: Path, rungs: list) -> None:
-        Path(path).write_text("marker,A", encoding="utf-8")  # Begun, then refused
+        Path(path).write_text("marker,A", encoding="utf-8")  # Write part of the file, then refuse
         raise WriterError("Cannot serialize unknown condition to CSV (raw 96 bytes)")
 
     monkeypatch.setattr(laddercodec, "write_csv", write_csv)
@@ -3817,7 +3869,7 @@ def test_wire_keep_names_what_laddercodec_cannot_write(tmp_path, setup, monkeypa
             " is not decoded, and an undecoded marker stands in for it: no CSV token holds"
             " this unknown condition (96 bytes)",
         ),
-        # Cells laddercodec cannot walk: decode puts the marker rung in and warns
+        # Cells that laddercodec cannot walk. Decoding puts the marker rung in and warns.
         (
             unwalkable_payload,
             "laddercodec UndecodedRungWarning, rungs from 0: rung 0, row 0 is not decoded, and"
@@ -3853,7 +3905,7 @@ def test_wire_keep_stops_when_copy_leaves_nothing(tmp_path, setup):
         read_stored=Stored(),
     )
     assert_aborted(fake, out, code, result, "case01: Edit > Copy left no CLICK data")
-    assert fake.clipboard is None  # Emptied before the Copy
+    assert fake.clipboard is None  # The runner emptied it before the Copy
 
 
 def test_wire_keep_stops_when_the_clipboard_cannot_be_emptied(tmp_path, setup, monkeypatch):
@@ -3913,7 +3965,7 @@ def test_a_resume_reads_lines_written_before_options_and_wire(tmp_path, setup):
     fake, code, result = try_again(tmp_path, exe, "b", cases, "--resume", str(prev))
     assert code == cr.EXIT_OK, result["reason"]
     assert len(result["cases"]) == len(TRY_CASES)
-    # The two answered cases are carried; the third is the first tried
+    # The two answered cases are carried, and the third case is the first one tried
     assert fake.entered[0] == ("Math", "hex", TRY_CASES[2]["fields"])
 
 
@@ -3930,7 +3982,8 @@ def test_compare_and_search_in_the_cases_file_load(tmp_path):
 
 
 def test_the_ladder_view_click_is_made_in_one_place():
-    """The runner never posts a mouse message itself: ``Desktop.click_ladder`` finds the view."""
+    """The runner never posts a mouse message itself. ``Desktop.click_ladder`` is the one caller
+    of ``_post_click``, and it finds the ladder view first."""
     runner = Path(cr.__file__).read_text(encoding="utf-8")
     assert "_post_click" not in runner and "WM_LBUTTON" not in runner
     desktop = Path(cd.__file__).read_text(encoding="utf-8")
@@ -3958,8 +4011,8 @@ def try_again(
 ) -> tuple[FakeClick, int, dict]:
     """Run ``run_try`` into ``tmp_path/<name>`` with a CLICK of its own.
 
-    ``Stored`` reads a kept save's Scr*.tmp, as the fake writes text there (and the installed
-    laddercodec may have no stored-tag walk)."""
+    Each kept save's Scr*.tmp is read with ``Stored``, because the fake writes text there and
+    the installed laddercodec may have no stored-tag walk."""
     (tmp_path / name).mkdir()
     fake = FakeClick(tmp_path / name, **fake_args)  # pyright: ignore[reportArgumentType]
     out = tmp_path / name / "out"
@@ -3973,21 +4026,22 @@ def test_try_writes_each_case_as_it_is_answered(tmp_path, setup):
     code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES})
     assert code == cr.EXIT_OK, result["reason"]
     out = tmp_path / "out"
-    # One line per case, in the order tried, each its entry in result.json
+    # The log has one line per case, in the order tried, and each line is the case's entry in
+    # result.json
     assert read_log(out) == result["cases"]
     assert [c["index"] for c in result["cases"]] == [1, 2, 3, 4, 5, 6]
     assert [c["id"] for c in result["cases"]] == [c["case"] for c in TRY_CASES]
     assert result["files"]["cases"] == str(out / cr.CASES_LOG)
     assert (result["left"], result["carried"], result["stopped_at"]) == (0, 0, None)
     assert all(c["out"] == str(out) and c["stops"] == [] for c in result["cases"])
-    # Each field's limit for typing, and its text as read back before OK
+    # A case records each field's length limit and the field's text as read back before OK
     assert result["cases"][0]["limits"] == {"result": 30000, "formula": 30000}
     assert result["cases"][0]["read_back"] == TRY_CASES[0]["fields"]
 
 
 def test_an_abort_marks_the_case_it_stopped_at(tmp_path, setup):
     _, exe = setup
-    # Copy opens with One Shot on: the 4th case stops the run before OK
+    # Copy opens with One Shot checked, so the 4th case stops the run before OK
     fake = FakeClick(tmp_path, opens_with={5024: 1})
     code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES})
     assert_aborted(fake, tmp_path / "out", code, result, "button 5024 (5024) is checked")
@@ -4016,8 +4070,9 @@ def test_resume_carries_the_answers_and_tries_the_rest(tmp_path, setup):
     assert result["cases"][:3] == first["cases"][:3]
     assert result["cases"][3]["stops"] == first["cases"][3]["stops"]
     assert result["cases"][3]["outcome"] == "accepted" and result["left"] == 0
-    # This run's log holds every case: the carried ones first, then the one tried again with
-    # its stops (so a run killed during it keeps them), then each case as it was answered
+    # This run's log holds every case. The carried cases come first. The case tried again
+    # comes next with its stops, so that a run killed during that case keeps them. Then each
+    # case follows as it is answered.
     log = read_log(out)
     assert [line["index"] for line in log] == [1, 2, 3, 4, 4, 5, 6]
     assert log[3]["outcome"] is None and log[3]["stops"] == first["cases"][3]["stops"]
@@ -4041,7 +4096,7 @@ def test_stop_after_then_resume_loses_and_repeats_nothing(tmp_path, setup):
         tmp_path, exe, "c", cases, "--resume", str(tmp_path / "b" / "out")
     )
     assert code == cr.EXIT_OK and done["left"] == 0 and done["stopped_after"] is None
-    # Each case tried in exactly one run, and answered as in one run of them all
+    # Each case was tried in exactly one run, and the answers match one run of all the cases
     assert len(first.entered) + len(second.entered) + len(third.entered) == len(TRY_CASES)
     assert first.entered + second.entered + third.entered == whole.entered
 
@@ -4064,7 +4119,7 @@ def test_a_case_that_stopped_two_runs_is_not_tried_again(tmp_path, setup):
         tmp_path, exe, "c", cases, "--resume", str(tmp_path / "b" / "out")
     )
     assert code == cr.EXIT_OK, third["reason"]
-    # Case 4 is carried with no answer and its two stops; the next Copy case is tried
+    # Case 4 is carried with no answer and its two stops. The runner tries the next Copy case.
     assert third["cases"][3]["outcome"] is None and len(third["cases"][3]["stops"]) == 2
     assert third["carried"] == 4 and third["left"] == 1
     assert [entry[0] for entry in fake.entered] == ["Copy", "Out"]
@@ -4149,7 +4204,7 @@ def test_resume_with_keep_decodes_what_the_stopped_run_left(tmp_path, setup):
         out / "saves" / "case03",
         out / "saves" / "case04",
     ]
-    # The decoded entries are written again; the last line for each is what a resume reads
+    # The runner writes the decoded entries again. A resume reads the last line for each case.
     assert last_lines(out)["DS1 = DS2 + 1"]["kept"]["csv"] == carried["csv"]
     assert all(c["kept"]["main"] for c in last_lines(out).values() if c["kept"])
 
@@ -4195,7 +4250,7 @@ def test_receive_picks_its_lists_by_keys(tmp_path, setup):
         "choices": {"function": "03 - Read Holding Registers"},
         "fields": {**RECEIVE["fields"], "slave_address": "400001", "master_address": "DD1"},
     }
-    # Live run rx1: Function Code 03 with a slave address for 01 is refused
+    # CLICK refuses Function Code 03 with a slave address meant for 01
     slave_for_01 = {**registers, "case": "registers from slave 1", "fields": RECEIVE["fields"]}
     back = {**RECEIVE, "case": "back to coils", "choices": {"function": "01 - Read Coil Status"}}
     fake = FakeClick(tmp_path)
@@ -4209,7 +4264,7 @@ def test_receive_picks_its_lists_by_keys(tmp_path, setup):
         ("accepted", None),
     ]
     assert fake.commands.count("Receive...") == 4
-    # What CLICK was given: each list as picked, the fields as typed
+    # CLICK received each list as picked and each field as typed
     assert [values["function"] for _, _, values in fake.entered] == [
         "01 - Read Coil Status",
         "03 - Read Holding Registers",
@@ -4218,11 +4273,13 @@ def test_receive_picks_its_lists_by_keys(tmp_path, setup):
     ]
     assert fake.entered[0][2]["port"] == "CPU Port2"
     assert fake.entered[0][2]["master_address"] == "C1"
-    # Down twice from 01 to 03, each to the list alone; 01 is picked already
+    # Each 03 case sends two Down keys to the list alone, from 01 to 03. The 01 cases send no
+    # key, because 01 is already selected.
     assert [k for k in fake.keys if k[0] == "ComboBox"] == [("ComboBox", 0x28)] * 4
     assert result["cases"][1]["choices"] == {"function": "03 - Read Holding Registers"}
     assert result["cases"][0]["limits"]["receiving"] == 16
-    # Every field as OK found it: Slave ID and Number of Bits as the dialog filled them
+    # read_back holds every field as OK found it, with Slave ID and Number of Bits as the
+    # dialog filled them
     assert result["cases"][0]["read_back"] == {**RECEIVE["fields"], "slave_id": "1", "count": "1"}
     assert "COM Port Setup" not in fake.pressed
 
@@ -4231,7 +4288,7 @@ def test_receive_picks_by_up_and_by_home(tmp_path, setup, monkeypatch):
     _, exe = setup
     registers = {"function": "03 - Read Holding Registers"}
     fields = {**RECEIVE["fields"], "slave_address": "400001", "master_address": "DS1"}
-    # Word Swap shows OFF; ON is the item above it
+    # Word Swap shows OFF, and ON is the item above it
     up = {**RECEIVE, "choices": {**registers, "word_swap": "ON"}, "fields": fields}
     fake, code, result = try_again(tmp_path, exe, "up", {"cases": [up]})
     assert code == cr.EXIT_OK, result["reason"]
@@ -4252,7 +4309,7 @@ def test_receive_picks_by_up_and_by_home(tmp_path, setup, monkeypatch):
 
 def test_a_list_closed_for_entry_is_not_taken(tmp_path, setup):
     _, exe = setup
-    # Word Swap is disabled under Function Code 01 (live probe r2)
+    # Word Swap is disabled under Function Code 01
     case = {**RECEIVE, "choices": {"word_swap": "ON"}}
     fake = FakeClick(tmp_path)
     code, result = run_try(fake, tmp_path, exe, {"cases": [case, TRY_CASES[0]]})
@@ -4277,8 +4334,9 @@ def test_a_list_that_changes_while_the_fields_are_filled_is_not_taken(tmp_path, 
 class StallsInTheFill(FakeClick):
     """A CLICK that stops answering once the first field of an instruction dialog is set.
 
-    The dialog's WM_SETTEXT goes unanswered (*on* "set") or its WM_GETTEXT does (*on* "read"). With
-    *on* "interrupt", the first one raises KeyboardInterrupt."""
+    With *on* "set", each later WM_SETTEXT to the dialog goes unanswered. With *on* "read", each
+    later WM_GETTEXT to the dialog goes unanswered. With *on* "interrupt", setting the first
+    field raises KeyboardInterrupt instead."""
 
     def __init__(self, *args, on: str, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -4357,7 +4415,7 @@ def test_resume_with_keep_tries_an_accepted_case_without_its_save_again(tmp_path
     out = tmp_path / "b" / "out"
     code, result = run_try(fake, tmp_path, exe, cases, *args, out=out, read_stored=Stored())
     assert code == cr.EXIT_OK, result["reason"]
-    # The refused case is carried; the accepted one is tried again for its save
+    # The refused case is carried. The accepted case is tried again so that it gets a save.
     assert result["carried"] == 1 and [e[0] for e in fake.entered] == ["Math"]
     assert result["cases"][0]["kept"]["ckp"].endswith("case01.ckp")
 
@@ -4372,7 +4430,7 @@ def test_resume_with_keep_decodes_each_case_into_a_folder_of_its_own(tmp_path, s
     assert code == cr.EXIT_OK
     log = prev / cr.CASES_LOG
     log.write_text(log.read_text(encoding="utf-8").splitlines()[0] + "\n", encoding="utf-8")
-    # The new file puts another accepted case first: the carried one is now case 2
+    # This cases file puts another accepted case first, so the carried case is case 2
     (tmp_path / "b").mkdir()
     fake = FakeClick(tmp_path / "b")
     out = tmp_path / "b" / "out"
@@ -4427,7 +4485,7 @@ def test_a_ctrl_c_is_not_counted_as_a_stop(tmp_path, setup):
         tmp_path, exe, "d", cases, "--resume", str(tmp_path / "c" / "out")
     )
     assert code == cr.EXIT_OK, result["reason"]
-    # Two Ctrl+C are not MAX_STOPS stops: the case is tried again
+    # A stop by Ctrl+C does not count toward MAX_STOPS, so the case is tried again
     stops = result["cases"][3]["stops"]
     assert result["carried"] == 3 and result["cases"][3]["outcome"] == "accepted"
     assert [stop.get("interrupted") for stop in stops] == [True, True]
@@ -4485,10 +4543,10 @@ IMPORT_ROWS = [
     b'" DS32",INT,"Addr Quoted Lead",0,No,""\r\n',
     b'TXT20,TEXT,"Bare Tab",\t,No,""\r\n',
 ]
-# Lines: the header 1, DS20 2 and 3, an empty line 4, DS32 5, TXT20 6
+# The file's lines: the header is 1, DS20 is 2 and 3, 4 is empty, DS32 is 5 and TXT20 is 6
 IMPORT_CSV = HEADER + IMPORT_ROWS[0] + IMPORT_ROWS[1] + b"\r\n" + IMPORT_ROWS[2] + IMPORT_ROWS[3]
 IMPORT_LINES = ["line002", "line003", "line005", "line006"]
-# The Import Error List's text in live probe 2 (2026-11-15), for tab_checks.csv
+# The text of an Import Error List that CLICK showed for a real import
 LIVE_ERROR_LIST = (
     "Unable to import Intial Value.\r\nLine 14 : Address = DS25, Initial Value =  5 \r\n"
     "Cause : The file format is not correct.\r\n\r\n"
@@ -4526,7 +4584,9 @@ def run_import(
     timeout: float = 5,
     rows: Rows | None = None,
 ) -> tuple[int, dict]:
-    """Run ``import`` on *fake*, with *data* as the CSV (none written when None)."""
+    """Run ``import`` on *fake* with *data* as the CSV, and return the exit code and result.
+
+    If *data* is None, no CSV is written."""
     csv = tmp_path / "nicknames.csv"
     if data is not None:
         csv.write_bytes(data)
@@ -4565,7 +4625,7 @@ def test_import_each_row(tmp_path, setup):
     assert fake.imported == [("Delete Existing", "nicknames.csv")] + [
         ("Delete Existing", f"{name}.csv") for name in IMPORT_LINES
     ]
-    # The answers: the error list's text and its entries, or the box's
+    # Each import records CLICK's answer: the error list's text and entries, or the box's text
     whole = imports[0]
     assert [(e["line"], e["cause"]) for e in whole["errors"]] == [
         (3, "The file format is not correct."),
@@ -4587,11 +4647,12 @@ def test_import_each_row(tmp_path, setup):
     assert whole["mdb_changed_at_answer"] is True and whole["mdb_changed"] is True
     assert whole["mdb_changed_after_answer"] is False
     assert all(i["seconds"] is not None for i in imports)
-    # The mode is picked, the path typed, and only the import is sent before Disconnect
+    # The runner picks the mode and types the path. It sends no command but Import Nickname
+    # before Disconnect.
     assert fake.pressed.count("Delete Existing") == 5
     assert fake.typed[1148] == str(out / "rows" / "line006.csv")
     assert fake.commands == ["Import Nickname"] * 5 + ["Disconnect"]
-    # The project was never saved: CLICK is disconnected, then ended
+    # The project was never saved, so the runner disconnects and then ends CLICK
     assert not fake.connected and fake.terminated and not fake.saved
     assert list(result["timings"])[-4:] == ["import", "disconnect", "close", "read"]
     log = (out / "run.log").read_text(encoding="utf-8")
@@ -4621,7 +4682,8 @@ def test_an_import_written_after_its_ok_is_waited_for(tmp_path, setup):
 
 
 def test_an_import_written_after_the_main_window_is_alone_is_waited_for(tmp_path, setup):
-    # SC_.mdb reading the same on two polls is not enough: CLICK may write it later
+    # The runner keeps waiting after SC_.mdb reads the same on two polls, because CLICK may
+    # write it later
     _, exe = setup
     fake = FakeClick(tmp_path, import_writes="late")
     code, result = run_import(fake, tmp_path, exe, "--each-row")
@@ -4651,7 +4713,7 @@ def test_an_import_in_another_mode_aborts(tmp_path, setup):
     code, result = run_import(fake, tmp_path, exe)
     assert_aborted(fake, out, code, result, "unexpected window")
     assert "'Import - Project priority'" in result["reason"] and result["step"] == "import"
-    # CLICK's answer is left as it is: nothing pressed after Open
+    # The runner leaves CLICK's answer open and presses nothing after Open
     assert fake.pressed[fake.pressed.index("Delete Existing") :] == ["Delete Existing", "&Open"]
 
 
@@ -4741,9 +4803,9 @@ def test_split_rows_keeps_each_record_as_in_the_file():
     header, rows = cr.split_rows(IMPORT_CSV)
     assert header == HEADER
     assert rows == list(zip([2, 3, 5, 6], IMPORT_ROWS, strict=True))
-    # LF line ends, and a last row with none
+    # Rows may end in LF, and the last row may have no line ending
     assert cr.split_rows(b"A,B\nDS1,x\nDS2,y") == (b"A,B\n", [(2, b"DS1,x\n"), (3, b"DS2,y")])
-    # A quote that does not close ends at its line's end; a CR alone ends no line
+    # A quote that does not close ends at the end of its line. A CR alone ends no line.
     assert cr.split_rows(b'A\nDS1,"x\nDS2,y\n') == (b"A\n", [(2, b'DS1,"x\n'), (3, b"DS2,y\n")])
     assert cr.split_rows(b"A,B\rDS1,x\r") == (b"A,B\rDS1,x\r", [])
     assert cr.split_rows(b"") == (b"", [])
@@ -4833,7 +4895,8 @@ def test_reopen_copies_each_point(tmp_path, setup):
     assert fake.opened == [(out / "second.ckp").resolve()]
     points = result["points"]
     assert list(points) == ["first", "second", "opened", "third"]
-    # Live run c2/live-r1 showed the name from second on, the case of section and key aside
+    # Real CLICK showed the name from the second point on. The letter case of the section and
+    # the key does not matter.
     assert [points[p]["plc_name"] for p in points] == ["", "Probe", "Probe", "Probe"]
     assert fake.pressed.count("Cancel") == 4
     assert points["first"]["project_ini"] == "[Project]\r\n"
@@ -4859,8 +4922,9 @@ def test_reopen_copies_each_point(tmp_path, setup):
 
 
 def test_reopen_waits_for_the_open_to_begin(tmp_path, setup):
-    # Open closes the dialog and leaves second.ckp's title, as Save As left it, before the
-    # open begins: the title and the Scr*.tmp files alone would pass on the old files
+    # Open closes the dialog before the open begins, and the main window keeps the title
+    # second.ckp that Save As gave it. A check of the title and the Scr*.tmp files alone would
+    # pass on the old files.
     _, exe = setup
     fake = FakeClick(tmp_path, open_gap=8)
     code, result = run_reopen(fake, tmp_path, exe)
@@ -4873,7 +4937,7 @@ def test_reopen_waits_for_the_open_to_begin(tmp_path, setup):
 @pytest.mark.parametrize(
     ("lines", "name"),
     [
-        # What System Configuration showed in live probe C2 (c2/live-p3 to live-p12)
+        # The PLC Name that CLICK's System Configuration showed for each Project.ini
         ("[Sec20]\nKey1=UpperCase", "UpperCase"),
         ("[sec20]\nkey1=LowerCase", "LowerCase"),
         ("[SEC20]\nKEY1=AllCaps", "AllCaps"),
@@ -4936,7 +5000,8 @@ def test_read_data_saves_every_memory_type(tmp_path, setup):
     assert code == cr.EXIT_OK, result["reason"]
     dump = (tmp_path / "out" / "plcdata.csv").resolve()
     assert result["files"]["plc_data"] == str(dump)
-    # All checked every memory type before Read, not only the four checked as it opened
+    # The runner pressed All before Read. All checks every memory type, not only the four that
+    # are checked when the form opens.
     banks = ("X", "Y", "C", "T", "CT", "DS", "DD", "DH", "DF", "TD", "CTD", "TXT")
     assert dump.read_bytes().decode("ascii") == "".join(
         f"<{b}=START>\r\n</{b}=END>\r\n" for b in banks
@@ -5003,7 +5068,7 @@ def test_picker_ok_writes_the_names_taken_and_the_system_rows(tmp_path, setup):
     assert rows.read == [out / "before.mdb", out / "after.mdb"]
     copies = result["mdb_copies"]
     assert copies["before"]["rows"] == {}
-    # The reserved word was typed but not taken
+    # The editor refused the reserved word Max, so OK wrote only Test
     assert copies["after"]["rows"] == {**SYSTEM_ROWS, "X001": {"Nickname": "Test"}}
     assert fake.commands == ["Address Picker", "Disconnect"]
     typed = [k for k in result["keys"] if k["key"].startswith("chars:")]
@@ -5019,7 +5084,7 @@ def test_picker_ok_writes_the_names_taken_and_the_system_rows(tmp_path, setup):
 
 
 def test_picker_closed_with_nothing_typed_writes_nothing(tmp_path, setup):
-    # As live runs e3 and e4 closed it (F2 on X001; Right, Right, F2), by WM_CLOSE
+    # The runner closes the Picker by WM_CLOSE, and nothing was typed in it
     _, exe = setup
     fake = FakeClick(tmp_path)
     rows = PickerRows()
@@ -5127,15 +5192,15 @@ def test_a_process_in_the_job_dies_when_the_job_closes():
     """A process in the job dies when the job closes, so CLICK cannot outlive a killed runner.
 
     Windows closes the job's handle when the runner's process ends, however it ends."""
-    # On real time on purpose: a real child and a kernel job, which the virtual clock
-    # (``fast_poll``) does not reach
+    # This test runs on the real clock on purpose. The virtual clock (``fast_poll``) has no
+    # effect on a real child process and a kernel job.
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     try:
         job = cd.kill_on_close(int(child._handle))  # pyright: ignore[reportAttributeAccessIssue]
         assert child.poll() is None
         began = time.monotonic()
         cd._kernel32().CloseHandle(job)
-        child.wait(timeout=10)  # Not the minute it sleeps
+        child.wait(timeout=10)  # Far less than the minute that the child sleeps
         assert time.monotonic() - began < 10
     finally:
         child.kill()

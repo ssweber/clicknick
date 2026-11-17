@@ -1,11 +1,12 @@
-"""Ask which tag drives a simulator input, to wire the two together on the bench.
+"""Ask which tag drives a simulator input, to link the two in the simulation only.
 
 An input (X) gets pyrung's bool kinds of response. An analog input (DF) gets its analog
 kinds. Each kind's fields, labels, hints and checks come from pyrung's table.
 
-A bit enable (Y, C...) is a contact beside the driver. Normally open [O] drives the link
-while the bit is ON. Normally closed [/] drives it while the bit is OFF
-(``link=~Y001``). A word enable (DS...) drives the link while the word equals a value.
+A bit enable (Y, C...) acts as a contact. The dialog shows the contact beside the "Driven by"
+box. Normally open [O] drives the link while the bit is ON. Normally closed [/] drives it
+while the bit is OFF (``link=~Y001``). A word enable (DS...) drives the link while the word
+equals a value.
 
 The result is a BenchLink. The Simulator window hands it to the session.
 """
