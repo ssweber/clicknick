@@ -988,9 +988,9 @@ class SimulationSession:
         if not new_build and not self._source_changed:
             return None
         tail = (
-            f" Could not write the program: {self._write_error}. Click Restart to start a new "
-            "simulation from the workspace as it is now (CLICK's last save and any edits). "
-            "It starts from power-on values, or from the PLC data file."
+            f" Could not write the program: {self._write_error}. Restart starts a new "
+            "simulation from the workspace as it is now (CLICK's last save and any edits), "
+            "from power-on values or the PLC data file."
             if self._write_error
             else ""
         )

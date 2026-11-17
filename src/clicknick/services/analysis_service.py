@@ -622,7 +622,7 @@ class AnalysisService:
                 or self.project_dir.resolve() != source
             ):
                 raise RuntimeError(
-                    "Click project changed during export. Try again after conversion finishes"
+                    "CLICK project changed during export. Try again after the conversion finishes."
                 )
 
             file_count = sum(path.is_file() for path in staged.rglob("*"))

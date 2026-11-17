@@ -540,7 +540,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
             path, file_count = restored.restored_from, restored.file_count
             action, preposition = "restored", "from"
             if restored.edits_backed_up:
-                note = f". Your edits to src/plc were saved in {plc_backup_dir(project_dir)}"
+                note = f". Your edits to src/plc were backed up to {plc_backup_dir(project_dir)}"
         files = "source file" if file_count == 1 else "source files"
         return f"OK: {action} {file_count} {files} {preposition} {path}{note}" + _status_footer(ctx)
 

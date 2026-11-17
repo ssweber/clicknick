@@ -2050,7 +2050,7 @@ def test_a_program_only_in_click_that_cannot_be_read_is_one_to_delete(monkeypatc
     note = window._describe_view()[0]
     assert note.splitlines()[0] == (
         "CLICK's copy cannot be read. "
-        "This folder does not have the program. It will be deleted in CLICK."
+        "This folder does not have the program. The step is to delete it in CLICK."
     )
     assert "Paste" not in note
 

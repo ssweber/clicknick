@@ -1042,7 +1042,7 @@ class ReviewChangesWindow(tk.Toplevel):
             instead = (
                 "This folder does not have the program. CLICK keeps it as it is."
                 if self._kept(name)
-                else "This folder does not have the program. It will be deleted in CLICK."
+                else "This folder does not have the program. The step is to delete it in CLICK."
             )
         notes = [_legacy_note(change, instead=instead)]
         if after.error and not after.text(name) and name not in self._only_in_click:
