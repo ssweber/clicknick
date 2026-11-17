@@ -16,11 +16,21 @@ _NO_ACTIVATE = win32con.SWP_NOACTIVATE | win32con.SWP_NOMOVE | win32con.SWP_NOSI
 
 
 class RedrawSplash:
-    """A small borderless topmost window, centred over the CLICK window *click_hwnd*."""
+    """Show a small borderless topmost window centred over the CLICK window *click_hwnd*."""
 
     def __init__(self, root: tk.Misc, click_hwnd: int) -> None:
         top = tk.Toplevel(root)
-        self._top = top
+        self._top: tk.Toplevel | None = top
+        try:
+            self._hwnd = self._build(top, click_hwnd)
+        except BaseException:
+            # The caller gets no notice to close, so a half-built one would stay on screen
+            self.close()
+            raise
+
+    @staticmethod
+    def _build(top: tk.Toplevel, click_hwnd: int) -> int:
+        """Lay out *top* over *click_hwnd*, show it without activating it and return its hwnd."""
         top.withdraw()
         top.overrideredirect(True)
         top.configure(background="#3c3c3c")
@@ -34,20 +44,18 @@ class RedrawSplash:
         ).pack(padx=1, pady=1)
         top.update_idletasks()
         width, height = top.winfo_reqwidth(), top.winfo_reqheight()
-        try:
-            left, upper, right, lower = win32gui.GetWindowRect(click_hwnd)
-        except win32gui.error:
-            left, upper, right, lower = 0, 0, top.winfo_screenwidth(), top.winfo_screenheight()
+        left, upper, right, lower = _click_rect(top, click_hwnd)
         x = left + (right - left - width) // 2
         y = upper + (lower - upper - height) // 2
         top.geometry(f"{width}x{height}+{x}+{y}")
         top.deiconify()
         top.update_idletasks()
-        self._hwnd = int(top.wm_frame(), 16)
-        style = win32gui.GetWindowLong(self._hwnd, win32con.GWL_EXSTYLE)
+        hwnd = int(top.wm_frame(), 16)
+        style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
         style |= win32con.WS_EX_NOACTIVATE | win32con.WS_EX_TOOLWINDOW | win32con.WS_EX_TOPMOST
-        win32gui.SetWindowLong(self._hwnd, win32con.GWL_EXSTYLE, style)
-        win32gui.SetWindowPos(self._hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, _NO_ACTIVATE)
+        win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, style)
+        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0, _NO_ACTIVATE)
+        return hwnd
 
     def close(self) -> None:
         """Remove the window. Calling this again does nothing."""
@@ -57,3 +65,19 @@ class RedrawSplash:
                 top.destroy()
             except tk.TclError:
                 pass  # Tk is shutting down, or the window is already gone
+
+
+def _click_rect(top: tk.Misc, click_hwnd: int) -> tuple[int, int, int, int]:
+    """Return the screen rectangle to centre the notice in.
+
+    A minimized CLICK window sits off screen, at about (-32000, -32000). Its import still
+    shows its dialogs on screen (live run on CLICK v4.00, 2026-11-17). So for a minimized
+    window, return the rectangle that it has when restored. If the window is gone, return
+    the screen.
+    """
+    try:
+        if win32gui.IsIconic(click_hwnd):
+            return win32gui.GetWindowPlacement(click_hwnd)[4]
+        return win32gui.GetWindowRect(click_hwnd)
+    except win32gui.error:
+        return 0, 0, top.winfo_screenwidth(), top.winfo_screenheight()

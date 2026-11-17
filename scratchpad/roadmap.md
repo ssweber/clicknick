@@ -493,6 +493,9 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   leave the ladder as it was and say to use **Tools > Redraw Nicknames in CLICK**? An agent checked the redraw
   and the notice on CLICKs that its script launched (2.60, 3.92, 4.00, 2026-11-17), but not through ClickNick's
   own window. Only the tests cover the setting.
+  While the notice shows, CLICK is the active window and its Open dialog has the keyboard. Press Enter, then
+  try again with Esc. Does the status line say what went wrong, and which CLICK window is left for you to
+  close? Is that acceptable, or should the redraw keep the keyboard away from CLICK?
 
 ### Address Editor and store
 - Fill Down / Add Block T1..TD5, then Sync.

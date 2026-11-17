@@ -444,6 +444,39 @@ def test_busy_click_is_left_alone(tmp_path, setup, detail) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.parametrize(
+    ("change", "detail"),
+    [
+        (
+            lambda c: c.extra.append(Window(600, "#32770", "Out", MAIN, True)),
+            'CLICK shows "Out"',
+        ),
+        (lambda c: setattr(c, "main_enabled", False), "CLICK's window is disabled"),
+    ],
+    ids=["a dialog opens", "main window disabled"],
+)
+def test_click_is_checked_again_once_it_is_active(tmp_path, change, detail) -> None:
+    """A window that CLICK opens while it is made active would be taken for the import's."""
+    click = FakeClick()
+    real_set_foreground = click.set_foreground
+
+    def set_foreground(hwnd: int) -> None:
+        real_set_foreground(hwnd)
+        if hwnd == MAIN:
+            change(click)
+
+    click.set_foreground = set_foreground
+
+    result = _redraw(click, tmp_path)
+
+    assert result.outcome is RedrawOutcome.BUSY
+    assert result.detail == detail
+    assert click.commands == []
+    assert click.pressed == []
+    assert click.foreground_set == [MAIN, OWN_WINDOW]  # ClickNick gets the foreground back
+    assert list(tmp_path.iterdir()) == []
+
+
 # -- What is left for the user -----------------------------------------------------------
 
 
@@ -573,6 +606,33 @@ def test_a_box_over_the_open_dialog_leaves_both_for_the_user(tmp_path) -> None:
 
 
 # -- Time-outs and failures --------------------------------------------------------------
+
+
+def test_import_modes_that_show_seconds_after_the_command_are_waited_for(tmp_path) -> None:
+    """Until OPEN_TIMEOUT passes, a dialog without the modes may be the Open dialog being built."""
+    click = FakeClick()
+    real_post_command = click.post_command
+    real_controls = click.controls
+    command_at: list[float] = []
+
+    def post_command(hwnd: int, command_id: int) -> None:
+        real_post_command(hwnd, command_id)
+        command_at.append(click.time)
+
+    def controls(hwnd: int) -> list[Control]:
+        found = real_controls(hwnd)
+        if hwnd == OPEN and click.time < command_at[0] + 3.0:
+            return [c for c in found if c.hwnd not in MODES]
+        return found
+
+    click.post_command = post_command
+    click.controls = controls
+
+    result = _redraw(click, tmp_path)
+
+    assert result.outcome is RedrawOutcome.REFRESHED
+    assert click.time >= command_at[0] + 3.0
+    assert click.pressed == [OPEN_BUTTON, DONE_OK]
 
 
 def test_no_open_dialog_times_out(tmp_path) -> None:

@@ -203,8 +203,9 @@ def redraw_nicknames(
 
     Import a header-only CSV with File > Import > Nickname in Merge (Project priority).
 
-    Return BUSY, with nothing sent, if CLICK's main window is disabled, does not answer or
-    shows another window.
+    Return BUSY if CLICK's main window is disabled, does not answer or shows another
+    window. This is checked again after CLICK is made active. A BUSY redraw sends no
+    command to CLICK.
 
     Return FAILED if the import shows a window that it is not known to show, or does not
     answer in time. If the import's Open dialog is then the only window open, cancel it.
@@ -242,19 +243,15 @@ def _redraw(
     sleep: Callable[[float], None],
     temp_dir: Path | None,
 ) -> RedrawResult:
-    windows = desktop.windows(pid)
-    if not any(w.hwnd == main for w in windows):
-        return RedrawResult(RedrawOutcome.FAILED, "CLICK's window is closed or hidden")
-    others = _others(windows, main)
-    if others:
-        shown = ", ".join(_describe(w) for w in others)
-        return RedrawResult(RedrawOutcome.BUSY, f"CLICK shows {shown}")
-    if not next(w for w in windows if w.hwnd == main).enabled:
-        return RedrawResult(RedrawOutcome.BUSY, "CLICK's window is disabled")
-    if not desktop.idle(main, IDLE_TIMEOUT):
-        return RedrawResult(RedrawOutcome.BUSY, "CLICK does not answer")
+    refused = _refusal(desktop, pid, main)
+    if refused is not None:
+        return refused
     if activate:
         _activate(desktop, main, clock, sleep)
+        # CLICK may have opened a window while it was made active
+        refused = _refusal(desktop, pid, main)
+        if refused is not None:
+            return refused
 
     handle, name = tempfile.mkstemp(prefix="clicknick-redraw-", suffix=".csv", dir=temp_dir)
     path = Path(name)
@@ -269,6 +266,25 @@ def _redraw(
                 _leftovers.add(path)
 
 
+def _refusal(desktop: ClickDesktop, pid: int, main: int) -> RedrawResult | None:
+    """Return why the redraw cannot start now, or None if CLICK shows its main window alone.
+
+    The main window must also be enabled and answer messages.
+    """
+    windows = desktop.windows(pid)
+    if not any(w.hwnd == main for w in windows):
+        return RedrawResult(RedrawOutcome.FAILED, "CLICK's window is closed or hidden")
+    others = _others(windows, main)
+    if others:
+        shown = ", ".join(_describe(w) for w in others)
+        return RedrawResult(RedrawOutcome.BUSY, f"CLICK shows {shown}")
+    if not next(w for w in windows if w.hwnd == main).enabled:
+        return RedrawResult(RedrawOutcome.BUSY, "CLICK's window is disabled")
+    if not desktop.idle(main, IDLE_TIMEOUT):
+        return RedrawResult(RedrawOutcome.BUSY, "CLICK does not answer")
+    return None
+
+
 def _activate(
     desktop: ClickDesktop,
     hwnd: int,
@@ -278,9 +294,9 @@ def _activate(
     """Give the foreground to *hwnd* and wait until it has it.
 
     If Windows refuses, return after ACTIVATE_TIMEOUT. The redraw goes on anyway.
-    Windows switches the foreground some time after the call returns. A window that
-    ClickNick closes before the switch can hand the foreground back to CLICK. So the
-    redraw ends only after the switch.
+    SetForegroundWindow returns before Windows switches the foreground. If ClickNick closed
+    a window before the switch, Windows could make CLICK active again. So this waits for
+    the switch.
     """
     desktop.set_foreground(hwnd)
     deadline = clock() + ACTIVATE_TIMEOUT

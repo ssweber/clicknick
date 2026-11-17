@@ -658,9 +658,9 @@ class ConnectionController:
         or fails, the status line then says that the nicknames are in CLICK's database and
         how to redraw them.
 
-        If you call this while a redraw runs, the request runs after that redraw ends. That
-        redraw may have read SC_.mdb before the Sync wrote it. Several requests made
-        meanwhile run once.
+        If you call this while a redraw runs, the request runs after that redraw ends. It
+        waits because that redraw may have read SC_.mdb before the Sync wrote it. Several
+        requests made meanwhile run once.
 
         If another CLICK window, or none, is connected when a redraw ends, the status line
         shows nothing, and the waiting request does not run. A project change opens a new
@@ -730,9 +730,9 @@ class ConnectionController:
 
         The redraw runs without the notice when it cannot be shown.
         """
-        from .views.redraw_splash import RedrawSplash
-
         try:
+            from .views.redraw_splash import RedrawSplash
+
             return RedrawSplash(self._app.root, click_hwnd)
         except Exception:
             logger.exception("Could not show the redraw notice")

@@ -5,6 +5,7 @@ The window redraws its nicknames. Tools > Redraw Nicknames in CLICK does the sam
 
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -316,6 +317,22 @@ def test_the_redraw_runs_when_the_notice_cannot_show(monkeypatch) -> None:
     app.root.run(100)
 
     assert _status(app) == ("✓ CLICK shows the nicknames from its database", "connected")
+
+
+def test_the_redraw_runs_when_the_notice_module_cannot_load(monkeypatch) -> None:
+    """A redraw that stopped before it ran would leave every later request waiting."""
+    refreshed = RedrawResult(RedrawOutcome.REFRESHED)
+    monkeypatch.setattr(click_redraw, "redraw_nicknames", lambda *_a, **_k: refreshed)
+    monkeypatch.setattr(win32_desktop, "Win32ClickDesktop", lambda: object())
+    monkeypatch.setattr(ConnectionController, "_run_off_tk", staticmethod(lambda work: work()))
+    monkeypatch.setitem(sys.modules, "clicknick.views.redraw_splash", None)  # Import fails
+    app = _app()
+
+    app._connection.redraw_nicknames(after_sync=False)
+    app.root.run(100)
+
+    assert _status(app) == ("✓ CLICK shows the nicknames from its database", "connected")
+    assert not app._connection._redraw_running
 
 
 def test_the_menu_command_redraws_with_redraw_ladder_on_sync_off(desktop) -> None:

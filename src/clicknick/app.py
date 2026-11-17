@@ -1768,7 +1768,7 @@ class ClickNickApp:
         self._main_window_shown = True
 
     def _report_legacy_encodings(self) -> None:
-        """Tell the user which rungs in CLICK's last save they must paste again.
+        """Tell the user which rungs and programs in CLICK's last save to paste again or fix.
 
         The message lists three kinds of finding:
 
