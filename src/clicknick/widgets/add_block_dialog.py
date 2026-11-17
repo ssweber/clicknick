@@ -136,7 +136,7 @@ class AddBlockDialog(tk.Toplevel):
             command=self._on_kind_changed,
         )
         none_rb.pack(side=tk.LEFT, padx=(0, 8))
-        bind_tooltip(none_rb, "Grouping-only tag, no pyrung semantics")
+        bind_tooltip(none_rb, "Groups the rows only. pyrung does not import them as a Block.")
 
         block_rb = ttk.Radiobutton(
             radio_row,
@@ -148,7 +148,7 @@ class AddBlockDialog(tk.Toplevel):
         block_rb.pack(side=tk.LEFT, padx=(0, 8))
         bind_tooltip(
             block_rb,
-            "Semantic block for pyrung import.\nOptional start overrides the logical start address.",
+            "A block that pyrung imports as one Block.\nStart sets the index of its first element.",
         )
 
         array_rb = ttk.Radiobutton(
@@ -185,7 +185,11 @@ class AddBlockDialog(tk.Toplevel):
         start_entry = ttk.Entry(self._block_frame, textvariable=self._start_var, width=8)
         start_entry.pack(side=tk.LEFT, padx=(4, 4))
         ttk.Label(self._block_frame, text="(optional)", foreground="gray").pack(side=tk.LEFT)
-        bind_tooltip(start_entry, "Logical start index (0-based). Leave blank for default.")
+        bind_tooltip(
+            start_entry,
+            "The index of the first element in pyrung. Leave it blank to start at 1,\n"
+            "or at 0 if the first address of the block is numbered 0.",
+        )
 
         # Named array frame
         self._array_frame = ttk.Frame(self._adv_frame)

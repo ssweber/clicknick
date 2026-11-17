@@ -37,6 +37,7 @@
 - When ClickNick cannot read CLICK's database and offers a copy of CLICK's address CSV file, the dialog no longer says that you must save a copy to continue. **Cancel** goes on without nicknames.
 - In Review Changes, when you try to take a skipped difference of a program that is marked done, the status line no longer says that the difference is already pasted into CLICK. It says that the program is marked done.
 - The tooltip of a linked input in the Simulator no longer ends with empty brackets when the link has no delay or response. After **Save link to project**, the tooltip and the note now say the same thing: the program's link replaces the bench link when the simulation loads the program from your next Sync.
+- The tooltip of **start** in the Add Block dialog no longer says that the start is 0-based. pyrung starts a block at 1, or at 0 when the block's first address is numbered 0, and the tooltip now says so.
 
 ## v0.24.1 - 2026-11-15
 
