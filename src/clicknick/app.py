@@ -1065,15 +1065,29 @@ class ClickNickApp:
                     return
         self._open_address_editor(initial_filter=initial_filter)
 
-    def _verify_mdb_and_cdv(self):
-        """Verify MDB addresses and CDV entries for validity."""
-        if self._click is None:
-            self._update_status("Connect to a ClickPLC window first", "error")
-            return
+    def _database_store(self, command: str) -> AddressStore | None:
+        """Return the store of the connected CLICK window's database, for *command*.
 
-        store = self._get_store()
-        if store is None:
-            self._update_status("No data loaded", "error")
+        If no database is loaded, show why in the status line and return None. *command* is
+        the menu entry's name.
+        """
+        data = self._data
+        if data is not None and data.store.is_database:
+            return data.store
+        if data is not None and self._session is not None:
+            self._update_status(
+                f"⚠ {command} needs CLICK's database, and the nicknames loaded come from a "
+                "CSV file. Select the window in the CLICK Windows list to load the database",
+                "error",
+            )
+        else:
+            self._report_no_project_session()
+        return None
+
+    def _verify_mdb_and_cdv(self):
+        """Check the addresses in CLICK's database and the entries in its .cdv files."""
+        store = self._database_store("Verify MDB & CDV")
+        if store is None or self._click is None:
             return
 
         from tkinter import messagebox, scrolledtext
@@ -1123,33 +1137,22 @@ class ClickNickApp:
         Loads rows directly from MDB (no placeholders) and deletes any rows where
         needs_full_delete is True (no content, not used).
         """
-        if self._click is None:
-            self._update_status("Connect to a ClickPLC window first", "error")
-            return
-
-        store = self._get_store()
+        store = self._database_store("Clean MDB")
         if store is None:
-            self._update_status("No data loaded", "error")
             return
 
         from tkinter import messagebox
 
         from .data.data_source import MdbDataSource
 
-        # Get the MDB path from the current data source
-        data_source = store._data_source
-        if not hasattr(data_source, "file_path"):
-            self._update_status("Current data source has no file path", "error")
-            return
-
-        mdb_path = data_source.file_path
+        mdb_path = store._data_source.file_path
 
         # Create a fresh MdbDataSource to load directly from MDB
         try:
             fresh_source = MdbDataSource(db_path=mdb_path)
             all_rows = fresh_source.load_all_addresses()
         except Exception as e:
-            self._update_status(f"Error loading MDB: {e}", "error")
+            self._update_status(f"⚠ Could not read CLICK's database: {e}", "error")
             return
 
         # Find rows that need deletion (no content, not used)

@@ -1135,6 +1135,33 @@ def test_verify_checks_the_connected_windows_dataview_folder(monkeypatch, tmp_pa
     assert checked == [connected]
 
 
+@pytest.mark.parametrize(
+    ("action", "command"),
+    [("_verify_mdb_and_cdv", "Verify MDB & CDV"), ("_clean_mdb", "Clean MDB")],
+)
+def test_database_repairs_refuse_csv_data(monkeypatch, action, command):
+    """With a window connected and a CSV file loaded, neither command reads the CSV file."""
+    read = []
+    monkeypatch.setattr(
+        "clicknick.utils.verification.run_verification", lambda *args: read.append(args)
+    )
+    monkeypatch.setattr(
+        "clicknick.data.data_source.MdbDataSource", lambda **kwargs: read.append(kwargs)
+    )
+    app, prompts = _app(monkeypatch)
+    app._data = DataSession(FakeStore(is_database=False, source_path="C:/tmp/Main_Address.csv"))
+
+    getattr(app, action)()
+
+    assert read == []
+    assert prompts == []
+    app._update_status.assert_called_once_with(
+        f"⚠ {command} needs CLICK's database, and the nicknames loaded come from a CSV file. "
+        "Select the window in the CLICK Windows list to load the database",
+        "error",
+    )
+
+
 @pytest.mark.parametrize("keep", [True, False], ids=["keep", "discard"])
 def test_project_change_asks_about_dataview_edits_over_csv_data(monkeypatch, keep):
     """Over CSV data, a project change asks the same question as over database data.
