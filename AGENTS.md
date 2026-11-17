@@ -1,7 +1,7 @@
 # ClickNick Agent Guidance
 
 **IMPORTANT: Do not use `cd` before commands. The working directory is already the project root.**
-**IMPORTANT: Use `make` to install, lint, test and build. While the sibling checkouts are installed (`make install-dev`), run `make lint UV_NO_SYNC=1` and `make test UV_NO_SYNC=1`, and never a bare `make` or `make install`. Those re-sync and put the released packages back.**
+**IMPORTANT: Use `make` to install, lint, test and build. While the sibling checkouts are installed (`make install-dev`), run `make lint UV_NO_SYNC=1` and `make test UV_NO_SYNC=1`, and never a bare `make`, `make install`, `make upgrade` or `uv sync`. Those re-sync and put the released packages back.**
 
 ## Writing
 

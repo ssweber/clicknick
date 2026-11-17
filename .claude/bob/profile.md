@@ -50,7 +50,7 @@ last).
 
 ## Correctness contract (put in every builder and reviewer brief)
 
-- AGENTS.md is the contract. It requires:
+- The root AGENTS.md and the files its table points to are the contract. They require:
   - the three-layer store (base, overrides, visible) with one `_derive`;
   - only `AddressStore` writes its layers;
   - every edit goes through `edit_session()` and commits all or nothing;
