@@ -315,7 +315,13 @@ class TestCsvModeStore:
         before = path.read_bytes()
         path.chmod(stat.S_IREAD)
         try:
-            with pytest.raises(PermissionError, match=r"^names\.csv is read-only\.$"):
+            with pytest.raises(
+                PermissionError,
+                match=(
+                    r"^Could not save names\.csv, because the file is read-only\. Clear its "
+                    r"Read-only attribute and save again\.$"
+                ),
+            ):
                 CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
         finally:
             path.chmod(stat.S_IREAD | stat.S_IWRITE)
