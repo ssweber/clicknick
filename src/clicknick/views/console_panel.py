@@ -234,7 +234,10 @@ class ConsolePanel(ttk.Frame):
         def _done(results: list[tuple[bool, str]]) -> None:
             self._sent_here = False
             if self._destroyed:
-                return  # The panel closed meanwhile. The session still counted the command
+                # The panel closed while the command ran, so there is nothing to show.
+                # run_console_command counted the command until it returned, so writes
+                # are not held back.
+                return
             for ok, text in results:
                 if not text:
                     continue
