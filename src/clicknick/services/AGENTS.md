@@ -6,9 +6,8 @@ These notes cover the analysis build (`connection_session.py`, `services/analysi
 folder never import tkinter (rule 3 in the root `AGENTS.md`). Other services have their notes elsewhere. The
 table at the end of the root `AGENTS.md` names the file for each one.
 
-The workspace is the pyrung project that ClickNick generates from the connected CLICK project. Its folders
-include `csv/` and `src/plc`. A build reads CLICK's program from its Scr*.tmp files and the nicknames from its
-database, and generates the workspace again.
+The workspace's folders include `csv/` and `src/plc`. A build reads CLICK's program from its Scr*.tmp files
+and the nicknames from its database, and generates the workspace again.
 
 ## Builds
 
@@ -50,9 +49,9 @@ database, and generates the workspace again.
   written, the backup's files are dated to that time instead.
 - If any kept backup already holds the tree, ClickNick makes no new backup, and that backup becomes the newest.
 - ClickNick deletes the oldest backups so that 5 are kept in all (`KEPT_PLC_BACKUPS`). It renames each one out
-  of the listing before it deletes it. It deletes only once the whole backup or restore succeeded. If one
-  fails, `src/plc` stays as it was and no backup is deleted. Nothing refuses a save or a backup because of
-  this.
+  of the listing before it deletes it. It deletes a backup only after the whole backup or restore has
+  succeeded. If the backup or restore fails, `src/plc` stays as it was and no backup is deleted. Nothing
+  refuses a save or a backup because of this.
 - `clicknick-cli restore` takes the newest backup, and `restore <time>` takes an older one. It copies the chosen
   backup aside. Then it backs up `src/plc` if that differs from both the last generation and the chosen
   backup, and it replaces `src/plc`. Its pruning keeps the restored backup, so six may be kept until the next
@@ -60,7 +59,7 @@ database, and generates the workspace again.
 - A build, backup or restore that succeeds leaves the edits that `src/plc` held as the newest backup. A
   restore leaves them in `src/plc`, as the backup that it restored. A tree that was once in a backup, or that
   was in `src/plc` with edits when a build, backup or restore began, can be deleted only after 5 newer backups
-  are kept. `tests/AGENTS.md` names the test that checks these rules.
+  are kept. `tests/test_backup_oracle.py` checks these rules.
 
 ## The workspace lock
 

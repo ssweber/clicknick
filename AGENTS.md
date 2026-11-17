@@ -1,7 +1,7 @@
 # ClickNick Agent Guidance
 
 **IMPORTANT: Do not use `cd` before commands. The working directory is already the project root.**
-**IMPORTANT: Use `make` to install, lint, test and build. Never run `uv run pytest` or `uv sync` directly, because they drop the sibling installs.**
+**IMPORTANT: Use `make` to install, lint, test and build. While the sibling checkouts are installed (`make install-dev`), run `make lint UV_NO_SYNC=1` and `make test UV_NO_SYNC=1`, and never a bare `make` or `make install`. Those re-sync and put the released packages back.**
 
 ## Writing
 
@@ -11,9 +11,12 @@ Prose in this repo follows the `writing` skill in the bob plugin (`/bob:writing`
 
 ## Rules
 
-- Run the tests with `make test`. Never run `uv run pytest`.
+- Run the tests with `make test`. Never run `uv run pytest` directly.
 - Everything that looks for SC_.mdb, Address.csv, Project.ini, Scr*.tmp or the DataView folder goes through
   `utils/click_temp.py` (`click_temp_dir`), from the connected window's hwnd.
+- Views never own a `DapService`.
+- Never call `ClickNickApp._refresh_ui()` by hand. `src/clicknick/CONNECTION.md` says what refreshes the main
+  window.
 - Before you change code in a folder, read the files that the table at the end of this file names for it.
 
 `tests/test_store_boundaries.py` enforces rules 2, 3 and 5. For rule 5 it checks that nothing outside the store
@@ -59,11 +62,15 @@ Address Editor's File > Import from CSV merges a CSV into the loaded data.
 make install                    # uv sync --locked --all-extras --dev
 make                            # install, lint and test
 make lint                       # ruff check --fix, then ruff format (devtools/lint.py)
-make test                       # pytest --quiet --tb=short
+make test                       # uv run pytest --quiet --tb=short
 make build                      # uv build: the sdist and the wheel, into dist/
 uv run clicknick                # run the app
 uv tool install --editable .    # install as an editable local tool
 ```
+
+`UV_NO_SYNC=1` keeps `uv run` from syncing the environment to `uv.lock` first. Without it, the `uv run` inside
+`make lint` and `make test` syncs and puts the released pyclickplc, pyrung and laddercodec back in place of the
+sibling checkouts. `uv run clicknick` re-syncs the same way unless `UV_NO_SYNC=1` is set.
 
 `make lint` changes files. It runs `devtools/lint.py` on `src`, `tests` and `devtools`. `devtools/lint.py
 --check` runs the read-only forms (`ruff check`, `ruff format --check`).
@@ -121,12 +128,14 @@ touches.
 
 | Before you change code in | Read |
 |---|---|
-| `src/clicknick/` (the files at the top) | `src/clicknick/SIMULATION.md` for `simulation_session.py`. `src/clicknick/CONNECTION.md` for the others. For `connection_session.py`, also `src/clicknick/services/AGENTS.md` (analysis builds). For the redraw in `connection_controller.py`, also `src/clicknick/data/AGENTS.md` (Sync). |
+| `src/clicknick/` (the files at the top) | `src/clicknick/CONNECTION.md` for every file except `simulation_session.py` (the main window and the connection). `src/clicknick/SIMULATION.md` for `simulation_session.py`, `app.py` and `connection_session.py` (the simulation, and what starts and stops it). `src/clicknick/services/AGENTS.md` for `connection_session.py` (analysis builds). `src/clicknick/data/AGENTS.md` for `connection_controller.py` (the redraw after a Sync). |
 | `src/clicknick/data/`, `src/clicknick/models/` | `src/clicknick/data/AGENTS.md`. For `data/cdv_file.py`, also `src/clicknick/CONNECTION.md` (CLICK's temp folder). |
-| `src/clicknick/services/` | `src/clicknick/services/AGENTS.md` (analysis, backups, the workspace lock). `src/clicknick/data/AGENTS.md` for `block_service.py` and `click_redraw.py`. `src/clicknick/views/AGENTS.md` for `rung_diff.py`, `click_snapshot.py` and `nickname_staging.py`. `src/clicknick/SIMULATION.md` for `dap_service.py`, `sim_state.py`, `program_carry.py` and `link_annotation.py`. |
-| `src/clicknick/views/` | `src/clicknick/views/AGENTS.md` (Review Changes). `src/clicknick/data/AGENTS.md` for `address_editor/`, which edits through the store. `src/clicknick/SIMULATION.md` for `simulator_window.py`, `console_panel.py` and `dataview_editor/`. `src/clicknick/CONNECTION.md` (Rules, CLICK's temp folder) for the DataView folder that `dataview_editor/` uses. |
-| `src/clicknick/live/` | `src/clicknick/services/AGENTS.md` (`clicknick-cli` backup, restore and `rung apply`). `src/clicknick/views/AGENTS.md` for `rung apply`. |
+| `src/clicknick/services/` | `src/clicknick/services/AGENTS.md` (analysis, backups, the workspace lock). `src/clicknick/data/AGENTS.md` for `block_service.py` and `click_redraw.py` (cascades, the redraw after a Sync). `src/clicknick/data/AGENTS.md` for `nickname_staging.py`, `comment_upgrade_service.py`, `system_nickname_service.py`, `row_service.py` and `import_service.py` (they open or receive an edit session). `src/clicknick/views/AGENTS.md` for `rung_diff.py`, `click_snapshot.py` and `nickname_staging.py` (Review Changes). `src/clicknick/SIMULATION.md` for `dap_service.py`, `sim_state.py`, `program_carry.py`, `link_annotation.py`, `console_completer.py`, `sim_hardware.py` and `physical_response.py` (the simulation). |
+| `src/clicknick/views/` | `src/clicknick/views/AGENTS.md` (Review Changes). `src/clicknick/data/AGENTS.md` for `address_editor/` and `simulator_window.py` (they open edit sessions). `src/clicknick/SIMULATION.md` for `simulator_window.py`, `console_panel.py`, `sim_link_dialog.py`, `sim_palette.py` and `dataview_editor/` (the simulation). `src/clicknick/CONNECTION.md` for `dataview_editor/` (its DataView folder) and `overlay.py` (the autocomplete popup). |
+| `src/clicknick/live/` | `src/clicknick/services/AGENTS.md` (`clicknick-cli` backup, restore and `rung apply`). `src/clicknick/views/AGENTS.md` for `rung apply`. `src/clicknick/data/AGENTS.md` for `dispatch.py` and `tag_commands.py` (they open edit sessions). |
 | `src/clicknick/utils/` | `src/clicknick/CONNECTION.md` for `click_temp.py`. |
 | `src/clicknick/ladder/` | `src/clicknick/ladder/AGENTS.md`. |
+| `src/clicknick/widgets/` | `src/clicknick/SIMULATION.md` for `console_input.py` (the Console). `src/clicknick/CONNECTION.md` for `nickname_combobox.py` (the autocomplete popup). Only this file for the others. |
+| `src/clicknick/detection/` | `src/clicknick/CONNECTION.md` for `window_detector.py` (the list of CLICK windows). Only this file for the others. |
+| `src/clicknick/resources/` | Only this file. |
 | `tests/` | `tests/AGENTS.md`, and the file for the code that the test covers. |
-| `src/clicknick/widgets/`, `detection/`, `resources/` | Only this file. |

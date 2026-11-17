@@ -13,9 +13,10 @@ and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`).
 
 ## Main window refresh
 
-- `ClickNickApp._refresh_ui()` recomputes the window title and the Workspace details. It also sets the Test
-  group's legend and its Start/Stop label. It enables or disables Tools > Redraw Nicknames in CLICK and the
-  system nickname entry of the Repairs menu.
+- `ClickNickApp._refresh_ui()` recomputes the window title, the project name and the Workspace details. It
+  also sets the Test group's legend and its Start/Stop label. It enables or disables Tools > Redraw Nicknames
+  in CLICK and the system nickname entry of the Repairs menu. It updates the label and state of each Open
+  Workspace menu entry (`WorkspaceController.refresh_menu_states`).
 - Assigning `_data` or `_session` (`_ShownState` attributes) schedules one refresh for when Tk is idle.
   Requests made before it runs merge into it.
 - These also call `_request_ui_refresh()`: the `ConnectionSession` events (sync count, analysis progress,

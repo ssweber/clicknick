@@ -16,8 +16,8 @@ The store keeps three layers:
 3. The visible layer (`visible_state`) is the base with the overrides applied. The store computes it.
 
 The base rows and the user's overrides are the inputs. One method, `AddressStore._derive()`, computes
-everything else. That is the visible rows, validation, the dirty fields, the nickname index and the block
-colors. It computes them in one fixed order after every change. A change is an edit, an undo, a redo, a
+everything else. These are the visible rows, the validation, the dirty fields, the nickname index and the
+block colors. It computes them in one fixed order after every change. A change is an edit, an undo, a redo, a
 Discard, a save or an external reload.
 
 When the database refreshes, the store updates the base layer and keeps the user's overrides.
@@ -52,13 +52,16 @@ is in its row's override.
 `AddressStore._apply_cascades` runs the cascades when a session commits.
 
 - A Retentive change mirrors across the T/TD or CT/CTD pair.
-- A row's block tag can change. The store judges that by the old tag against the new tag, not by the
-  comment text. Then `_apply_cascades` updates the matching open or close tag and the `_D` tags of the pairs.
-  `BlockService.matching_tag_comment` and `BlockService.pair_tag_comment` return the new comments, and
-  `_apply_cascades` writes them. They rename the tags in place or remove them. If the pair has no tag and the
-  tag was added or renamed, they append one to the pair.
-- When a tag's colour or kind changes, `pair_tag_comment` gives the pair's tag the new colour or kind too.
-  `matching_tag_comment` leaves the matching open or close tag as it is.
+- A row's block tag can change. The store compares the old tag with the new tag. A change elsewhere in the
+  comment does not count. When the tag changes, `_apply_cascades` updates the matching open or close tag, and
+  the T/TD or CT/CTD pair of each row whose tag changed. On TD and CTD the block name ends in `_D`.
+  `BlockService.matching_tag_comment` and `BlockService.pair_tag_comment` return each new comment, and
+  `_apply_cascades` writes it. If the tag was renamed, the new comments rename those tags in place. If the tag
+  was deleted, the new comments remove those tags. If the pair has no tag and the tag was added or renamed,
+  `pair_tag_comment` appends the new tag to the pair.
+- If only a tag's color or kind changes, `matching_tag_comment` leaves the matching open or close tag as it is.
+  `pair_tag_comment` writes the new color and kind into the pair's tag. `matching_tag_comment` never changes
+  the color or kind of the matching tag. It only renames or removes it.
 - `_apply_cascades` records which fields the caller set before any cascade runs. A cascade never writes one
   of those fields.
 
@@ -70,11 +73,11 @@ changed rows in the shared unified view. The store logs any exception that an ob
 
 ## Sync
 
-`save_all_changes` writes the edits. With no edits it returns at once. It raises when the data source is
-read-only. When there are edits and any row has a reportable validation error, it writes nothing and raises
-`RuntimeError`. This holds for every caller. For the database, it first reads SC_.mdb, because CLICK writes
-that file while it is connected. So the rows that it writes hold CLICK's current values in the fields that the
-user did not change.
+`save_all_changes` writes the edits. It raises `RuntimeError` when the data source is read-only. Otherwise,
+with no edits, it returns at once. When there are edits and any row has a reportable validation error, it
+writes nothing and raises `RuntimeError`. This holds for every caller. For the database, it first reads
+SC_.mdb, because CLICK writes that file while it is connected. So the rows that it writes hold CLICK's current
+values in the fields that the user did not change.
 
 CLICK's ladder paints nicknames from a table that TagDB.dll keeps in memory. CLICK shows the names from a
 Sync only after that table reloads, and no window message reloads it. `services/click_redraw.py` forces the

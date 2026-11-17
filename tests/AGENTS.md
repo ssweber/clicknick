@@ -20,9 +20,10 @@ The tests live in `tests/`, with `tests/ladder/`. pytest's `testpaths` lists `sr
   test checks that the layer-write detector catches each form of write.
 - `test_data_session.py` tests the window lifecycle and the save prompts when data is closed or replaced.
 - `test_mutable_row_builder.py` tests the builder and its `changes()` output.
-- `test_address_model.py` covers address keys, nickname, comment and initial-value validation, the data type
-  constants, the `AddressRow` class and the block tag helpers. The `AddressRow` tests cover the frozen
-  dataclass, `replace` making a new row, the Initial Value and Retentive rules, and the derived properties.
+- `test_address_model.py` covers address keys, the address range of each memory type, nickname, comment and
+  initial-value validation, the data type constants, the `AddressRow` class and the block tag helpers. The
+  `AddressRow` tests cover the frozen dataclass, `replace` making a new row, the Initial Value and Retentive
+  rules, and the derived properties.
 
 ## Service tests
 

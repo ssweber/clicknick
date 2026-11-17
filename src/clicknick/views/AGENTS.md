@@ -14,8 +14,8 @@ stages them in the store instead.
 
 - Review Changes is the one window for getting ladder into CLICK. **Ladder > Compare with > Folder** opens it
   on any folder of ladder CSVs. The Workspace's **Review Changes** and `clicknick-cli rung apply` open it on the
-  workspace's `csv_output/`. The workspace is the pyrung project that ClickNick generates from the connected
-  CLICK project. The app keeps one window per folder, and it reloads the window when the folder is shown again.
+  workspace's `csv_output/`. The app keeps one window per folder, and it reloads the window when the folder is
+  shown again.
 - The window is not modal, because the Address Editor's Sync is part of the same workflow.
 
 ## Where the proposal comes from

@@ -10,9 +10,8 @@ Dataview Editor's link to the simulation.
 ## Rules
 
 - Add no new structured DAP request for a panel change. See "Commands".
-- Views never own a `DapService`.
-- Key desired state by CLICK address. It never holds a tag name. Desired state is what the user chose for the
-  simulation: the switches, the forces and the bench links.
+- Desired state is what the user chose for the simulation: the switches, the forces and the bench links. Key
+  it by CLICK address. It never holds a tag name.
 
 ## Who owns it
 
@@ -62,8 +61,9 @@ refusals rely on that split.
 - pyrung reports tag names. ClickNick maps them with the names of the program that the simulation runs
   (`_tag_maps`). Those are the workspace's `project_tag_to_addr_key`, which the session takes at launch and at
   each write. So a rename in CLICK does not move desired state until that program is written.
-- When the session loads its saved settings, `load_state` skips each force or bench link whose key is not a
-  CLICK address and lists it. The session reports each one as an error.
+- When the session loads its saved settings, `load_state` skips and lists each force whose key is not a CLICK
+  address, and each bench link whose key is not an address or whose value does not parse. The session reports
+  each one as an error.
 
 ## Writing a changed program
 
@@ -81,10 +81,10 @@ The workspace is the pyrung project that ClickNick generates from the connected 
 - A Console `reload` writes for the current mode. The Console pane refuses `autoreload`.
 - An agent on `pyrung live` can still reload, or change forces and links while a write runs.
 - A build that fails is a notice, and the old program keeps running.
-- When a build finishes for the program that the simulation already runs, no write is offered. A Sync or Reload
-  from CLICK that leaves the program as it was does this. The program is the same when its tag names, `src/plc`
-  and `run.py` are the ones that the session read at the launch or the write (`PlcSourceWatch.same`). A file
-  that could not be read at either time proves nothing.
+- When a build finishes for the program that the simulation already runs, no write is offered. This happens
+  after a Sync, or a Reload from CLICK, that leaves the program as it was. The program is the same when its tag
+  names, `src/plc` and `run.py` are the ones that the session read at the launch or the write
+  (`PlcSourceWatch.same`). A file that could not be read at either time proves nothing.
 - The watch tick and each frame compare a build once (`_examine_build`). `program_change` only reads the result.
   It offers nothing for a build that has not been compared yet.
 - One check says whether the workspace's program can run (`_workspace_problem`). It needs a conversion that
