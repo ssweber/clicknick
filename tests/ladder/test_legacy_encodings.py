@@ -179,7 +179,7 @@ def test_cli_save_lists_rungs_to_paste_again(monkeypatch, scr: Path, written, ca
     main()
 
     out = capsys.readouterr().out
-    assert "An older ClickNick pasted these rungs into CLICK in an old encoding" in out
+    assert "CLICK holds these rungs in an old encoding" in out
     assert f"  Main Program rung 12, Math H70000: {DETAIL}" in out
 
 
