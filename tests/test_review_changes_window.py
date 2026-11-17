@@ -531,8 +531,9 @@ def test_a_failed_clipboard_copy_says_what_failed_and_how_to_try_again(monkeypat
     result = SimpleNamespace(payload=b"", rung_count=1, addresses_inserted=0, mdb_error=None)
 
     def _fail(*_a, **_k):
-        raise RuntimeError("EmptyClipboard failed")
+        raise RuntimeError(failed)
 
+    failed = "Could not copy the rungs to the clipboard. The Windows call GlobalAlloc failed."
     monkeypatch.setattr(f"{MODULE}.prepare_rungs_load", lambda *_a, **_k: result)
     monkeypatch.setattr(f"{MODULE}.copy_to_clipboard", _fail)
     monkeypatch.setattr(f"{MODULE}.is_click_v4", lambda _hwnd: True)
@@ -540,10 +541,7 @@ def test_a_failed_clipboard_copy_says_what_failed_and_how_to_try_again(monkeypat
 
     assert window._copy_rungs(0, None) is False
 
-    assert _status(window) == (
-        "Could not copy the rungs to the clipboard: EmptyClipboard failed\n"
-        "To try again, click its row"
-    )
+    assert _status(window) == f"{failed}\nTo try again, click its row"
 
 
 def test_changed_program_is_stepped_through_by_runs_of_differing_rungs(monkeypatch, copies) -> None:

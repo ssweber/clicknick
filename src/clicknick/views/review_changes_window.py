@@ -1889,9 +1889,8 @@ class ReviewChangesWindow(tk.Toplevel):
             )
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
         except RuntimeError as exc:
-            self._status_var.set(
-                f"Could not copy the rungs to the clipboard: {exc}\nTo try again, click its row"
-            )
+            # Only ladder/clipboard.py raises RuntimeError here, and its errors name what failed
+            self._status_var.set(f"{exc}\nTo try again, click its row")
             return False
         except Exception as exc:
             self._status_var.set(f"Could not copy {name}: {exc}")
