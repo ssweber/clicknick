@@ -87,8 +87,8 @@ class AboutDialog:
             "Nickname autocomplete and project-aware editing\n"
             "Static program checks and offline simulation\n"
             "Persistent workspaces with reviewed ladder changes\n\n"
-            "CLICK stays CLICK: proposed changes are reviewed and only become\n"
-            "part of the project when you save them in CLICK."
+            "CLICK stays CLICK. You review proposed changes, and they become\n"
+            "part of the project only when you save them in CLICK."
         )
         ttk.Label(main_frame, text=desc_text, justify=tk.CENTER).pack(pady=(0, 15))
 

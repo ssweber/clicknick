@@ -88,7 +88,7 @@ class NewDataviewDialog(tk.Toplevel):
         # Info label
         info_label = ttk.Label(
             main_frame,
-            text="Max 24 characters, special characters not allowed.",
+            text="Use up to 24 characters. No special characters.",
             font=("TkDefaultFont", 9),
             foreground="gray",
         )
