@@ -73,13 +73,13 @@ def test_repair_command_is_noop_when_values_are_current():
 
 
 @pytest.mark.parametrize(("is_database", "save"), [(True, "Sync"), (False, "Save")])
-def test_repair_command_names_the_menu_entry_that_writes_the_data_loaded(is_database, save):
+def test_repair_command_says_sync_or_save_for_the_data_loaded(is_database, save):
     # The Address Editor syncs CLICK's database and saves a CSV file.
     store = _store_with_stale_vendor_names(is_database=is_database)
 
     result = dispatch(DispatchContext(store=store), "tag repair-system-nicknames")
 
     assert result.splitlines()[-2:] == [
-        f"Review them in the Address Editor under Changed, then use File > {save} All.",
+        f"Review them in the Address Editor under Changed, then {save} them.",
         f"[4 tags staged | Next: {save} tags in ClickNick]",
     ]

@@ -126,7 +126,7 @@ def test_cli_upgrade_project_stages_and_opens_changed():
         f"X001: {ENCODER!r} -> '[link=Run, flasher_on=8ms, flasher_off=8ms] Encoder'",
         "DF2: ClickNick cannot upgrade this comment."
         " Fix it by hand: no upgrade reads profile=approach:toward=180",
-        "Review them in the Address Editor under Changed, then use File > Sync All.",
+        "Review them in the Address Editor under Changed, then Sync them.",
     ]
     assert opened == ["changed"]
 

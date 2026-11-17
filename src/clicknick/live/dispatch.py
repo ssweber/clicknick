@@ -388,7 +388,7 @@ workspace:
                                          (a backup taken again takes a new name)
 
 analysis:
-  check                               -> lint src/plc (Tools > Check Program rules)
+  check                               -> lint src/plc with the rules that Tools > Check Program uses
 
 tags:
   tag show <tag>
@@ -419,8 +419,8 @@ workflow:
 def save_command(store: AddressStore) -> str:
     """Return the Address Editor's word for writing *store*'s edits: "Sync" or "Save".
 
-    The editor syncs to CLICK's database and saves to a CSV file. Its File menu entry is
-    "Sync All" or "Save All".
+    The editor syncs edits to CLICK's database and saves them to a CSV file. The labels of its
+    menu entries vary with how the editor was opened, so a message names only the verb.
     """
     return "Sync" if store.is_database else "Save"
 
@@ -482,8 +482,8 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
             return "no pending changes"
         save = save_command(ctx.store)
         if ctx.store.has_errors():
-            # The errors may be in rows that have no unsaved edit. Sync still refuses them.
-            bad = sum(row.has_reportable_error for row in ctx.store.visible_state.values())
+            # Sync writes nothing while any row has an error, even a row that has no unsaved edit.
+            bad = ctx.store.get_total_error_count()
             raise ValueError(
                 f"The Address Editor shows errors in {_rows(bad)}. {save} writes nothing"
                 " while any row has an error. Fix those rows first."
@@ -494,7 +494,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
             ctx.show_save_prompt(
                 "Unsaved Changes",
                 f"{_rows(count)} in the Address Editor {'has' if count == 1 else 'have'}"
-                f" unsaved edits.\n\nUse File > {save} All there to write them to {target}.",
+                f" unsaved edits.\n\n{save} them there to write them to {target}.",
             )
         return f"prompted: {_rows(count)} with unsaved edits"
 

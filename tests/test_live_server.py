@@ -69,17 +69,17 @@ def _prompt(store: AddressStore) -> tuple[str, list[str]]:
 
 
 @pytest.mark.parametrize(
-    ("source", "entry"),
+    ("source", "advice"),
     [
-        (MockDataSource(), "Use File > Sync All there to write them to CLICK's database."),
-        (CsvSource(), "Use File > Save All there to write them to the CSV file."),
+        (MockDataSource(), "Sync them there to write them to CLICK's database."),
+        (CsvSource(), "Save them there to write them to the CSV file."),
     ],
 )
-def test_prompt_save_names_the_menu_entry_for_the_data_loaded(source, entry):
+def test_prompt_save_says_sync_or_save_for_the_data_loaded(source, advice):
     reply, shown = _prompt(_edited_store(source))
 
     assert reply == "prompted: 1 row with unsaved edits"
-    assert shown == [f"1 row in the Address Editor has unsaved edits.\n\n{entry}"]
+    assert shown == [f"1 row in the Address Editor has unsaved edits.\n\n{advice}"]
 
 
 def test_prompt_save_does_not_blame_the_edits_for_errors_in_other_rows():

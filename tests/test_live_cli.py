@@ -270,7 +270,8 @@ def test_a_session_option_after_the_command_is_refused(monkeypatch, capsys, argv
     ],
 )
 def test_list_does_not_call_a_missing_workspace_building(monkeypatch, capsys, sessions, expected):
-    # A session has no workspace file until a build publishes, and also after one fails.
+    # A session has no workspace file until ClickNick builds the workspace, or when a build
+    # fails before it writes one.
     monkeypatch.setattr(cli, "find_sessions", lambda: sessions)
     monkeypatch.setattr(cli, "workspace_for_port_file", lambda _port_file: None)
     monkeypatch.setattr(sys, "argv", ["clicknick-cli", "list"])

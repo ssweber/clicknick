@@ -72,7 +72,7 @@ def _apply_meta(
 
 def _review(store: AddressStore) -> str:
     """Return the line that tells the user where to review staged edits and how to write them."""
-    return f"Review them in the Address Editor under Changed, then use File > {save_command(store)} All."
+    return f"Review them in the Address Editor under Changed, then {save_command(store)} them."
 
 
 def _cmd_show(ctx: DispatchContext, parts: list[str]) -> str:
