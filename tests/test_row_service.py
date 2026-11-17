@@ -341,7 +341,7 @@ def _tag_block(store, keys, name="Blk"):
 
 
 def _interleaved(*span):
-    """Display-order keys of a T/TD selection from span[0] to span[1], as (type, number)."""
+    """Return the display-order keys of a T/TD selection from span[0] to span[1]."""
     order = [(m, n) for n in range(1, 20) for m in ("T", "TD")]
     return [get_addr_key(m, n) for m, n in order[order.index(span[0]) : order.index(span[1]) + 1]]
 

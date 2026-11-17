@@ -11,12 +11,12 @@ from clicknick.models.validation import (
 
 
 def _format_only(nickname: str) -> tuple[bool, str]:
-    """The format rules alone, through validate_nickname with no duplicates."""
+    """Check only the format rules, by calling validate_nickname with no duplicates."""
     return validate_nickname(nickname, 0, lambda _nickname, _addr_key: False)
 
 
 class TestValidateNicknameFormat:
-    """The format rules validate_nickname takes from pyclickplc."""
+    """The format rules that validate_nickname gets from pyclickplc."""
 
     def test_empty_is_valid(self):
         """Empty nickname is valid (means unassigned)."""

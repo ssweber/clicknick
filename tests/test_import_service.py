@@ -73,7 +73,7 @@ class TestDetectBlocks:
 
 @pytest.fixture
 def nested_rows() -> list[AddressRow]:
-    """<Motors> C1-C6 holds <Pump> C3-C5."""
+    """Return rows where the <Motors> block, C1-C6, contains the <Pump> block, C3-C5."""
     return [
         mk(1, "M1", "<Motors>"),
         mk(2, "M2"),
