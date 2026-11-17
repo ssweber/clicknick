@@ -58,7 +58,7 @@ On the real machine, an output often comes back as an input. A valve coil drives
 
 To make one, drag from an output's label to an input, or from an input to an output. You can also right-click the input and choose **Link to the tag that drives it...**. The input then shows a chip with its driver in place of a switch, and the chip counts down while the delay runs. The **Wiring** menu lists the links. You can turn them off or discard them there.
 
-If a tag's comment declares a link, the Simulator shows it as a program link with a blue chip. A bench link has a purple chip. Right-click an input that has a program link to change the link on the bench, or to cut it and simulate a failed sensor. **Save link to project** on a bench link writes the link into the input's comment, so it becomes part of the program. Sync in the Address Editor. After the next build, the Simulator drops the bench copy.
+If a tag's comment declares a link, the Simulator shows it as a program link with a blue chip. A bench link has a purple chip. Right-click an input that has a program link to change the link on the bench, or to cut it and simulate a failed sensor. **Save link to project** on a bench link writes the link into the input's comment, so it becomes part of the program. Sync in the Address Editor. When the Simulator loads the program from that Sync, the program declares the link, and the Simulator drops the bench copy.
 
 ### PLC data file
 

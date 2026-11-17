@@ -8,6 +8,10 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- The Address Editor no longer has **File > Refresh**. It only discarded your unsaved edits. It did not read CLICK's database or the CSV file again. To discard your edits, use **File > Discard Changes**.
+
 ### Changed
 
 - The tag annotation dialog and `clicknick-cli tag set-flag` no longer have a `lock` flag.
@@ -16,7 +20,6 @@
 - ClickNick no longer accepts an address with a stray `u`, such as `DS1u`, or with a digit character other than 0-9. It used to read these as `DS1`. CLICK rejects them too.
 - ClickNick no longer loads a nickname CSV that has the wrong Data Type for an address, or a row with more cells than the header. `TXT` now counts as a wrong Data Type, because CLICK writes `TEXT`. The error message gives the line number.
 - The Workspace setup window now closes when you close the CLICK window it belongs to. It already closed when that CLICK window opened another project.
-- The Address Editor no longer has **File > Refresh**. It only discarded your unsaved edits. It did not read CLICK's database or the CSV file again. To discard your edits, use **File > Discard Changes**.
 - A Sync or Save in the Address Editor no longer shows a box when it succeeds. The editor's status line says how many rows it wrote, such as "Synced 3 rows".
 - The Dataview Editor is now called the **Data View Editor**, and every title, menu and message writes **Data View** the way CLICK does.
 - About 90 messages, tooltips and help texts are reworded in shorter sentences. They say the same things as before. If a script of yours matches on ClickNick's message text, check it.
@@ -40,9 +43,10 @@
 - The tooltip of **start** in the Add Block dialog no longer says that the start is 0-based. pyrung starts a block at 1, or at 0 when the block's first address is numbered 0, and the tooltip now says so.
 - In the Address Editor, Replace All no longer adds "No matches found" after it has said that the search text is not a valid regular expression.
 - The Address Editor's footer now counts the errors only in the rows that the filter shows, the same as its other counts. The status bar below it counts the changed rows and the errors in all rows.
-- Review Changes no longer says that CLICK's New Subroutine window has no name box when ClickNick only failed to type the name into it. The notice after the workspace's CSVs are gone no longer says that CLICK was saved, because a Reload from CLICK rebuilds the workspace too.
+- Review Changes no longer says that CLICK's New Subroutine window has no name box when ClickNick only failed to type the name into it.
+- When the workspace's CSVs are gone, the notice in Review Changes no longer says that CLICK was saved. It says that ClickNick rebuilt the workspace from CLICK's last save, and that the save does not hold every change from the window. The notice also shows after **Reload from CLICK**.
 - The Address Editor's export option is now called **Export all rows**. It said "entire database", but it exports the rows that the editor holds, which can come from a CSV file and include unsaved edits.
-- The tooltip of the Simulator's **Wiring** button now says what a bench link is: wiring that you add in the Simulator and that the program does not declare. ClickNick saves it and applies it each time the simulation starts.
+- The tooltip of the Simulator's **Wiring** button now says what a bench link is: wiring that you add in the Simulator and that the program does not declare. ClickNick saves it and, while **Apply bench links** is on, applies it each time the simulation starts.
 
 ## v0.24.1 - 2026-11-15
 
