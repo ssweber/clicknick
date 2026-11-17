@@ -39,15 +39,15 @@ windll.shcore.SetProcessDpiAwareness(1)
 
 _MATCH_MODES = ("none", "prefix", "contains", "containsplus")
 _MATCH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
-# The popup lists this many legacy-encoded rungs by name and counts the rest
+# The popup names this many legacy-encoded rungs and only counts the rest
 _LEGACY_LISTED = 10
 
 
 class _ShownState[T]:
-    """App attribute the main window displays: assigning it schedules one UI refresh.
+    """Mark an App attribute that the main window displays. Assigning it schedules one UI refresh.
 
-    The value lives in the instance ``__dict__`` under the same name; as a data
-    descriptor this still takes precedence on lookup.
+    The value lives in the instance ``__dict__`` under the same name. This class is a data
+    descriptor, so it still takes precedence when Python looks the attribute up.
     """
 
     @overload
@@ -83,22 +83,22 @@ def get_version():
 class ClickNickApp:
     """Main application for the ClickNick App."""
 
-    # Everything the window title and Workspace details are computed from;
-    # changing any of these refreshes them (see _refresh_ui).
+    # The window title and the Workspace details are computed from these attributes.
+    # Changing any of them refreshes both (see _refresh_ui).
     _data: _ShownState[DataSession | None] = _ShownState()
     _session: _ShownState[ConnectionSession | None] = _ShownState()
 
     @property
     def _click(self) -> ClickConnection | None:
-        """The connected CLICK window, as its session holds it (None when none is)."""
+        """Return the connected CLICK window from its session, or None when none is connected."""
         session = self._session
         return session.click if session is not None else None
 
     def _project_session(self) -> ConnectionSession | None:
-        """The session once ClickNick has read CLICK's database for it, else None.
+        """Return the session once ClickNick has read CLICK's database for it, else None.
 
-        Building the workspace, simulating, Review Changes and Workspace setup
-        wait for that: until then they ask the user to connect first.
+        Building the workspace, simulating, Review Changes and Workspace setup all need that
+        session. Until it exists, they ask the user to connect first.
         """
         session = self._session
         return session if session is not None and session.has_database else None
@@ -133,7 +133,7 @@ class ClickNickApp:
         return title
 
     def _simulation_summary(self) -> tuple[str, str]:
-        """The Test group's legend and its simulation button's label."""
+        """Return the Test group's legend and its simulation button's label."""
         session = self._session
         simulation = session.simulation if session is not None else None
         if simulation is None or not simulation.enabled:
@@ -141,7 +141,7 @@ class ClickNickApp:
         return f"Test - Sim {simulation.summary_text}", "Stop"
 
     def _click_filename(self) -> str:
-        """The connected CLICK window's project filename ("" when none is connected)."""
+        """Return the connected CLICK window's project filename ("" when none is connected)."""
         return self._click.filename if self._click else ""
 
     def _refresh_ui(self) -> None:
@@ -225,12 +225,11 @@ class ClickNickApp:
         self._refresh_ui()
 
     def _request_ui_refresh(self) -> None:
-        """Schedule one _refresh_ui for when Tk is idle; repeated requests coalesce.
+        """Schedule one _refresh_ui for when Tk is idle. Repeated requests merge into one.
 
-        Assigning any _ShownState attribute requests this, so
-        a code path that changes what the window shows needs no refresh call.
-        Other inputs (sync count, analysis progress, staged rungs) are
-        ConnectionSession events, and their handlers request it.
+        Assigning any _ShownState attribute makes this request, so code that changes what the
+        window shows needs no refresh call. The other inputs (sync count, analysis progress,
+        staged rungs) are ConnectionSession events, and their handlers make the request.
         """
         if self._ui_refresh_id is None:
             self._ui_refresh_id = self.root.after_idle(self._run_requested_ui_refresh)
@@ -487,9 +486,9 @@ class ClickNickApp:
     def _simulation_for_window(self, title: str, purpose: str):
         """Check the project can be simulated and return its SimulationSession.
 
-        For the Simulator and the Test group's Start button: the project must be saved,
-        and a conversion that already failed will not fix itself by opening
-        a window -- say so up front rather than showing an inert one.
+        The Simulator and the Test group's Start button call this. The project must be saved.
+        A conversion that already failed will not fix itself when a window opens, so this
+        says so up front instead of showing a window that does nothing.
         """
         session = self._project_session()
         if session is None:
@@ -527,7 +526,7 @@ class ClickNickApp:
         return simulation
 
     def _toggle_simulation(self) -> None:
-        """The Test group's Start/Stop: the only control (besides teardown) that stops it."""
+        """Start or stop the simulation. Only this control and teardown stop it."""
         session = self._session
         simulation = session.simulation if session is not None else None
         if simulation is not None and simulation.enabled:
@@ -539,18 +538,19 @@ class ClickNickApp:
 
     @property
     def _csv_path(self) -> str | None:
-        """The file the loaded CSV data comes from (None for database data or none)."""
+        """Return the file the loaded CSV data comes from (None for database data or no data)."""
         data = self._data
         if data is None or data.store.is_database:
             return None
         return data.store._data_source.file_path
 
     def _dataview_folder(self) -> Path | None:
-        """The DataView folder the Dataview Editor shows: the connected CLICK window's.
+        """Return the DataView folder that the Dataview Editor shows.
 
-        With no window connected, the loaded CSV's folder, unless that is a CLICK
-        temp folder or gone; otherwise none. Never another ``CLICK (hwnd)`` folder:
-        that one holds another project's .cdv files.
+        That is the connected CLICK window's folder. With no window connected, it is the
+        loaded CSV's folder, unless that folder is a CLICK temp folder or is gone. In that
+        case it returns None. It never returns another ``CLICK (hwnd)`` folder, because that
+        one holds another project's .cdv files.
         """
         from .data.cdv_file import click_dataview_folder, csv_dataview_folder
 
@@ -560,10 +560,10 @@ class ClickNickApp:
         return csv_dataview_folder(csv_path) if csv_path else None
 
     def _open_dataview_editor(self):
-        """Open the Dataview Editor window, or focus if already open.
+        """Open the Dataview Editor window, or focus it if it is already open.
 
-        The dataview editor allows creating and editing CLICK DataView files (.cdv).
-        Only one DataviewEditorWindow can be open at a time.
+        The Dataview Editor creates and edits CLICK DataView files (.cdv). Only one
+        DataviewEditorWindow can be open at a time.
         """
         data = self._data
         if data is None:
@@ -644,10 +644,10 @@ class ClickNickApp:
                 self._start_analysis_build()
 
     def _on_database_synced(self, _addr_keys: set[int]) -> None:
-        """A Sync wrote nicknames into CLICK's database: CLICK redraws them (issue #36).
+        """Tell CLICK to redraw the nicknames that a Sync wrote into its database (issue #36).
 
-        Every Sync goes through ``AddressStore.save_all_changes``, which calls this:
-        the Address Editor's Sync and Sync and Close, and Yes to a save prompt.
+        Every Sync goes through ``AddressStore.save_all_changes``, which calls this. That
+        covers the Address Editor's Sync and Sync and Close, and Yes to a save prompt.
         """
         if self._click is not None:
             self._connection.redraw_nicknames(after_sync=True)
@@ -836,7 +836,7 @@ class ClickNickApp:
             messagebox.showerror("Check Settings", str(exc), parent=parent)
 
     def _analyze_program(self) -> None:
-        """Run program validation and display a report that can be refreshed in place."""
+        """Run program validation and show a report that you can refresh in place."""
         from .views.analysis_report_window import AnalysisReportWindow
 
         data = self._run_program_checks()
@@ -887,8 +887,8 @@ class ClickNickApp:
 
         test = ttk.LabelFrame(actions, padding=10)
         # Like Workspace: the legend carries the state, with its control beside it.
-        # The simulation runs headless until stopped here (or the project closes);
-        # closing the Simulator leaves it running.
+        # The simulation runs headless until you stop it here or the project closes.
+        # Closing the Simulator leaves it running.
         test_header = ttk.Frame(test)
         ttk.Label(test_header, textvariable=self.test_group_title_var).pack(side=tk.LEFT)
         test_header_spacer = ttk.Frame(test_header, width=1, height=1)
@@ -1215,7 +1215,7 @@ class ClickNickApp:
         )
 
     def _load_ladder_csv(self):
-        """Load a single ladder CSV file to the clipboard, for the connected CLICK window."""
+        """Load a single ladder CSV file onto the clipboard, for the connected CLICK window."""
         click = self._click
         if click is None:
             # What is copied depends on the CLICK it goes into, and its version
@@ -1326,14 +1326,14 @@ class ClickNickApp:
         source: ProposalSource | None = None,
         refresh_source: Callable[[], None] | None = None,
     ) -> None:
-        """Show *folder* in Review Changes: one window per folder, reloaded when shown again.
+        """Show *folder* in Review Changes. There is one window per folder.
 
-        Review Changes (``rung apply``) passes the workspace source the folder
-        was exported from, and may name a program to start on and the rungs of
-        it to paste. With *create* off, only a window already showing the folder
-        is brought up to date. *source* says where the folder comes from: the
-        workspace or the folder itself unless given; *refresh_source* copies it
-        again from there.
+        Showing a folder again reloads its window. Review Changes (``rung apply``) passes the
+        workspace source that the folder was exported from. It may also name a program to
+        start on and the rungs of that program to paste. With *create* off, this only brings
+        up to date a window that already shows the folder. *source* says where the folder
+        comes from. If you do not give it, the source is the workspace or the folder itself.
+        *refresh_source* copies the folder again from that source.
         """
         from .views.review_changes_window import ProposalSource, ReviewChangesWindow
 
@@ -1385,8 +1385,8 @@ class ClickNickApp:
     def _compare_with_click_window(self, hwnd: int, filename: str) -> None:
         """Compare CLICK's program with what another CLICK window last saved.
 
-        Its save and nicknames are copied to a ClickNick folder, which Review
-        Changes shows as a copy of another PLC; Refresh copies them again, as
+        ClickNick copies that window's save and nicknames to a ClickNick folder. Review
+        Changes shows the folder as a copy of another PLC. Refresh copies them again, as
         long as that window still has the same project open.
         """
         from .services.click_snapshot import snapshot_click_program, snapshot_dir
@@ -1436,7 +1436,7 @@ class ClickNickApp:
         )
 
     def _fill_other_click_menu(self, menu: tk.Menu) -> None:
-        """List the CLICK windows other than the connected one, to compare with."""
+        """List the CLICK windows other than the connected one, so you can compare with them."""
         menu.delete(0, tk.END)
         connected = self._click.hwnd if self._click else None
         others = [
@@ -1696,7 +1696,7 @@ class ClickNickApp:
 
     def _remove_stale_compare_copies(self, open_hwnds: set[int]) -> None:
         """Delete the copies (``_compare_with_click_window``) of CLICK windows not in
-        *open_hwnds*, except one an open Review Changes window shows."""
+        *open_hwnds*. Keep a copy that an open Review Changes window shows."""
         from .services.click_snapshot import remove_stale_snapshots
 
         shown = [
@@ -1708,7 +1708,7 @@ class ClickNickApp:
 
     @property
     def using_database(self) -> bool:
-        """True when the loaded data is CLICK's project database (derived, never stored)."""
+        """Return True when the loaded data is CLICK's project database (derived, never stored)."""
         return self._data is not None and self._data.store.is_database
 
     def _open_data(
@@ -1716,10 +1716,10 @@ class ClickNickApp:
     ) -> bool:
         """Make *store* the current data, closing the previous data first.
 
-        The previous data's windows are closed after offering to save unsaved
-        edits. Returns False (and leaves the previous data in place) if the
-        user cancels. Also False, with *store* not opened, when *still_wanted*
-        says after that prompt that it is no longer wanted.
+        This offers to save unsaved edits, then closes the previous data's windows. If the
+        user cancels, it returns False and leaves the previous data in place. It also
+        returns False, without opening *store*, when *still_wanted* says after that prompt
+        that the store is no longer wanted.
         """
         from .data_session import DataSession
 
@@ -1738,7 +1738,7 @@ class ClickNickApp:
         return True
 
     def _close_data(self, *, prompt_save: bool) -> bool:
-        """Close the current data and its windows. Returns False if the user cancels."""
+        """Close the current data and its windows. Return False if the user cancels."""
         if self._data is not None:
             if prompt_save:
                 if not self._data.close(self.root, prompt_save=True):
@@ -1763,10 +1763,10 @@ class ClickNickApp:
     def _report_legacy_encodings(self) -> None:
         """Say once which rungs CLICK holds in an old encoding or ClickNick cannot read.
 
-        An old encoding's text matches, so nothing else would show that CLICK
-        runs it differently, and Review Changes pastes it again. The workspace
-        holds an empty rung for each rung it cannot read, so those must come
-        from the user's own copy. So must a program whose CSV laddercodec cannot read.
+        The text of a rung in an old encoding matches, so nothing else would show that CLICK
+        runs it differently, and Review Changes pastes it again. The workspace holds an
+        empty rung for each rung it cannot read, so the user must supply those from their
+        own copy. The same goes for a program whose CSV laddercodec cannot read.
         """
         from .ladder.program import describe_legacy_encoding
 
@@ -1815,7 +1815,7 @@ class ClickNickApp:
             self._workspace.review_changes()
 
     def _on_build_finished(self) -> None:
-        """Show the build's result. Runs on the build worker's thread."""
+        """Show the build's result. This runs on the build worker's thread."""
         try:
             self.root.after(0, self._request_ui_refresh)
             self.root.after(0, self._report_legacy_encodings)

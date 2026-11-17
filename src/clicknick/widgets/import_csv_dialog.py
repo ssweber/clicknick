@@ -58,9 +58,9 @@ class BlockGroup:
 def detect_blocks_in_csv(rows: list[AddressRow]) -> list[BlockGroup]:
     """Detect block groups in CSV rows using proper block range detection.
 
-    Every row belongs to exactly one group: the innermost block that holds it,
-    or "Untagged". A row of a nested block is imported with that block's
-    options, and not at all when that block is unticked.
+    Every row belongs to exactly one group. That group is the innermost block that holds the
+    row, or "Untagged". A row of a nested block is imported with that block's options. If
+    you untick that block, its rows are not imported at all.
 
     Args:
         rows: List of AddressRow objects from CSV
@@ -68,7 +68,8 @@ def detect_blocks_in_csv(rows: list[AddressRow]) -> list[BlockGroup]:
     Returns:
         List of BlockGroup objects (blocks + untagged)
     """
-    # Sorted by start, so a block nested in another comes after it and takes its rows
+    # The ranges are sorted by start, so a block nested in another comes after it and takes
+    # its rows.
     block_ranges: list[BlockRange] = compute_all_block_ranges(rows)
     owner: dict[int, int] = {}
     for range_idx, block_range in enumerate(block_ranges):
@@ -115,22 +116,22 @@ COMMENT_OPTIONS = ["Overwrite", "Append", "Block Tag", "Skip"]
 # Initial value and retentive are imported together - see ImportService._apply_first_scan
 FIRST_SCAN_OPTIONS = ["Overwrite", "Merge", "Skip"]
 
-# Each merge option: its sheet column, choices, default, and the fields it imports
+# Each merge option maps to its sheet column, its choices, its default and the fields it imports
 _OPTIONS = {
     "nickname": (COL_NICKNAME, NICKNAME_OPTIONS, "Overwrite", ("nickname",)),
     "comment": (COL_COMMENT, COMMENT_OPTIONS, "Overwrite", ("comment",)),
     "first_scan": (COL_FIRST_SCAN, FIRST_SCAN_OPTIONS, "Merge", ("initial_value", "retentive")),
 }
 
-# Shown, and not editable, for an option whose column the CSV does not have
+# The dialog shows this text, not editable, for an option whose column the CSV does not have
 NOT_IN_FILE = "Skip (not in file)"
 
 
 def options_not_in_file(fields: frozenset[str]) -> set[str]:
-    """The merge options the CSV has no column for (its ``CsvDataSource.fields``).
+    """Return the merge options that the CSV has no column for (see ``CsvDataSource.fields``).
 
-    Importing one would set every row's field to its default: a missing
-    Address Comment column would clear every comment.
+    Importing such an option would set every row's field to its default. For example, a
+    missing Address Comment column would clear every comment.
     """
     return {
         option
@@ -160,7 +161,8 @@ class ImportCsvDialog(tk.Toplevel):
         for row_idx in range(len(self.all_blocks)):
             self.sheet.create_index_checkbox(r=row_idx, checked=True)
 
-        # Dropdowns for merge option columns; an option the file has no column for is fixed
+        # Add dropdowns for the merge option columns. An option that the file has no column
+        # for is fixed.
         for option, (column, choices, default, _needs) in _OPTIONS.items():
             letter = num2alpha(column)
             if option in missing:
@@ -180,7 +182,7 @@ class ImportCsvDialog(tk.Toplevel):
 
         try:
             # Load CSV using CsvDataSource
-            # Only Address is needed: a file of comments alone imports its comments
+            # Only Address is required. A file of comments alone imports its comments.
             csv_source = CsvDataSource(str(self.csv_path), required=("Address",))
             address_dict = csv_source.load_all_addresses()
             self.fields = csv_source.fields

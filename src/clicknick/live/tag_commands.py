@@ -370,8 +370,8 @@ def _load_export_rows(project_dir):
     the tags.py on disk (with edits). Diffing the two exports cancels every
     systematic round-trip artifact (``[external]`` inference, bank-default
     retentive/initial on unnamed slots, hex padding, system addresses), leaving
-    only the agent's genuine edits. The baseline uses the analog input channels
-    recorded in csv/ when the workspace was generated: pyrung marks them ``external``.
+    only the agent's genuine edits. The baseline uses the analog input channels that were
+    recorded in csv/ when the workspace was generated. pyrung marks them ``external``.
     """
     import tempfile
     from pathlib import Path
@@ -401,7 +401,7 @@ def _load_export_rows(project_dir):
 
 
 def _merge_meta(visible: TagMeta, base: TagMeta, cur: TagMeta) -> TagMeta:
-    """Take each annotation key tags.py changed; keep the others as the store holds them."""
+    """Take each annotation key that tags.py changed. Keep the others as the store holds them."""
     changed = {
         f.name: getattr(cur, f.name)
         for f in fields(TagMeta)
@@ -411,11 +411,11 @@ def _merge_meta(visible: TagMeta, base: TagMeta, cur: TagMeta) -> TagMeta:
 
 
 def _merge_comment(display_address: str, visible: str, base: str, cur: str) -> str:
-    """Carry what tags.py changed in a comment into the comment the store holds.
+    """Carry what tags.py changed in a comment into the comment that the store holds.
 
-    tags.py holds only part of a comment (generated code leaves out the block tag
-    and the text), so the comment is split into block tag, annotations and text,
-    and only the parts that differ between the two exports are taken.
+    tags.py holds only part of a comment, because generated code leaves out the block tag
+    and the text. So this splits the comment into block tag, annotations and text. It takes
+    only the parts that differ between the two exports.
     """
     decompose = AnnotationService.decompose_comment
     visible_block, visible_meta, visible_text = decompose(visible)
@@ -443,9 +443,9 @@ def _compute_tag_changes(base_rows, cur_rows, store) -> list[tuple[int, str, str
     brand-new tag on a previously-empty slot; it's compared against a synthesized
     default (using ``is_default_initial_value`` + ``DEFAULT_RETENTIVE``) so only
     genuinely-set fields count. A changed comment is merged into the store's
-    comment part by part (``_merge_comment``). (Removals — a nickname dropped from
-    tags.py — are not cleared: this is the additive add/annotate flow, not a full
-    replace.)
+    comment part by part (``_merge_comment``). This function does not clear removals, such
+    as a nickname dropped from tags.py. It serves the additive add/annotate flow, not a
+    full replace.
     """
     from pyclickplc.banks import DEFAULT_RETENTIVE
 
