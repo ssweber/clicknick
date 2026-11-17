@@ -14,7 +14,7 @@ For encoder/codec work, **work in the laddercodec repo** (`../laddercodec`).
 
 `laddercodec` is pinned exactly in `pyproject.toml` and `uv.lock` for releases. Updating the sibling checkout does not update ClickNick's installed codec. After publishing a new laddercodec release, update the pin and lockfile together, sync the environment, and run the ClickNick checks before releasing.
 
-For temporary local codec development, an editable install can be used with `UV_NO_SYNC=1`; keep release metadata pinned to the published package.
+For temporary local codec development, you can use an editable install with `UV_NO_SYNC=1`. Keep the release metadata pinned to the published package.
 
 ## CLI usage
 
@@ -43,7 +43,7 @@ Progress is tracked in `verify_progress.log` in the folder. Re-running resumes a
 
 ### MDB integration
 
-Auto-detects the running Click project's SC_.mdb and ensures operand addresses exist before pasting (required for contacts/coils).
+The CLI detects the running Click project's SC_.mdb by itself. Before it pastes, it makes sure the operand addresses exist. Contacts and coils require this.
 
 ## Shell hygiene
 

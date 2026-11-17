@@ -18,7 +18,7 @@ check `/plugins` before dispatching builders.
   Arc docs live there too, outside the repo. One arc doc: fold rulings and leftovers into it,
   not side notes.
 - The roadmap is `scratchpad/roadmap.md`. Its "Open user checks" section collects what only
-  Sam can check in CLICK; add to it, don't repeat the list in chat.
+  Sam can check in CLICK. Add to it. Don't repeat the list in chat.
 - The main checkout may hold Sam's uncommitted `pyproject.toml`/`uv.lock` and untracked
   `*.bin`/`*.csv` in the repo root: leave them alone.
 
@@ -29,17 +29,17 @@ check `/plugins` before dispatching builders.
   `make install install-dev SIBLINGS=C:/Users/Sam/Documents/GitHub`. After that every
   `make lint`, `make test` and `uv run` runs with `UV_NO_SYNC=1`, or uv re-syncs and drops the
   local checkouts.
-- A branch that needs an unreleased sibling is tested locally and merges only after that
-  sibling's release; its pull request says so and stays open until then.
-- Never a bare `make`: it runs `make install`, whose `uv sync` drops the local checkouts. Run
-  `make lint UV_NO_SYNC=1` and `timeout 900 make test UV_NO_SYNC=1` (the hook wraps `make` in a
-  600 s timeout unless a leading `timeout N` says otherwise; the suite can pass that under
-  load). With no queue, nothing but this rule refuses a bare `make`.
-- `make` commands, not bare `uv run pytest` for the suite; targeted pytest is fine. No `cd`
-  before commands in the main checkout. No multi-line content inlined in shell commands
-  (heredocs, `python -c`): write a file with Write, then run it.
-- Write files with LF line endings (`.gitattributes` says `eol=lf`; some working-tree files
-  are CRLF, so normalise before matching text in them).
+- Test a branch that needs an unreleased sibling locally. It merges only after that sibling's
+  release. Its pull request says so and stays open until then.
+- Never run a bare `make`. It runs `make install`, whose `uv sync` drops the local checkouts. Run
+  `make lint UV_NO_SYNC=1` and `timeout 900 make test UV_NO_SYNC=1`. The hook wraps `make` in a
+  600 s timeout unless a leading `timeout N` says otherwise, and the suite can pass 600 s under
+  load. With no queue, nothing but this rule refuses a bare `make`.
+- Use `make` commands for the suite, not a bare `uv run pytest`. Targeted pytest is fine. Do not
+  put `cd` before commands in the main checkout. Do not inline multi-line content in shell
+  commands (heredocs, `python -c`). Write a file with Write, then run it.
+- Write files with LF line endings. `.gitattributes` says `eol=lf`, but some working-tree files
+  are CRLF, so normalise them before you match text in them.
 
 ## Local gate
 
@@ -50,49 +50,53 @@ last).
 
 ## Correctness contract (put in every builder and reviewer brief)
 
-- AGENTS.md is the contract: the three-layer store (base, overrides, visible) with one
-  `_derive`; only `AddressStore` writes its layers; every edit goes through `edit_session()`
-  and commits all or nothing; views are passive observers that refresh the changed keys;
-  `services/` and `data/` never import tkinter (`tests/test_store_boundaries.py`); one home per
-  fact (`ClickNickApp._data`, `_click`); no compatibility shims.
+- AGENTS.md is the contract. It requires:
+  - the three-layer store (base, overrides, visible) with one `_derive`;
+  - only `AddressStore` writes its layers;
+  - every edit goes through `edit_session()` and commits all or nothing;
+  - views are passive observers that refresh the changed keys;
+  - `services/` and `data/` never import tkinter (`tests/test_store_boundaries.py`);
+  - one home per fact (`ClickNickApp._data`, `_click`);
+  - no compatibility shims.
 - Ground truth is what CLICK Programming Software (v2.60-v4.00) writes, reads and shows: its
   SC_.mdb, Scr*.tmp saves, .cdv files, the clipboard. Never edit a recorded expectation to fit
   the code.
-- Agents never touch Sam's real CLICK: no keystrokes or clicks into a CLICK window, no
-  reading or writing a live project's temp folder or SC_.mdb, no launching ClickNick against it.
+- Agents never touch Sam's real CLICK. Do not send keystrokes or clicks into a CLICK window. Do
+  not read or write a live project's temp folder or SC_.mdb. Do not launch ClickNick against it.
   Tests and probes use fixtures, temp copies and fakes. Questions only CLICK can answer go to
   the roadmap's "Open user checks".
 - A bug fix comes with a regression test that fails on the base and passes on the branch, at the
   lowest layer that shows it (service or store over a Tk view).
 - CHANGELOG (Unreleased) moves with what a user sees, in every pull request. Docs (`docs/`,
-  `docs/help/`) move only where what a user does changes. Prose is plain and direct, in the
-  tone of AGENTS.md and the CHANGELOG.
+  `docs/help/`) move only where what a user does changes.
+- Prose follows the Writing section of AGENTS.md.
 
 ## Models
 
-- Builders: Opus at `effort: high` for the store (`address_store.py`, `edit_session.py`,
+- Builders: use Opus at `effort: high` for the store (`address_store.py`, `edit_session.py`,
   `_derive`, undo), database backends and writes (`utils/mdb*`, Jet worker), Review Changes and
-  rung diff, simulation session/DAP; Sonnet for one view's behaviour, tests-only or docs-only.
-- Reviewers: Opus for the store, database writes, Review Changes and concurrency; Sonnet for a
-  single view, tests, docs, CI and workflow changes.
-- Read-only code questions: `bob:bob-investigator`, Sonnet. A bug sweep of a component (it may
-  run targeted tests and bounded probes) goes to `bob:bob-reviewer` with the component instead
-  of a branch.
+  rung diff, and simulation session/DAP. Use Sonnet for one view's behaviour, and for tests-only
+  or docs-only work.
+- Reviewers: use Opus for the store, database writes, Review Changes and concurrency. Use Sonnet
+  for a single view, tests, docs, CI and workflow changes.
+- Read-only code questions go to `bob:bob-investigator`, on Sonnet. Send a bug sweep of a
+  component to `bob:bob-reviewer` with the component instead of a branch. The sweep may run
+  targeted tests and bounded probes.
 
 ## Machine budget
 
-- Up to ~5 builders in parallel; sweep reviewers are read-only and may run more. Only
+- Run up to ~5 builders in parallel. Sweep reviewers are read-only and may run more. Only
   `targeted_slots` (3) bounded runs go at once.
-- GitHub Actions jobs are shared with the other repos (pyrung, laddercodec, pyclickplc): a
-  check that sits queued is usually waiting for a runner, not failing.
+- GitHub Actions jobs are shared with the other repos (pyrung, laddercodec, pyclickplc). A
+  check that sits queued is usually waiting for a runner. It is not failing.
 - Read a command's exit code directly, never through a pipe without `pipefail`.
 
 ## Ground truth
 
 Sam runs CLICK and can check a database write, a pasted rung or a Dataview in it. Collect
-those checks in the roadmap's "Open user checks"; a pull request that needs one stays open.
+those checks in the roadmap's "Open user checks". A pull request that needs one stays open.
 
 ## Gotcha
 
-Agent `isolation: worktree` may fail here (cwd `documents` vs git `Documents` case mismatch):
-always use `R worktree new` and brief the builder with the path.
+Agent `isolation: worktree` may fail here, because the cwd says `documents` and git says
+`Documents`. Always use `R worktree new`, and give the builder the path in its brief.
