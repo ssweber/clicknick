@@ -456,8 +456,8 @@ class ConnectionController:
         CLICK's Save As keeps the window's temp folder, its database and its DataView
         folder. Opening another project in the same window does the same. ClickNick cannot
         tell the two apart, so the user answers. The question covers address edits on
-        database data, text in a cell that will not commit, and Dataview edits. Dataview
-        edits count on CSV data too, because the Dataview Editor shows the window's
+        database data, text in a cell that will not commit, and Data View edits. Data View
+        edits count on CSV data too, because the Data View Editor shows the window's
         DataView folder. CSV address edits belong to the CSV file, so the question does
         not cover them. Nothing is saved here. Return False if nothing is unsaved.
         """
@@ -515,11 +515,11 @@ class ConnectionController:
     def _handle_project_change(self, current_title: str, new_filename: str) -> None:
         """Follow the connected CLICK window to another project.
 
-        The user decides whether unsaved address edits on database data, and Dataview edits,
+        The user decides whether unsaved address edits on database data, and Data View edits,
         are kept for the new project or discarded (``_keeps_edits_for``). If they are kept,
         the data and its windows stay open, and the store's file monitor reads the base from
         the database that the window now holds. Otherwise database data closes with nothing
-        saved, and the new project's database is loaded. CSV data stays loaded. A Dataview
+        saved, and the new project's database is loaded. CSV data stays loaded. A Data View
         Editor that stays open lists its folder again if the edits were kept. Otherwise it
         is opened again on the window's DataView folder (``_reopen_dataview_editor``).
         Monitoring stays as it was.

@@ -580,7 +580,7 @@ class ClickNickApp:
         return data.store._data_source.file_path
 
     def _dataview_folder(self) -> Path | None:
-        """Return the DataView folder that the Dataview Editor shows.
+        """Return the DataView folder that the Data View Editor shows.
 
         That is the connected CLICK window's folder. With no window connected, it is the
         loaded CSV's folder, unless that folder is a CLICK temp folder or is gone. In that
@@ -595,9 +595,9 @@ class ClickNickApp:
         return csv_dataview_folder(csv_path) if csv_path else None
 
     def _open_dataview_editor(self):
-        """Open the Dataview Editor window, or focus it if it is already open.
+        """Open the Data View Editor window, or focus it if it is already open.
 
-        The Dataview Editor creates and edits CLICK DataView files (.cdv). Only one
+        The Data View Editor creates and edits CLICK DataView files (.cdv). Only one
         DataviewEditorWindow can be open at a time.
         """
         data = self._data
@@ -954,7 +954,7 @@ class ClickNickApp:
         bind_tooltip(
             simulation_button,
             "Start or stop the simulated PLC. It keeps running after the\n"
-            "Simulator closes, so a Data View or HMI can stay connected.",
+            "Simulator closes, so the Data View Editor or an HMI can stay connected.",
         )
         test.configure(labelwidget=test_header)
         ttk.Button(
@@ -1931,7 +1931,7 @@ class ClickNickApp:
 
     def on_closing(self):
         """Close ClickNick (window X, File > Exit), after offering to save unsaved
-        Address Editor and Dataview edits. Cancel, or a failed save, keeps it open."""
+        Address Editor and Data View edits. Cancel, or a failed save, keeps it open."""
         if not self._close_data(prompt_save=True):
             return
         self._connection.cancel_monitoring_status()
