@@ -171,6 +171,7 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
     app._request_ui_refresh = MagicMock()
     variable_names = (
         "workspace_status_var",
+        "workspace_detail_var",
         "workspace_group_title_var",
         "project_name_var",
         "mirror_status_var",
@@ -231,6 +232,16 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
     app.test_group_title_var.set.assert_called_once_with("Test - Sim off")
     app.workspace_config_path_var.set.assert_called_once_with(str(project))
     app.repairs_menu.entryconfigure.assert_called_once_with(0, state="normal")
+    app.workspace_detail_var.set.assert_called_once_with("")
+
+    # A failed build shows its reason under the workspace status
+    workspace.status.return_value = WorkspaceStatus(
+        WorkspaceState.FAILED, "Could not build the workspace", detail="TypeError: bad rung"
+    )
+    app._refresh_ui()
+
+    app.workspace_detail_var.set.assert_called_with("TypeError: bad rung")
+    app.workspace_group_title_var.set.assert_called_with("Workspace - Could not build the workspace")
 
 
 def test_changing_shown_state_schedules_one_idle_refresh() -> None:

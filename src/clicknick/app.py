@@ -190,6 +190,7 @@ class ClickNickApp:
 
         workspace = self._workspace.status()
         self.workspace_status_var.set(workspace.label)
+        self.workspace_detail_var.set(workspace.detail or "")
         self.workspace_group_title_var.set(f"Workspace - {workspace.label}")
         self.project_name_var.set(self._click.filename if self._click else "Not connected")
         repairs_menu = getattr(self, "repairs_menu", None)
@@ -265,6 +266,8 @@ class ClickNickApp:
             match_index = 2
         self.match_mode_index_var = tk.DoubleVar(value=float(match_index))
         self.workspace_status_var = tk.StringVar(value="Unavailable")
+        # Why the workspace status is what it is, such as the reason a build failed
+        self.workspace_detail_var = tk.StringVar(value="")
         self.workspace_group_title_var = tk.StringVar(value="Workspace - Unavailable")
         self.project_name_var = tk.StringVar(value="Not connected")
         self.mirror_status_var = tk.StringVar(value="Not configured")
@@ -1008,6 +1011,13 @@ class ClickNickApp:
 
         mirror = ttk.LabelFrame(parent, text="Workspace", padding=8)
         self._details_value(mirror, "Workspace status", self.workspace_status_var)
+        ttk.Label(
+            mirror,
+            textvariable=self.workspace_detail_var,
+            style="Error.TLabel",
+            wraplength=440,
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, fill=tk.X)
         self._details_value(mirror, "Workspace type", self.mirror_status_var)
         self._details_value(mirror, "Workspace folder", self.mirror_path_var)
         mirror_detail_label = ttk.Label(
@@ -1035,7 +1045,7 @@ class ClickNickApp:
                 self._project_info_window = None
 
         window = tk.Toplevel(self.root)
-        window.title("About Click Project")
+        window.title("About CLICK Project")
         window.transient(self.root)
         window.minsize(520, 0)
         window.protocol("WM_DELETE_WINDOW", self._close_project_info_window)
@@ -1569,7 +1579,7 @@ class ClickNickApp:
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(
-            label="About Click Project...",
+            label="About CLICK Project...",
             command=self._open_project_info_window,
         )
         help_menu.add_command(label="About ClickNick...", command=self._create_about_dialog)

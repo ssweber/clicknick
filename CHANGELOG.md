@@ -49,6 +49,7 @@
 - The tooltip of the Simulator's **Wiring** button now says what a bench link is: wiring that you add in the Simulator and that the program does not declare. ClickNick saves it and, while **Apply bench links** is on, applies it each time the simulation starts.
 - The Workspace commands and the Simulator no longer tell you to connect to a CLICK project when a CLICK window is already connected. While ClickNick reads CLICK's database, they ask you to try again when it has finished. If ClickNick did not load the database, they tell you to select the window in the CLICK Windows list. If you cancel the Name PLC prompt in Workspace setup, ClickNick no longer shows a message.
 - **Tools > Repairs > Clean MDB** and **Verify MDB & CDV** now work only on CLICK's database. When the nicknames come from a CSV file, they tell you to load the database from the CLICK window. Clean MDB used to report an error loading the CSV file as an MDB, and Verify counted the CSV rows as database addresses.
+- When ClickNick cannot build the workspace, the Workspace group now says **Could not build the workspace**, and **Help > About CLICK Project** shows the reason. It used to say "Analysis failed" or "Build failed", and the choice depended only on whether an older workspace folder existed.
 
 ## v0.24.1 - 2026-11-15
 

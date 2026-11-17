@@ -487,7 +487,10 @@ class ConnectionSession:
             return SavedProgram(self, generation, saves, csv_dir=csv_dir, note="")
         if status is AnalysisStatus.FAILED:
             return SavedProgram(
-                self, generation, saves, note="Could not read CLICK's program. See the main window."
+                self,
+                generation,
+                saves,
+                note="Could not build the workspace. Help > About CLICK Project shows why.",
             )
         return SavedProgram(self, generation, saves, note=reading)
 

@@ -60,7 +60,7 @@ def test_workspace_status_covers_unavailable_preparing_and_failure() -> None:
 
     failed = get_workspace_status(_analysis(AnalysisStatus.FAILED, error="conversion broke"))
     assert failed.state is WorkspaceState.FAILED
-    assert failed.label == "Build failed"
+    assert failed.label == "Could not build the workspace"
     assert failed.detail == "conversion broke"
 
     repairable = get_workspace_status(
@@ -98,7 +98,7 @@ def test_generated_workspace_opens_after_analysis_failure(tmp_path: Path) -> Non
     project = _clean_workspace(tmp_path)
     analysis = _analysis(AnalysisStatus.FAILED, project, error="reset needs a condition")
     status = get_workspace_status(analysis)
-    assert status.label == "Analysis failed"
+    assert status.label == "Could not build the workspace"
     assert status.detail == "reset needs a condition"
 
     workspace = WorkspaceController(
@@ -535,7 +535,7 @@ def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
     session.analysis.generation = 4
     failed = session.saved_program()
     assert failed.csv_dir is None
-    assert "main window" in failed.note
+    assert failed.note == "Could not build the workspace. Help > About CLICK Project shows why."
 
 
 @pytest.mark.parametrize("first_fails", [False, True])
@@ -703,7 +703,7 @@ def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(
         session.analysis.build(tmp_path, None, persist_dir=project)
     failed = session.saved_program()
     assert failed.csv_dir is None
-    assert "main window" in failed.note
+    assert failed.note == "Could not build the workspace. Help > About CLICK Project shows why."
 
     # If the build fails after it generated the workspace, Review Changes still compares
     # with this save.
