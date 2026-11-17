@@ -131,5 +131,5 @@ def resolve_address(label: str | None = None) -> tuple[str, int]:
         raise FileNotFoundError("No active ClickNick session found")
     if len(sessions) > 1:
         labels = ", ".join(lbl for lbl, _, _ in sessions)
-        raise LookupError(f"Multiple sessions active ({labels}); pick one with --session")
+        raise LookupError(f"Multiple sessions are active ({labels}). Pick one with --session.")
     return ("localhost", sessions[0][1])
