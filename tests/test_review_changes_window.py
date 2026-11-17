@@ -1003,8 +1003,8 @@ def test_pane_shows_the_current_rows_difference_and_scrolls_to_its_step(monkeypa
 
     assert _inserted(window) == [
         (
-            "pyrung could not show this program as text;"
-            " each rung is listed by its instructions.\n",
+            "pyrung could not show this program as text."
+            " Each rung is listed by its instructions.\n",
             "note",
         ),
         ("--- CLICK/main.csv\n", "file_header"),
@@ -1056,7 +1056,7 @@ def test_pane_explains_rows_with_nothing_to_show(monkeypatch) -> None:
     assert _shown("subroutines/a.csv") == "subroutines/a.csv matches CLICK's last save."
     assert _shown("subroutines/b.csv") == (
         "subroutines/b.csv could not be read: bad row 3\n"
-        "It is left out: CLICK keeps what it has of it."
+        "It is left out. CLICK keeps what it has of it."
     )
     window._nickname_rows = {}
     assert "Connect to the CLICK project" in _shown("nicknames.csv")
@@ -1078,7 +1078,7 @@ def test_pane_says_why_pyrung_could_not_convert_the_folder(monkeypatch) -> None:
 
     assert note == (
         "pyrung could not convert the rungs from bundle, so they are listed by their "
-        f"instructions: {_PYRUNG_REFUSES}"
+        f"instructions. The error was: {_PYRUNG_REFUSES}"
     )
     assert diff.lines
 
@@ -1516,7 +1516,7 @@ def test_folder_emptied_by_a_click_save_keeps_what_was_read(tmp_path: Path, copi
     notice = window._notice_lbl.configure.call_args.kwargs["text"]
     assert "still holds the proposal exported at" in notice
     assert "clicknick-cli restore" in notice
-    assert "(clicknick-cli restore list for older ones)" in notice
+    assert "For older backups, run clicknick-cli restore list" in notice
     window._notice_lbl.pack.assert_called()
 
 
@@ -1791,7 +1791,7 @@ def test_a_difference_cannot_be_skipped_once_its_step_is_done(monkeypatch, copie
     window._toggle("main.csv", 0)
 
     assert window._skipped_in("main.csv") == 0
-    assert "pasted into CLICK already" in _status(window)
+    assert "already pasted into CLICK" in _status(window)
     window._take_chk.configure.assert_called_with(state="disabled")
     assert _detail(window) == "Pasted"
 
@@ -1913,8 +1913,8 @@ def test_skipped_workspace_edits_are_warned_of(monkeypatch, tmp_path: Path) -> N
 
     notice = window._notice_lbl.configure.call_args.kwargs["text"]
     assert notice.startswith("1 skipped difference is an edit in the workspace source.")
-    assert "kept only in backup/src/plc" in notice
-    assert "kept only in backup/src/plc (clicknick-cli restore list for older ones)" in notice
+    assert "stay only in backup/src/plc" in notice
+    assert "For older backups, run clicknick-cli restore list." in notice
     assert window._pasted_message().endswith(
         "(skipped edits are in backup/src/plc; clicknick-cli restore list for older ones)"
     )
@@ -2050,7 +2050,7 @@ def test_a_program_only_in_click_that_cannot_be_read_is_one_to_delete(monkeypatc
     note = window._describe_view()[0]
     assert note.splitlines()[0] == (
         "CLICK's copy cannot be read. "
-        "This folder does not have the program; it is to be deleted in CLICK."
+        "This folder does not have the program. It will be deleted in CLICK."
     )
     assert "Paste" not in note
 
@@ -2058,7 +2058,7 @@ def test_a_program_only_in_click_that_cannot_be_read_is_one_to_delete(monkeypatc
 
     assert window._describe_view()[0].splitlines()[0] == (
         "CLICK's copy cannot be read. "
-        "This folder does not have the program; CLICK keeps it as it is."
+        "This folder does not have the program. CLICK keeps it as it is."
     )
 
 
@@ -2289,7 +2289,7 @@ def test_a_new_export_that_changes_a_pasted_rung_copies_the_program_whole(
     assert _action(window) == "Copy"
     status = _status(window)
     assert "select all of its rungs (Shift+Up/Down) and delete them, then paste" in status
-    assert "so its changed rungs cannot be numbered: it is copied whole" in status
+    assert "so its changed rungs cannot be numbered and it is copied whole" in status
     window._on_action()
     assert copies[-1] == (tuple(edited), 1)
     window._on_action()  # Next
@@ -2627,7 +2627,7 @@ def test_a_program_with_no_rungs_like_clicks_says_it_is_up_to_date(monkeypatch, 
 
     window._select_row(MAIN)
 
-    assert "main.csv already matches CLICK's last save: neither has rungs" in _status(window)
+    assert "main.csv already matches CLICK's last save. Neither has rungs" in _status(window)
     assert _action(window) == "Next →"
 
 
