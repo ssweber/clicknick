@@ -97,9 +97,9 @@ class NicknameManager:
     def nicknames(self) -> list[Nickname]:
         """Get cached Nickname list, rebuilt on demand.
 
-        Order is derived from settings at build time: alphabetical when
-        sort_by_nickname is on, otherwise address order. Any store change
-        rebuilds the list, so the order can never drift from the setting.
+        The list is in alphabetical order when sort_by_nickname is on, and in address order
+        otherwise. The order is set when the list is built. Any store change rebuilds the
+        list, so the order never drifts from the setting.
         """
         if self._nickname_cache is None:
             nicknames = self._build_nickname_cache()
@@ -119,7 +119,10 @@ class NicknameManager:
         return len(self.nicknames) > 0
 
     def _find(self, nickname: str, address_types: list[str] | None) -> Nickname | None:
-        """The first row with this nickname, among the given address types when set."""
+        """Return the first row with this nickname.
+
+        If *address_types* is set, only rows of those types count.
+        """
         for nickname_obj in self.nicknames:
             if nickname_obj.nickname != nickname:
                 continue
@@ -197,8 +200,8 @@ class NicknameManager:
             if any(excluded_term in nickname_lower for excluded_term in excluded_terms):
                 continue
 
-            # A repeated nickname (during unsaved edits) is listed once: picking
-            # it inserts the first row's address, so the first is the one shown
+            # List a repeated nickname (during unsaved edits) once. Picking it inserts the
+            # first row's address, so the first row is the one shown.
             if nickname_obj.nickname in seen:
                 continue
             seen.add(nickname_obj.nickname)
