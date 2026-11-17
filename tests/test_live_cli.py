@@ -17,6 +17,7 @@ class MockDataSource:
     supports_used_field = True
     file_path = "test.mdb"
     is_read_only = False
+    is_database = True
 
     def load_all_addresses(self):
         return {}
@@ -247,3 +248,34 @@ def test_a_session_option_after_the_command_is_refused(monkeypatch, capsys, argv
     assert exited.value.code == 2
     assert sent == []
     assert "put -s/--session before the command" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("sessions", "expected"),
+    [
+        ([], "Found no running ClickNick. Start ClickNick and try again.\n"),
+        (
+            [("Line1", 5000, "port1")],
+            "Active session: Line1\n"
+            "Workspace:      none yet\n"
+            "Usage: clicknick-cli <command>  (e.g. clicknick-cli get ExampleTag)\n",
+        ),
+        (
+            [("Line1", 5000, "port1"), ("Line2", 5001, "port2")],
+            "Active sessions:\n"
+            "  Line1  (no workspace yet)\n"
+            "  Line2  (no workspace yet)\n"
+            "Usage: clicknick-cli -s <session> <command>\n",
+        ),
+    ],
+)
+def test_list_does_not_call_a_missing_workspace_building(monkeypatch, capsys, sessions, expected):
+    # A session has no workspace file until ClickNick builds the workspace, or when a build
+    # fails before it writes one.
+    monkeypatch.setattr(cli, "find_sessions", lambda: sessions)
+    monkeypatch.setattr(cli, "workspace_for_port_file", lambda _port_file: None)
+    monkeypatch.setattr(sys, "argv", ["clicknick-cli", "list"])
+
+    cli.main()
+
+    assert capsys.readouterr().out == expected

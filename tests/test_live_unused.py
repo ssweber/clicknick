@@ -13,6 +13,7 @@ class MockDataSource:
     supports_used_field = True
     file_path = "test.mdb"
     is_read_only = False
+    is_database = True
 
     def __init__(self, initial_rows=None):
         self._initial_rows = initial_rows or {}

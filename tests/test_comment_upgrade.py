@@ -26,6 +26,7 @@ class MockDataSource:
     supports_used_field = True
     file_path = "test.mdb"
     is_read_only = False
+    is_database = True
 
     def __init__(self, rows):
         self.rows = rows
@@ -123,8 +124,9 @@ def test_cli_upgrade_project_stages_and_opens_changed():
     assert result.splitlines()[:4] == [
         "OK: 1 comment upgrade staged",
         f"X001: {ENCODER!r} -> '[link=Run, flasher_on=8ms, flasher_off=8ms] Encoder'",
-        "DF2: fix by hand, no upgrade reads profile=approach:toward=180",
-        "Review in Address Editor -> Changed, then Sync to save",
+        "DF2: ClickNick cannot upgrade this comment."
+        " Fix it by hand: no upgrade reads profile=approach:toward=180",
+        "Review them in the Address Editor under Changed, then Sync them.",
     ]
     assert opened == ["changed"]
 

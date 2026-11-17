@@ -334,5 +334,8 @@ def test_save_names_a_program_whose_csv_laddercodec_cannot_read_back(
     monkeypatch.setattr("sys.argv", ["clicknick-cli", "program", "save", str(tmp_path)])
     main()
     printed = capsys.readouterr().out
-    assert f"Paste these programs into CLICK again:\n  Main Program: {found.detail}" in printed
+    assert (
+        "Paste these programs into CLICK again from your own copy, or fix them in CLICK:\n"
+        f"  Main Program: {found.detail}"
+    ) in printed
     assert "ClickNick cannot read these rungs" not in printed

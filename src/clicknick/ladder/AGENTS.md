@@ -45,6 +45,8 @@ Progress is tracked in `verify_progress.log` in the folder. Re-running resumes a
 
 The CLI detects the running Click project's SC_.mdb by itself. Before it pastes, it makes sure the operand addresses exist. Contacts and coils require this.
 
+If `--mdb-path` names no file, `load`, `guided` and `program load` stop with an error before they copy anything. `save` and `program save` do not read the option. If adding the addresses to that SC_.mdb fails, `load` stops with an error and copies nothing. `guided` and `program load` print the error on stderr and offer to try again. If you skip or quit there, the CSV is recorded as an error, and the run exits 1. Without `--mdb-path`, the CLI prints a warning on stderr when the CLICK window has no SC_.mdb or adding the addresses fails, and copies the rungs anyway.
+
 ## Shell hygiene
 
 Never inline multi-line content in bash commands (echo, printf, python -c, cat <<EOF).

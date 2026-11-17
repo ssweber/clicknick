@@ -167,7 +167,7 @@ def _cmd_get(ctx: DispatchContext, identifier: str) -> str:
     addr_key = _resolve_identifier(ctx, identifier)
     row = ctx.store.get_visible_row(addr_key)
     if row is None:
-        return f"{identifier}: <not in store>"
+        return f"{identifier} has no row in the Address Editor."
     dirty = " (staged)" if ctx.store.is_dirty(addr_key) else ""
     return (
         f"{identifier}{dirty}: nickname={row.nickname!r} comment={row.comment!r} "
@@ -184,7 +184,7 @@ def _cmd_set(ctx: DispatchContext, identifier: str, field_name: str, raw_value: 
     assert ctx.store is not None
     addr_key = _resolve_identifier(ctx, identifier)
     if ctx.store.get_visible_row(addr_key) is None:
-        raise ValueError(f"identifier {identifier!r} is not present in this store")
+        raise ValueError(f"{identifier} has no row in the Address Editor.")
 
     value: str | bool = _parse_bool(raw_value) if field_name == "retentive" else raw_value
 
@@ -291,24 +291,28 @@ def _cmd_unused(ctx: DispatchContext, hints: list[str], count: int) -> str:
 
 
 def _project_status(ctx: DispatchContext) -> str | None:
-    """Return the current pyrung-project capability in user-facing terms."""
+    """Return the state of the workspace and the simulation in user-facing terms."""
     if ctx.project_saved is False:
-        return "project unsaved | only tag commands available"
+        return "project not saved in CLICK | Save in CLICK to build the workspace"
 
     analysis = ctx.analysis
     if analysis is None:
         return None
     status = getattr(getattr(analysis, "status", None), "value", None)
     if status == "building":
-        return "pyrung project preparing"
+        return "building the workspace"
     if status == "failed":
+        error = getattr(analysis, "error", None)
+        failed = (
+            f"could not build the workspace: {error}" if error else "could not build the workspace"
+        )
         if getattr(analysis, "project_dir", None) is not None:
-            return "workspace available | analysis failed"
-        return "pyrung project unavailable"
+            return f"{failed} | the last workspace built is still there"
+        return failed
     if analysis.is_available:
         if ctx.pyrung_live_available:
-            return "pyrung live available"
-        return "project ready | open Simulate for pyrung live"
+            return "simulation ready for pyrung live"
+        return "workspace ready | use Tools > Simulate to start a simulation for pyrung live"
 
     return None
 
@@ -323,7 +327,10 @@ def _workflow_status(ctx: DispatchContext) -> str | None:
         if staged_tags > 0:
             noun = "tag" if staged_tags == 1 else "tags"
             facts.append(f"{staged_tags} {noun} staged")
-            steps.append("Sync tags in ClickNick" if staged_tags != 1 else "Sync in ClickNick")
+            save = save_command(ctx.store)
+            steps.append(
+                f"{save} tags in ClickNick" if staged_tags != 1 else f"{save} in ClickNick"
+            )
     if ctx.synced_pending > 0:
         noun = "tag" if ctx.synced_pending == 1 else "tags"
         facts.append(f"{ctx.synced_pending} {noun} synced")
@@ -381,11 +388,11 @@ workspace:
                                          (a backup taken again takes a new name)
 
 analysis:
-  check                               -> lint src/plc (Tools -> Check Program rules)
+  check                               -> lint src/plc with the rules that Tools > Check Program uses
 
 tags:
   tag show <tag>
-  tag repair-system-nicknames         -> stage documented vendor corrections
+  tag repair-system-nicknames         -> the same as Tools > Repairs > System Nicknames
   tag set-flag <tag> <flag>
   tag clear-flag <tag> <flag>
   tag set-choices <tag> <Label:val> ...
@@ -393,13 +400,13 @@ tags:
   tag clear-constraints <tag>
   tag set-uom <tag> <unit>
   tag clear-uom <tag>
-  tag upgrade-project                 -> stage old annotation forms rewritten (pyrung migrations)
+  tag upgrade-project                 -> the same as Tools > Repairs > Upgrade Project
   tag set-physical <tag> <name> <response> [--system S]
     response: {physical_options}
   tag set-link <tag> <link>
   tag clear-physical <tag>
-  tag apply                          -> edit src/plc/tags.py, then push the diff
-    (regenerates nicknames.csv, lands changed rows, opens Address Editor → Changed)
+  tag apply                          -> copy your edits in src/plc/tags.py to the Address
+                                        Editor as unsaved edits, and open it on Changed
 
 rungs:
   rung list [file]
@@ -407,6 +414,20 @@ rungs:
 
 workflow:
   prompt-save"""
+
+
+def save_command(store: AddressStore) -> str:
+    """Return the Address Editor's word for writing *store*'s edits: "Sync" or "Save".
+
+    The editor syncs edits to CLICK's database and saves them to a CSV file. The labels of its
+    menu entries vary with how the editor was opened, so a message names only the verb.
+    """
+    return "Sync" if store.is_database else "Save"
+
+
+def _rows(count: int) -> str:
+    """Return "1 row" or "<count> rows"."""
+    return "1 row" if count == 1 else f"{count} rows"
 
 
 def _format_help() -> str:
@@ -433,12 +454,12 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     if verb == "ping":
         lines = ["pong"]
         if ctx.store is not None:
-            lines.append(f"store: {ctx.store.loaded_row_count} rows")
+            lines.append(f"addresses loaded: {ctx.store.loaded_row_count}")
             staged = len(ctx.store.get_dirty_keys())
             if staged:
                 lines.append(f"tags staged: {staged}")
         else:
-            lines.append("store: not connected")
+            lines.append("addresses loaded: none")
         if ctx.synced_pending > 0:
             lines.append(f"tags synced: {ctx.synced_pending}")
         if ctx.staged_rungs > 0:
@@ -450,7 +471,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
             ctx.analysis.is_available or getattr(ctx.analysis, "project_dir", None) is not None
         ):
             pdir = ctx.analysis.project_dir
-            lines.append(f"project: {pdir}" if pdir else "project: (not persisted)")
+            lines.append(f"workspace: {pdir}" if pdir else "workspace: not on disk")
         project_status = _project_status(ctx)
         if project_status is not None:
             lines.append(f"status: {project_status}")
@@ -459,20 +480,29 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
     if verb == "prompt-save":
         if ctx.store is None or not ctx.store.has_unsaved_changes():
             return "no pending changes"
-        count = len(ctx.store.get_dirty_keys())
+        save = save_command(ctx.store)
         if ctx.store.has_errors():
-            raise ValueError(f"{count} unsaved change(s) have validation errors — fix errors first")
+            # Sync writes nothing while any row has an error, even a row that has no unsaved edit.
+            bad = ctx.store.get_total_error_count()
+            raise ValueError(
+                f"The Address Editor shows errors in {_rows(bad)}. {save} writes nothing"
+                " while any row has an error. Fix those rows first."
+            )
+        count = len(ctx.store.get_dirty_keys())
         if ctx.show_save_prompt is not None:
+            target = "CLICK's database" if ctx.store.is_database else "the CSV file"
             ctx.show_save_prompt(
                 "Unsaved Changes",
-                f"You have {count} unsaved change{'s' if count != 1 else ''} "
-                f"in the Address Editor.\n\n"
-                f"Use File → Sync to write them to the Click database.",
+                f"{_rows(count)} in the Address Editor {'has' if count == 1 else 'have'}"
+                f" unsaved edits.\n\n{save} them there to write them to {target}.",
             )
-        return f"prompted: {count} unsaved change{'s' if count != 1 else ''}"
+        return f"prompted: {_rows(count)} with unsaved edits"
 
     if ctx.store is None:
-        raise ValueError("no project loaded (connect a CLICK project or load a CSV first)")
+        raise ValueError(
+            "ClickNick has no addresses loaded. Connect to a CLICK project, or load a CSV file"
+            " with File > Load Nicknames from CSV."
+        )
 
     if verb == "get":
         if len(parts) != 2:

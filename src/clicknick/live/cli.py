@@ -5,9 +5,9 @@ Usage::
     clicknick-cli list                              # show active sessions
     clicknick-cli ping                              # connection state + status
 
-    # Inspect / edit (by pyrung tag name or Click address)
+    # Inspect / edit (by pyrung tag name or CLICK address)
     clicknick-cli get ExampleTag                    # inspect a row
-    clicknick-cli set ExampleTag nickname RenamedTag # rename (staged change)
+    clicknick-cli set ExampleTag nickname RenamedTag # rename (an unsaved edit)
     clicknick-cli set DS1 comment "Example comment" # quoting works
 
     # Find free addresses
@@ -101,8 +101,9 @@ def main() -> None:
         prog="clicknick-cli",
         description="Attach to a running ClickNick instance and push live edits.",
         epilog=(
-            "Identifiers: use pyrung tag names (ExampleTag) or Click addresses (DS1).\n"
-            "All writes land as staged changes in the address editor (Ctrl+Z to undo).\n"
+            "Identifiers: use pyrung tag names (ExampleTag) or CLICK addresses (DS1).\n"
+            "The set command and the tag commands that change a tag make unsaved edits in\n"
+            "the Address Editor. Press Ctrl+Z there to undo one.\n"
             "Subcommands: tag (annotations), rung (program).\n"
             "Use 'clicknick-cli help' for a grouped command list."
         ),
@@ -118,18 +119,18 @@ def main() -> None:
     if (not args.session and not args.command) or (args.command and args.command[0] == "list"):
         sessions = find_sessions()
         if not sessions:
-            print("No active sessions")
+            print("Found no running ClickNick. Start ClickNick and try again.")
         elif len(sessions) == 1:
             label, _, port_file = sessions[0]
             print(f"Active session: {label}")
             workspace = workspace_for_port_file(port_file)
-            print(f"Project dir:    {workspace or '(building)'}")
+            print(f"Workspace:      {workspace or 'none yet'}")
             print("Usage: clicknick-cli <command>  (e.g. clicknick-cli get ExampleTag)")
         else:
             print("Active sessions:")
             for label, _, port_file in sessions:
                 workspace = workspace_for_port_file(port_file)
-                print(f"  {label}  ({workspace or 'building'})")
+                print(f"  {label}  ({workspace or 'no workspace yet'})")
             print("Usage: clicknick-cli -s <session> <command>")
         return
 
@@ -154,7 +155,7 @@ def main() -> None:
             print(str(exc), file=sys.stderr)
             sys.exit(1)
         except ConnectionRefusedError:
-            print("Cannot connect to session (it may have just exited)", file=sys.stderr)
+            print("Could not connect to ClickNick. It may have just closed.", file=sys.stderr)
             sys.exit(1)
         print(text)
         if not ok:

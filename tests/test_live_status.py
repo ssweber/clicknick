@@ -22,6 +22,7 @@ class _Analysis:
 
 class _Store:
     loaded_row_count = 2
+    is_database = True
     user_overrides: dict[int, object] = {}
 
     def get_dirty_keys(self) -> set[int]:
@@ -41,7 +42,7 @@ def test_workflow_footer_composes_outgoing_changes_before_capability() -> None:
     assert _status_footer(ctx) == (
         "\n[2 tags staged | 7 tags synced | 31 rungs staged | "
         "Next: Sync tags in ClickNick, paste rungs if needed, then Save in CLICK]"
-        "\n[project ready | open Simulate for pyrung live]"
+        "\n[workspace ready | use Tools > Simulate to start a simulation for pyrung live]"
     )
 
 
@@ -63,13 +64,15 @@ def test_workflow_footer_uses_singular_nouns() -> None:
 def test_ping_reports_loaded_source_rows() -> None:
     result = dispatch(DispatchContext(store=_Store()), "ping")
 
-    assert "store: 2 rows" in result
+    assert "addresses loaded: 2" in result
 
 
 def test_ping_reports_unsaved_project_capability() -> None:
     ctx = DispatchContext(project_saved=False)
 
-    assert dispatch(ctx, "ping").endswith("status: project unsaved | only tag commands available")
+    assert dispatch(ctx, "ping").endswith(
+        "status: project not saved in CLICK | Save in CLICK to build the workspace"
+    )
 
 
 def test_ping_reports_pyrung_live_when_project_is_ready() -> None:
@@ -79,7 +82,7 @@ def test_ping_reports_pyrung_live_when_project_is_ready() -> None:
         pyrung_live_available=True,
     )
 
-    assert dispatch(ctx, "ping").endswith("status: pyrung live available")
+    assert dispatch(ctx, "ping").endswith("status: simulation ready for pyrung live")
 
 
 def test_ping_prompts_for_console_when_project_is_ready_but_dap_is_closed() -> None:
@@ -88,7 +91,9 @@ def test_ping_prompts_for_console_when_project_is_ready_but_dap_is_closed() -> N
         project_saved=True,
     )
 
-    assert dispatch(ctx, "ping").endswith("status: project ready | open Simulate for pyrung live")
+    assert dispatch(ctx, "ping").endswith(
+        "status: workspace ready | use Tools > Simulate to start a simulation for pyrung live"
+    )
 
 
 def test_ping_reports_project_preparing_during_analysis() -> None:
@@ -97,7 +102,7 @@ def test_ping_reports_project_preparing_during_analysis() -> None:
         project_saved=True,
     )
 
-    assert dispatch(ctx, "ping").endswith("status: pyrung project preparing")
+    assert dispatch(ctx, "ping").endswith("status: building the workspace")
 
 
 def test_ping_reports_project_unavailable_after_analysis_failure() -> None:
@@ -106,7 +111,17 @@ def test_ping_reports_project_unavailable_after_analysis_failure() -> None:
         project_saved=True,
     )
 
-    assert dispatch(ctx, "ping").endswith("status: pyrung project unavailable")
+    assert dispatch(ctx, "ping").endswith("status: could not build the workspace")
+
+
+def test_ping_gives_the_reason_the_workspace_build_failed() -> None:
+    analysis = _Analysis(_Status.FAILED)
+    analysis.error = "main.py: rung 3 has no output"
+    ctx = DispatchContext(analysis=analysis, project_saved=True)
+
+    assert dispatch(ctx, "ping").endswith(
+        "status: could not build the workspace: main.py: rung 3 has no output"
+    )
 
 
 def test_failed_analysis_exposes_workspace_and_source_listing(tmp_path) -> None:
@@ -118,6 +133,6 @@ def test_failed_analysis_exposes_workspace_and_source_listing(tmp_path) -> None:
     ctx = DispatchContext(store=_Store(), analysis=analysis, project_saved=True)
 
     result = dispatch(ctx, "ping")
-    assert f"project: {tmp_path}" in result
-    assert "workspace available | analysis failed" in result
+    assert f"workspace: {tmp_path}" in result
+    assert "could not build the workspace | the last workspace built is still there" in result
     assert "main" in dispatch(ctx, "rung list")

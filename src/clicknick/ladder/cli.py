@@ -26,6 +26,7 @@ from ..utils.mdb_shared import find_click_database
 from .clipboard import copy_to_clipboard, find_click_hwnd, is_click_v4, read_from_clipboard
 from .program import (
     NeedsClickV4Error,
+    PrepareResult,
     decode_to_csv,
     describe_csv,
     describe_legacy_encoding,
@@ -41,21 +42,47 @@ from .program import (
 
 
 def resolve_mdb_path(mdb_path: str | None = None) -> Path:
-    """Find SC_.mdb from explicit path or auto-detect from running Click."""
+    """Return the SC_.mdb at *mdb_path*, or else the SC_.mdb of the first CLICK window.
+
+    Raise FileNotFoundError if there is no such file. Raise RuntimeError if *mdb_path* is
+    None and no CLICK window is open.
+    """
     if mdb_path:
         resolved = Path(mdb_path)
-        if not resolved.exists():
-            raise FileNotFoundError(f"MDB path not found: {resolved}")
+        if not resolved.is_file():
+            raise FileNotFoundError(
+                f"There is no file at {resolved}. Give --mdb-path the path of the project's SC_.mdb."
+            )
         return resolved
 
     click_hwnd = find_click_hwnd()
     db_path = find_click_database(None, click_hwnd)
     if not db_path:
-        raise FileNotFoundError("Could not locate SC_.mdb. Pass --mdb-path <path-to-SC_.mdb>.")
-    resolved = Path(db_path)
-    if not resolved.exists():
-        raise FileNotFoundError(f"Auto-detected SC_.mdb not found: {resolved}")
-    return resolved
+        raise FileNotFoundError(
+            "Could not find the SC_.mdb of the CLICK window. Give its path with --mdb-path."
+        )
+    return Path(db_path)
+
+
+class DatabaseError(RuntimeError):
+    """The rungs' addresses could not be added to the SC_.mdb that --mdb-path names."""
+
+
+def _database_for(mdb_path: str | None) -> Path | None:
+    """Return the SC_.mdb to add the rungs' addresses to, or None if there is none.
+
+    If *mdb_path* names no file, raise FileNotFoundError. Without *mdb_path*, look for the
+    SC_.mdb of the first CLICK window. If no CLICK window is open, raise RuntimeError. If the
+    window has no SC_.mdb, print a warning on stderr and return None. The rungs can still be
+    copied, so the command goes on.
+    """
+    try:
+        return resolve_mdb_path(mdb_path)
+    except FileNotFoundError as exc:
+        if mdb_path:
+            raise
+        print(f"  Did not add the rungs' addresses to SC_.mdb. {exc}", file=sys.stderr)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -79,14 +106,24 @@ def print_csv_shape(csv_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_mdb_status(result) -> None:
-    """Print MDB provisioning status for a prepared load result."""
-    if result.addresses_inserted:
-        print(
-            f"  MDB: inserted {result.addresses_inserted} address(es) into {result.mdb_path.name}"
-        )
-    elif result.mdb_error:
-        print(f"  MDB: skipped ({result.mdb_error})")
+def _print_mdb_status(result: PrepareResult, database: Path | None, mdb_path: str | None) -> None:
+    """Print how many of the rungs' addresses were added to *database*.
+
+    If adding them failed, raise DatabaseError when --mdb-path (*mdb_path*) named the
+    database, because the command cannot do what was asked. Otherwise print the failure on
+    stderr.
+    """
+    if result.mdb_error is None:
+        if result.addresses_inserted and result.mdb_path is not None:
+            print(
+                f"  MDB: inserted {result.addresses_inserted} address(es)"
+                f" into {result.mdb_path.name}"
+            )
+        return
+    message = f"Could not add the rungs' addresses to {database}: {result.mdb_error}"
+    if mdb_path:
+        raise DatabaseError(message)
+    print(f"  {message}", file=sys.stderr)
 
 
 def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False) -> bytes:
@@ -94,16 +131,12 @@ def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False
     print(f"  {describe_csv(csv_path, best_effort=best_effort)}")
     print_csv_shape(csv_path)
 
-    try:
-        resolved_mdb = resolve_mdb_path(mdb_path)
-    except (FileNotFoundError, RuntimeError):
-        resolved_mdb = None
-
+    database = _database_for(mdb_path)
     result = prepare_csv_load(
-        csv_path, click_v4=is_click_v4(), mdb_path=resolved_mdb, best_effort=best_effort
+        csv_path, click_v4=is_click_v4(), mdb_path=database, best_effort=best_effort
     )
 
-    _print_mdb_status(result)
+    _print_mdb_status(result, database, mdb_path)
     copy_to_clipboard(result.payload)
     print(f"  Copied to clipboard ({len(result.payload):,} bytes)")
     return result.payload
@@ -111,15 +144,11 @@ def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False
 
 def _load_program_csv(csv_path: Path, mdb_path: str | None) -> bytes:
     """Encode a program/subroutine CSV and copy to clipboard. Minimal output."""
-    try:
-        resolved_mdb = resolve_mdb_path(mdb_path)
-    except (FileNotFoundError, RuntimeError):
-        resolved_mdb = None
-
-    result = prepare_csv_load(csv_path, click_v4=is_click_v4(), mdb_path=resolved_mdb)
+    database = _database_for(mdb_path)
+    result = prepare_csv_load(csv_path, click_v4=is_click_v4(), mdb_path=database)
 
     print(f"  {result.rung_count} rung{'s' if result.rung_count != 1 else ''}")
-    _print_mdb_status(result)
+    _print_mdb_status(result, database, mdb_path)
     copy_to_clipboard(result.payload)
     print(f"  Copied to clipboard ({len(result.payload):,} bytes)")
     return result.payload
@@ -129,19 +158,25 @@ def _load_bin(bin_path: Path, mdb_path: str | None) -> bytes:
     """Check the CLICK version and provision MDB addresses from a decoded .bin, then copy raw bytes."""
     data = bin_path.read_bytes()
 
+    database = _database_for(mdb_path)
     try:
-        resolved_mdb = resolve_mdb_path(mdb_path)
-    except (FileNotFoundError, RuntimeError):
-        resolved_mdb = None
-
-    try:
-        result = prepare_bin_load(data, click_v4=is_click_v4(), mdb_path=resolved_mdb)
+        result = prepare_bin_load(data, click_v4=is_click_v4(), mdb_path=database)
     except NeedsClickV4Error:
         raise
     except ValueError as exc:
-        print(f"  Could not decode .bin to check it or provision the MDB: {exc}")
+        if mdb_path:
+            raise DatabaseError(
+                f"Could not add the addresses in {bin_path.name} to {database}."
+                f" The file could not be decoded: {exc}"
+            ) from exc
+        print(f"  Could not decode {bin_path.name}: {exc}", file=sys.stderr)
+        print(
+            "  clicknick-rung copies it as it is. It did not check the CLICK version"
+            " or add the file's addresses to SC_.mdb.",
+            file=sys.stderr,
+        )
     else:
-        _print_mdb_status(result)
+        _print_mdb_status(result, database, mdb_path)
 
     copy_to_clipboard(data)
     print(f"Copied {bin_path.name} to clipboard ({len(data):,} bytes)")
@@ -154,7 +189,11 @@ def _load_bin(bin_path: Path, mdb_path: str | None) -> bytes:
 
 
 def _save_and_compare(name: str, bin_path: Path) -> None:
-    """Read clipboard, save as .bin, and report byte diff if .bin already exists."""
+    """Save the rung on the clipboard as *bin_path*, or compare it with that file.
+
+    If *bin_path* exists, an earlier run or ``clicknick-rung save`` wrote it. This compares
+    the clipboard's bytes with that file and leaves the file as it is.
+    """
     actual = read_from_clipboard()
 
     if not bin_path.exists():
@@ -164,12 +203,19 @@ def _save_and_compare(name: str, bin_path: Path) -> None:
 
     expected = bin_path.read_bytes()
     if actual == expected:
-        print(f"  {name}: exact match ({len(actual):,} bytes)")
+        print(f"  {name}: the rung you copied back matches {bin_path.name} ({len(actual):,} bytes)")
     elif len(actual) == len(expected):
         diffs = [i for i in range(len(actual)) if actual[i] != expected[i]]
-        print(f"  {name}: {len(diffs)} byte(s) differ from encoder, first at 0x{diffs[0]:04X}")
+        count = "1 byte differs" if len(diffs) == 1 else f"{len(diffs)} bytes differ"
+        print(
+            f"  {name}: {count} between the rung you copied back and {bin_path.name}."
+            f" The first is at 0x{diffs[0]:04X}."
+        )
     else:
-        print(f"  {name}: size differs (encoder {len(expected):,}, Click {len(actual):,} bytes)")
+        print(
+            f"  {name}: the rung you copied back has {len(actual):,} bytes,"
+            f" and {bin_path.name} has {len(expected):,}."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -235,19 +281,23 @@ def _run_guided(
             f.write(f"# Verify {datetime.now(tz=UTC).isoformat()}\n")
 
     print()
-    print("For each fixture: encodes and copies to clipboard.")
-    print("After pasting in Click, enter one of:")
+    print("clicknick-rung copies each CSV to the clipboard in turn.")
+    print("After you paste it into CLICK, enter one of:")
     if save_copyback_bin:
-        print("  [w]orked  - paste worked, copy the rung back for comparison/saving")
+        print(
+            "  [w]orked  - paste worked. Copy the rung back from CLICK to save it as a .bin file,"
+            " or to compare it with the .bin file saved before"
+        )
     else:
         print("  [w]orked  - paste worked")
-    print("  [c]rashed - Click crashed or errored")
+    print("  [c]rashed - CLICK crashed or showed an error")
     print("  [n]ot as expected - pasted but looks wrong")
-    print("  [s]kip    - skip this fixture")
+    print("  [s]kip    - skip this CSV")
     print("  [q]uit    - stop")
     print()
 
     results: list[tuple[str, str, str]] = []
+    quit_run = False
 
     for idx, (name, csv_path) in enumerate(items):
         if name in done:
@@ -260,9 +310,16 @@ def _run_guided(
         except RuntimeError as exc:
             loaded = False
             while not loaded:
-                print(f"  Clipboard error: {exc}")
-                print("  Open Click and press Enter to retry, or [s]kip / [q]uit")
+                print(f"  {exc}", file=sys.stderr)
+                print("  Press Enter to try again, or [s]kip / [q]uit")
                 choice = input("  > ").strip().lower()
+                if choice in ("s", "q") and isinstance(exc, DatabaseError):
+                    # A CSV left without the addresses that --mdb-path asked for is an error,
+                    # and the run exits 1.
+                    results.append((name, "error", str(exc)))
+                    _append_result(log_path, name, "error", str(exc))
+                    quit_run = choice == "q"
+                    break
                 if choice == "q":
                     print()
                     return
@@ -277,6 +334,8 @@ def _run_guided(
                     exc = exc2
             if not loaded:
                 print()
+                if quit_run:
+                    break
                 continue
         except Exception as exc:
             print(f"  Error: {exc}")
@@ -285,7 +344,7 @@ def _run_guided(
             print()
             continue
 
-        print("  Paste in Click, then: [w]orked / [c]rashed / [n]ot as expected / [s]kip / [q]uit")
+        print("  Paste in CLICK, then: [w]orked / [c]rashed / [n]ot as expected / [s]kip / [q]uit")
         response = input("  > ").strip().lower()
 
         if response == "q":
@@ -307,7 +366,7 @@ def _run_guided(
                     try:
                         data = read_from_clipboard()
                     except RuntimeError as exc:
-                        print(f"  Clipboard error: {exc}")
+                        print(f"  {exc}")
                     else:
                         bin_path = csv_path.with_suffix(".bin")
                         bin_path.write_bytes(data)
@@ -327,14 +386,14 @@ def _run_guided(
         # Default: "w" or Enter — worked OK.
         if save_copyback_bin:
             bin_path = csv_path.with_suffix(".bin")
-            print("  Copy the rung back from Click, then press Enter.")
+            print("  Copy the rung back from CLICK, then press Enter.")
             input("  > ")
             while True:
                 try:
                     _save_and_compare(name, bin_path)
                     break
                 except RuntimeError as exc:
-                    print(f"  Clipboard error: {exc}")
+                    print(f"  {exc}")
                     print("  Copy the rung back and press Enter to retry, or [s]kip")
                     if input("  > ").strip().lower() == "s":
                         break
@@ -392,13 +451,17 @@ def main() -> None:
         prog="clicknick-rung",
         description="Clipboard bridge for CLICK PLC ladder rungs.",
     )
-    parser.add_argument("--mdb-path", metavar="PATH", help="Explicit path to SC_.mdb")
+    parser.add_argument(
+        "--mdb-path",
+        metavar="PATH",
+        help="SC_.mdb to add the rungs' addresses to. The default is the SC_.mdb of the first CLICK window.",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     # --- guided ---
     guided = subparsers.add_parser(
         "guided",
-        help="Interactive batch verify CSVs in a folder",
+        help="Copy each CSV in a folder to the clipboard, and record whether its paste into CLICK worked",
     )
     guided.add_argument("folder", metavar="FOLDER", help="Directory containing CSV fixtures")
     guided.add_argument("--list", action="store_true", help="List fixtures with descriptions")
@@ -407,13 +470,13 @@ def main() -> None:
     # --- program (with load/save subcommands) ---
     program = subparsers.add_parser(
         "program",
-        help="Program bundle operations (load into Click or save from Scr*.tmp)",
+        help="Load a program into CLICK, or save CLICK's program as CSV files",
     )
     prog_sub = program.add_subparsers(dest="program_command")
 
     prog_load = prog_sub.add_parser(
         "load",
-        help="Load a CSV bundle into Click via guided clipboard paste",
+        help="Copy main.csv and each subroutine CSV to the clipboard in turn, to paste into CLICK",
     )
     prog_load.add_argument(
         "folder", metavar="FOLDER", help="Directory with main.csv and subroutines/"
@@ -422,17 +485,20 @@ def main() -> None:
 
     prog_save = prog_sub.add_parser(
         "save",
-        help="Decode Scr*.tmp files into a CSV bundle (main.csv + subroutines/)",
+        help="Decode Scr*.tmp files into main.csv and a subroutines folder",
     )
     prog_save.add_argument("folder", metavar="FOLDER", help="Directory containing Scr*.tmp files")
     prog_save.add_argument(
-        "--output", "-o", metavar="DIR", help="Output directory for CSV bundle (default: FOLDER)"
+        "--output",
+        "-o",
+        metavar="DIR",
+        help="Folder to write main.csv and subroutines/ to (default: FOLDER)",
     )
 
     # --- load ---
     load = subparsers.add_parser(
         "load",
-        help="Encode a .csv or .bin file and copy to clipboard",
+        help="Copy a .csv or .bin file to the clipboard for CLICK. A .csv file is encoded first.",
     )
     load.add_argument("file", metavar="FILE", help="Path to .csv or .bin file")
     load.add_argument(
@@ -461,6 +527,17 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
+    uses_database = args.command in ("load", "guided") or (
+        args.command == "program" and args.program_command == "load"
+    )
+    if args.mdb_path and uses_database:
+        # Refuse a wrong --mdb-path before anything is copied.
+        try:
+            resolve_mdb_path(args.mdb_path)
+        except FileNotFoundError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+
     if args.command == "guided":
         folder = Path(args.folder)
         if not folder.is_dir():
@@ -481,7 +558,7 @@ def main() -> None:
                 bin_path = csv_path.with_suffix(".bin")
                 if bin_path.exists():
                     size = bin_path.stat().st_size
-                    tag = f" [verified, {size:,} bytes]"
+                    tag = f" [{bin_path.name}, {size:,} bytes]"
                 else:
                     tag = ""
                 print(f"  {name}{tag}")
@@ -517,14 +594,14 @@ def main() -> None:
             for info in result.programs:
                 print(
                     f"  {info.source} → {info.name!r}"
-                    f" (idx={info.prog_idx}, {info.rung_count} rungs)"
+                    f" (program {info.prog_idx}, {info.rung_count} rungs)"
                 )
             print(f"  Saved {result.main_csv}")
             for csv_path in result.subroutine_csvs:
                 print(f"  Saved {csv_path}")
             print(
-                f"\nProgram bundle: 1 main + {len(result.subroutine_csvs)} subroutine(s),"
-                f" {result.total_rungs} total rungs"
+                f"\nProgram: 1 main + {len(result.subroutine_csvs)} subroutine(s),"
+                f" {result.total_rungs} rungs"
             )
             legacy = [item for item in result.legacy_encodings if not item.unreadable]
             unreadable = [
@@ -537,20 +614,23 @@ def main() -> None:
             ]
             if legacy:
                 print(
-                    "\nCLICK holds these rungs in an old encoding and runs them differently."
-                    " Paste them into CLICK again:"
+                    "\nCLICK holds these rungs in an old encoding. CLICK runs them differently"
+                    " from how they read. Paste them into CLICK again:"
                 )
                 for item in legacy:
                     print(f"  {describe_legacy_encoding(item)}")
             if unreadable:
                 print(
-                    "\nClickNick cannot read these rungs, and their CSVs hold an empty rung"
-                    " in place of each. Paste them into CLICK again:"
+                    "\nClickNick cannot read these rungs. Each CSV holds an empty rung in place of"
+                    " each of these rungs. Paste them into CLICK again from your own copy of the"
+                    " program, or fix them in CLICK:"
                 )
                 for item in unreadable:
                     print(f"  {describe_legacy_encoding(item)}")
             if copies:
-                print("\nPaste these programs into CLICK again:")
+                print(
+                    "\nPaste these programs into CLICK again from your own copy, or fix them in CLICK:"
+                )
                 for item in copies:
                     print(f"  {describe_legacy_encoding(item)}")
             return
@@ -562,7 +642,7 @@ def main() -> None:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
 
-        print(f"Program bundle: {folder}")
+        print(f"Program: {folder}")
         for name, _ in items:
             print(f"  {name}")
         print()
