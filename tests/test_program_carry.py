@@ -9,13 +9,13 @@ from clicknick.services.program_carry import CarryPlan, LinkTarget, address_of, 
 
 
 def _maps(names: dict[str, str]):
-    """Tag maps for a program naming *names* (address -> nickname)."""
+    """Return the tag maps for a program that names *names* (address -> nickname)."""
     keys = {get_addr_key(*parse_address(address)): tag for address, tag in names.items()}
     return {tag: key for key, tag in keys.items()}, keys
 
 
 def _texts(plan: CarryPlan, section: str) -> tuple[str, ...]:
-    """The plan's notes in *section*, in order."""
+    """Return the plan's notes in *section*, in order."""
     return tuple(note.text for note in plan.notes if note.section == section)
 
 
@@ -25,20 +25,20 @@ OLD = _maps({"X001": "Start", "Y001": "Motor", "C1": "Mode", "DS1": "Speed", "DF
 @pytest.mark.parametrize(
     ("new", "name", "target", "note"),
     [
-        # Internal memory: kept while the name keeps its address.
+        # Internal memory: the force is kept while the name keeps its address.
         ({"C1": "Mode"}, "Mode", "Mode", ""),
-        # A pure rename: the address keeps the force under its new name.
+        # A pure rename: the address keeps the force and the force takes the new name.
         ({"C1": "Auto"}, "Mode", "Auto", "Mode -> Auto (C1)"),
         ({}, "Mode", "C1", "Mode -> C1"),
         ({"C2": "Auto"}, "C2", "Auto", "C2 -> Auto"),
-        # Its name now sits on another address: released.
+        # Its name is now on another address, so the force is released.
         ({"DS1": "Spare", "DS5": "Speed"}, "Speed", None, "Speed (now on DS5, was DS1)"),
         ({"DS5": "Speed"}, "Speed", None, "Speed (now on DS5, was DS1)"),
-        # Hardware stays on its address, under the address's new name.
+        # A hardware force stays on its address and takes the address's new name.
         ({"X001": "StartPB", "X005": "Start"}, "Start", "StartPB", "Start -> StartPB (X001)"),
         ({}, "Motor", "Y001", "Motor -> Y001"),
         ({"DF1": "Probe"}, "Temp", "Probe", "Temp -> Probe (DF1)"),
-        # Not on a CLICK address: pyrung carries it as it is.
+        # The name is not on a CLICK address, so pyrung carries it as it is.
         ({}, "Scratch", "Scratch", ""),
         # An address with a nickname goes by the nickname; its address form is on none.
         ({}, "Y001", "Y001", ""),
@@ -66,14 +66,14 @@ def test_an_internal_df_is_not_hardware_unless_an_analog_channel_has_it():
 @pytest.mark.parametrize(
     ("new", "feedback", "enable", "target"),
     [
-        # Both names still exist: the link follows them, wherever they are now.
+        # Both names still exist, so the link follows them to wherever they are now.
         ({"X001": "Start", "Y001": "Motor"}, "Start", "Motor", LinkTarget("Start", "Motor")),
         ({"X001": "Start", "Y002": "Motor"}, "Start", "Motor", LinkTarget("Start", "Motor")),
-        # A name that is gone stays on its address, under its new name.
+        # A name that is gone: the link stays on its address and takes the address's new name.
         ({"X001": "Start", "Y001": "Run"}, "Start", "Motor", LinkTarget("Start", "Run")),
         ({"Y001": "Motor"}, "Start", "Motor", LinkTarget("X001", "Motor")),
         ({"X001": "Begin"}, "Start", None, LinkTarget("Begin", None)),
-        # A name on no CLICK address is not the user's: carried as it is.
+        # A name on no CLICK address is not the user's, so pyrung carries it as it is.
         ({}, "Scratch", "Motor", LinkTarget("Scratch", "Motor")),
     ],
 )
@@ -92,7 +92,7 @@ def test_links(new, feedback, enable, target):
          ("the link on Start now feeds X005 (was X001)",)),
         ({"X005": "Start"}, "Start", None,
          ("the cut on Start now feeds X005 (was X001)",)),
-        # A rename, or both names where they were: nothing moved.
+        # After a rename, or with both names where they were, nothing has moved.
         ({"X001": "Start", "Y001": "Run"}, "Start", "Motor", ()),
         ({"X001": "Start", "Y001": "Motor"}, "Start", "Motor", ()),
     ],
@@ -127,15 +127,15 @@ def test_the_plan_takes_pyrungs_reload_shape():
         ({"X001": "StartPB"}, ("StartPB",), "Start", {"Start": "StartPB"}),
         ({}, (), "Start", {"Start": "X001"}),
         ({"X002": "Prox"}, ("Prox",), "X002", {"X002": "Prox"}),
-        # The name stays: pyrung keeps the coil by its name, so nothing is planned.
+        # The name stays, so pyrung keeps the coil by its name and the plan has nothing to do.
         ({"X001": "Start"}, ("Start",), "Start", {}),
         ({"X001": "Start"}, (), "Start", {}),
         ({}, ("X002",), "X002", {}),
-        # The name went to another address that the new program links: the coil follows it.
+        # The name went to another address that the new program links, so the coil follows it.
         ({"X001": "Begin", "X005": "Start"}, ("Begin", "Start"), "Start", {}),
-        # ...that it does not link: the coil carries on on its address.
+        # ...that it does not link, so the coil carries on at its own address.
         ({"X001": "Begin", "X005": "Start"}, ("Begin",), "Start", {"Start": "Begin"}),
-        # Not on a CLICK address: not the user's.
+        # The name is not on a CLICK address, so it is not the user's.
         ({}, (), "Scratch", {}),
     ],
 )
@@ -172,7 +172,7 @@ def test_the_notice_lists_releases_renames_then_moves():
 
 
 def _report(plan: CarryPlan, **drops: tuple[str, str]) -> list[dict]:
-    """pyrung's ``carried`` for *plan* placed as planned, except the entries in *drops*."""
+    """Return pyrung's ``carried`` list for *plan*, every entry placed as planned except *drops*."""
     carried: list[dict] = []
     for tag, to in plan.forces.items():
         carried.append({"tag": tag, "kind": "force", "to": to, "planned": True,
@@ -230,9 +230,9 @@ def test_drops_that_lose_nothing_are_not_listed():
         # The Console took them off between the listing and the reload.
         {"tag": "Jog", "kind": "force", "dropped": True, "reason": "not forced"},
         {"tag": "X009", "kind": "link", "dropped": True, "reason": "no bench change"},
-        # Saved to the project: the program's own link runs now.
+        # The link was saved to the project, so the program's own link runs now.
         {"tag": "X002", "kind": "link", "dropped": True, "reason": "in program"},
-        # The new program has no link like it there: the coil starts as the program says.
+        # The new program has no such link there, so the coil starts as the program says.
         {"tag": "Start", "kind": "declared", "dropped": True, "reason": "unlinked"},
         {"tag": "Prox", "kind": "declared", "dropped": True, "reason": "changed kind"},
     ]
@@ -259,15 +259,15 @@ def test_a_declared_link_that_could_not_move_is_said_with_pyrungs_reason(reason,
 @pytest.mark.parametrize(
     ("old", "new", "links", "kept", "dropped", "note"),
     [
-        # Start moves from X001 to X002, which has its own cut: Start's link wins.
+        # Start moves from X001 to X002, which has its own cut. Start's link wins.
         ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
          {"Start": "Motor", "X002": None}, ("Start", LinkTarget("Start", "Motor")), "X002",
          "the cut on X002 is dropped for the link on Start"),
-        # The same on internal bits: Run moves from C1 to C2, C2 has a link from C5.
+        # The same on internal bits. Run moves from C1 to C2, and C2 has a link from C5.
         ({"C1": "Run", "C5": "Aux"}, {"C2": "Run", "C5": "Aux"},
          {"Run": "Aux", "C2": "Aux"}, ("Run", LinkTarget("Run", "Aux")), "C2",
          "the link on C2 is dropped for the link on Run"),
-        # Listed the other way round, the followed link still wins.
+        # With the entries listed the other way round, the followed link still wins.
         ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
          {"X002": None, "Start": "Motor"}, ("Start", LinkTarget("Start", "Motor")), "X002",
          "the cut on X002 is dropped for the link on Start"),

@@ -1,5 +1,7 @@
-"""Issue #36: every Sync into CLICK's database has the connected CLICK window redraw its
-nicknames, and Tools > Redraw Nicknames in CLICK does it by hand."""
+"""Issue #36: after every Sync into CLICK's database, the connected CLICK window redraws.
+
+The window redraws its nicknames. Tools > Redraw Nicknames in CLICK does the same by hand.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ C1 = get_addr_key("C", 1)
 
 
 class FakeRoot:
-    """Records after() callbacks so a test can run them."""
+    """Record after() callbacks so a test can run them."""
 
     def __init__(self) -> None:
         self.scheduled: list[tuple[int, object]] = []
@@ -35,8 +37,8 @@ class FakeRoot:
     def run(self, delay: int, limit: int = 1000) -> None:
         """Run the callbacks scheduled with *delay*, and those they schedule with it.
 
-        Fails after *limit* callbacks, so one that keeps rescheduling itself (a redraw
-        whose result never comes) fails the test instead of hanging it.
+        Fail after *limit* callbacks. A callback that keeps rescheduling itself, such as a redraw
+        whose result never comes, then fails the test instead of hanging it.
         """
         ran = 0
         while due := [entry for entry in self.scheduled if entry[0] == delay]:
@@ -49,12 +51,12 @@ class FakeRoot:
 
 
 class DatabaseSource:
-    """CLICK's database, as the store sees it."""
+    """Stand in for CLICK's database, as the store sees it."""
 
     supports_used_field = True
     is_database = True
     is_read_only = False
-    file_path = ""  # Nothing to monitor
+    file_path = ""  # There is nothing to monitor.
 
     def __init__(self) -> None:
         self.rows: dict[int, AddressRow] = {}
@@ -176,7 +178,7 @@ def test_no_redraw_without_a_connected_window(redraws) -> None:
 
 @pytest.fixture
 def desktop(monkeypatch) -> SimpleNamespace:
-    """The redraw each run returns, in order, and the (pid, hwnd) each was asked for."""
+    """Return the result of each redraw run, in order, and the (pid, hwnd) each run was for."""
     found = SimpleNamespace(results=[], calls=[], threads=0)
 
     def redraw(_desktop, pid, main, *, own_pid):
@@ -267,7 +269,7 @@ def test_requests_while_a_redraw_runs_run_once_after_it(desktop) -> None:
 
     assert desktop.threads == 2
     assert desktop.results == []
-    # The second run counts as after a Sync, as one of the requests it serves was
+    # The second run counts as after a Sync, because one of the requests it serves was one.
     message, _style = _status(app)
     assert message.startswith("⚠ Synced into CLICK's database, but CLICK was busy")
 
@@ -282,16 +284,16 @@ def test_a_redraw_that_ends_on_another_window_shows_nothing(desktop, monkeypatch
     ]
 
     app._connection.redraw_nicknames(after_sync=True)
-    app._connection.redraw_nicknames(after_sync=False)  # Asked for in the same session
+    app._connection.redraw_nicknames(after_sync=False)  # This request is in the same session.
     app._session = ConnectionSession(ClickConnection("333", 444, "Other.ckp"))
-    running.pop()()  # CLICK's window closed: the redraw ends with another window connected
+    running.pop()()  # CLICK's window closed, so the redraw ends with another window connected.
     app.root.run(100)
 
     app._update_status.assert_not_called()
-    assert running == []  # The request made on the closed window does not run
+    assert running == []  # The request for the closed window does not run.
     assert desktop.calls == [(111, 222)]
 
-    app._connection.redraw_nicknames(after_sync=False)  # The new window's own runs
+    app._connection.redraw_nicknames(after_sync=False)  # The new window's own request runs.
     running.pop()()
     app.root.run(100)
 
@@ -313,7 +315,7 @@ def test_a_redraw_reports_on_a_new_session_of_the_same_window(desktop, monkeypat
     app._connection.redraw_nicknames(after_sync=True)  # A Sync while the first runs
     app._session = ConnectionSession(ClickConnection("111", 222, "Copy.ckp"))
     first = running.pop()
-    # The Sync's request then runs on the new session, at once
+    # The Sync's request then runs on the new session at once.
     monkeypatch.setattr(ConnectionController, "_run_off_tk", staticmethod(lambda work: work()))
     first()
     app.root.run(100)

@@ -1,4 +1,4 @@
-"""rung_diff: how a ladder CSV bundle differs from CLICK's saved program, rung by rung."""
+"""rung_diff: compare a ladder CSV bundle with CLICK's saved program, rung by rung."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def _commented(*comments: str) -> list[Rung]:
 
 
 def _bundle(root: Path, programs: dict[str, list[Rung]], *, index: bool = False) -> Path:
-    """Write {relative name: rungs} like program_save output."""
+    """Write {relative name: rungs} the way program_save writes its output."""
     for name, rungs in programs.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +91,7 @@ def _sources(text: str, rung_lines: dict[int, list[int]] | None = None) -> Bundl
 
 
 def test_reports_changed_unchanged_and_new_programs(tmp_path: Path) -> None:
-    # CLICK's copy is written with the rung index column, as the workspace does
+    # CLICK's copy has the rung index column, the same as the workspace writes it.
     current = _bundle(
         tmp_path / "current",
         {
@@ -105,9 +105,9 @@ def test_reports_changed_unchanged_and_new_programs(tmp_path: Path) -> None:
         tmp_path / "proposed",
         {
             "main.csv": _rungs("Y001", "Y002"),
-            "subroutines/fill.csv": _rungs("Y003"),  # names match case-insensitively
+            "subroutines/fill.csv": _rungs("Y003"),  # The names match without regard to case.
             "subroutines/Drain.csv": _rungs("Y004", "Y005"),
-            "subroutines/Rinse.csv": _rungs("Y006"),  # not in CLICK yet
+            "subroutines/Rinse.csv": _rungs("Y006"),  # This program is not in CLICK yet.
         },
     )
 
@@ -187,7 +187,7 @@ def test_unreadable_program_is_unknown(tmp_path: Path) -> None:
 
 
 def test_comparison_outlives_the_folder(tmp_path: Path) -> None:
-    # A CLICK save regenerates the workspace and removes csv_output/
+    # A CLICK save regenerates the workspace and removes csv_output/.
     current = _bundle(tmp_path / "current", {"main.csv": _rungs("Y001")})
     proposed = _bundle(tmp_path / "proposed", {"main.csv": _rungs("Y001", "Y002")})
     programs = load_bundle(proposed)
@@ -207,7 +207,7 @@ def test_rung_click_holds_in_a_legacy_encoding_differs_though_its_text_matches(
     programs = {"main.csv": _rungs("Y001", "Y002", "Y003"), "subroutines/Fill.csv": _rungs("Y004")}
     current = _bundle(tmp_path / "current", programs, index=True)
     proposed = _bundle(tmp_path / "proposed", programs)
-    # Files are matched ignoring case, like program names
+    # Files are matched without regard to case, the same as program names.
     write_legacy_encodings(current, [_legacy("main.csv", 2), _legacy("subroutines/fill.csv", 1)])
 
     comparison = _compare(proposed, current)
@@ -220,7 +220,7 @@ def test_rung_click_holds_in_a_legacy_encoding_differs_though_its_text_matches(
     assert main.legacy == (_legacy("main.csv", 2),)
     assert comparison.changes["subroutines/Fill.csv"].changed == (1,)
 
-    # Once CLICK saves a clean copy, the record is gone and nothing differs
+    # Once CLICK saves a clean copy, the record is gone and nothing differs.
     write_legacy_encodings(current, [])
     assert not any(change.differs for change in _compare(proposed, current).changes.values())
 
@@ -231,7 +231,7 @@ def test_legacy_encoding_without_a_rung_number_stands_for_the_whole_program() ->
     change = compare_rungs(rungs, rungs, [_legacy("main.csv", None)])
 
     assert change.changed == (1, 2)
-    # Pasting both over rung 1 leaves CLICK's old rung 2 below them
+    # After both are pasted over rung 1, CLICK's old rung 2 is still below them.
     assert change.steps() == (PasteStep((1, 2), over=1), PasteStep(delete=(3,)))
 
 
@@ -284,7 +284,7 @@ _HEADER = "marker," + ",".join(chr(65 + i) for i in range(26)) + ",AA,AB,AC,AD,A
 
 
 def _unreadable_csv(path: Path, *outputs: str) -> None:
-    """A ladder CSV whose AF tokens a strict read refuses and a lenient read drops."""
+    """Write a ladder CSV whose AF tokens a strict read rejects and a lenient read drops."""
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = ["R," + ",".join(["-"] * 31) + f",{output}\n" for output in outputs]
     path.write_text(_HEADER + "".join(rows), encoding="utf-8")
@@ -310,7 +310,7 @@ def test_click_copy_that_cannot_be_read_is_a_whole_program_to_paste_again(
     )
     assert fill.unreadable
     assert fill.changed == (1, 2)
-    # The whole program is pasted, after all of CLICK's rungs are deleted
+    # The whole program gets pasted, after all of CLICK's rungs are deleted.
     assert fill.steps() == ()
 
 
@@ -325,7 +325,7 @@ _REFUSED_COMPARE = (
 def test_click_copy_no_read_accepts_keeps_its_rung_count_from_the_text(
     tmp_path: Path,
 ) -> None:
-    """``DH70 == DS3920``, which CLICK's dialog refuses, fails the lenient read too."""
+    """The lenient read also fails on ``DH70 == DS3920``, which CLICK's dialog rejects."""
     current = _bundle(tmp_path / "current", {"main.csv": _rungs("Y001")})
     (current / "main.csv").write_text(_HEADER + _REFUSED_COMPARE, encoding="utf-8")
     proposed = _bundle(tmp_path / "proposed", {"main.csv": _rungs("Y001", "Y002", "Y003")})
@@ -364,10 +364,11 @@ _STAND_IN = empty_rung(f"{STAND_IN_COMMENT}\nClickNick cannot read its Compare."
 
 
 def test_edits_around_a_stand_in_give_no_step_that_could_delete_clicks_rung() -> None:
-    """The user edited X, deleted Y and the stand-in's comment.
+    """Give no step that could delete CLICK's rung when edits surround a stand-in.
 
-    Placed by the diff, the steps pasted the empty rung over rung 1 and deleted
-    rungs 3 to 4, CLICK's real rung among them.
+    The user edited X, deleted Y and deleted the stand-in's comment. If the steps came from
+    the diff, they would paste the empty rung over rung 1 and delete rungs 3 to 4.
+    That includes CLICK's real rung.
     """
     before = [*_rungs("Y001", "Y002"), _STAND_IN]
     after = [*_rungs("Y009"), empty_rung("")]
@@ -380,7 +381,7 @@ def test_edits_around_a_stand_in_give_no_step_that_could_delete_clicks_rung() ->
 
 
 def test_a_program_differing_only_by_its_stand_in_still_differs() -> None:
-    """The workspace flow with nothing edited: it is not up to date until the rung is pasted."""
+    """With no edits in the workspace flow, the program is out of date until the rung is pasted."""
     before = [*_rungs("Y001"), _STAND_IN, *_rungs("Y003")]
 
     change = compare_rungs(before, before, [_unreadable(2)])
@@ -402,7 +403,7 @@ def test_the_users_own_copy_has_no_empty_rung() -> None:
 
 
 def test_skipping_a_difference_cannot_leave_part_of_a_program_pasted() -> None:
-    """A skip would keep CLICK's empty rung in place of the rung it cannot read."""
+    """A skip would keep CLICK's empty rung where the unreadable rung is."""
     before = [*_rungs("Y001"), _STAND_IN, *_rungs("Y003")]
     after = _rungs("Y001", "Y002", "Y003", "Y004")
     readable = compare_rungs(before, after)
@@ -412,7 +413,7 @@ def test_skipping_a_difference_cannot_leave_part_of_a_program_pasted() -> None:
     assert change.steps(skipped=skipped) == ()
     assert change.steps(pasted=skipped) == ()
     assert change.merged(skipped) == tuple(after)
-    # Skips made before CLICK's copy could not be read do not carry over
+    # Skips made before CLICK's copy became unreadable do not carry over.
     assert carry_skipped(set(readable.differences), readable, change) == frozenset()
     assert carry_skipped(skipped, change, change) == frozenset()
 
@@ -490,12 +491,12 @@ def test_steps_number_rungs_as_click_shows_them_working_down() -> None:
     )
 
     assert change.steps() == (
-        # New rungs 2..3 go in above CLICK's rung 2 (B)
+        # New rungs 2 to 3 go in above CLICK's rung 2 (B).
         PasteStep(rungs=(2, 3), above=2, block=0),
-        # With those in, C stands at 5: rung 5 is pasted over it, leaving D at 6
+        # With those in, C is rung 5. Pasting over rung 5 leaves D at rung 6.
         PasteStep(rungs=(5,), over=5, block=1),
         PasteStep(delete=(6,), block=1),
-        # With D gone, F stands at 7
+        # With D gone, F is rung 7.
         PasteStep(delete=(7,), block=2),
     )
 
@@ -532,10 +533,10 @@ def test_skipped_difference_is_left_as_click_has_it_and_rungs_below_count_it() -
     new_rungs, _replaced, _dropped = change.differences
 
     assert change.steps(skipped={new_rungs}) == (
-        # Without N1, N2, C still stands at 3
+        # Without N1 and N2, C is still rung 3.
         PasteStep(rungs=(5,), over=3, block=1),
         PasteStep(delete=(4,), block=1),
-        # A B X E F: F stands at 5
+        # With A B X E F, F is rung 5.
         PasteStep(delete=(5,), block=2),
     )
 
@@ -546,7 +547,7 @@ def test_skipping_a_difference_leaves_the_ones_above_it_alone() -> None:
 
     assert change.steps(skipped={replaced}) == (
         PasteStep(rungs=(2, 3), above=2, block=0),
-        # A N1 N2 B C D E F: F stands at 8
+        # With A N1 N2 B C D E F, F is rung 8.
         PasteStep(delete=(8,), block=2),
     )
 
@@ -562,7 +563,7 @@ def test_a_difference_pasted_out_of_order_counts_only_for_the_rungs_below_it() -
     change = _three_differences()
     new_rungs, replaced, dropped = change.differences
 
-    # X was pasted before N1, N2: N1, N2 still go above B, and F stands at 7
+    # X was pasted before N1 and N2. N1 and N2 still go above B, and F is rung 7.
     assert change.steps(pasted={replaced}) == (
         PasteStep(rungs=(2, 3), above=2, block=0),
         PasteStep(delete=(7,), block=2),
@@ -594,7 +595,7 @@ def test_differences_holding_rungs_asked_for_by_number() -> None:
 
     assert change.blocks_holding([3]) == {new_rungs}
     assert change.blocks_holding([1, 5, 6]) == {replaced}
-    # A removal pastes nothing, so no rung number holds it
+    # A removal pastes nothing, so no rung number belongs to it.
     assert change.blocks_holding([1, 4, 6]) == frozenset()
 
 
@@ -611,7 +612,7 @@ def test_merged_program_keeps_click_rungs_where_skipped() -> None:
 def test_skips_outlive_a_click_save_of_the_differences_taken() -> None:
     old = _three_differences()
     new_rungs, replaced, dropped = old.differences
-    # CLICK pasted and saved the new rungs, skipping the rest
+    # CLICK pasted and saved the new rungs and skipped the rest.
     new = compare_rungs(_commented("A", "N1", "N2", *_CLICK_LABELS[1:]), old.after)
 
     assert new.differences == (replaced, dropped)
@@ -622,11 +623,11 @@ def test_skips_outlive_a_click_save_of_the_differences_taken() -> None:
 def test_skip_of_a_repeated_change_outlives_pasting_the_other() -> None:
     old = compare_rungs(_commented("A", "X", "B", "X"), _commented("A", "Y", "B", "Y"))
     first, second = old.differences
-    # The first was pasted and CLICK saved: what is left is the skipped one
+    # The first was pasted and CLICK saved, so only the skipped one is left.
     new = compare_rungs(_commented("A", "Y", "B", "X"), old.after)
 
     assert carry_skipped({second}, old, new) == set(new.differences)
-    # Nothing saved yet: each keeps its own choice
+    # Nothing is saved yet, so each difference keeps its own choice.
     assert carry_skipped({second}, old, old) == {second}
     assert carry_skipped({first}, old, old) == {first}
 
@@ -637,7 +638,7 @@ def test_diff_records_where_each_difference_starts() -> None:
     diff = render_diff(change, "main.csv", before=BundleSources(), after=BundleSources())
 
     assert diff.lines[2:] == ("-R1  # A\n", "+R1  # A1\n", " R2  # B\n", " R3  # C\n", "-R4  # D\n")
-    # The second difference starts with the unchanged rung shown above it
+    # The second difference starts at the unchanged rung that is shown above it.
     assert diff.blocks == (2, 5)
     assert [step.block for step in change.steps()] == [0, 1]
 
@@ -677,17 +678,17 @@ def test_diff_shows_insert_and_neutral_renumber() -> None:
     assert change.changed == (7,)
     assert "+    comment('Bottom shift')" in diff.text
     assert "+    with rung(C1):  # R7" in diff.text
-    # The rung below is shown unchanged, as proposed: moved down one
+    # The rung below is shown unchanged, as proposed, moved down one.
     assert "     comment('Bottom minimum')\n     with rung(C1):  # R8" in diff.text
     assert "-    comment('Bottom minimum')" not in diff.text
     assert "+    comment('Bottom minimum')" not in diff.text
-    # The block to paste can be found in the text, after the unchanged rung above it
+    # The text contains the block to paste, after the unchanged rung above it.
     assert diff.lines[diff.starts[7]] == "     comment('Existing 6')\n"
     assert diff.lines[diff.starts[7] + 3] == "+    comment('Bottom shift')\n"
 
 
 def test_unchanged_rungs_beyond_the_one_beside_a_difference_are_a_separator() -> None:
-    # One rung inserted near the top moves every rung below it
+    # One rung inserted near the top moves every rung below it down.
     change = compare_rungs(_commented("A", "B", "C", "D"), _commented("A", "New", "B", "C", "D"))
 
     diff = render_diff(change, "main.csv", before=BundleSources(), after=BundleSources())
@@ -716,7 +717,8 @@ def test_a_separator_between_differences_expands_from_either_end() -> None:
     assert diff.lines[index] == "@@ R3..10 unchanged @@\n"
     assert (gap.shown, gap.hidden, gap.arrows) == ((1, 1), 8, "↓↑")
 
-    # Down shows more below the difference above, up more above the one below
+    # The down arrow shows more rungs below the difference above.
+    # The up arrow shows more above the one below.
     assert gap.expand("↓") == (4, 1)
     assert gap.expand("↑") == (1, 4)
     diff = _render({gap.opcode: gap.expand("↑")})
@@ -726,7 +728,7 @@ def test_a_separator_between_differences_expands_from_either_end() -> None:
         f" R{number}  # Same {number - 1}\n" for number in range(8, 12)
     )
 
-    # Once few are left, one arrow shows them all
+    # Once few are hidden, one arrow shows them all.
     diff = _render({gap.opcode: (3, 4)})
     ((index, gap),) = diff.gaps.items()
     assert (gap.hidden, gap.arrows) == (3, "↕")
@@ -823,7 +825,7 @@ with Program() as logic:
 
 
 def _marked(diff: RenderedDiff, index: int) -> str:
-    """Line *index* of *diff* with its changed words in brackets."""
+    """Return line *index* of *diff* with its changed words in brackets."""
     line = diff.lines[index].rstrip("\n")
     for start, end in reversed(diff.words.get(index, ())):
         line = f"{line[:start]}[{line[start:end]}]{line[end:]}"
@@ -1010,7 +1012,7 @@ def test_round_trip_of_something_pyrung_cannot_convert_has_no_text(tmp_path: Pat
 
 
 def test_round_trip_says_which_line_of_nicknames_csv_pyrung_refuses(tmp_path: Path) -> None:
-    """ClickNick's own reader refuses the same file, so staging and the diff agree."""
+    """ClickNick's own reader rejects the same file, so staging and the diff agree."""
     bundle = _bundle(tmp_path / "csv", {"main.csv": _rungs("Y001")}, index=True)
     nicknames = bundle / "nicknames.csv"
     nicknames.write_bytes(b'Address,Data Type,Nickname\r\nY001,INT,"Lamp"\r\n')
