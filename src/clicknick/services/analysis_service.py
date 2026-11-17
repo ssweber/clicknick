@@ -1,8 +1,8 @@
 """Static program analysis via pyrung's dependency graph.
 
-Pure Python, no tkinter.  Builds a ProgramGraph from the connected
-Click project's Scr*.tmp files and exposes tag-role and dependency
-queries that return addr_key sets for address editor filtering.
+This module is pure Python and does not use tkinter. It builds a ProgramGraph from the
+Scr*.tmp files of the connected CLICK project. Its queries about tag roles and dependencies
+return sets of addr_keys, and the address editor filters its rows by those sets.
 """
 
 from __future__ import annotations
@@ -99,7 +99,11 @@ def _write_nicknames_csv(csv_dir: Path, nickname_rows: Mapping[int, AddressRow])
 
 
 def _channel_inputs(scr_folder: Path) -> frozenset[str]:
-    """Read installed analog input assignments alongside the saved ladder."""
+    """Return the addresses assigned to the analog inputs of the installed CLICK hardware.
+
+    Read them from the Project.ini in *scr_folder*, beside the saved ladder files. Return an
+    empty set if there is no Project.ini.
+    """
     from pyclickplc.project import read_channel_parameters
 
     try:
@@ -141,11 +145,12 @@ def _build_tag_addr_key_map(
     nickname_csv: Path | None,
     nickname_rows: Mapping[int, AddressRow],
 ) -> _TagMaps:
-    """Build bidirectional tag_name <-> addr_key maps over every address.
+    """Return the tag_name -> addr_key map and the addr_key -> tag_name map of every address.
 
-    pyrung reads the names from *nickname_csv*, the snapshot's nicknames.csv that the code
-    was generated from (``tag_names``). So the names match the code with whichever pyrung is
-    installed. An address with no nickname is named by its display address (e.g. "X001").
+    ``tag_names`` gets the names by asking pyrung to read *nickname_csv*. That file is the
+    nicknames.csv of the snapshot that the code was generated from. The names therefore match
+    the code, whichever version of pyrung is installed. An address with no nickname is named
+    by its display address (e.g. "X001").
     """
     from .tag_names import tag_names
 
@@ -164,17 +169,21 @@ _GENERATED_FILE_NAMES = {
     "AGENTS.pyrung.md",
     "README.pyrung.md",
 }
-#: The user's guidance files. ClickNick only keeps their pointer to pyrung's guidance.
+#: The user's guidance files. ClickNick changes them only to put back a missing line that
+#: points to pyrung's guidance.
 _WORKSPACE_GUIDANCE_FILES = {"AGENTS.md", "README.md"}
-#: The pointer line that pyrung seeds into each of them starts with this.
+#: The pointer line that pyrung writes into each of them starts with this.
 _GUIDANCE_MARKER = "<!-- pyrung:guidance -->"
-#: An older pyrung wrote these files whole, and they contain this marker.
+#: An older pyrung wrote all of the text in these files, and such a file contains this marker.
 _OLD_GUIDANCE_MARKER = "<!-- pyrung:workspace-lifecycle:start -->"
 _EXPORT_IGNORE = shutil.ignore_patterns(".venv", "__pycache__", "*.pyc")
 
 
 def _clean_generated(persist_dir: Path, *, keep: frozenset[str] = frozenset()) -> None:
-    """Remove ClickNick-owned outputs from an active workspace, except those named in *keep*."""
+    """Remove the folders and files that ClickNick generates from *persist_dir*.
+
+    Leave those named in *keep*.
+    """
     for child in persist_dir.iterdir():
         managed = child.name in _GENERATED_DIR_NAMES or child.name in _GENERATED_FILE_NAMES
         if not managed or child.name in keep:
@@ -186,7 +195,10 @@ def _clean_generated(persist_dir: Path, *, keep: frozenset[str] = frozenset()) -
 
 
 def _copy_missing(source: Path, destination: Path) -> None:
-    """Seed generated support files without replacing workspace-owned files."""
+    """Copy *source*, a file or a folder, to *destination* in the workspace.
+
+    Do not replace a file that is already there.
+    """
     if source.is_dir():
         for child in source.rglob("*"):
             relative = child.relative_to(source)
@@ -206,8 +218,9 @@ def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
 
     The file belongs to the user. If its pointer line is missing, put it back under the
     file's title, or on top if the file has no title. Change nothing else. An older pyrung
-    wrote some files whole, and they still carry that pyrung's markers. Such a file is all
-    stale guidance, so move it aside to ``*.previous.md`` and put the fresh one in its place.
+    wrote all of the text in some of these files, and such a file still contains that
+    pyrung's marker. All of its text is out-of-date guidance. Rename it to ``*.previous.md``
+    and write the file that pyrung has just generated in its place.
     """
     generated = source.read_text(encoding="utf-8")
     pointer = next(
@@ -251,10 +264,11 @@ def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
 
 
 def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
-    """Publish a complete staged generation without risking workspace edits.
+    """Copy a fully generated project from *staged_dir* into the workspace *persist_dir*.
 
-    It waits for a backup or restore of the workspace that is under way. It holds the
-    workspace from its backup of edits until the generation is recorded.
+    If the user edited the workspace's src/plc, back it up first so that the edits are not
+    lost. Wait for any backup or restore of the workspace that is under way. Hold the
+    workspace's lock from that backup until the new source is recorded as generated.
     """
     from .project_workspace import (
         _replace_tree,
@@ -273,9 +287,9 @@ def _publish_generated_project(staged_dir: Path, persist_dir: Path) -> None:
     with workspace_writing(persist_dir, wait=True):
         backup_modified_plc_source(persist_dir)
 
-        # Copy support files first. csv/ and src/plc go last and together. So a failure
-        # anywhere (a file open in Excel) never leaves csv/ from one save and src/plc from
-        # another. The generation record is written only once both are in.
+        # Copy the support files first. Replace csv/ and src/plc last, and together, so that a
+        # failure such as a file open in Excel never leaves csv/ from one save beside src/plc
+        # from another. The generation record is written only after both are replaced.
         for child in staged_dir.iterdir():
             if child.name in {"src", "csv"}:
                 continue
@@ -306,10 +320,11 @@ def _regenerate_persisted_project(
     analog_inputs: frozenset[str],
     workspace_kind: WorkspaceKind = "temporary",
 ) -> Path:
-    """Generate beside the workspace, then publish only a complete project.
+    """Generate the pyrung project in a temporary folder beside *persist_dir*, then copy it in.
 
-    The function records *analog_inputs* in csv/, because `tag apply` regenerates the code
-    from csv/.
+    Return *persist_dir*. The workspace receives the project only after the whole project has
+    been generated. The function records *analog_inputs* in csv/, because `tag apply`
+    regenerates the code from csv/.
     """
     from pyrung.click import ladder_to_pyrung_project
 
@@ -379,8 +394,8 @@ def _build_graph(
         code = ladder_to_pyrung(csv_dir, nickname_csv=nickname_csv, analog_inputs=analog_inputs)
         tag_maps = _build_tag_addr_key_map(nickname_csv, nickname_rows or {})
 
-    # Generated source is useful for inspection and repair even when executing
-    # it cannot construct a Program. Publish it independently of analysis.
+    # Write the generated source to the workspace before running it. The user can inspect
+    # and repair the source even if running it does not produce a Program.
     project_dir = None
     if persist_dir is not None:
         project_dir = _regenerate_persisted_project(
@@ -414,30 +429,32 @@ class AnalysisService:
         self.check_selection: ProgramCheckSelection | None = None
         self._result: AnalysisResult | None = None
         self._project_dir: Path | None = None
-        # Tag names of the project in _project_dir, and whether the latest build wrote it.
-        # If a rebuild fails after publishing, both are newer than _result. If it fails
-        # before publishing, _project_dir is still an older save's.
+        # The tag maps of the project in _project_dir, and whether the latest build wrote
+        # that project. If a rebuild fails after it writes the workspace, _project_dir and
+        # these maps are newer than _result. If it fails before, _project_dir still holds the
+        # workspace of an earlier save.
         self._project_tags: dict[str, int] = {}
         self._project_keys: dict[int, str] = {}
         self._project_is_current = False
-        # Written from the build thread, read from the UI thread. Plain
-        # attribute assignment is atomic enough; there is no read-modify-write.
+        # The build thread writes these, and the UI thread reads them. Each write is a plain
+        # assignment and never a read-modify-write, so it is atomic enough.
         self._status = AnalysisStatus.IDLE
         self._error: str | None = None
         self._error_detail: str | None = None
         self._system_nickname_repairs: tuple[SystemNicknameRepair, ...] = ()
         self._needs_comment_upgrade = False
-        # Builds run on a worker thread while invalidate() runs on the Tk thread.
-        # The lock makes epoch bumps and publish-if-current atomic.
+        # Builds run on a worker thread, and invalidate() runs on the Tk thread. The lock
+        # makes each increase of _epoch atomic. It also makes a build's check that _epoch is
+        # unchanged and the storing of its result one atomic step.
         self._lock = threading.Lock()
         self._generation = 0
         self._epoch = 0
-        # Number of build requests made (`mark_building`). A build that serves fewer requests
-        # than this leaves the status BUILDING, because what it publishes is older than the
-        # latest request.
+        # The number of build requests made so far. Each call to `mark_building` adds one. A
+        # build that serves fewer requests than this leaves the status BUILDING, because its
+        # result is older than the latest request.
         self._builds_asked = 0
-        # The reason and detail of a request that failed before it could be queued, while a
-        # build ran. They are shown once the build that serves every request finishes.
+        # If a request fails before it can be queued while a build runs, this holds its reason
+        # and detail. The failure is shown once the build that serves every request finishes.
         self._failed_request: tuple[str, str | None] | None = None
 
     @property
@@ -450,11 +467,12 @@ class AnalysisService:
 
     @property
     def generation(self) -> int:
-        """Bumped when a build starts, i.e. when the project folder is rewritten.
+        """Return a counter that increases by one each time a build starts.
 
-        Consumers that read the generated project off disk capture this before
-        they start and compare afterwards: a change means the files moved under
-        them and whatever they saw was a half-written project, not a real error.
+        A build may rewrite the project folder. A caller that reads the generated project
+        from disk reads this counter before and after. If the value changed, a build rewrote
+        the files while the caller read them. What the caller saw was then a half-written
+        project, and an error it met there is not a real error.
         """
         return self._generation
 
@@ -470,7 +488,11 @@ class AnalysisService:
 
     @property
     def system_nickname_repairs(self) -> tuple[SystemNicknameRepair, ...]:
-        """Structured vendor corrections when the current failure is repairable."""
+        """Return the corrections to CLICK's system nicknames that the current failure needs.
+
+        pyrung lists them in the error that it raises when a system nickname needs a
+        correction. For any other failure, and when there is no failure, the tuple is empty.
+        """
 
         return self._system_nickname_repairs
 
@@ -483,8 +505,8 @@ class AnalysisService:
     def project_is_current(self) -> bool:
         """Return True if ``project_dir`` holds what the latest build read from CLICK.
 
-        It is False after a build failed before it published. ``project_dir`` is then the
-        workspace of an earlier save.
+        It is False after a build failed before it wrote the workspace. ``project_dir`` is
+        then the workspace of an earlier save.
         """
         return self._project_is_current
 
@@ -492,7 +514,7 @@ class AnalysisService:
     def project_tag_to_addr_key(self) -> dict[str, int]:
         """Return the tag name -> addr_key map for the tag names in ``project_dir``'s source.
 
-        It is the same as ``tag_to_addr_key`` unless a rebuild failed after publishing the
+        It is the same as ``tag_to_addr_key`` unless a rebuild failed after it wrote the
         workspace. In that case the graph and ``tag_to_addr_key`` stay the previous build's,
         while the workspace on disk already uses the new names.
         """
@@ -507,7 +529,10 @@ class AnalysisService:
         return self._project_keys
 
     def _record_failure(self, reason: str, detail: str | None) -> None:
-        """Show *reason* as the latest request's outcome. The caller holds ``_lock``."""
+        """Set the status to FAILED, with *reason* as the outcome of the latest request.
+
+        The caller must hold ``_lock``.
+        """
         self._failed_request = None
         self._epoch += 1
         self._project_is_current = False
@@ -522,12 +547,16 @@ class AnalysisService:
     ) -> None:
         """Record a failure that the build thread never got to raise.
 
-        Without *serves*, a request failed before it could be queued (no project database,
-        no saved ladder files), so views can say *why* instead of waiting forever. While a
-        build runs, the status stays BUILDING, and the failure shows once the build that
-        serves every request finishes. A later request replaces it. With *serves*, the build
-        for that request failed before ``build()`` ran. If that build serves fewer requests
-        than were made, the status is left to the build queued after it.
+        Call it without *serves* when a request fails before it can be queued, for example
+        because there is no project database or no saved ladder file. Views can then say
+        *why* instead of waiting forever. If a build is running, the status stays BUILDING.
+        The failure is shown once the build that serves every request finishes, unless a
+        later request is made first and discards it.
+
+        Call it with *serves*, the value that ``mark_building`` returned for a request, when
+        the build for that request failed before ``build()`` ran.
+        If that build serves fewer requests than were made, this call does nothing, and the
+        build queued after it sets the status.
         """
         with self._lock:
             if serves is None:
@@ -541,7 +570,9 @@ class AnalysisService:
             self._record_failure(reason, detail)
 
     def mark_building(self) -> int:
-        """Report a queued build, so nobody sees a stale status until its thread starts.
+        """Set the status to BUILDING as soon as a build is queued.
+
+        Views then do not show an old status while they wait for the build's thread to start.
 
         Return the number of builds asked for so far. Pass it to ``build(serves=)``.
         """
@@ -581,9 +612,10 @@ class AnalysisService:
     def export_project(self, destination: Path) -> int:
         """Copy the ready generated project to a new or empty directory.
 
-        The copy is staged beside *destination* and published only if no
-        analysis rebuild started while files were being copied. Disposable
-        virtual environments and Python caches are omitted.
+        Return the number of files copied. The files go first to a temporary folder beside
+        *destination*. That folder is moved to *destination* only if no analysis rebuild
+        started while the files were copied. Virtual environments and Python caches are left
+        out.
         """
         if self._status is AnalysisStatus.BUILDING:
             raise RuntimeError("pyrung project is not ready to export")
@@ -642,22 +674,26 @@ class AnalysisService:
     ) -> bool:
         """Run the analysis pipeline and cache the result.
 
-        Return True if the result was published, and False if invalidate() or a newer build
-        superseded it while it ran. *serves* is the value that ``mark_building`` returned for
-        the request this build serves. By default it is every request so far. If more
-        requests were made since, the status stays BUILDING for the build that serves them.
+        Return True if the result was stored. Return False if invalidate() ran or a newer
+        build started while this build ran. The result is then dropped. *serves* is the value
+        that ``mark_building`` returned for the request that this build serves. By default it
+        is every request so far. If more requests were made since, the status stays BUILDING
+        for the build that serves them.
 
-        Called from a background thread; stores results for main-thread access.
+        Call it from a background thread. The main thread reads the results that it stores.
         When *persist_dir* is given, the pyrung project is also written to disk.
-        *workspace_kind* selects matching lifecycle guidance in generated docs.
+        *workspace_kind* chooses which lifecycle guidance pyrung writes into the generated
+        docs.
 
-        On failure the status becomes FAILED and the reason is recorded before
-        the exception is re-raised — a caller that swallows it still leaves the
-        UI able to explain itself. Any previous good result is kept, so a failed
-        *rebuild* does not take working analysis away from open windows.
+        If the pipeline raises, the status becomes FAILED and the reason is recorded, unless
+        a newer build or request has taken over. Either way, the exception is raised again.
+        The UI can explain the failure even if the caller swallows the exception. Any previous
+        good result is kept, so a failed *rebuild* does not take working analysis away from
+        open windows.
         """
         with self._lock:
-            # Readers use this generation to detect a rebuild racing their work.
+            # Readers compare this counter before and after their work to learn whether a
+            # rebuild ran meanwhile.
             self._generation += 1
             self._epoch += 1
             epoch = self._epoch
