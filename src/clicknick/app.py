@@ -44,6 +44,10 @@ windll.shcore.SetProcessDpiAwareness(1)
 
 _MATCH_MODES = ("none", "prefix", "contains", "containsplus")
 _MATCH_LABELS = ("None", "Prefix", "Contains", "Fuzzy")
+# The status line when a command needs nicknames and none are loaded
+_NO_NICKNAMES = (
+    "No nicknames loaded. Connect to a CLICK window, or use File > Load Nicknames from CSV"
+)
 # The popup names this many legacy-encoded rungs and only counts the rest
 _LEGACY_LISTED = 10
 
@@ -114,7 +118,9 @@ class ClickNickApp:
         if session is None:
             message = NOT_CONNECTED
         elif session.reading_database:
-            message = "⚠ ClickNick is still reading CLICK's database. Try again when it has finished"
+            message = (
+                "⚠ ClickNick is still reading CLICK's database. Try again when it has finished"
+            )
         else:
             # The load failed or was cancelled, or the user loaded a CSV file instead.
             # Picking the window again connects to it and loads its database.
@@ -320,7 +326,7 @@ class ClickNickApp:
     def _create_click_instances_section(self, parent):
         """Create the Click.exe instances section."""
         instances_frame = ttk.LabelFrame(
-            parent, text="ClickPLC Windows", padding="10"
+            parent, text="CLICK Windows", padding="10"
         )  # Reduce from 15 to 10
 
         # Create frame for combobox and refresh button
@@ -522,7 +528,7 @@ class ClickNickApp:
         mdb_path = self._live_mdb_path()
         if mdb_path is None or not scr_files(mdb_path.parent):
             self._update_status(
-                "Project not saved to disk. Please save in Click Software first.",
+                "The project has no saved program. Save it in CLICK first.",
                 "error",
             )
             return None
@@ -538,7 +544,8 @@ class ClickNickApp:
             if analysis.status is AnalysisStatus.FAILED:
                 messagebox.showerror(
                     title,
-                    f"{analysis.error}\n\n{purpose} needs the project converted to pyrung.",
+                    f"Could not build the workspace: {analysis.error}\n\n"
+                    f"{purpose} needs the workspace.",
                     parent=self.root,
                 )
                 return None
@@ -560,7 +567,7 @@ class ClickNickApp:
         if simulation is not None and simulation.enabled:
             simulation.turn_off()
             return
-        simulation = self._simulation_for_window("Cannot Simulate", "Simulation")
+        simulation = self._simulation_for_window("Cannot Simulate", "The simulation")
         if simulation is not None:
             simulation.turn_on()
 
@@ -595,7 +602,7 @@ class ClickNickApp:
         """
         data = self._data
         if data is None:
-            self._update_status("No data loaded", "error")
+            self._update_status(_NO_NICKNAMES, "error")
             return
 
         window = data.dataview_window
@@ -629,14 +636,14 @@ class ClickNickApp:
             import traceback
 
             traceback.print_exc()
-            self._update_status(f"Error opening dataview editor: {e}", "error")
+            self._update_status(f"Could not open the Data View Editor: {e}", "error")
 
     def _open_simulator(self):
         """Open the Simulator window, or focus if already open."""
         session = self._session
         if session is not None and self._focus_simulator(session):
             return
-        simulation = self._simulation_for_window("Cannot Simulate", "Simulation")
+        simulation = self._simulation_for_window("Cannot Simulate", "The simulation")
         if session is None or simulation is None:
             return
 
@@ -703,7 +710,7 @@ class ClickNickApp:
 
         data = self._data
         if data is None:
-            self._update_status("No data loaded", "error")
+            self._update_status(_NO_NICKNAMES, "error")
             return
 
         try:
@@ -725,26 +732,31 @@ class ClickNickApp:
             import traceback
 
             traceback.print_exc()
-            self._update_status(f"Error opening editor: {e}", "error")
+            self._update_status(f"Could not open the Address Editor: {e}", "error")
 
     def _repair_system_nicknames(self) -> None:
         """Stage documented system nickname fixes for review and Sync."""
 
         store = self._get_store()
         if store is None:
-            self._update_status("No address data loaded", "error")
+            self._update_status(_NO_NICKNAMES, "error")
             return
 
         from .services.system_nickname_service import stage_system_nickname_repairs
 
         repairs = stage_system_nickname_repairs(store)
         if not repairs:
-            self._update_status("No documented system nickname repairs needed", "connected")
+            self._update_status("No system nickname needs a known repair", "connected")
             return
 
         self._open_address_editor("changed")
+        staged = (
+            "1 system nickname repair. Review it"
+            if len(repairs) == 1
+            else f"{len(repairs)} system nickname repairs. Review them"
+        )
         self._update_status(
-            f"Staged {len(repairs)} system nickname repair(s). Review Changed, then Sync.",
+            f"Staged {staged} in the Address Editor, then Sync.",
             "connected",
         )
 
@@ -766,7 +778,7 @@ class ClickNickApp:
         """Stage pyrung's rewrites of old annotation forms for review and Sync."""
         store = self._get_store()
         if store is None:
-            self._update_status("No address data loaded", "error")
+            self._update_status(_NO_NICKNAMES, "error")
             return
 
         from .services.comment_upgrade_service import stage_comment_upgrades
@@ -783,7 +795,8 @@ class ClickNickApp:
         if problems:
             messagebox.showwarning(
                 "Upgrade Project",
-                "pyrung still refuses these comments. Fix them by hand.\n\n" + "\n".join(problems),
+                "Upgrade Project left these comments unchanged, because pyrung would still "
+                "refuse them. Edit them in the Address Editor.\n\n" + "\n".join(problems),
                 parent=self.root,
             )
         if not staged:
@@ -792,8 +805,13 @@ class ClickNickApp:
             else:
                 self._update_status("Every annotation is already in the current form", "connected")
             return
+        what = (
+            "1 comment upgrade. Review it"
+            if staged == 1
+            else f"{staged} comment upgrades. Review them"
+        )
         self._update_status(
-            f"Staged {staged} comment upgrade(s). Review Changed, then Sync.",
+            f"Staged {what} in the Address Editor, then Sync.",
             "connected",
         )
 
@@ -806,22 +824,23 @@ class ClickNickApp:
             status = analysis.status if analysis else None
             if status is AnalysisStatus.FAILED:
                 messagebox.showerror(
-                    "Analysis Failed",
-                    f"{analysis.error}\n\nCheck Program needs the project converted to pyrung.",
+                    "Check Program",
+                    f"Could not build the workspace: {analysis.error}\n\n"
+                    "Check Program needs the workspace.",
                     parent=self.root,
                 )
             elif status is AnalysisStatus.BUILDING:
                 messagebox.showinfo(
-                    "Analysis In Progress",
-                    "The program is still being converted for analysis.\n\nTry again in a moment.",
+                    "Check Program",
+                    "ClickNick is still building the workspace. Try again when it finishes.",
                     parent=self.root,
                 )
             else:
                 messagebox.showinfo(
-                    "Analysis Not Available",
-                    "Program analysis requires a connected Click project.\n\n"
-                    "Analysis builds automatically when connected to a project "
-                    "with ladder files.",
+                    "Check Program",
+                    "Check Program needs the workspace, and ClickNick has not built it.\n\n"
+                    "Connect to a CLICK window whose project has a saved program. ClickNick "
+                    "builds the workspace once it has read CLICK's database.",
                     parent=self.root,
                 )
             return
@@ -830,8 +849,8 @@ class ClickNickApp:
             report = analysis.run_validation()
         except Exception as exc:
             messagebox.showerror(
-                "Analysis Error",
-                f"Validation failed:\n{exc}",
+                "Check Program",
+                f"Could not run the checks: {exc}",
                 parent=self.root,
             )
             return
@@ -856,14 +875,14 @@ class ClickNickApp:
         analysis = self._session.analysis if self._session else None
         selection = analysis.check_selection if analysis is not None else None
         if selection is None:
-            messagebox.showinfo(
-                "Check Settings", "Connect to a project before choosing checks.", parent=parent
-            )
+            messagebox.showinfo("Check Settings", "Connect to a CLICK window first.", parent=parent)
             return
         try:
             CheckSelectionWindow(parent, selection, on_saved)
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Check Settings", str(exc), parent=parent)
+            messagebox.showerror(
+                "Check Settings", f"Could not open the check settings: {exc}", parent=parent
+            )
 
     def _analyze_program(self) -> None:
         """Run program validation and show a report that you can refresh in place."""
@@ -909,7 +928,7 @@ class ClickNickApp:
         ).pack(fill=tk.X, pady=(0, 8))
         ttk.Button(
             edit,
-            text="Data View",
+            text="Data View Editor",
             image=self._action_icons.get("data_view"),
             compound=tk.LEFT,
             command=self._open_dataview_editor,
@@ -1190,13 +1209,14 @@ class ClickNickApp:
         # Delete the rows
         try:
             deleted_count = fresh_source.save_changes(rows_to_delete)
+            noun = "row" if deleted_count == 1 else "rows"
             messagebox.showinfo(
                 "Clean MDB",
-                f"Successfully deleted {deleted_count} rows from the MDB.",
+                f"Deleted {deleted_count} {noun} from CLICK's database.",
                 parent=self.root,
             )
         except Exception as e:
-            self._update_status(f"Error cleaning MDB: {e}", "error")
+            self._update_status(f"⚠ Could not delete the rows from CLICK's database: {e}", "error")
 
     def _export_pyrung_project(self):
         """Copy the connected project's ready workspace."""
@@ -1229,7 +1249,7 @@ class ClickNickApp:
         if analysis.project_dir is None:
             messagebox.showinfo(
                 "Export Workspace",
-                "Save the project in Click Software, then try again.",
+                "Save the project in CLICK, then try again.",
                 parent=self.root,
             )
             return
@@ -1246,7 +1266,11 @@ class ClickNickApp:
         try:
             file_count = analysis.export_project(destination)
         except Exception as exc:
-            messagebox.showerror("Export pyrung Project", str(exc), parent=self.root)
+            messagebox.showerror(
+                "Export Workspace",
+                f"Could not export the workspace to {destination}: {exc}",
+                parent=self.root,
+            )
             return
 
         self._update_status(
@@ -1510,7 +1534,7 @@ class ClickNickApp:
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
         tools_menu.add_command(label="Address Editor...", command=self._open_address_editor)
-        tools_menu.add_command(label="Dataview Editor...", command=self._open_dataview_editor)
+        tools_menu.add_command(label="Data View Editor...", command=self._open_dataview_editor)
         tools_menu.add_command(label="Check Program", command=self._analyze_program)
         tools_menu.add_command(label="Simulate...", command=self._open_simulator)
         tools_menu.add_separator()
@@ -1710,7 +1734,7 @@ class ClickNickApp:
         try:
             self._live_server.start()
         except Exception as exc:  # noqa: BLE001 - never block app startup
-            print(f"Live server failed to start: {exc}")
+            print(f"The server for clicknick-cli did not start: {exc}")
 
         # Set the icon
         try:
@@ -1843,10 +1867,10 @@ class ClickNickApp:
             )
         if copies:
             parts.append(
-                "Paste these programs into CLICK again from your own copy, or fix them in "
-                "CLICK:\n\n"
+                "ClickNick cannot read these programs in CLICK:\n\n"
                 + _listed(copies)
-                + "\n\nLadder > Compare with > Folder on that copy lists them in red."
+                + "\n\nPaste them into CLICK again from your own copy, or fix them in CLICK. "
+                "Ladder > Compare with > Folder on that copy lists them in red."
             )
         if legacy:
             parts.append(

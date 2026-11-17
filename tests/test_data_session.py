@@ -117,7 +117,7 @@ def test_dataview_prompt_comes_first_and_cancel_stops_there(answers) -> None:
 
     assert not session.close(prompt_save=True)
 
-    assert len(prompts) == 1 and "Dataview" in prompts[0]
+    assert len(prompts) == 1 and "Data View Editor" in prompts[0]
     assert not dataview.closed
 
 

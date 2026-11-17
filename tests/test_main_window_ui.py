@@ -241,7 +241,9 @@ def test_ui_refresh_sets_title_and_workspace_details(tmp_path: Path) -> None:
     app._refresh_ui()
 
     app.workspace_detail_var.set.assert_called_with("TypeError: bad rung")
-    app.workspace_group_title_var.set.assert_called_with("Workspace - Could not build the workspace")
+    app.workspace_group_title_var.set.assert_called_with(
+        "Workspace - Could not build the workspace"
+    )
 
 
 def test_changing_shown_state_schedules_one_idle_refresh() -> None:
@@ -363,8 +365,11 @@ def test_a_program_csv_laddercodec_cannot_read_pops_up_too(monkeypatch) -> None:
 
     message = warn.call_args.args[1]
     assert message.startswith(
-        "Paste these programs into CLICK again from your own copy, or fix them in CLICK:\n\n"
-        "  Main Program: Invalid marker"
+        "ClickNick cannot read these programs in CLICK:\n\n  Main Program: Invalid marker"
+    )
+    assert message.endswith(
+        "Paste them into CLICK again from your own copy, or fix them in CLICK. "
+        "Ladder > Compare with > Folder on that copy lists them in red."
     )
     assert "empty rung" not in message
 

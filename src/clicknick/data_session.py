@@ -118,7 +118,7 @@ class DataSession:
             dataview_owner: Any = window
             answer = messagebox.askyesnocancel(
                 "Unsaved Changes",
-                "You have unsaved changes in Dataview Editor. Save before closing?",
+                "You have unsaved changes in the Data View Editor. Save before closing?",
                 parent=dataview_owner,
             )
             if answer is None:

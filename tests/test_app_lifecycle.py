@@ -230,7 +230,10 @@ def test_closing_clicknick_asks_about_dataview_edits(monkeypatch):
     app.on_closing()
 
     assert prompts == [
-        ("Unsaved Changes", "You have unsaved changes in Dataview Editor. Save before closing?")
+        (
+            "Unsaved Changes",
+            "You have unsaved changes in the Data View Editor. Save before closing?",
+        )
     ]
     assert dataview.saved and dataview.closed
     assert app.root.destroy.called

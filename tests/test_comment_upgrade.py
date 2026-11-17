@@ -160,7 +160,7 @@ def test_the_repairs_entry_is_enabled_while_an_old_form_remains():
     app._upgrade_project()
     app._open_address_editor.assert_called_once_with("changed")
     assert app._update_status.call_args.args[0] == (
-        "Staged 1 comment upgrade(s). Review Changed, then Sync."
+        "Staged 1 comment upgrade. Review it in the Address Editor, then Sync."
     )
 
     app._refresh_upgrade_entry()
