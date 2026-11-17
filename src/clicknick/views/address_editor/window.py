@@ -437,7 +437,7 @@ class AddressEditorWindow(tk.Toplevel):
         if self._store.has_errors():
             messagebox.showerror(
                 "Validation Errors",
-                f"Cannot {save_label.lower()}: there are validation errors. Please fix them first.",
+                f"Cannot {save_label.lower()}. Fix the validation errors first.",
                 parent=self,
             )
             return
@@ -458,7 +458,7 @@ class AddressEditorWindow(tk.Toplevel):
                 message = f"Successfully {action_verb} {count} changes."
             else:
                 self.status_var.set("Nothing to write")
-                message = "CLICK already had these changes; nothing to write."
+                message = "CLICK already has these changes. There is nothing to write."
             messagebox.showinfo(save_label, message, parent=self)
             if self._close_after_sync:
                 self.close_without_prompt()
@@ -856,7 +856,7 @@ class AddressEditorWindow(tk.Toplevel):
         panel = self._get_current_panel()
         if not panel:
             messagebox.showerror(
-                "No Active Panel", "Please open a tab to perform the rename.", parent=self
+                "No Active Panel", "Open a tab, then rename again.", parent=self
             )
             return
 

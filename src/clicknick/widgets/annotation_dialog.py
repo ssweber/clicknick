@@ -384,8 +384,8 @@ class AnnotationDialog(tk.Toplevel):
         _bind_tooltip(
             self._physical_entry,
             "Name of the physical device this feedback represents.\n"
-            "Optional: left empty, it is named after this tag. Give several\n"
-            "tags the same name to share one definition.\n"
+            "Optional. If you leave it empty, the device is named after this tag.\n"
+            "Give several tags the same name to share one definition.\n"
             "Pick a response below for how the device answers its link.",
         )
 
