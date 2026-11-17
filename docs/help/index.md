@@ -21,23 +21,23 @@ Run the saved program without the PLC, and keep it current as you edit.
 2. Flip the CPU to **RUN** and work the switches, or step one scan at a time.
 3. Right-click a point to ask about it: **Why is it ON?** (or OFF) on any input or output, and on outputs **Show simplified logic** and **How (experimental)** to turn it on or off. The question runs in the Console, so you see the command it used.
 4. Force a point from the same right-click menu (**Force ON** / **Force OFF**, or **Force value...** on an analog channel; **Release force** undoes it), or double-click an output to force it the other way from what it shows.
-5. Change the ladder and save in CLICK. The simulation keeps running the program it has, as a PLC does until you load a new one, and the Simulator offers the new program. Choose how to load it:
-    - In RUN, **RUN Time Edit** loads it and keeps every value, timer and force. **Stop and Write** goes through STOP and back to RUN, which keeps retentive values and forces and clears the rest.
-    - In STOP or while stepping, **Write** loads it and keeps the values and the mode.
+5. Change the ladder and save in CLICK. The simulation keeps running the program it has, as a PLC does until you load a new one. The Simulator offers you the new program. Choose how to load it:
+    - In RUN, **RUN Time Edit** loads the program and keeps every value, timer and force. **Stop and Write** goes through STOP and back to RUN. It keeps retentive values and forces and clears the rest.
+    - In STOP or while stepping, **Write** loads the program and keeps the values and the mode.
 
-An edit to the workspace's ladder source (`src/plc/`) is offered the same way.
+The Simulator offers an edit to the workspace's ladder source (`src/plc/`) the same way.
 
 The rules:
 
-- A save that does not convert, or that holds a rung ClickNick cannot read, leaves the old program running, and the Simulator says why.
-- A force on an input or output stays on its address. A force on internal memory stays on its address when only the nickname changed, and is released when its nickname moved to another address.
-- A [bench link](#bench-links) follows its nicknames, or stays on its address when a nickname is gone. A link whose input was renamed keeps its timing.
-- The Simulator lists the releases, and the links that moved with a nickname, before you choose, and afterwards says what was kept and why anything was not.
-- **Restart** on the Simulator's toolbar starts over on what the workspace holds now (CLICK's last save and any edits), from power-on values or your [PLC data file](#plc-data-file), in the same mode and with your switches, forces and bench links. It is also offered when loading the new program fails.
+- If a save does not convert, or contains a rung that ClickNick cannot read, the old program keeps running. The Simulator tells you why.
+- A force on an input or output stays on its address. A force on internal memory stays on its address when only the nickname changed. If the nickname moved to another address, the force is released.
+- A [bench link](#bench-links) follows its nicknames. If a nickname is gone, the link stays on its address. If the link's input was renamed, the link keeps its timing.
+- Before you choose, the Simulator lists the forces it will release and the links that moved with a nickname. Afterwards it tells you what it kept, and why it did not keep anything else.
+- **Restart** on the Simulator's toolbar starts over from what the workspace holds now (CLICK's last save and any edits). It starts from power-on values or your [PLC data file](#plc-data-file), in the same mode, and keeps your switches, forces and bench links. The Simulator also offers Restart when loading the new program fails.
 - In the Console, `reload` loads the new program the same way.
-- The simulation keeps running after you close the Simulator, so a Data View or HMI can stay connected. Stop it with **Stop** beside the Test heading in the main window, which also shows whether it is running (**Test - Sim on :502**). If another program already uses Modbus port 502, the Simulator offers **Change port...**.
+- The simulation keeps running after you close the Simulator, so a Data View or HMI can stay connected. To stop it, click **Stop** beside the Test heading in the main window. That heading also shows whether the simulation is running (**Test - Sim on :502**). If another program already uses Modbus port 502, the Simulator offers **Change port...**.
 
-What you do on the panel shows in the Console as a green `#` line with the matching command (`# force Motor_Run false`), so the panel teaches the Console's language.
+Each thing you do on the panel appears in the Console as a green `#` line with the matching command, such as `# force Motor_Run false`. This teaches you the Console's commands as you use the panel.
 
 ### The Console
 
@@ -50,19 +50,19 @@ why Motor_Run
 how Motor_Run
 ```
 
-When the motor is off, `why Motor_Run` answers what is holding it off: the rung that drives it and the contacts that are not made. `how Motor_Run` searches for inputs to set that turn it on and answers with them as steps, such as "Set Start_PB=True", with what changed after each. `how` can take a few minutes, and on real programs it sometimes stops without an answer.
+When the motor is off, `why Motor_Run` tells you what is holding it off. It shows the rung that drives the motor and the contacts that are not made. `how Motor_Run` searches for inputs you can set to turn the motor on. It answers with steps, such as "Set Start_PB=True", and shows what changed after each one. `how` can take a few minutes. On real programs it sometimes stops without an answer.
 
 ### Bench links
 
-On the real machine, an output often comes back as an input: a valve coil drives a cylinder, and the cylinder's limit switch turns on a moment later. A bench link wires that up in the Simulator so you do not have to flip the switch by hand: an output drives an input, with a delay. It lives on the bench: it is not in your CLICK project, and it stays in the Simulator's settings between runs.
+On the real machine, an output often comes back as an input. A valve coil drives a cylinder, and the cylinder's limit switch turns on a moment later. A bench link wires this up in the Simulator, so you do not have to flip the switch by hand. It makes an output drive an input, with a delay. A bench link is not in your CLICK project. It stays in the Simulator's settings between runs.
 
-To make one, drag from an output's label to an input (or the other way), or right-click the input and choose **Link to the tag that drives it...**. The input then shows a chip with its driver in place of a switch, and the chip counts down while the delay runs. The **Wiring** menu lists the links, and turns them off or discards them.
+To make one, drag from an output's label to an input, or from an input to an output. You can also right-click the input and choose **Link to the tag that drives it...**. The input then shows a chip with its driver in place of a switch, and the chip counts down while the delay runs. The **Wiring** menu lists the links. You can turn them off or discard them there.
 
-A link the program itself declares in a tag's comment shows as a program link (blue chip; a bench link is purple). Right-click an input with one to change it on the bench, or cut it to simulate a failed sensor. **Save link to project** on a bench link writes it into the input's comment, so it becomes part of the program: Sync in the Address Editor, and after the next build the bench copy is dropped.
+If a tag's comment declares a link, the Simulator shows it as a program link with a blue chip. A bench link has a purple chip. Right-click an input that has a program link to change the link on the bench, or to cut it and simulate a failed sensor. **Save link to project** on a bench link writes the link into the input's comment, so it becomes part of the program. Sync in the Address Editor. After the next build, the Simulator drops the bench copy.
 
 ### PLC data file
 
-The simulation starts from power-on defaults. To start from the controller's live values instead, save a data file in CLICK with **PLC > Read Data from PLC... > All > Save**, then pick it with **PLC Data...** in the Simulator. That also sets the switches and analog values from it. It is not the nickname CSV. The simulation starts over whenever the file changes, on what the workspace holds now.
+The simulation starts from power-on defaults. To start from the controller's live values instead, save a data file in CLICK with **PLC > Read Data from PLC... > All > Save**, then pick it with **PLC Data...** in the Simulator. The Simulator also sets the switches and analog values from that file. The file is not the nickname CSV. Whenever the file changes, the simulation starts over from what the workspace holds now.
 
 ## Workspaces
 
@@ -97,50 +97,50 @@ includes collapsed details. **Help** reopens the first-time tips.
 
 A workspace is a folder that links up with your open project. Until you pick one, ClickNick uses a temporary folder. Pick a real one from the Workspace controls to keep the work with the machine; a small `.clicknick.toml` inside it carries the CLICK PLC name, which is how ClickNick reconnects the same folder when that project is opened again.
 
-On every CLICK save, ClickNick refreshes `src/plc/` (your ladder as Python), `csv/` (the CLICK snapshot it was built from), nickname data, and its generation scripts. Files you add are left alone. If you edited `src/plc/` and a CLICK save is about to replace it, ClickNick copies it to `backup/src/plc/` first; `clicknick-cli restore` puts it back. The backup already there moves to `backup/older/<time>/src/plc/`, and the last 5 backups are kept; `clicknick-cli restore list` lists the older ones and `clicknick-cli restore <time>` puts one back. The same goes for an existing workspace you pick whose `src/plc/` holds edits. A restore first backs up edits in `src/plc/` that no backup holds.
+On every CLICK save, ClickNick refreshes `src/plc/` (your ladder as Python), `csv/` (the CLICK snapshot it was built from), nickname data, and its generation scripts. Files you add are left alone. If you edited `src/plc/` and a CLICK save is about to replace it, ClickNick copies it to `backup/src/plc/` first; `clicknick-cli restore` puts it back. The backup that was already there moves to `backup/older/<time>/src/plc/`. ClickNick keeps the last 5 backups. `clicknick-cli restore list` lists the older ones, and `clicknick-cli restore <time>` puts one back. ClickNick does the same when you pick an existing workspace whose `src/plc/` holds edits. Before a restore, ClickNick backs up any edits in `src/plc/` that no backup holds.
 
 ## Review Changes
 
-Edits to the ladder text go back into CLICK through **Review Changes**. It lists each program that differs from CLICK's last save, with the rung diff underneath, and walks you through pasting the differences into CLICK.
+Edits to the ladder text go back into CLICK through **Review Changes**. It lists each program that differs from CLICK's last save and shows the rung diff underneath. It then walks you through pasting the differences into CLICK.
 
 1. Click **Review Changes** in the main window (or **Workspace > Review Changes**).
-2. Select a program. Click **Copy** to put just the rungs that differ on the clipboard. The step says which rung to select and paste over in CLICK's ladder editor, where to add an empty rung for new ones, and which rungs to delete.
+2. Select a program. Click **Copy** to put just the rungs that differ on the clipboard. The step tells you which rung to select and paste over in CLICK's ladder editor. It also tells you where to add an empty rung for new rungs, and which rungs to delete.
 3. Paste in CLICK with <kbd>Ctrl</kbd>+<kbd>V</kbd> and wait for the rungs to appear.
 4. Click **Next** and work down the program in order, so each step's rung numbers match what CLICK shows.
 5. Save in CLICK. Rows turn **Up to date** as CLICK saves what you pasted, and the window closes once CLICK has saved all of it.
 
-To leave a difference out, untick **Take this difference** above the diff, or click its +/- gutter: CLICK keeps what it has there, and the steps are numbered around it. **◀ ▶** (Alt+Up/Alt+Down, or F7/Shift+F7) go through every difference, program by program, and the bar says how many programs you have not looked at yet. Once you click **Next** past a difference, it can no longer be skipped.
+To leave a difference out, untick **Take this difference** above the diff, or click its +/- gutter. CLICK keeps what it has there, and the steps are numbered around it. **◀ ▶** (Alt+Up/Alt+Down, or F7/Shift+F7) go through every difference, program by program. The bar shows how many programs you have not looked at yet. Once you click **Next** past a difference, you can no longer skip it.
 
-When many rungs changed, switch **Copy** from **Changed rungs** to **Whole program**. It clears a program in CLICK and pastes it in one piece, which is quicker. The switch stays as you left it.
+When many rungs changed, switch **Copy** from **Changed rungs** to **Whole program**. This clears a program in CLICK and pastes it in one piece, which is quicker. The switch stays as you left it.
 
 The rules:
 
-- A program whose skipped difference keeps CLICK's rung in an old encoding is stepped through instead of copied whole. The whole program otherwise keeps CLICK's version of any difference you skipped.
-- Running Review Changes again before CLICK saves goes on from what you pasted. A program whose pasted rungs you edited since is copied whole.
-- A red row is a program whose copy in CLICK holds an old encoding from an older ClickNick. CLICK runs it differently from how it reads, so paste it again.
-- A red row can also mean ClickNick cannot read one of the program's rungs from CLICK. The workspace holds an empty rung in its place. Paste that rung from your own copy of the program. Review Changes copies such a program only whole, and not while its folder holds an empty rung.
-- If CLICK is saved before you finish, the window stays open and can keep pasting.
-- **Reload from CLICK** throws the workspace's edits away and restores the saved CLICK version, taking the same backup first. It closes Review Changes.
+- A whole-program copy keeps CLICK's version of any difference you skipped. If a skipped difference would keep a rung that CLICK holds in an old encoding, ClickNick steps through that program instead of copying it whole.
+- If you run Review Changes again before CLICK saves, it goes on from what you pasted. If you have edited the pasted rungs since, it copies that program whole.
+- A red row is a program whose copy in CLICK holds an old encoding from an older ClickNick. CLICK runs that encoding differently from how it reads it, so paste the program again.
+- A red row can also mean that ClickNick cannot read one of the program's rungs from CLICK. The workspace then holds an empty rung in its place. Paste that rung from your own copy of the program. Review Changes copies such a program only whole, and not while its folder holds an empty rung.
+- If CLICK saves before you finish, the window stays open and you can keep pasting.
+- **Reload from CLICK** throws the workspace's edits away and restores the saved CLICK version. It takes the same backup first, and it closes Review Changes.
 
 ### Compare with another folder or CLICK window
 
-The same window compares CLICK's program with other ladder, so you can take only some of its differences.
+The same window compares CLICK's program with other ladder, so you can take only some of the differences.
 
 - **Ladder > Compare with > Folder** opens it on any folder of ladder CSVs, such as a program exported from pyrung or a copy of another PLC.
 - **Ladder > Compare with > Other CLICK window** does the same with what another open CLICK window last saved.
 
-For another CLICK window, its nicknames and the deletion of programs it lacks start out unticked. A folder's nicknames are never written to CLICK's database directly: **Stage nicknames** stages them in the Address Editor, and **Sync and Close** there writes them.
+For another CLICK window, the nicknames and the deletion of programs it lacks start out unticked. ClickNick never writes a folder's nicknames to CLICK's database directly. **Stage nicknames** stages them in the Address Editor, and **Sync and Close** there writes them.
 
 ## Where ClickNick writes { #where-clicknick-writes }
 
 ClickNick does not directly edit the `.ckp` file. It works through the files and workflows CLICK exposes while a project is open:
 
 - Nickname and comment tools read and write CLICK's temporary `SC_.mdb` working database. Those changes become part of the project only when you save in CLICK.
-- After a Sync, CLICK redraws the nicknames in its ladder. CLICK keeps the names it shows in memory, so ClickNick runs CLICK's **File > Import > Nickname** on a file holding only the header line: nothing is imported, and CLICK reads every nickname again from `SC_.mdb`. CLICK then counts the project as changed, and asks to save it when you close it. While CLICK has a dialog open, ClickNick leaves it alone and says so: close the dialog, then choose **Tools > Redraw Nicknames in CLICK**.
+- After a Sync, CLICK redraws the nicknames in its ladder. CLICK keeps the names it shows in memory. So ClickNick runs CLICK's **File > Import > Nickname** on a file that holds only the header line. Nothing is imported, and CLICK reads every nickname again from `SC_.mdb`. CLICK then counts the project as changed and asks you to save it when you close it. If CLICK has a dialog open, ClickNick leaves CLICK alone and tells you. Close the dialog, then choose **Tools > Redraw Nicknames in CLICK**.
 - Data View tools read and write temporary `.cdv` files. A Data View created in ClickNick must be imported into CLICK manually.
 - Ladder text edits stay in the workspace until you review them rung by rung in Review Changes and paste the ones you choose through CLICK's own ladder editor.
 - The Tag Browser is built from nickname data and stores nothing.
-- The Simulator remembers switch positions, analog values, forces and bench links in `%LOCALAPPDATA%\ClickNick\simulator\<PLC name>.toml`, or in `simulator.toml` inside the workspace once you set one up.
+- The Simulator saves switch positions, analog values, forces and bench links in `%LOCALAPPDATA%\ClickNick\simulator\<PLC name>.toml`, or in `simulator.toml` inside the workspace once you set one up.
 
 ## Database connection
 
@@ -169,7 +169,7 @@ Load a nickname CSV manually, or save a copy of CLICK's project CSV when offered
 
 ## Common setup questions
 
-- Nicknames changed through the Address Editor appear in autocomplete immediately, and in CLICK's ladder after a Sync. If CLICK had a dialog open, close it, then choose **Tools > Redraw Nicknames in CLICK**; see [Where ClickNick writes](#where-clicknick-writes).
+- Nicknames changed through the Address Editor appear in autocomplete immediately, and in CLICK's ladder after a Sync. If CLICK had a dialog open, close it, then choose **Tools > Redraw Nicknames in CLICK**. See [Where ClickNick writes](#where-clicknick-writes).
 - ClickNick is beta software. Review Address Editor, Data View, and ladder changes before saving in CLICK.
 
 ## Project support

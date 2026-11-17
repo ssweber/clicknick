@@ -12,7 +12,7 @@ The Address Editor opens different address sections in separate windows, takes p
 
 ![Address Editor demo](https://github.com/user-attachments/assets/ee7b1914-2f18-483a-ace1-84c2aa8eea98)
 
-After a Sync, CLICK redraws the renamed nicknames in its ladder. If CLICK had a dialog open, ClickNick says so: close the dialog, then choose **Tools > Redraw Nicknames in CLICK**.
+After a Sync, CLICK redraws the renamed nicknames in its ladder. If CLICK had a dialog open, ClickNick tells you. Close the dialog, then choose **Tools > Redraw Nicknames in CLICK**.
 
 ## Organize
 
@@ -34,7 +34,7 @@ Trailing numbers are read as arrays: `Alm1_id`, `Alm1_value`, `Alm2_id`, and `Al
 
 Autocomplete in every instruction dialog is [tour stop 2](tour/autocomplete.md).
 
-The Address Editor's filter box also understands what the program does with a tag. `input:` shows tags the ladder reads but never writes, your physical inputs and HMI bits. `output:` shows tags it writes but never reads, your physical outputs. `pivot:` shows the ones in between, and `isolated:` shows nicknamed addresses no rung touches. `upstream:MotorOut` shows everything that feeds a tag, however many rungs away; `downstream:StartPB` shows everything a tag feeds. `tree:Tank_Pump1` shows that nickname and the ones under it (`Tank_Pump1_Run`), which is what double-clicking it in the Tag Browser sets. Prefixes combine with text, so `upstream:MotorOut ^Alm` narrows to the alarms that can hold a motor off.
+The Address Editor's filter box also understands what the program does with a tag. `input:` shows tags the ladder reads but never writes, your physical inputs and HMI bits. `output:` shows tags it writes but never reads, your physical outputs. `pivot:` shows the ones in between, and `isolated:` shows nicknamed addresses no rung touches. `upstream:MotorOut` shows everything that feeds a tag, however many rungs away; `downstream:StartPB` shows everything a tag feeds. `tree:Tank_Pump1` shows that nickname and the ones under it, such as `Tank_Pump1_Run`. Double-clicking the nickname in the Tag Browser sets the same filter. Prefixes combine with text, so `upstream:MotorOut ^Alm` narrows to the alarms that can hold a motor off.
 
 Data Views are built by name. Load the `.cdv` files from the open project into tabs, add addresses by nickname, and drag to reorder. Double-click a tag in the Tag Browser to add it to the Data View, or double-click a group to add the whole structure or block at once. A Data View created in ClickNick is imported into CLICK by hand.
 
