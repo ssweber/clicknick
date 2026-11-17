@@ -4,7 +4,7 @@ This document contains manual testing procedures for ClickNick's Address Editor.
 
 ## Address Editor - Multi-Tab/Window Sync
 
-These tests verify the Static Skeleton Architecture where all tabs and windows share the same AddressRow objects.
+These tests check that every Address Editor tab, in every window, shows the same row list. That list is the store's one cached UnifiedView, which `build_unified_view` makes from `store.visible_state`. `AddressRow` objects are frozen. So on each change, the store puts the new instances of the changed rows into that shared list before it notifies the observers (`_sync_unified_view`). Each tab then redraws only those rows.
 
 ### 1. Multi-Tab Sync (Same Window)
 - [ ] Open Address Editor
