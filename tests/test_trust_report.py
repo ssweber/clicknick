@@ -218,8 +218,9 @@ def test_unpinned_dependency_fails_pin_check():
 def test_security_narrative_rejects_missing_or_malformed_sections(tmp_path, source):
     page = tmp_path / "index.md"
     page.write_text(source, encoding="utf-8")
-    with pytest.raises(ValueError, match="Security page"):
+    with pytest.raises(ValueError, match="Security page") as raised:
         tr.render_security_narrative(page)
+    assert str(page) in str(raised.value)
 
 
 def test_security_narrative_uses_current_checkout_and_only_marked_sections(tmp_path, monkeypatch):

@@ -769,19 +769,20 @@ class SecurityNarrativeLinks(Treeprocessor):
 
 def render_security_narrative(path: Path | None = None) -> str:
     """Read the local source, never the live website or a previous release report."""
-    source = (path or ROOT / "docs/security/index.md").read_text(encoding="utf-8")
+    page = path or ROOT / "docs/security/index.md"
+    source = page.read_text(encoding="utf-8")
     start = "<!-- trust-report:start -->"
     end = "<!-- trust-report:end -->"
     if not source.count(start) or source.count(start) != source.count(end):
-        raise ValueError("Security page must contain matching trust-report markers")
+        raise ValueError(f"Security page {page} must contain matching trust-report markers")
     sections = []
     parts = source.split(start)
     if end in parts[0]:
-        raise ValueError("Security page has out-of-order trust-report markers")
+        raise ValueError(f"Security page {page} has out-of-order trust-report markers")
     for part in parts[1:]:
         body, marker, remainder = part.partition(end)
         if not marker or end in remainder or not body.strip():
-            raise ValueError("Security page has empty or out-of-order trust-report markers")
+            raise ValueError(f"Security page {page} has empty or out-of-order trust-report markers")
         sections.append(body.strip())
     renderer = Markdown(extensions=["tables", "fenced_code"])
     renderer.treeprocessors.register(SecurityNarrativeLinks(renderer), "report_links", 0)
@@ -881,8 +882,8 @@ format: <a href="https://pyrung.com/clicknick/security/">pyrung.com/clicknick/se
 
 <h2>For IT / security review</h2>
 <p class="note">The narrative below comes from <code>docs/security/index.md</code> in this
-report's source checkout. It describes intended behavior; the generated checks below provide
-release-specific evidence, not a formal security audit.</p>
+report's source checkout. It describes how ClickNick is meant to behave. The generated checks below are
+evidence for this release. They are not a formal security audit.</p>
 {render_security_narrative()}
 
 <h2>Release summary</h2>
@@ -892,7 +893,7 @@ release-specific evidence, not a formal security audit.</p>
 <tr><td>Runtime distributions</td><td>{len(rep.dists)}</td></tr>
 <tr><td>First-party</td><td>{len(first)}</td></tr>
 <tr><td>Third-party</td><td>{len(third)}</td></tr>
-<tr><td>Known vulnerabilities</td><td>{esc(vuln_count)} ({rep.audited_packages} dependencies audited against the advisory database; ClickNick itself is the package being built)</td></tr>
+<tr><td>Known vulnerabilities</td><td>{esc(vuln_count)}, from {rep.audited_packages} dependencies checked against the advisory database. The check leaves out ClickNick itself, because it is the package being built.</td></tr>
 <tr><td>Non-PyPI third-party dependencies</td><td>{len([d for d in third if d.source != "PyPI"])}</td></tr>
 <tr><td>Unresolved licenses</td><td>{len([d for d in rep.dists if d.license.startswith("UNRESOLVED")])}</td></tr>
 <tr><td>SBOM SHA256 ({esc(rep.sbom_name)})</td><td class="mono hash">{esc(rep.sbom_sha256)}</td></tr>
@@ -907,8 +908,8 @@ release-specific evidence, not a formal security audit.</p>
 
 <h2>Runtime dependencies</h2>
 <p>Every distribution that <code>uv tool install clicknick=={esc(rep.version)}</code> installs. ClickNick pins its
-whole runtime tree exactly (the "Pin" column), so a fresh install matches this table and the SBOM; a release check
-below confirms the pins match <code>uv.lock</code>. "Used by" names the package that needs it. "First-party" means
+whole runtime tree to exact versions, shown in the "Pin" column. A fresh install therefore matches this table and
+the SBOM. A release check below confirms that the pins match <code>uv.lock</code>. "Used by" names the package that needs it. "First-party" means
 written by the ClickNick author. "Native code" reflects the Windows x64 wheels installed in the build environment.</p>
 <div class="wrap"><table>
 <tr><th>Package</th><th>Version</th><th>Pin</th><th>Source</th><th>License</th><th>Used by</th><th>Native code</th><th>Purpose</th></tr>
@@ -934,7 +935,7 @@ nothing decoded.</p>
 
 <h2>Verify it yourself</h2>
 <p>Rebuild from a clean checkout of the tagged release using its own build recipe.
-Build dependencies are pinned in pyproject.toml; Hatch supplies stable timestamps when SOURCE_DATE_EPOCH is unset, and Git attributes select LF checkout line endings.
+Build dependencies are pinned in pyproject.toml. Hatch supplies stable timestamps when SOURCE_DATE_EPOCH is unset. Git attributes check files out with LF line endings.
 Compare the rebuilt wheel's SHA256 with this report to verify that its bytes match.
 Older release tags retain their original settings.</p>
 <pre class="mono">git clone https://github.com/ssweber/clicknick
@@ -945,9 +946,9 @@ uv audit --frozen --no-dev --no-group docs             # the vulnerability check
 uv build
 certutil -hashfile dist\\{esc(rep.wheel_name or "clicknick-*.whl")} SHA256
 uv run python devtools/trust_report.py                 # regenerate this page into dist/trust/</pre>
-<p>To check the copy that was installed: <code>uv tool dir</code> shows the install folder; the wheel's files are
-unpacked there, and <code>pip download clicknick=={esc(rep.version)} --no-deps</code> fetches the exact wheel
-from PyPI for hashing. To install this exact version rather than the latest:
+<p>To check the copy you installed, run <code>uv tool dir</code> to find the install folder. The wheel's files are
+unpacked there. <code>pip download clicknick=={esc(rep.version)} --no-deps</code> fetches the exact wheel
+from PyPI, so that you can hash it. To install this exact version instead of the latest, run
 <code>uv tool install clicknick=={esc(rep.version)}</code>.</p>
 </main></body></html>
 """
