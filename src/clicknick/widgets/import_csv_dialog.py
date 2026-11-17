@@ -202,8 +202,9 @@ class ImportCsvDialog(tk.Toplevel):
 
         except Exception as e:
             messagebox.showerror(
-                "Load Error",
-                f"Failed to load CSV file:\n{e}",
+                "Import from CSV",
+                f"Could not read {self.csv_path}.\n\n{e}\n\n"
+                "Check that the file is a CSV file with an Address column.",
                 parent=self,
             )
 
@@ -347,7 +348,7 @@ class ImportCsvDialog(tk.Toplevel):
         self.sheet.set_sheet_data(
             [
                 [
-                    "(Load a CSV file to see blocks)",
+                    "(Click Browse... to choose a CSV file)",
                     "",
                     "",
                     "",
@@ -358,15 +359,19 @@ class ImportCsvDialog(tk.Toplevel):
 
         # Column options help text (below table)
         help_text = (
-            "Column Options:\n"
-            "  Nickname:   Overwrite = Replace existing | Merge = Only if empty\n"
-            "  Comment:    Overwrite | Append | Block Tag = Update tag only\n"
-            "  First Scan: Initial Value + Retentive, imported together.\n"
-            "              Retentive addresses power up with their retained value.\n"
-            "              An initial value applies only when Retentive is off.\n"
-            "              Importing one without the other silently changes\n"
-            "              first-scan behavior.\n"
-            "              Overwrite = Take both from CSV | Merge = Only if both are default"
+            "Nickname: Overwrite replaces the nickname. Merge sets it only where the address has "
+            "none.\n"
+            "Comment: Overwrite replaces the comment. Append adds the CSV comment after the "
+            "current one.\n"
+            "    Block Tag copies only the block tag, such as <Motor>, and keeps the rest of "
+            "the comment.\n"
+            "First Scan: Initial Value and Retentive are imported together, because a retentive "
+            "address\n"
+            "    ignores its initial value. Overwrite takes both from the CSV. Merge takes both "
+            "only\n"
+            "    where both are still at their defaults.\n"
+            "Skip leaves the field as it is. A column that the CSV does not have is always "
+            "skipped."
         )
         help_label = ttk.Label(
             main_frame, text=help_text, foreground="gray", font=("TkDefaultFont", 8)

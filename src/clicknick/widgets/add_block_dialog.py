@@ -82,7 +82,9 @@ class AddBlockDialog(tk.Toplevel):
                 )
                 self._preview_label.configure(text=f"Tag: {base}", foreground="black")
             else:
-                self._preview_label.configure(text="(incomplete parameters)", foreground="gray")
+                self._preview_label.configure(
+                    text="(fill in the fields under Block Kind)", foreground="gray"
+                )
         else:
             self._preview_label.configure(text="", foreground="gray")
 
@@ -161,7 +163,8 @@ class AddBlockDialog(tk.Toplevel):
         array_rb.pack(side=tk.LEFT, padx=(0, 8))
         bind_tooltip(
             array_rb,
-            "Repeating array structure.\nRequires count (elements) and stride (addresses per element).",
+            "An array of elements that repeat.\nCount is the number of elements, and stride is the "
+            "number of addresses per element.",
         )
 
         udt_rb = ttk.Radiobutton(
@@ -198,14 +201,14 @@ class AddBlockDialog(tk.Toplevel):
         self._count_var.trace_add("write", lambda *_: self._update_preview())
         count_entry = ttk.Entry(self._array_frame, textvariable=self._count_var, width=6)
         count_entry.pack(side=tk.LEFT, padx=(4, 8))
-        bind_tooltip(count_entry, "Number of array instances")
+        bind_tooltip(count_entry, "Number of elements in the array")
 
         ttk.Label(self._array_frame, text="stride:").pack(side=tk.LEFT)
         self._stride_var = tk.StringVar()
         self._stride_var.trace_add("write", lambda *_: self._update_preview())
         stride_entry = ttk.Entry(self._array_frame, textvariable=self._stride_var, width=6)
         stride_entry.pack(side=tk.LEFT, padx=(4, 4))
-        bind_tooltip(stride_entry, "Number of addresses per instance")
+        bind_tooltip(stride_entry, "Number of addresses per element")
 
         if self._row_count is not None:
             ttk.Label(
@@ -241,8 +244,8 @@ class AddBlockDialog(tk.Toplevel):
         if kind != "plain" and not _IDENT_RE.fullmatch(base):
             messagebox.showerror(
                 "Invalid Name",
-                "Block name must be a valid identifier "
-                "(letters, digits, underscores; start with letter or underscore).",
+                "A block of this kind needs a name made of letters, digits and underscores. "
+                "Start the name with a letter or an underscore.",
                 parent=self,
             )
             return
@@ -285,14 +288,20 @@ class AddBlockDialog(tk.Toplevel):
             if not _IDENT_RE.fullmatch(field):
                 messagebox.showerror(
                     "Invalid Field Name",
-                    "Field name must be a valid identifier.",
+                    "Use only letters, digits and underscores in the field name. "
+                    "Start it with a letter or an underscore.",
                     parent=self,
                 )
                 return
 
         name = self._compose_name()
         if name is None:
-            messagebox.showerror("Error", "Could not compose block name.", parent=self)
+            messagebox.showerror(
+                "Add Block",
+                "Could not build the block name from these fields. "
+                "Check the fields under Block Kind.",
+                parent=self,
+            )
             return
 
         if self._validate_name is not None:
