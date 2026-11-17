@@ -43,7 +43,7 @@ def get_workspace_status(
         return WorkspaceStatus(WorkspaceState.PREPARING, "Preparing")
     if analysis.status is AnalysisStatus.FAILED:
         if getattr(analysis, "system_nickname_repairs", ()):
-            label = "System names need repair"
+            label = "Run Tools > Repairs > System Nicknames"
         elif getattr(analysis, "needs_comment_upgrade", False):
             label = "Run Tools > Repairs > Upgrade Project"
         else:

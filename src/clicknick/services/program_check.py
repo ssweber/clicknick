@@ -44,7 +44,12 @@ def format_validation_report(report: ValidationReport) -> str:
             return "Check Program: all checks passed"
         if not checked:
             return "Check Program: no checks selected"
-        return f"Check Program: {len(checked)} selected checks passed; {len(ordered_rules()) - len(checked)} not run"
+        passed = len(checked)
+        not_run = len(ordered_rules()) - passed
+        return (
+            f"Check Program: the {passed} selected {_checks(passed)} passed. "
+            f"{not_run} {_checks(not_run)} {_were(not_run)} not run."
+        )
 
     specs = ordered_rules()
     known = {spec.code for spec in specs}
@@ -66,7 +71,9 @@ def format_validation_report(report: ValidationReport) -> str:
 
     lines = [f"Check Program: {summary}"]
     if checked is not None:
-        lines.append(f"{len(checked)} checks run; {len(ordered_rules()) - len(checked)} not run")
+        ran = len(checked)
+        not_run = len(ordered_rules()) - ran
+        lines.append(f"{ran} {_checks(ran)} ran. {not_run} {_were(not_run)} not run.")
     for code, title, severity in rows:
         displays = grouped.get(code, ())
         if not displays:
@@ -79,11 +86,22 @@ def format_validation_report(report: ValidationReport) -> str:
     return "\n".join(lines)
 
 
+def _checks(count: int) -> str:
+    return "check" if count == 1 else "checks"
+
+
+def _were(count: int) -> str:
+    return "was" if count == 1 else "were"
+
+
 def run_project_check(project_dir: Path) -> str:
     """Lint the editable ``src/plc`` proposal in an isolated process."""
     main_file = project_dir / "src" / "plc" / "main.py"
     if not main_file.is_file():
-        raise ValueError("src/plc/main.py not found in project directory")
+        raise ValueError(
+            "The workspace has no src/plc/main.py. Use Workspace > Reload from CLICK to "
+            "generate it again."
+        )
 
     result = subprocess.run(
         [headless_python(), "-m", "clicknick.services.program_check", "--worker"],
@@ -107,7 +125,10 @@ def _worker() -> None:
     from pyrung.core.program import Program
 
     if not isinstance(logic, Program):
-        raise TypeError(f"Expected plc.main.logic to be Program, got {type(logic).__name__}")
+        raise TypeError(
+            "src/plc/main.py must define logic as a pyrung Program. It defines a "
+            f"{type(logic).__name__}."
+        )
     from pyrung.core.validation.config import CheckConfig, load_check_config
 
     config = load_check_config(Path.cwd() / "pyproject.toml") or CheckConfig()

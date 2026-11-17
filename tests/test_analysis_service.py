@@ -500,7 +500,7 @@ class TestBuildValidation:
                 "requires at least one condition",
             ),
             ("with rung(:", SyntaxError, "invalid syntax"),
-            ("logic = object()", TypeError, "Expected Program"),
+            ("logic = object()", TypeError, "must define logic as a pyrung Program"),
         ],
     )
     def test_invalid_generated_code_remains_available_for_editing(
@@ -731,7 +731,7 @@ class TestProjectExport:
         marker = destination / "keep.txt"
         marker.write_text("keep\n", encoding="utf-8")
 
-        with pytest.raises(FileExistsError, match="must be empty"):
+        with pytest.raises(FileExistsError, match="already exists and is not empty"):
             self._ready_service(source).export_project(destination)
 
         assert marker.read_text(encoding="utf-8") == "keep\n"
@@ -751,7 +751,7 @@ class TestProjectExport:
 
         monkeypatch.setattr("clicknick.services.analysis_service.shutil.copytree", copy_and_rebuild)
 
-        with pytest.raises(RuntimeError, match="changed during export"):
+        with pytest.raises(RuntimeError, match="during the export, so nothing was exported"):
             svc.export_project(destination)
 
         assert not destination.exists()

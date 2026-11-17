@@ -131,7 +131,8 @@ def read_analog_inputs(csv_dir: Path) -> frozenset[str]:
         inputs = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         raise ValueError(
-            "the workspace has no record of its analog inputs. Reload the workspace from CLICK"
+            "The workspace has no record of its analog inputs. Use Workspace > Reload from "
+            "CLICK to rebuild it."
         ) from None
     if not isinstance(inputs, list) or not all(isinstance(item, str) for item in inputs):
         raise ValueError(f"{path} does not hold a list of addresses")
@@ -416,7 +417,10 @@ def _build_graph(
     from pyrung.core.program import Program
 
     if not isinstance(program, Program):
-        msg = f"Expected Program, got {type(program).__name__}"
+        msg = (
+            "The generated code must define logic as a pyrung Program. It defined a "
+            f"{type(program).__name__}."
+        )
         raise TypeError(msg)
 
     graph = build_program_graph(program)
@@ -619,26 +623,32 @@ class AnalysisService:
         out.
         """
         if self._status is AnalysisStatus.BUILDING:
-            raise RuntimeError("pyrung project is not ready to export")
+            raise RuntimeError("The workspace is still being prepared. Try again in a moment.")
         if self.project_dir is None:
-            raise RuntimeError("pyrung project was not persisted to disk")
+            raise RuntimeError(
+                "There is no workspace to export. Save the project in CLICK, then try again."
+            )
 
         source = self.project_dir.resolve()
         destination = destination.resolve()
         if not source.is_dir():
-            raise RuntimeError(f"pyrung project folder does not exist: {source}")
+            raise RuntimeError(f"The workspace folder {source} does not exist.")
         if destination == source or source in destination.parents or destination in source.parents:
-            raise ValueError("export destination must be separate from the active project folder")
+            raise ValueError(
+                f"The export folder and the workspace {source} overlap. Choose another parent "
+                "folder."
+            )
         if destination.exists():
             if not destination.is_dir():
-                raise ValueError(f"export destination is not a directory: {destination}")
+                raise ValueError(f"{destination} is a file. Choose another parent folder.")
             if any(destination.iterdir()):
                 raise FileExistsError(
-                    f"export folder already exists and must be empty: {destination}"
+                    f"{destination} already exists and is not empty. Choose another parent "
+                    "folder, or empty that folder."
                 )
         if not destination.parent.is_dir():
             raise FileNotFoundError(
-                f"export destination parent does not exist: {destination.parent}"
+                f"The folder {destination.parent} does not exist. Choose a folder that exists."
             )
 
         generation = self._generation
@@ -655,7 +665,8 @@ class AnalysisService:
                 or self.project_dir.resolve() != source
             ):
                 raise RuntimeError(
-                    "CLICK project changed during export. Try again after the conversion finishes."
+                    "ClickNick started rebuilding the workspace during the export, so nothing "
+                    "was exported. Try again when the build finishes."
                 )
 
             file_count = sum(path.is_file() for path in staged.rglob("*"))

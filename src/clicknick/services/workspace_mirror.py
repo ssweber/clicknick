@@ -126,15 +126,17 @@ def load_project_workspace_config(sidecar: Path) -> ProjectWorkspaceConfig:
     try:
         data = tomllib.loads(sidecar.read_text(encoding="utf-8"))
         if data.get("version") != 1:
-            raise ValueError("unsupported sidecar version")
+            raise ValueError(f"{sidecar} has a version that this ClickNick cannot read.")
         plc_name = data["plc"]["name"]
         if not isinstance(plc_name, str):
-            raise ValueError("plc.name must be a string")
+            raise ValueError(f"In {sidecar}, plc.name must be a string.")
         is_valid, error = validate_click_name(plc_name)
         if not is_valid:
             raise ValueError(error)
     except (KeyError, OSError, TypeError, UnicodeError, tomllib.TOMLDecodeError) as exc:
-        raise ValueError(f"invalid ClickNick project sidecar: {sidecar}") from exc
+        raise ValueError(
+            f"Could not read {sidecar}. Choose a folder that ClickNick set up as a workspace."
+        ) from exc
 
     return ProjectWorkspaceConfig(
         plc_name=plc_name.strip(),
@@ -256,7 +258,10 @@ def pair_workspace(plc_name: str | None) -> WorkspacePairing:
         if matches[0].workspace_path.is_dir():
             return WorkspacePairing(matches[0], matches)
         return WorkspacePairing(
-            None, matches, f"Workspace folder not found: {matches[0].workspace_path}"
+            None,
+            matches,
+            f"The workspace folder {matches[0].workspace_path} does not exist. Choose another "
+            "in Workspace > View/Setup Workspace.",
         )
     if not matches:
         return WorkspacePairing()
@@ -266,7 +271,8 @@ def pair_workspace(plc_name: str | None) -> WorkspacePairing:
     return WorkspacePairing(
         None,
         matches,
-        "Multiple workspaces are known for this PLC. Choose one in Workspace setup.",
+        "Several workspaces are known for this PLC. Choose one in Workspace > View/Setup "
+        "Workspace.",
     )
 
 
@@ -310,7 +316,10 @@ def validate_mirror_destination(source: Path, mirror: Path) -> None:
     source = _normalized(source)
     mirror = _normalized(mirror)
     if source == mirror or source in mirror.parents or mirror in source.parents:
-        raise ValueError("workspace directory must be separate from the active workspace")
+        raise ValueError(
+            "Choose a workspace folder that is not inside the active workspace and does not "
+            "contain it."
+        )
 
 
 def _overlay_onto_mirror(source: Path, mirror: Path) -> MirrorSyncResult:

@@ -70,7 +70,7 @@ def test_workspace_status_covers_unavailable_preparing_and_failure() -> None:
             system_nickname_repairs=(object(),),
         )
     )
-    assert repairable.label == "System names need repair"
+    assert repairable.label == "Run Tools > Repairs > System Nicknames"
 
     old_form = get_workspace_status(
         _analysis(AnalysisStatus.FAILED, error="old annotation form", needs_comment_upgrade=True)
@@ -611,7 +611,7 @@ def test_a_save_during_a_build_reads_as_building_until_its_own_build(
     # The workspace status and the commands that read the workspace, such as ``rung apply``,
     # also wait for the save's own build.
     assert pre_save_state is WorkspaceState.PREPARING
-    assert "try again when it finishes" in pre_save_workspace
+    assert "Try again when it finishes" in pre_save_workspace
     assert saved.save_count == 1
     assert saved.building is False
     assert saved.csv_dir == project / "csv"
@@ -662,7 +662,7 @@ def test_a_save_that_cannot_be_read_during_a_build_reads_as_building_until_it_fi
     session._on_scr_changed()
     try:
         assert session.analysis.status is AnalysisStatus.BUILDING
-        with pytest.raises(ValueError, match="try again when it finishes"):
+        with pytest.raises(ValueError, match="Try again when it finishes"):
             _get_project_dir(DispatchContext(analysis=session.analysis))
     finally:
         release.set()
@@ -725,7 +725,7 @@ def test_switching_workspace_moves_and_restarts_the_simulation(tmp_path, monkeyp
     monkeypatch.setattr(session, "_simulation_key", lambda: "Line1")
     workspace = tmp_path / "Example Workspace"
     known = ProjectWorkspaceConfig("Line1", tmp_path / "Other Workspace")
-    session.pairing = WorkspacePairing(None, [known], "Multiple workspaces are known")
+    session.pairing = WorkspacePairing(None, [known], "Several workspaces are known")
 
     session.use_workspace(ProjectWorkspaceConfig("Line1", workspace))
 
