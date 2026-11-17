@@ -47,8 +47,8 @@ def get_workspace_status(
         elif getattr(analysis, "needs_comment_upgrade", False):
             label = "Run Tools > Repairs > Upgrade Project"
         else:
-            # Whatever step failed, analysis.error gives its reason. A workspace folder from
-            # an earlier build may still exist.
+            # analysis.error holds the reason that the failed step reported. A workspace
+            # folder from an earlier build may still exist.
             label = "Could not build the workspace"
         return WorkspaceStatus(WorkspaceState.FAILED, label, detail=analysis.error)
 

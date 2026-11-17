@@ -472,12 +472,13 @@ class WorkspaceController:
                 "Could not build the workspace from CLICK's last save. ClickNick will not copy "
                 "the workspace of an earlier save into the new folder.\n\n"
                 + build_error
-                + "\n\nSave the project in CLICK again, and try again once the workspace builds.",
+                + "\n\nFix the error and save the project in CLICK. Then try again once the "
+                "workspace builds.",
                 parent=dialog_parent,
             )
             return
-        # On None, the user cancelled the prompt, the project closed, or _ensure_plc_name
-        # already showed why in the status line.
+        # If _ensure_plc_name returns None, the user cancelled the prompt or the project
+        # closed, or the method has already shown why in the status line.
         plc_name = self._ensure_plc_name()
         if plc_name is None:
             return
@@ -510,7 +511,8 @@ class WorkspaceController:
                 f"Use the existing folder?\n\n{mirror_path}\n\n"
                 "ClickNick will replace the files in src/plc and csv, and the files "
                 "nicknames.csv, project_to_csv.py and run.py. It will not delete other files, "
-                "and it will not replace your tests, documentation or editor settings.",
+                "and it will not replace your tests, documentation or editor settings. If you "
+                "edited src/plc there, ClickNick first copies it to backup/src/plc.",
                 parent=dialog_parent,
             )
             if not confirmed or not self._setup_unchanged(session, window):
