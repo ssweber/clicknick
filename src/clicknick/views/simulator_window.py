@@ -1,24 +1,27 @@
-"""Simulator window: the user's CLICK hardware, drawn as a rack of modules.
+"""Draw the user's CLICK hardware as a rack of modules in the simulator window.
 
-A passive view of the connection's SimulationSession. Inputs are switches
-(Momentary pushbuttons or Maintained toggles, chosen by right-click), outputs
-are LEDs, analog inputs take a value (and a slider when the tag has a range).
-A slim CPU card carries the RUN / STEP / STOP mode switch and the PWR/RUN/ERR
-LEDs; the CPU's built-in I/O and option slots sit tight beside it as cards of
-their own, one housing as on the hardware. Values come from the session's Modbus reads; forces, mode, speed and
-feedback links from its DAP frames. Every action goes through the session.
+The window is a passive view of the connection's SimulationSession. Inputs are switches
+(Momentary pushbuttons or Maintained toggles, which you choose by right-click). Outputs
+are LEDs. Analog inputs take a value, and a slider when the tag has a range.
 
-An input driven by a feedback link shows a chip naming its driver instead of
-a switch (blue for the program's link, purple for a bench link); hovering the
-chip draws the wire to the driving terminal. Links are made, cut and saved to
-the project from the right-click menu; the Wiring menu lists them all.
+A slim CPU card carries the RUN / STEP / STOP mode switch and the PWR/RUN/ERR LEDs. The
+CPU's built-in I/O and option slots sit tight beside it as cards of their own, so the
+whole housing looks as it does on the hardware.
 
-Cards are compact and flow into rows in rack order, so a full rack (CPU, two
-option slots, eight expansions and a placeholder card at each position) fits without
-horizontal scrolling.
+Values come from the session's Modbus reads. Forces, mode, speed and feedback links come
+from its DAP frames. Every action goes through the session.
 
-The command console is a resizable pane under the rack (Ctrl+` shows or hides
-it) and pops out into its own window; closing that window docks it back.
+An input driven by a feedback link shows a chip that names its driver, instead of a
+switch. The chip is blue for the program's link and purple for a bench link. Hover the
+chip to draw the wire to the driving terminal. You make, cut and save links to the
+project from the right-click menu, and the Wiring menu lists them all.
+
+Cards are compact and flow into rows in rack order. A full rack fits without horizontal
+scrolling: the CPU, two option slots, eight expansions and a placeholder card at each
+position.
+
+The command console is a resizable pane under the rack. Ctrl+` shows or hides it. It
+pops out into its own window, and closing that window docks it back.
 """
 
 from __future__ import annotations
@@ -118,7 +121,7 @@ class _Piece(NamedTuple):
 
 
 def _countdown_text(ms: int) -> str:
-    """Time left on a link's delay, short enough for its chip: ``1.2s``, ``12s``."""
+    """Return the time left on a link's delay, short enough for its chip: ``1.2s``, ``12s``."""
     seconds = ms / 1000
     return f"{seconds:.1f}s" if seconds < 10 else f"{seconds:.0f}s"
 
@@ -132,7 +135,7 @@ def _value_text(value: object) -> str:
 
 
 def _slider_range(hint: dict[str, Any]) -> tuple[float, float] | None:
-    """The slider's range for an analog input's pyrung hint, or None when it gets none."""
+    """Return the slider range for an analog input's pyrung hint, or None if it gets no slider."""
     low, high = hint.get("min"), hint.get("max")
     if hint.get("rangeDefault", True) or low is None or high is None or not high > low:
         return None
@@ -140,14 +143,14 @@ def _slider_range(hint: dict[str, Any]) -> tuple[float, float] | None:
 
 
 class SimulatorWindow(tk.Toplevel):
-    """Draws the hardware panel and turns clicks into SimulationSession calls."""
+    """Draw the hardware panel and turn clicks into SimulationSession calls."""
 
     # ------------------------------------------------------------------
     # Lookups and text fitting
     # ------------------------------------------------------------------
 
     def _names(self, address: str) -> tuple[str, str]:
-        """Nickname and comment, read live from the address data."""
+        """Return the nickname and comment of *address*, read live from the address data."""
         store = self._get_store()
         if store is None:
             return "", ""
@@ -160,7 +163,7 @@ class SimulatorWindow(tk.Toplevel):
         return row.nickname or "", getattr(row, "comment", "") or ""
 
     def _truncate(self, text: str, width: float) -> str:
-        """*text* shortened with an ellipsis to fit *width* pixels in the normal font."""
+        """Return *text* shortened with an ellipsis to fit *width* pixels in the normal font."""
         measure = self._font.measure
         if measure(text) <= width:
             return text
@@ -201,7 +204,7 @@ class SimulatorWindow(tk.Toplevel):
             c.tag_bind(item, "<Leave>", hide, add="+")
 
     def _terminal_center(self, address: str) -> tuple[float, float] | None:
-        """Where the LED of the terminal at *address* is drawn, if it is on the panel."""
+        """Return where the LED of *address*'s terminal is drawn, or None if it is off the panel."""
         info = self._outputs.get(address) or self._inputs.get(address)
         if info is None:
             return None
@@ -212,7 +215,7 @@ class SimulatorWindow(tk.Toplevel):
     # to link them. The input is the feedback and the output its enable either way.
 
     def _link_anchor(self, address: str) -> tuple[float, float] | None:
-        """Where a link drag from *address* starts: its terminal, or the middle of an analog row."""
+        """Return where a link drag from *address* starts: its terminal or an analog row."""
         center = self._terminal_center(address)
         if center is not None:
             return center
@@ -229,10 +232,10 @@ class SimulatorWindow(tk.Toplevel):
     def _draw_label(
         self, x: float, cy: float, address: str, right: float, tag: str, *, link: bool = False
     ) -> None:
-        """One line: the address, then the nickname cut to end at *right*.
+        """Draw one line: the address, then the nickname cut to end at *right*.
 
-        The address and nickname are on screen already, so hovering shows the comment
-        (and the full nickname, if it had to be cut); with neither there is no tooltip.
+        The address and nickname are already on screen, so hovering shows the comment. It also
+        shows the full nickname if the nickname had to be cut. With neither, there is no tooltip.
         """
         c = self._canvas
         address_item = c.create_text(
@@ -263,9 +266,10 @@ class SimulatorWindow(tk.Toplevel):
             self._tooltip_item(tuple(items), lambda: tip)
 
     def _draw_badge(self, cx: float, cy: float, address: str) -> tuple[int, ...]:
-        """A small padlock, shown while *address* is forced; clicking it releases the force.
+        """Draw a small padlock while *address* is forced. Clicking it releases the force.
 
-        Its own tag, not the row's: a click here must not also start the row's link drag.
+        The padlock has its own tag, not the row's, so a click on it does not also start the
+        row's link drag.
         """
         c = self._canvas
         tags = (f"badge:{address}",)
@@ -285,10 +289,10 @@ class SimulatorWindow(tk.Toplevel):
     def _row_target(
         self, x: float, y: float, tag: str, menu: Callable[[tk.Event], None], height: float = ROW_H
     ) -> None:
-        """A face-colored strip under the row, so a right-click anywhere on it opens *menu*.
+        """Draw a face-colored strip under the row, so a right-click anywhere on it opens *menu*.
 
-        Drawn before the row's own items; an unfilled rectangle would only
-        respond on its outline.
+        It is drawn before the row's own items. An unfilled rectangle would respond only on
+        its outline.
         """
         c = self._canvas
         c.create_rectangle(
@@ -362,7 +366,7 @@ class SimulatorWindow(tk.Toplevel):
     # ------------------------------------------------------------------
 
     def _saved_to_project(self, address: str, link: BenchLink) -> bool:
-        """True when the project's comment on *address* already declares this bench link."""
+        """Return True if the project's comment on *address* already declares this bench link."""
         if link.enable is None:
             return False
         _nickname, comment = self._names(address)
@@ -370,7 +374,7 @@ class SimulatorWindow(tk.Toplevel):
         return comment_has_link(comment, link, enable_names)
 
     def _link_text(self, address: str) -> str:
-        """Tooltip for an input's link chip or cut mark."""
+        """Return the tooltip text for an input's link chip or cut mark."""
         sim = self._simulation
         link = sim.driving_link(address)
         if link is None:
@@ -418,9 +422,9 @@ class SimulatorWindow(tk.Toplevel):
         )
 
     def _link_target_at(self, x: float, y: float, source: str) -> str | None:
-        """The row tag under canvas point (x, y) that *source* can be linked to.
+        """Return the row tag under canvas point (x, y) that *source* can be linked to, or None.
 
-        An output links to an ``in:`` / ``ai:`` row, an input to an ``out:`` row.
+        An output links to an ``in:`` / ``ai:`` row. An input links to an ``out:`` row.
         """
         c = self._canvas
         kinds = ("out",) if source in self._inputs or source in self._analog_in else ("in", "ai")
@@ -457,7 +461,7 @@ class SimulatorWindow(tk.Toplevel):
         )  # fmt: skip
 
     def _cancel_link_drag(self, _event: object = None) -> None:
-        """Escape: drop a drag in progress without opening anything."""
+        """Drop a drag in progress on Escape, without opening anything."""
         if self._link_drag is not None:
             self._link_drag = None
             self._canvas.delete("drag")
@@ -501,7 +505,7 @@ class SimulatorWindow(tk.Toplevel):
             self._simulation.set_modbus_port(port)
 
     def _program_action(self, action: ProgramAction) -> tuple[str, Callable[[], None]]:
-        """The label and command for one way of writing a changed program (CLICK's words)."""
+        """Return the label and command for one way of writing a changed program (CLICK's words)."""
         sim = self._simulation
         return {
             "run_time_edit": ("RUN Time Edit", sim.run_time_edit),
@@ -671,15 +675,15 @@ class SimulatorWindow(tk.Toplevel):
         target: dict[str, Any],
         end: tuple[float, float],
     ) -> list[float]:
-        """A wire that stays in the gaps between cards, clear of the other cards.
+        """Return the points of a wire that stays in the gaps between cards, clear of other cards.
 
-        It leaves the source card through the gap on its left. Within one card
-        it runs straight down that gap into the chip; from the card just right
-        of the target, down the gap they share to the end of the target's row.
-        Otherwise it climbs into the space above the source's rack row, and in
-        another rack row it changes rows down the left margin, which is clear
-        in every row; then it comes down the gap left of the target's card into
-        the chip.
+        The wire leaves the source card through the gap on its left. Within one card, it runs
+        straight down that gap into the chip. From the card just right of the target, it runs
+        down the gap the two cards share, to the end of the target's row.
+
+        Otherwise it climbs into the space above the source's rack row. If the target is in
+        another rack row, the wire changes rows down the left margin, which is clear in every
+        row. Then it comes down the gap left of the target's card into the chip.
         """
         (sx, sy), (ex, ey) = start, end
         tx, tg, t_top = target["x"], target["gutter"], target["top"]
@@ -699,7 +703,7 @@ class SimulatorWindow(tk.Toplevel):
         ]  # fmt: skip
 
     def _show_wire(self, address: str) -> None:
-        """Draw the wire from the driving terminal to *address* while the chip is hovered."""
+        """Draw the wire from the driving terminal to *address* while the pointer is on the chip."""
         c = self._canvas
         c.delete("wire")
         link = self._simulation.driving_link(address)
@@ -722,7 +726,7 @@ class SimulatorWindow(tk.Toplevel):
         )  # fmt: skip
 
     def _console_shown(self) -> bool:
-        """The console is in its pane (not hidden, not popped out)."""
+        """Return True if the console is in its pane, neither hidden nor popped out."""
         panes = {str(pane) for pane in self._paned.panes()}
         return self._console_window is None and str(self._console) in panes
 
@@ -738,7 +742,7 @@ class SimulatorWindow(tk.Toplevel):
             window.lift()
         elif not self._console_shown():
             self._paned.add(self._console, weight=0)
-            # Lay the new pane out first: a sash set before that is overridden, which
+            # Lay the new pane out first. A sash set before that is overridden, which
             # left the console as a sliver at the bottom.
             self._paned.update_idletasks()
             self._restore_console_height()
@@ -753,7 +757,7 @@ class SimulatorWindow(tk.Toplevel):
             )
 
     def _add_analysis_items(self, menu: tk.Menu, address: str, *, output: bool = False) -> None:
-        """Questions about *address*, answered in the console pane."""
+        """Add menu entries that ask questions about *address*, answered in the console pane."""
         sim = self._simulation
         tag = sim.to_tag(address)
         state = tk.NORMAL if sim.is_ready and not self._console.busy else tk.DISABLED
@@ -881,7 +885,7 @@ class SimulatorWindow(tk.Toplevel):
         return "Double-click to force it the other way. Drag its label onto an input's label to link them."
 
     def _flip_output(self, address: str) -> None:
-        """Double-click: force an output the other way from what it shows, or release it."""
+        """On double-click, force an output the opposite way to what it shows, or release it."""
         sim = self._simulation
         if address in sim.forces:
             sim.release_force(address)
@@ -1082,7 +1086,7 @@ class SimulatorWindow(tk.Toplevel):
             self._simulation.set_switch_position(_POSITIONS[index])
 
     def _mode_text(self) -> str:
-        """What the CPU's mode switch is doing, for its tooltip."""
+        """Return what the CPU's mode switch is doing, for its tooltip."""
         sim = self._simulation
         if not sim.is_ready:
             return sim.status_text
@@ -1095,7 +1099,7 @@ class SimulatorWindow(tk.Toplevel):
         }[sim.switch_position]
 
     def _draw_cpu_card(self, x: float, y: float, card: Card, height: float) -> None:
-        """The slim CPU card: the vertical RUN / STEP / STOP switch over the PWR/RUN/ERR LEDs."""
+        """Draw the slim CPU card: the RUN / STEP / STOP switch over the PWR/RUN/ERR LEDs."""
         c = self._canvas
         self._draw_card_frame(x, y, height, "CPU", card.model, width=CPU_CARD_W)
         sx, sy, zone = x + 12, y + HEADER_H + 10, MODE_ZONE_H
@@ -1131,7 +1135,7 @@ class SimulatorWindow(tk.Toplevel):
             c.create_text(x + 30, ly + 5, text=name, anchor="w", fill=P.TEXT, font=_FONT_SMALL)
 
     def _card_subtitle(self, model: str, counts: tuple[int, int, int, int]) -> str:
-        """The module's model and what it carries, or just the model when that won't fit."""
+        """Return the module's model and its I/O counts, or just the model if that does not fit."""
         parts = [model] + [
             f"{count} {label}"
             for count, label in zip(
@@ -1143,7 +1147,7 @@ class SimulatorWindow(tk.Toplevel):
         return text if self._small.measure(text) <= self._card_w - 20 else model
 
     def _draw_card(self, x: float, y: float, card: Card) -> None:
-        """A module's I/O; the CPU's own I/O is the card beside the slim CPU card."""
+        """Draw a module's I/O. The CPU's own I/O is the card beside the slim CPU card."""
         inputs, outputs, analog_in, analog_out = self._card_parts(card)
         title = "Built-in I/O" if card.location == "cpu" and card.installed else card.title
         counts = (len(inputs), len(outputs), len(analog_in), len(analog_out))
@@ -1177,7 +1181,7 @@ class SimulatorWindow(tk.Toplevel):
         )  # fmt: skip
 
     def _draw_rail(self, x0: float, x1: float, y: float) -> None:
-        """A DIN rail running behind a row of installed modules (visible in the gaps)."""
+        """Draw a DIN rail behind a row of installed modules. It shows in the gaps."""
         c = self._canvas
         items = (
             c.create_rectangle(x0, y, x1, y + 3, fill=P.RAIL_TOP, width=0),
@@ -1188,15 +1192,15 @@ class SimulatorWindow(tk.Toplevel):
             c.tag_lower(item)
 
     def _fit_card_width(self, layout: PanelLayout | None) -> float:
-        """A card width that shows every nickname on the panel in full.
+        """Return a card width that shows every nickname on the panel in full.
 
-        CLICK nicknames run to 24 characters; cards widen only as far as the
-        longest one present needs, so short names keep the rack compact.
+        CLICK nicknames run to 24 characters. Cards widen only as far as the longest nickname
+        present needs, so short names keep the rack compact.
         """
         width = float(CARD_W)
         if layout is None:
             return width
-        # Where each kind of row starts its label, and what sits right of the nickname.
+        # For each kind of row: where its label starts, and what sits right of the nickname.
         rows = (("input", 52, BADGE_W), ("output", 26, BADGE_W), ("analog_in", 10, BADGE_W),
                 ("analog_out", 10, 74))  # fmt: skip
         for kind, start, right in rows:
@@ -1208,7 +1212,7 @@ class SimulatorWindow(tk.Toplevel):
         return float(width)
 
     def _pieces(self, layout: PanelLayout | None) -> list[_Piece]:
-        """Everything to draw, in rack order."""
+        """Return every piece to draw, in rack order."""
         pieces: list[_Piece] = []
         if layout is None or not layout.has_cpu:
             pieces.append(
@@ -1241,7 +1245,7 @@ class SimulatorWindow(tk.Toplevel):
         return pieces
 
     def _flow(self, pieces: list[_Piece]) -> list[list[_Piece]]:
-        """*pieces* wrapped into rack rows that fit the canvas, keeping rack order."""
+        """Wrap *pieces* into rack rows that fit the canvas, keeping rack order."""
         width = self._canvas.winfo_width()
         if width <= 1:  # not laid out yet
             width = self._requested_width
@@ -1396,8 +1400,8 @@ class SimulatorWindow(tk.Toplevel):
         ready = sim.is_ready
         position = sim.switch_position
         scan = sim.scan_id
-        # The mode itself is on the CPU switch; this line says who moved it,
-        # or what the simulation is doing while it is not running.
+        # The CPU switch shows the mode. This line says who moved it, or what the
+        # simulation is doing while it is not running.
         if ready and not sim.run_hint_seen:
             status = "Flip the CPU to RUN to start."
         else:
@@ -1564,7 +1568,7 @@ class SimulatorWindow(tk.Toplevel):
             menu.add_command(label="Discard bench links", command=sim.discard_bench_links)
 
     def _on_wiring_select(self, _event: tk.Event | None = None) -> None:
-        """Draw the wire of the link under the pointer in the Wiring menu (none once it closes)."""
+        """Draw the wire of the Wiring menu entry under the pointer. Draw none once it closes."""
         try:
             index = self._wiring_menu.index("active")
         except tk.TclError:
@@ -1591,7 +1595,7 @@ class SimulatorWindow(tk.Toplevel):
                 return
 
     def _browse_plc_data(self) -> None:
-        """Start the simulation from a CLICK data dump (the session watches it for changes)."""
+        """Start the simulation from a CLICK data dump. The session watches the file for changes."""
         current = self._simulation.plc_data_path
         path = filedialog.askopenfilename(
             parent=self,
@@ -1621,7 +1625,7 @@ class SimulatorWindow(tk.Toplevel):
     # ------------------------------------------------------------------
 
     def _sliders_changed(self) -> bool:
-        """True when the simulation's ranges no longer match the analog sliders drawn."""
+        """Return True if the simulation's ranges no longer match the analog sliders drawn."""
         hints = self._simulation.tag_hints
         return any(
             _slider_range(hints.get(address, {})) != span
@@ -1644,7 +1648,7 @@ class SimulatorWindow(tk.Toplevel):
             self._redraw()
 
     def _follow_store(self) -> None:
-        """Observe the address data the app holds now (loading a CSV replaces it)."""
+        """Observe the address data the app holds now. Loading a CSV replaces that data."""
         store = self._get_store()
         if store is self._observed_store:
             return
@@ -1694,13 +1698,13 @@ class SimulatorWindow(tk.Toplevel):
             bar, textvariable=self._scan_var, style="SimScan.TLabel", width=11
         )
         self._scan_label.pack(side=tk.LEFT)
-        # Who moved the mode switch, or what the simulation is doing; the mode
-        # itself is shown by the CPU's switch. Step/Run controls pack before it.
+        # Says who moved the mode switch, or what the simulation is doing. The CPU's
+        # switch shows the mode itself. Step/Run controls pack before it.
         ttk.Label(bar, textvariable=self._status_var, foreground=P.MUTED).pack(
             side=tk.LEFT, padx=(12, 0)
         )
 
-        # Shown only in STEP: scans advance on request, as fast as possible.
+        # Shown only in STEP, where scans advance on request, as fast as possible.
         self._step_bar = ttk.Frame(bar)
         ttk.Button(
             self._step_bar, text="Step", width=6, command=lambda: self._simulation.step()
@@ -1716,7 +1720,7 @@ class SimulatorWindow(tk.Toplevel):
         run_for.pack(side=tk.LEFT)
         bind_tooltip(run_for, "Scan for a stretch of simulated time (500ms, 2 s) or N scans.")
 
-        # Shown only in RUN: pacing applies to free-running only.
+        # Shown only in RUN, because pacing applies to free-running only.
         self._run_bar = ttk.Frame(bar)
         ttk.Label(self._run_bar, text="Speed").pack(side=tk.LEFT, padx=(0, 4))
         speed_box = ttk.Combobox(
@@ -1755,7 +1759,7 @@ class SimulatorWindow(tk.Toplevel):
         ttk.Button(bar, text="Dataview", command=self._open_dataview).pack(
             side=tk.RIGHT, padx=(0, 4)
         )
-        # Names the loaded file: it sets where both the panel and the console start.
+        # Names the loaded file, which sets where both the panel and the console start.
         self._plc_data_btn = ttk.Button(bar, text="PLC Data...", command=self._browse_plc_data)
         self._plc_data_btn.pack(side=tk.RIGHT, padx=(0, 4))
         bind_tooltip(
@@ -1827,7 +1831,7 @@ class SimulatorWindow(tk.Toplevel):
         }
 
     def _resize_console(self, y_root: int, start: bool) -> None:
-        """Move the sash with the console's header, keeping the grab point under the pointer."""
+        """Move the sash with the console's header, so the grab point stays under the pointer."""
         if not self._console_shown():
             return
         top = self._paned.winfo_rooty()
