@@ -143,7 +143,9 @@ class AboutDialog:
         copy_btn = ttk.Button(main_frame, text="Copy System Info", command=copy_system_info)
         copy_btn.pack(pady=(0, 15))
 
-        connection_status = tk.StringVar(value="Test reads the address table without changing it.")
+        connection_status = tk.StringVar(
+            value="Test Connection reads the address table and changes nothing."
+        )
 
         def test_connection():
             if get_database_backend() == "none":
@@ -245,9 +247,9 @@ class OdbcWarningDialog:
         self.window.transient(self.parent)
 
         message = (
-            "The selected database connection is unavailable.\n\n"
-            "You can load nicknames from a CSV file.\n\n"
-            "Use Help > About ClickNick > Test Connection for details."
+            "ClickNick cannot read the CLICK project's database.\n\n"
+            "To load nicknames from a CSV file, use File > Load Nicknames from CSV.\n\n"
+            "To see why, use Help > About ClickNick > Test Connection."
         )
 
         # Center the window
@@ -326,8 +328,8 @@ class CsvFallbackDialog:
             except Exception as e:
                 # Show error message
                 tk.messagebox.showerror(
-                    "Error",
-                    f"Failed to convert and save file:\n{e}",
+                    "Save Address CSV Copy",
+                    f"Could not save the copy to {dest_path}:\n{e}",
                     parent=self.window,
                 )
 
