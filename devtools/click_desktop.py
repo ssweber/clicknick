@@ -119,8 +119,11 @@ def check_command(command_id: int) -> str:
     """
     name = ALLOWED_COMMANDS.get(command_id)
     if name is None:
-        what = _NEVER.get(command_id, "not on the runner's allowlist")
-        raise ForbiddenCommandError(f"refused WM_COMMAND {command_id} ({what})")
+        what = _NEVER.get(command_id, "a command with no name in the runner")
+        raise ForbiddenCommandError(
+            f"the runner refused to send WM_COMMAND {command_id} ({what}). "
+            "It sends only the commands on its allowlist."
+        )
     return name
 
 
@@ -181,7 +184,8 @@ class Desktop(ABC):
         views = [c for c in self.controls(main) if c.cls == LADDER_VIEW_CLASS and c.visible]
         if len(views) != 1:
             raise LadderViewError(
-                f"{len(views)} visible ladder views ({LADDER_VIEW_CLASS}) in window {main}"
+                f"window {main} has {len(views)} visible ladder views ({LADDER_VIEW_CLASS}), "
+                "and the runner needs exactly one"
             )
         self._post_click(views[0].hwnd, x, y)
         return views[0].hwnd

@@ -711,7 +711,9 @@ def load_cases(path: Path) -> tuple[list[Case], list[str]]:
             raise ValueError(f"{where} needs a 'row' and a 'case'")
         where = f"case {number} ({row} {name})"
         if name in numbers:
-            raise ValueError(f"{where}: case {numbers[name]} has the same 'case', its id")
+            raise ValueError(
+                f"{where} has the same 'case' id as case {numbers[name]}. Give each case its own 'case'."
+            )
         numbers[name] = number
         instruction = INSTRUCTIONS.get(entry.get("instruction"))  # pyright: ignore[reportArgumentType]
         if instruction is None:
@@ -1199,7 +1201,11 @@ def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
     connection = create_access_connection(mdb)
     if not isinstance(connection, pyodbc.Connection):
         connection.close()
-        raise RuntimeError("reading SC_.mdb as stored needs an Access ODBC driver")
+        raise RuntimeError(
+            "reading SC_.mdb exactly as stored needs a Microsoft Access ODBC driver, and "
+            "ClickNick could open it only through Windows Jet. Install the driver for this "
+            "Python and run again."
+        )
     try:
         cursor = connection.cursor()
         cursor.execute(
@@ -1390,7 +1396,9 @@ class Run:
             # dump of such a window gets no edit text and no PNG
             answers = self.desktop.idle(window.hwnd, IDLE_TIMEOUT)
             if not answers:
-                self.log(f"{window.hwnd} does not answer: its dump has no edit text and no PNG")
+                self.log(
+                    f"window {window.hwnd} does not answer. Its dump has no edit text and no PNG."
+                )
             controls = []
             for control in self.desktop.controls(window.hwnd):
                 row = asdict(control)
@@ -1408,7 +1416,7 @@ class Run:
                     written.append(base.with_suffix(".png"))
             except Exception as exc:  # A screenshot is optional
                 if self.desktop.exists(window.hwnd):
-                    self.log(f"no screenshot of {window.hwnd}: {exc}")
+                    self.log(f"no screenshot of window {window.hwnd}: {exc}")
         self.log(f"dumped {len(written) - count} file(s) as {label} into {folder}")
 
     def record(self, label: str) -> None:
@@ -1462,7 +1470,9 @@ class Run:
                 for window in unexpected:
                     if window.hwnd not in self._tolerated:
                         self._tolerated.add(window.hwnd)
-                        self.log(f"before the main window: {_describe(window)}")
+                        self.log(
+                            f"a window was open before the main window appeared: {_describe(window)}"
+                        )
             elif self.main is None:
                 self.main = found[MAIN].hwnd
                 self.result["click"]["main_hwnd"] = self.main
@@ -1481,13 +1491,13 @@ class Run:
             now = time.monotonic()
             if now > deadline:
                 reason = f"timed out after {limit:g} s waiting for {what}"
-                raise Aborted(f"{on_timeout()}; {reason}" if on_timeout else reason)
+                raise Aborted(f"{on_timeout()}. The runner {reason}" if on_timeout else reason)
             if now >= next_status and self.main is not None:
                 next_status = now + STATUS_EVERY
                 if self.desktop.idle(self.main, IDLE_TIMEOUT):
                     self.status_bar(None)
                 else:
-                    self.log(f"CLICK does not answer; still waiting for {what}")
+                    self.log(f"CLICK does not answer. The runner is still waiting for {what}.")
             time.sleep(self.s.poll)
 
     def check_error_boxes(self, windows: list[Window]) -> None:
@@ -1715,7 +1725,7 @@ class Run:
                     [STARTUP, CONNECT],
                     lambda f: _child(self.controls(connect), cls="SysListView32", id=20061),
                 ),
-                "the PLC list",
+                "the Connect dialog's PLC list",
             )
             last: list[int | None] = [None]
             since = [time.monotonic()]
@@ -1751,7 +1761,8 @@ class Run:
             self.record("connect_dialog")
             controls = self.controls(connect)
             same_lan = _require(
-                _child(controls, cls="Button", id=20059), "'In the same LAN' (20059)"
+                _child(controls, cls="Button", id=20059),
+                "the Connect dialog's 'In the same LAN' (20059)",
             )
             if not (
                 same_lan.text.startswith("In the same LAN")
@@ -1789,10 +1800,16 @@ class Run:
             )
             self.record("read_prompt")
             controls = self.controls(prompt)
-            dont_read = _require(_child(controls, cls="Button", id=1028), "'Don't read' (1028)")
+            dont_read = _require(
+                _child(controls, cls="Button", id=1028),
+                "the read-project question's 'Don't read' (1028)",
+            )
             if not dont_read.text.startswith("Don't read the project"):
                 raise Aborted(f"button 1028 reads {dont_read.text!r}, expected 'Don't read ...'")
-            ok = _require(_child(controls, cls="Button", id=1, text="OK"), "OK (1)")
+            ok = _require(
+                _child(controls, cls="Button", id=1, text="OK"),
+                "the read-project question's OK (1)",
+            )
             self.press(prompt, dont_read)
             try:
                 self.wait(
@@ -1856,9 +1873,15 @@ class Run:
     def login(self, login: Window) -> None:
         self.record("login")
         controls = self.controls(login)
-        user = _require(_child(controls, cls="Edit", id=20141), "User Type (20141)")
-        password = _require(_child(controls, cls="Edit", id=20142), "Password (20142)")
-        ok = _require(_child(controls, cls="Button", id=18002, text="OK"), "OK (18002)")
+        user = _require(
+            _child(controls, cls="Edit", id=20141), "the Login dialog's User Type (20141)"
+        )
+        password = _require(
+            _child(controls, cls="Edit", id=20142), "the Login dialog's Password (20142)"
+        )
+        ok = _require(
+            _child(controls, cls="Button", id=18002, text="OK"), "the Login dialog's OK (18002)"
+        )
         prefilled = self.desktop.read_text(user.hwnd)
         if prefilled is None:
             raise Aborted("User Type did not answer WM_GETTEXT")
@@ -3085,7 +3108,9 @@ class Run:
                 lambda f: self.desktop.button_checked(mode.hwnd) == 1,
             )
         file_name = self._file_name_edit(controls)
-        button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
+        button = _require(
+            _child(controls, cls="Button", id=1, text="&Open"), "the import Open dialog's Open (1)"
+        )
         self.fill_path(file_name, csv, [OPEN])
         self.wait(
             f"the Open dialog alone, {IMPORT_MODE!r} checked",
@@ -3196,8 +3221,14 @@ class Run:
             self.command(READ_DATA_FROM_PLC)
             dialog = self.wait("Read Data from PLC", [READ_DATA], lambda f: f.get(READ_DATA.name))
             controls = self.controls(dialog)
-            every = _require(_labelled(controls, "TButton", "All"), "All")
-            read = _require(_labelled(controls, "TButton", "Read"), "Read")
+            every = _require(
+                _labelled(controls, "TButton", "All"),
+                "Read Data from PLC's All",
+            )
+            read = _require(
+                _labelled(controls, "TButton", "Read"),
+                "Read Data from PLC's Read",
+            )
             self.press(dialog, every)
             boxes = [c for c in controls if c.cls == "TCheckBox"]
 
@@ -3212,7 +3243,10 @@ class Run:
             dump = (self.s.out / "plcdata.csv").resolve()
             controls = self.controls(save)
             name = self._file_name_edit(controls)
-            button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
+            button = _require(
+                _child(controls, cls="Button", id=1, text="&Save"),
+                "the Read Data Save dialog's Save (1)",
+            )
             self.fill_path(name, dump, [READ_DATA, SAVE_DATA])
             self.press(save, button)
             last: list[int | None] = [None]
@@ -3251,7 +3285,10 @@ class Run:
             self.result["files"]["plc_data"] = dump
             self.log(f"read the PLC's data into {dump} ({dump.stat().st_size} bytes)")
             self.record("read")
-            close = _require(_labelled(self.controls(dialog), "TButton", "Close"), "Close")
+            close = _require(
+                _labelled(self.controls(dialog), "TButton", "Close"),
+                "Read Data from PLC's Close",
+            )
             self.press(dialog, close)
             self.wait("Read Data from PLC to close", [READ_DATA], self.only_main)
 
@@ -3286,7 +3323,10 @@ class Run:
                         next((c for c in now if c.cls == "Edit" and c.parent in boxes), None),
                         "the Find box",
                     )
-                    button = _require(_labelled(now, "TButton", "Find"), "Find")
+                    button = _require(
+                        _labelled(now, "TButton", "Find"),
+                        "the Address Picker's Find",
+                    )
                     answered = self.desktop.set_text(edit.hwnd, token[len("find:") :])
                     answered = answered and self.send_press(window, button)
                 elif token.startswith("chars:"):
@@ -3307,7 +3347,10 @@ class Run:
                 self.after_key(window, token, at_open)
                 self.record(f"key{number:02d}")
             if self.s.ok:
-                ok = _require(_labelled(self.controls(window), "TButton", "OK"), "OK")
+                ok = _require(
+                    _labelled(self.controls(window), "TButton", "OK"),
+                    "the Address Picker's OK",
+                )
                 self.press(window, ok)
             else:
                 self.desktop.close(window.hwnd)
@@ -3435,7 +3478,10 @@ class Run:
             raise Aborted("System Configuration's PLC Name did not answer")
         self.result["points"][point]["plc_name"] = name
         self.log(f"{point}: System Configuration shows the PLC Name {name!r}")
-        cancel = _require(_labelled(controls, "TButton", "Cancel"), "Cancel")
+        cancel = _require(
+            _labelled(controls, "TButton", "Cancel"),
+            "System Configuration's Cancel",
+        )
         self.press(form, cancel)
         self.wait("System Configuration to close", [SYSTEM_CONFIG], self.only_main)
 
@@ -3486,7 +3532,9 @@ class Run:
         self.record("open")
         controls = self.controls(dialog)
         name = self._file_name_edit(controls)
-        button = _require(_child(controls, cls="Button", id=1, text="&Open"), "Open (1)")
+        button = _require(
+            _child(controls, cls="Button", id=1, text="&Open"), "the Open dialog's Open (1)"
+        )
         self.fill_path(name, ckp, [OPEN])
         self.press(dialog, button)
         last: list[object] = [None]
@@ -3592,7 +3640,9 @@ class Run:
         self.record(f"{prefix}save_as")
         controls = self.controls(dialog)
         name = self._file_name_edit(controls)
-        button = _require(_child(controls, cls="Button", id=1, text="&Save"), "Save (1)")
+        button = _require(
+            _child(controls, cls="Button", id=1, text="&Save"), "the Save As dialog's Save (1)"
+        )
         self.fill_path(name, ckp, [SAVE_AS])
         self.press(dialog, button)
         last: list[object] = [None]
@@ -3644,7 +3694,9 @@ class Run:
             _child(controls, cls="Static", id=65535, text="Disconnect from PLC?"),
             "'Disconnect from PLC?'",
         )
-        yes = _require(_child(controls, cls="Button", id=6, text="&Yes"), "Yes (6)")
+        yes = _require(
+            _child(controls, cls="Button", id=6, text="&Yes"), "the Disconnect question's Yes (6)"
+        )
         self.press(prompt, yes)
         self.wait("the main window, disconnected", [DISCONNECT_PROMPT], self.only_main)
         self.connected = False

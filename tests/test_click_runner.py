@@ -1932,7 +1932,7 @@ def test_no_guide_no_login_and_a_splash(tmp_path, setup):
     assert "login" not in result["timings"]
     log = (out / "run.log").read_text(encoding="utf-8")
     assert "no Login dialog" in log
-    assert "before the main window: 'TfrmSplash'" in log
+    assert "a window was open before the main window appeared: 'TfrmSplash'" in log
 
 
 def test_a_splash_still_open_after_launch_aborts(tmp_path, setup):
@@ -2295,7 +2295,7 @@ def test_no_plc_times_out(tmp_path, setup):
         out,
         code,
         result,
-        "the Connect dialog lists 0 PLC(s); timed out after 0.3 s waiting for one PLC in the list",
+        "the Connect dialog lists 0 PLC(s). The runner timed out after 0.3 s waiting for one PLC in the list",
     )
 
 
@@ -2339,7 +2339,7 @@ def test_plc_with_a_status_bar_that_cannot_be_read_aborts(tmp_path, setup):
         out,
         code,
         result,
-        "the status bar cannot be read to confirm the PLC named 'Conformance'; timed out",
+        "the status bar cannot be read to confirm the PLC named 'Conformance'. The runner timed out",
     )
     assert result["step"] == "dont_read" and result["plc"] is None
 
@@ -2577,9 +2577,9 @@ def test_a_hung_click_is_dumped_without_a_message_and_ended(tmp_path, setup, mon
     assert dumps and not list((out / "abort").glob("*.png"))
     assert all("edit_text" not in c for d in dumps for c in d["controls"])
     log = (out / "run.log").read_text(encoding="utf-8")
-    assert "does not answer: its dump has no edit text and no PNG" in log
+    assert "does not answer. Its dump has no edit text and no PNG." in log
     assert "not disconnecting: CLICK does not answer" in log
-    assert "CLICK does not answer; still waiting for the Syntax Check result" in log
+    assert "CLICK does not answer. The runner is still waiting for the Syntax Check result" in log
     assert "Disconnect" not in fake.commands
 
 
@@ -3169,7 +3169,7 @@ def test_a_field_closed_in_the_mode_is_not_taken(tmp_path, setup):
         ({"cases": TRY_CASES, "nicknames": ["SD99999"]}, "cannot read the cases"),
         (
             {"cases": [TRY_CASES[0], {**TRY_CASES[1], "case": TRY_CASES[0]["case"]}]},
-            "case 2 (A9 DS1 = DS2 + 1): case 1 has the same 'case', its id",
+            "case 2 (A9 DS1 = DS2 + 1) has the same 'case' id as case 1. Give each case its own 'case'.",
         ),
         ({"cases": [{**TRY_CASES[0], "choices": {"port": "x"}}]}, "Math has no list port"),
         ({"cases": [{**RECEIVE, "choices": {"port": ""}}]}, "'choices' must name lists"),
@@ -5141,7 +5141,7 @@ def test_picker_refuses_a_key_it_does_not_know(tmp_path, setup):
         (32853, "Read Project from PLC"),
         (32854, "Write Project into PLC"),
         (32852, "Write Data into PLC"),
-        (12345, "not on the runner's allowlist"),
+        (12345, "a command with no name in the runner"),
     ],
 )
 @pytest.mark.parametrize("desktop", ["win32", "fake"])
