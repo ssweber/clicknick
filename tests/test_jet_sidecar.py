@@ -388,6 +388,7 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
         _show_main_window=Mock(),
         nickname_manager=Mock(),
         _start_analysis_build=Mock(),
+        _on_database_synced=Mock(),
     )
     view._open_data = lambda store, **kw: app_module.ClickNickApp._open_data(view, store, **kw)
     view._get_store = lambda: app_module.ClickNickApp._get_store(view)

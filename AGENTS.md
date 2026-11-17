@@ -169,6 +169,21 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - `save_all_changes` refuses (raises) while rows have validation errors, for every caller. For the database it
   reads SC_.mdb first (CLICK writes it while connected), so the rows written carry CLICK's current values in
   the fields the user did not change
+- CLICK's ladder paints nicknames from a table TagDB.dll keeps in memory, so it shows a Sync's names only once
+  that table is reloaded, and no window message reloads it. `services/click_redraw.py` does it by CLICK's File >
+  Import > Nickname (WM_COMMAND 32900, CLICK 2.60-4.00) of a header-only CSV in Merge (Project priority), which
+  leaves SC_.mdb as it was; CLICK then counts the project as changed. It starts only while CLICK shows its main
+  window alone, enabled and answering, and presses only the mode's radio button, Open and the "Completed!" box's
+  one button. It tells the import's Open dialog by its three import modes and control ids, never by Windows' own
+  strings; it cancels that dialog when it fails with the dialog alone open, and leaves any other window, an Open
+  dialog it did not recognise included, to the user. Tests drive it through a fake `ClickDesktop`.
+  `save_all_changes` calls the store's sync listeners (`add_sync_listener`) once it has written rows into the
+  database (every Sync path goes through it: the Address Editor's Sync and Sync and Close, Yes to a save prompt);
+  the app's listener runs the redraw for the connected window off the Tk thread
+  (`ConnectionController.redraw_nicknames`; a request made while one runs runs once it ends), as does
+  **Tools > Redraw Nicknames in CLICK**. A redraw's result and a pending request belong to the CLICK window (its
+  hwnd): once another window is connected, or none, they are dropped. A skipped or failed redraw is a status
+  line and never fails the Sync
 - `loaded_with_error` (CLICK's own X/SC/SD names exempt from our nickname rules) is set on every base row by one
   helper, `_flag_loaded_error`, on load, reload and Sync alike
 - A loaded nickname or comment with a space at either end is trimmed by one edit session, "Trim spaces"

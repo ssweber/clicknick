@@ -22,6 +22,7 @@
 
 ### Fixed
 
+- After a Sync, CLICK's ladder shows the new nicknames: ClickNick has CLICK import a nickname file holding only the header line (File > Import > Nickname, so nothing is imported), after which CLICK counts the project as changed; when CLICK has a dialog open, ClickNick says so, and **Tools > Redraw Nicknames in CLICK** does it once the dialog is closed.
 - In CLICK 4's Receive and Send, autocomplete pops up in the Starting Master Address, status flags and Exception Response (on a Modbus TCP port it popped up in the IP address instead), and the master address offers only the memory types the Function Code shown takes (in CLICK 2 and 3, those any Function Code takes).
 - Autocomplete offers DS and TD nicknames in Out's Delay Setting, and no longer offers X, T or CT in Out, Set and Reset, which CLICK refuses there.
 - The Simulator starts from a PLC data file with a DF value CLICK shows as `Err-Format`; an analog input on that DF keeps the value it had.

@@ -173,6 +173,8 @@ class AddressStore:
 
         # Observer callbacks - called with set of affected addr_keys
         self._observers: list[Callable[[object, set[int] | None], None]] = []
+        # Called after a Sync wrote rows into CLICK's database (add_sync_listener)
+        self._sync_listeners: list[Callable[[set[int]], None]] = []
 
         # Track if initial data has been loaded
         self._initialized = False
@@ -1028,6 +1030,12 @@ class AddressStore:
         if callback in self._observers:
             self._observers.remove(callback)
 
+    def add_sync_listener(self, callback: Callable[[set[int]], None]) -> None:
+        """Call *callback* with the addr_keys written after each Sync that writes rows
+        into CLICK's database: not after a CSV save, nor one that writes nothing or fails."""
+        if callback not in self._sync_listeners:
+            self._sync_listeners.append(callback)
+
     # --- File Monitoring ---
 
     def start_file_monitoring(self, tk_root) -> None:
@@ -1062,7 +1070,8 @@ class AddressStore:
         written then carry CLICK's current value for every field the user did
         not change, and whether a row is inserted, updated or deleted is
         decided from that read. An edit the database already holds is not
-        written. A CSV file is rewritten whole.
+        written. A CSV file is rewritten whole. Once rows are written into the
+        database, the sync listeners are called (``add_sync_listener``).
 
         Returns:
             The addr_keys of the edited rows written: for the database, the
@@ -1114,6 +1123,14 @@ class AddressStore:
         # poll reloads, which is a no-op for what we just saved (base already
         # matches) and still picks up anything CLICK wrote in the meantime.
         self._derive(affected_keys)
+
+        if writes_dirty_rows and dirty_keys:
+            for listener in list(self._sync_listeners):
+                try:
+                    listener(set(dirty_keys))
+                except Exception:
+                    # The rows are written: a listener's error never fails the Sync
+                    logger.exception("AddressStore sync listener %r failed", listener)
 
         return dirty_keys
 

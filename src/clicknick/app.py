@@ -7,7 +7,7 @@ from tkinter import PhotoImage, filedialog, font, messagebox, ttk
 from typing import TYPE_CHECKING, Any, overload
 
 from .config import AppSettings
-from .connection_controller import ConnectionController
+from .connection_controller import REDRAW_COMMAND, ConnectionController
 from .connection_session import ClickConnection, SavedProgram
 from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
@@ -156,6 +156,12 @@ class ClickNickApp:
                         window.refresh_title()
                 except tk.TclError:
                     pass
+        tools_menu = getattr(self, "tools_menu", None)
+        if tools_menu is not None:
+            tools_menu.entryconfigure(
+                self._tools_redraw_index,
+                state=tk.NORMAL if self._click is not None else tk.DISABLED,
+            )
         if not hasattr(self, "workspace_status_var"):
             return
 
@@ -636,6 +642,15 @@ class ClickNickApp:
                 analysis.system_nickname_repairs or analysis.needs_comment_upgrade
             ):
                 self._start_analysis_build()
+
+    def _on_database_synced(self, _addr_keys: set[int]) -> None:
+        """A Sync wrote nicknames into CLICK's database: CLICK redraws them (issue #36).
+
+        Every Sync goes through ``AddressStore.save_all_changes``, which calls this:
+        the Address Editor's Sync and Sync and Close, and Yes to a save prompt.
+        """
+        if self._click is not None:
+            self._connection.redraw_nicknames(after_sync=True)
 
     def _open_address_editor(
         self, initial_filter: str | None = None, *, close_after_sync: bool = False
@@ -1459,6 +1474,13 @@ class ClickNickApp:
         tools_menu.add_command(label="Check Program", command=self._analyze_program)
         tools_menu.add_command(label="Simulate...", command=self._open_simulator)
         tools_menu.add_separator()
+        tools_menu.add_command(
+            label=REDRAW_COMMAND,
+            command=lambda: self._connection.redraw_nicknames(after_sync=False),
+            state=tk.DISABLED,  # _refresh_ui enables it while a CLICK window is connected
+        )
+        self.tools_menu = tools_menu
+        self._tools_redraw_index = tools_menu.index(tk.END)
         repairs_menu = tk.Menu(tools_menu, tearoff=0, postcommand=self._refresh_upgrade_entry)
         tools_menu.add_cascade(label="Repairs", menu=repairs_menu)
         repairs_menu.add_command(
@@ -1710,6 +1732,7 @@ class ClickNickApp:
             self.nickname_manager.set_store(None)
             return False
         store.start_file_monitoring(self.root)
+        store.add_sync_listener(self._on_database_synced)
         self._data = DataSession(store)
         self.nickname_manager.set_store(store)
         return True

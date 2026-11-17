@@ -3,11 +3,13 @@
 ``ConnectionController`` lists the CLICK windows, connects to one (opening its
 ``ConnectionSession`` and loading its database, or offering the CSV fallback),
 follows a project change, notices the window closing, and shows the autocomplete
-popup while monitoring is on. The facts it changes keep their homes on the app:
+popup while monitoring is on, and has the window redraw its nicknames
+(``redraw_nicknames``). The facts it changes keep their homes on the app:
 the session in ``ClickNickApp._session``, the data in ``ClickNickApp._data``
 (through ``_open_data`` and ``_close_data``). It keeps only the window list, the
 user's monitoring choice, the Monitoring status still due after a load
-(``_status_after_id``) and whether the ODBC warning has shown.
+(``_status_after_id``), whether the ODBC warning has shown, and whether a redraw
+runs, with the one asked for meanwhile.
 """
 
 from __future__ import annotations
@@ -32,6 +34,10 @@ if TYPE_CHECKING:
     from .connection_session import ConnectionSession
     from .data.nickname_manager import NicknameManager
     from .data_session import DataSession
+    from .services.click_redraw import RedrawResult
+
+# The Tools menu command that redraws CLICK's nicknames
+REDRAW_COMMAND = "Redraw Nicknames in CLICK"
 
 
 class ConnectionHost(Protocol):
@@ -91,6 +97,10 @@ class ConnectionController:
         self.monitoring = True
         self._status_after_id = None
         self._odbc_warning_shown = False
+        # A nickname redraw runs (redraw_nicknames); the one asked for meanwhile, as
+        # (CLICK window, after_sync), runs when it ends
+        self._redraw_running = False
+        self._redraw_pending: tuple[int, bool] | None = None
 
     # -- The window list -----------------------------------------------------
 
@@ -601,6 +611,100 @@ class ConnectionController:
         session = self._app._session
         if session is not None:
             session.watch(self._app.root, self._monitor_task)
+
+    # -- Redrawing CLICK's nicknames -------------------------------------------
+
+    def redraw_nicknames(self, *, after_sync: bool) -> None:
+        """Make the connected CLICK window redraw its nicknames from SC_.mdb.
+
+        Runs ``services.click_redraw.redraw_nicknames`` off the Tk thread and shows its
+        result in the status line. *after_sync* when a Sync has just written
+        nicknames: a skipped or failed redraw then says they are in CLICK's database
+        and how to redraw them. A request made while a redraw runs runs once it ends,
+        as the running one may have read SC_.mdb before the Sync wrote it. A redraw
+        that ends once another CLICK window is connected, or none, shows nothing, and
+        one asked for on the window before does not run. A new session on the same
+        window (a project change) keeps both.
+        """
+        session = self._app._session
+        if session is None:
+            self._app._update_status("⚠ Connect to a CLICK window first", "error")
+            return
+        if self._redraw_running:
+            hwnd = session.click.hwnd
+            pending = self._redraw_pending
+            again = after_sync or (pending is not None and pending[0] == hwnd and pending[1])
+            self._redraw_pending = (hwnd, again)
+            return
+        self._start_redraw(session, after_sync)
+
+    def _start_redraw(self, session: ConnectionSession, after_sync: bool) -> None:
+        import os
+        import queue
+
+        from .services.click_redraw import RedrawOutcome, RedrawResult, redraw_nicknames
+
+        self._redraw_running = True
+        results: queue.Queue[RedrawResult] = queue.Queue(maxsize=1)
+        click = session.click
+        own_pid = os.getpid()
+
+        def work() -> None:
+            try:
+                from .utils.win32_desktop import Win32ClickDesktop
+
+                result = redraw_nicknames(
+                    Win32ClickDesktop(), int(click.pid), click.hwnd, own_pid=own_pid
+                )
+            except Exception as exc:
+                result = RedrawResult(RedrawOutcome.FAILED, str(exc) or type(exc).__name__)
+            results.put(result)
+
+        def finish() -> None:
+            try:
+                result = results.get_nowait()
+            except queue.Empty:
+                self._app.root.after(100, finish)
+                return
+            self._redraw_running = False
+            current = self._app._session
+            if current is not None and current.click.hwnd == click.hwnd:
+                self._report_redraw(result, after_sync)
+            pending, self._redraw_pending = self._redraw_pending, None
+            if pending is not None and current is not None and current.click.hwnd == pending[0]:
+                self._start_redraw(current, pending[1])
+
+        self._run_off_tk(work)
+        self._app.root.after(100, finish)
+
+    @staticmethod
+    def _run_off_tk(work: Callable[[], None]) -> None:
+        """Run *work* on a thread of its own. Not a daemon: a redraw started as ClickNick
+        closes (the save prompt's Sync) runs to its end. Its waits are bounded, so that
+        takes about a minute at worst, and a second or two when CLICK answers."""
+        import threading
+
+        threading.Thread(target=work, name="clicknick-redraw").start()
+
+    def _report_redraw(self, result: RedrawResult, after_sync: bool) -> None:
+        from .services.click_redraw import RedrawOutcome
+
+        app = self._app
+        if result.outcome is RedrawOutcome.REFRESHED:
+            app._update_status("✓ CLICK shows the nicknames from its database", "connected")
+            return
+        busy = result.outcome is RedrawOutcome.BUSY
+        if after_sync:
+            what = "CLICK was busy" if busy else "CLICK did not redraw them"
+            message = (
+                f"⚠ Synced into CLICK's database, but {what} ({result.detail}): "
+                f"Tools > {REDRAW_COMMAND} shows them"
+            )
+        elif busy:
+            message = f"⚠ CLICK is busy ({result.detail}): close its dialog and try again"
+        else:
+            message = f"⚠ CLICK did not redraw its nicknames ({result.detail})"
+        app._update_status(message, "error")
 
     # -- Monitoring ------------------------------------------------------------
 
