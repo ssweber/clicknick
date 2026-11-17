@@ -434,7 +434,8 @@ class DataviewEditorWindow(tk.Toplevel):
         if mt.text_editor.open:
             messagebox.showwarning(
                 "Cell Being Edited",
-                "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                "A cell is still being edited. Press Enter to keep the edit or Esc to "
+                "cancel it, then try again.",
                 parent=self,
             )
             return False

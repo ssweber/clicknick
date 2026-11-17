@@ -847,7 +847,10 @@ def _typed(
     return window, panel, path
 
 
-_FINISH = "Finish the cell edit first (Enter to keep it, Esc to cancel)."
+_FINISH = (
+    "A cell is still being edited. Press Enter to keep the edit or Esc to cancel it, "
+    "then try again."
+)
 
 
 def test_a_new_value_that_does_not_validate_is_said_and_kept_open(
@@ -1129,7 +1132,8 @@ def test_a_paste_applies_the_valid_cells_and_lists_the_rest_in_one_warning(
 
     assert [row.new_value for row in panel.rows[:3]] == [None, 7, None]
     assert len(dialogs.errors) == 1
-    lines = dialogs.errors[0].splitlines()
+    first, *lines = dialogs.errors[0].splitlines()
+    assert first == "These cells kept their old value, because the pasted value is not valid:"
     assert [line.split(":")[0] for line in lines] == ["DS1", "DS3"]
     assert panel.undo()
     assert [row.new_value for row in panel.rows[:3]] == [None, None, None]
@@ -1140,7 +1144,7 @@ def test_a_paste_lists_the_first_ten_rejected_cells_and_counts_the_rest(editor, 
     _pasted_new_values(editor, dialogs, tk_root, addresses, ["abc"] * 12)
 
     assert len(dialogs.errors) == 1
-    lines = dialogs.errors[0].splitlines()
+    _first, *lines = dialogs.errors[0].splitlines()
     assert len(lines) == 11
     assert lines[-1] == "and 2 more"
 
@@ -1171,7 +1175,8 @@ def test_a_fill_of_an_invalid_value_is_said(editor, dialogs, tk_root):
     tk_root.update()
 
     assert [row.new_value for row in panel.rows[:3]] == [None, None, None]
-    assert [line.split(":")[0] for line in dialogs.errors[0].splitlines()] == ["DS1", "DS2", "DS3"]
+    _first, *lines = dialogs.errors[0].splitlines()
+    assert [line.split(":")[0] for line in lines] == ["DS1", "DS2", "DS3"]
 
 
 def _panel_with(editor, dialogs, tk_root, addresses):
@@ -1202,7 +1207,8 @@ def test_two_pastes_give_two_warnings(editor, dialogs, tk_root):
     _paste(panel, tk_root, 0, COL_NEW_VALUE, "abc", idle=False)  # no idle between the two
     _paste(panel, tk_root, 1, COL_NEW_VALUE, "xyz")
 
-    assert [message.split(":")[0] for message in dialogs.errors] == ["DS1", "DS2"]
+    shown = [message.splitlines()[1].split(":")[0] for message in dialogs.errors]
+    assert shown == ["DS1", "DS2"]
 
 
 def test_a_paste_into_the_force_column_is_not_checked_as_a_new_value(editor, dialogs, tk_root):
