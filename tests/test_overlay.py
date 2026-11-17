@@ -109,7 +109,7 @@ def test_programmatic_dropdown_returns_focus_to_combobox(tk_root):
 
 
 class _RecordingWin32:
-    """Stand in for the Win32 helper and record what the overlay sends to CLICK."""
+    """Stands in for the Win32 helper and records what the overlay sends to CLICK."""
 
     def __init__(self):
         self.calls = []

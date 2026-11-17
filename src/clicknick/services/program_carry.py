@@ -51,7 +51,7 @@ Section = Literal["released", "renamed", "moved"]
 
 @dataclass(frozen=True)
 class LinkTarget:
-    """Hold a bench link's names in the new program. A cut has no *enable*."""
+    """A bench link's names in the new program. A cut has no *enable*."""
 
     feedback: str
     enable: str | None
@@ -120,7 +120,7 @@ def _render(notes: Iterable[CarryNote], *, written: bool) -> str:
 
 @dataclass(frozen=True)
 class CarryPlan:
-    """Say what happens to each listed entry, keyed by its name in the running program.
+    """What happens to each listed entry, keyed by its name in the running program.
 
     *forces* maps an old tag name to its new name, or to None to release it. *links* maps an
     old feedback name to its new names, or to None to drop it. *declared* maps the feedback

@@ -33,7 +33,7 @@ _VERSION = 1
 
 @dataclass(frozen=True)
 class BenchLink:
-    """Describe a session-only change to the feedback wiring on one input.
+    """A session-only change to the feedback wiring on one input.
 
     *enable* is the CLICK address that drives the feedback, with an optional *trigger*
     value. ``None`` cuts the program's own link on that input. *response* holds pyrung's
@@ -53,7 +53,7 @@ class BenchLink:
 
 @dataclass(frozen=True)
 class SimulatorState:
-    """Hold the simulator's remembered settings. Keys are CLICK display addresses."""
+    """The simulator's remembered settings. Keys are CLICK display addresses."""
 
     switches: Mapping[str, bool] = field(default_factory=dict)
     momentary: frozenset[str] = frozenset()
@@ -73,7 +73,7 @@ class SimulatorState:
 
 @dataclass(frozen=True)
 class RestoreResult:
-    """Hold a state trimmed to the hardware and addresses that still exist."""
+    """A state trimmed to the hardware and addresses that still exist."""
 
     state: SimulatorState
     dropped: tuple[str, ...] = ()
@@ -322,7 +322,7 @@ def save_state(path: Path, state: SimulatorState) -> None:
 
 @dataclass(frozen=True)
 class StateFile:
-    """Hold where the state lives now, and anything the user should be told about the move."""
+    """Where the state lives now, and anything the user should be told about the move."""
 
     path: Path
     notice: str | None = None

@@ -56,7 +56,7 @@ def _close_quietly(window: EditorWindow) -> None:
 
 
 class DataSession:
-    """Own the current AddressStore and the windows and models bound to it."""
+    """Owns the current AddressStore and the windows and models bound to it."""
 
     def __init__(self, store: AddressStore) -> None:
         self.store = store

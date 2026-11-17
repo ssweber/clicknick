@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommentUpgrade:
-    """Describe one comment with an old annotation form.
+    """One comment with an old annotation form.
 
     ``replacement`` is the upgraded comment. ``problem`` says why pyrung still refuses it,
     for example an old token that no migration reads. ClickNick leaves such a comment for

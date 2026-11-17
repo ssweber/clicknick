@@ -143,7 +143,7 @@ def _slider_range(hint: dict[str, Any]) -> tuple[float, float] | None:
 
 
 class SimulatorWindow(tk.Toplevel):
-    """Draw the hardware panel and turn clicks into SimulationSession calls."""
+    """Draws the hardware panel and turns clicks into SimulationSession calls."""
 
     # ------------------------------------------------------------------
     # Lookups and text fitting

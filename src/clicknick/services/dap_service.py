@@ -64,7 +64,7 @@ def _coerce_string(value: str, tag_type: str) -> PlcValue:
 
 
 class DapService:
-    """Manage a pyrung DAP subprocess and provide a high-level API.
+    """Manages a pyrung DAP subprocess and provides a high-level API.
 
     All public methods are thread-safe.  Callbacks are invoked on the
     background reader thread. Callers must marshal to the UI thread themselves, typically

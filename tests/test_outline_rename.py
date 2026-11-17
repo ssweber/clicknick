@@ -445,7 +445,7 @@ class TestBuildRenamePattern:
 
 
 class TestRenameFromOutlineItems:
-    """Rename as the panel does. The item says which segment it renames and what precedes it."""
+    """Renaming as the panel does. The item says which segment it renames and what precedes it."""
 
     @staticmethod
     def _rename(nicknames: list[str], text: str, new_text: str, occurrence: int = 0) -> list[str]:

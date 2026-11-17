@@ -59,7 +59,7 @@ _MAX_REJECTIONS_SHOWN = 10
 
 
 class _UndoFrame(NamedTuple):
-    """Hold the rows and their Write checks, as one undo step restores them."""
+    """The rows and their Write checks, as one undo step restores them."""
 
     rows: list[DataViewRecord]
     checks: list[bool]

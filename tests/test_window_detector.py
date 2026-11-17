@@ -233,7 +233,7 @@ PICKER_BANKS = {
 
 
 class FakeChildWindows:
-    """Stand in for win32gui's child-window listing over a dialog recorded in LIVE_CONTROLS."""
+    """win32gui's child-window listing over a dialog recorded in LIVE_CONTROLS."""
 
     def __init__(self, controls):
         self.classes = {100 + n: cls for n, (cls, _) in enumerate(controls)}

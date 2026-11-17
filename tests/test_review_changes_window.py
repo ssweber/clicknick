@@ -74,7 +74,7 @@ def _own_preferences(monkeypatch, tmp_path: Path) -> Path:
 
 
 class _Var:
-    """Stand in for a Tk variable without Tk."""
+    """A Tk variable without Tk."""
 
     def __init__(self, value: bool) -> None:
         self.value = value
@@ -1304,7 +1304,7 @@ def test_a_copy_of_another_click_window_can_be_taken_again(monkeypatch) -> None:
 
 
 class _Database:
-    """Serve CLICK's database as an AddressStore data source."""
+    """CLICK's database as an AddressStore data source."""
 
     supports_used_field = True
     is_database = True

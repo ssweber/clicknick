@@ -188,7 +188,7 @@ def same_block_tag(a: BlockTag, b: BlockTag) -> bool:
 
 
 class BlockService:
-    """Handle block tag cascades: what a row's tag change means for the rows tied to it.
+    """Handles block tag cascades: what a row's tag change means for the rows tied to it.
 
     Each method takes the tag before and after the edit and returns the other row's new
     comment, or None to leave it alone. Callers decide which rows to pass. These methods

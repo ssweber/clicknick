@@ -69,7 +69,7 @@ def test_a_failed_sync_leaves_the_window_open() -> None:
 
 
 class _ClickDatabase:
-    """Stand in for SC_.mdb. CLICK writes to it too, without telling the store."""
+    """A stand-in for SC_.mdb. CLICK writes to it too, without telling the store."""
 
     supports_used_field = True
     file_path = "live.mdb"

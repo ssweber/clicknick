@@ -26,7 +26,7 @@ class MockDataSource:
 
 
 class FakeRoot:
-    """Collect ``after`` callbacks. ``run_idle`` runs the ones that are due now."""
+    """Collects ``after`` callbacks. ``run_idle`` runs the ones that are due now."""
 
     def __init__(self) -> None:
         self.pending: list[tuple[int, object]] = []

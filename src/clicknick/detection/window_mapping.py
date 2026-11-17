@@ -16,7 +16,7 @@ EXCEPTION_CODE = ["DS", "DD"]
 
 @dataclass(frozen=True)
 class ByChoice:
-    """Give the address types that follow the item a drop-down list of the same dialog shows.
+    """The address types that follow the item a drop-down list of the same dialog shows.
 
     *control* names the list the way the overlay names controls (``ComboBox2``). *types* maps
     each item to the address types that the field accepts with it. If the list cannot be

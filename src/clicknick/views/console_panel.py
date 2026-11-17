@@ -38,7 +38,7 @@ Transcript = list[tuple[str, str | None]]
 
 
 class ConsolePanel(ttk.Frame):
-    """Show a transcript over a command line, under a slim header of console actions."""
+    """A transcript over a command line, under a slim header of console actions."""
 
     def _start_background(self, target: Callable[[], None], *, name: str) -> None:
         """Start a named daemon worker."""
@@ -491,7 +491,7 @@ class ConsolePanel(ttk.Frame):
 
 
 class ConsoleWindow(tk.Toplevel):
-    """Show the console popped out of the Simulator. Closing the window docks it back."""
+    """The console popped out of the Simulator. Closing the window docks it back."""
 
     def __init__(
         self, parent: tk.Misc, *, title: str, on_dock: Callable[[], None], **panel_options

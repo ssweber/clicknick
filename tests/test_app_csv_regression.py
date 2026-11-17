@@ -27,14 +27,14 @@ class FakeVar:
 
 
 class FakeCsvDataSource:
-    """Stand in for the CSV data source in load_csv tests."""
+    """A stand-in for the CSV data source in load_csv tests."""
 
     def __init__(self, csv_path: str):
         self.csv_path = csv_path
 
 
 class FakeAddressStore:
-    """Stand in for AddressStore in load_csv tests."""
+    """A stand-in for AddressStore in load_csv tests."""
 
     def __init__(self, data_source=None, *, is_database: bool = False, unsaved: bool = False):
         self.data_source = data_source

@@ -40,7 +40,7 @@ NO_DATABASE = (
 
 @dataclass(frozen=True)
 class SavedProgram:
-    """Describe the program CLICK last saved, as CSVs to compare with, at one moment.
+    """The program CLICK last saved, as CSVs to compare with, at one moment.
 
     If a value differs from the last one, a comparison may be out of date.
     """
@@ -89,7 +89,7 @@ class _BuildRequest:
 
 
 class ConnectionSession:
-    """Own the resources whose lifetime is bounded by a CLICK project connection.
+    """Owns the resources whose lifetime is bounded by a CLICK project connection.
 
     Resources managed (in teardown order):
     1. The database load in flight

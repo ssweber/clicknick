@@ -25,7 +25,7 @@ C1 = get_addr_key("C", 1)
 
 
 class FakeRoot:
-    """Record after() callbacks so a test can run them."""
+    """Records after() callbacks so a test can run them."""
 
     def __init__(self) -> None:
         self.scheduled: list[tuple[int, object]] = []
@@ -51,7 +51,7 @@ class FakeRoot:
 
 
 class DatabaseSource:
-    """Stand in for CLICK's database, as the store sees it."""
+    """CLICK's database, as the store sees it."""
 
     supports_used_field = True
     is_database = True

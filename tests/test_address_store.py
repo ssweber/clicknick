@@ -925,7 +925,7 @@ class TestExternalDatabaseUpdate:
 
 
 class TestDerivedStateStaysConsistent:
-    """Check that derived state (validation, dirty, block colors) matches a fresh computation.
+    """Derived state (validation, dirty, block colors) must match a fresh computation.
 
     Regression tests for bugs A-C from the 2026-10 state review, plus the
     Sync/Discard undo-history rules.

@@ -11,7 +11,7 @@ from typing import Protocol
 
 
 class Scheduler(Protocol):
-    """Describe anything that can run a callback later and cancel it, such as a Tk widget."""
+    """Anything that can run a callback later and cancel it, such as a Tk widget."""
 
     def after(self, ms: int, func: Callable[[], object]) -> str: ...
 

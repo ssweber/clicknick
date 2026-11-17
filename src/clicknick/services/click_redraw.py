@@ -258,7 +258,7 @@ def _redraw(
 
 
 class _Import:
-    """Run one File > Import > Nickname of a header-only CSV."""
+    """One File > Import > Nickname of a header-only CSV."""
 
     def __init__(
         self,

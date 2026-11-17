@@ -48,7 +48,7 @@ def _user32():
 
 
 class Win32ClickDesktop:
-    """Implement ``ClickDesktop`` on the real desktop."""
+    """``ClickDesktop`` on the real desktop."""
 
     def __init__(self) -> None:
         self._user32 = _user32()

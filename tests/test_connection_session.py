@@ -60,7 +60,7 @@ def test_a_session_builds_once_its_database_is_read(tmp_path, monkeypatch) -> No
 
 
 class _Scheduler:
-    """Record after() callbacks so a test can run them."""
+    """Records after() callbacks so a test can run them."""
 
     def __init__(self) -> None:
         self.scheduled: dict[str, object] = {}

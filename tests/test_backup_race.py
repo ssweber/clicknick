@@ -64,7 +64,7 @@ def _staged(tmp_path: Path) -> Path:
 
 
 class _Paused:
-    """Run *target* on a thread that stops when a copy lists *directory* and waits for release."""
+    """Runs *target* on a thread that stops when a copy lists *directory* and waits for release."""
 
     def __init__(self, monkeypatch, directory: Path, target: Callable[[], object]) -> None:
         self.reached = threading.Event()
@@ -133,7 +133,7 @@ def test_a_build_publishing_waits_for_a_backup_part_way_through(tmp_path: Path, 
 
 
 class _Analysis:
-    """Stand in for an analysis that does not say it is building. Its status is FAILED or none."""
+    """An analysis that does not say it is building. Its status is FAILED or none."""
 
     def __init__(self, project_dir: Path) -> None:
         self.project_dir = project_dir

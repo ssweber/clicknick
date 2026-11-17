@@ -313,7 +313,7 @@ _DIALOG_TIMEOUT_MS = 3000
 
 @dataclass(frozen=True)
 class ProposalSource:
-    """Describe where a window's proposal comes from, which decides what starts out taken.
+    """Where a window's proposal comes from, which decides what starts out taken.
 
     The workspace's own edits and a folder opened to load into CLICK are meant to
     replace what CLICK has. For them, every difference starts out taken. So do the
@@ -348,7 +348,7 @@ class ProposalSource:
 
 
 class ReviewChangesWindow(tk.Toplevel):
-    """Show a non-modal panel that walks the user through pasting ladder CSVs."""
+    """A non-modal panel that walks the user through pasting ladder CSVs."""
 
     # ------------------------------------------------------------------
     # The folder's nicknames

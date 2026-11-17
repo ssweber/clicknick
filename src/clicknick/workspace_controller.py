@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class WorkspaceHost(Protocol):
-    """Name the parts of the app (``ClickNickApp``) that WorkspaceController uses."""
+    """The parts of the app (``ClickNickApp``) that WorkspaceController uses."""
 
     root: tk.Tk
     _live_server: LiveServer | None
@@ -54,7 +54,7 @@ class WorkspaceHost(Protocol):
 
 
 class WorkspaceController:
-    """Show and change the connected project's workspace for the main window."""
+    """The connected project's workspace, as the main window shows and changes it."""
 
     def __init__(self, app: WorkspaceHost) -> None:
         self._app = app

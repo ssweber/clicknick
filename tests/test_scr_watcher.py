@@ -140,7 +140,7 @@ def test_a_save_caught_half_written_counts_once(tmp_path) -> None:
 
 
 class _Clock:
-    """Record each scheduled check. ``tick`` runs the latest one."""
+    """Records each scheduled check. ``tick`` runs the latest one."""
 
     def __init__(self) -> None:
         self.delays: list[int] = []

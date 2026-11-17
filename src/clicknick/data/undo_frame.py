@@ -18,7 +18,7 @@ MAX_UNDO_DEPTH = 50
 
 @dataclass
 class UndoFrame:
-    """Record the user overrides as they were before a change.
+    """A snapshot of the user overrides as they were before a change.
 
     Attributes:
         overrides: Dict mapping addr_key to that row's override (field -> value)

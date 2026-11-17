@@ -237,7 +237,7 @@ def preferred_project_config(
 
 @dataclass
 class WorkspacePairing:
-    """Describe the durable workspace paired with a connected project, as its session holds it."""
+    """The durable workspace paired with a connected project, as its session holds it."""
 
     # The workspace that builds use. None for a temporary workspace in CLICK's folder.
     config: ProjectWorkspaceConfig | None = None

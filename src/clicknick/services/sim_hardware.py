@@ -26,7 +26,7 @@ class _Module(Protocol):
 
 
 class ModuleIOLike(Protocol):
-    """Describe the shape of ``pyclickplc.ModuleIO`` that this module needs."""
+    """The shape of ``pyclickplc.ModuleIO`` that this module needs."""
 
     @property
     def location(self) -> str: ...
@@ -46,7 +46,7 @@ class ModuleIOLike(Protocol):
 
 @dataclass(frozen=True)
 class Terminal:
-    """Describe one I/O point on a card. An analog channel with no DF assigned has no address."""
+    """One I/O point on a card. An analog channel with no DF assigned has no address."""
 
     kind: TerminalKind
     channel: int
@@ -55,7 +55,7 @@ class Terminal:
 
 @dataclass(frozen=True)
 class Card:
-    """Describe one module, in physical order.
+    """One module, in physical order.
 
     A card with ``installed`` False is a placeholder. The program uses X/Y addresses of
     this position that no module in Project.ini provides. The placeholder has no model
@@ -88,7 +88,7 @@ class Card:
 
 @dataclass(frozen=True)
 class PanelLayout:
-    """Describe everything the Simulator window draws.
+    """Everything the Simulator window draws.
 
     ``cards`` holds the installed modules. It also holds a placeholder, in the physical
     place, for the used X/Y addresses that no module provides. A placeholder still gets

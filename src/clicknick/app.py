@@ -44,7 +44,7 @@ _LEGACY_LISTED = 10
 
 
 class _ShownState[T]:
-    """Mark an App attribute that the main window displays. Assigning it schedules one UI refresh.
+    """An App attribute that the main window displays. Assigning it schedules one UI refresh.
 
     The value lives in the instance ``__dict__`` under the same name. This class is a data
     descriptor, so it still takes precedence when Python looks the attribute up.

@@ -60,7 +60,7 @@ _UNREAD_RUNG_COMMENT = "ClickNick cannot read this rung."
 
 @dataclass(frozen=True)
 class ProposedProgram:
-    """Hold one ladder CSV of a bundle, read once, so the rungs compared are the rungs copied."""
+    """One ladder CSV of a bundle, read once, so the rungs compared are the rungs copied."""
 
     name: str
     path: Path
@@ -94,7 +94,7 @@ def load_bundle(folder: Path) -> list[ProposedProgram]:
 
 @dataclass(frozen=True)
 class DifferenceKey:
-    """Identify one difference of a program by its content, not its position.
+    """Names one difference of a program by its content, not its position.
 
     The key stays the same when CLICK saves or the proposal is read again. A choice made
     about a difference therefore survives the comparison it was made in.
@@ -133,7 +133,7 @@ class PasteStep:
 
 @dataclass(frozen=True)
 class ProgramChange:
-    """Describe how a proposed program differs from the same program in CLICK."""
+    """How a proposed program differs from the same program in CLICK."""
 
     # CLICK's rungs. Empty if CLICK does not have the program.
     before: tuple[Rung, ...] = ()
@@ -351,7 +351,7 @@ def carry_skipped(
 
 @dataclass(frozen=True)
 class BundleComparison:
-    """Describe how a bundle compares with the program now in CLICK."""
+    """How a bundle compares with the program now in CLICK."""
 
     # False if nothing was compared because what CLICK has is unknown.
     compared: bool = False
@@ -523,7 +523,7 @@ def _read_manifest(bundle_dir: Path) -> dict[str, dict[int, list[int]]]:
 
 @dataclass(frozen=True)
 class BundleSources:
-    """Hold the pyrung source of a bundle's programs, which is how their rungs are shown.
+    """The pyrung source of a bundle's programs, which is how their rungs are shown.
 
     A program without source is shown as rung numbers, each with the rung's instructions
     and comment.
@@ -588,7 +588,7 @@ class BundleSources:
 
 @dataclass
 class _SourceChunk:
-    """Hold one numbered pyrung block, with its comment and continuations."""
+    """One numbered pyrung block, with its comment and continuations."""
 
     number: int
     marker_line: int
@@ -821,7 +821,7 @@ def _rung_range(first: int, count: int) -> str:
 
 @dataclass(frozen=True)
 class Gap:
-    """Describe a run of unchanged rungs, shown around the differences beside it.
+    """A run of unchanged rungs, shown around the differences beside it.
 
     The rungs that are not shown become a separator line. Its arrows show more of them.
     """
@@ -852,7 +852,7 @@ class Gap:
 
 @dataclass(frozen=True)
 class RenderedDiff:
-    """Hold a program's change as text.
+    """A program's change as text.
 
     A line that starts with ``-`` is one of CLICK's rungs, and ``+`` a proposed rung. A
     line that starts with a space (`` ``) is unchanged, either in a changed rung or in the

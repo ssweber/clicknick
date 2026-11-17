@@ -439,7 +439,7 @@ _FIELD_CLASSES = ("Edit", "RichEdit20W")
 
 @dataclass(frozen=True)
 class Instruction:
-    """Describe an instruction dialog: the ribbon command that opens it, its title, fields, modes.
+    """An instruction dialog: the ribbon command that opens it, its title, fields and modes.
 
     The control ids come from the dialog's template in CLICK's Inst_<name>.dll. The live
     probe of 2026-11-15 found them in the open dialogs. A mode is a radio button.
@@ -590,7 +590,7 @@ WIRE_COIL_DIALOG = INSTRUCTIONS["out"]
 
 @dataclass(frozen=True)
 class Case:
-    """Describe one instruction to try: the rule table's row, what is tried, what is entered.
+    """One instruction to try: the rule table's row, what is tried, what is entered.
 
     *name* is the case's id. It is unique in its file, and a resumed run matches answers by it.
     """
@@ -618,7 +618,7 @@ class Case:
 
 
 class OptionSet(NamedTuple):
-    """Hold what ``Run.set_option`` did.
+    """What ``Run.set_option`` did.
 
     ``button`` is the button that *key* named, or None when no one button shows it.
     ``pressed`` says whether it was pressed. ``problem`` says why it cannot be set, or is None
@@ -936,7 +936,7 @@ def _require(control: Control | None, what: str) -> Control:
 
 @dataclass(frozen=True)
 class StatusBar:
-    """Hold the panes of the main window's status bar.
+    """The panes of the main window's status bar.
 
     Live run 2 (2026-11-15) read these panes offline: "", "Bit", "Integer", "Integer(2
     words)", "Floating point", "Hex", "Text", "Ascii", "-----", "0000/8000" (program steps),
@@ -1042,7 +1042,7 @@ def _decode(click_dir: Path, csv_dir: Path):
 
 
 class ClipCsv(NamedTuple):
-    """Hold what ``_decode_clip`` made of a clipboard.
+    """What ``_decode_clip`` made of a clipboard.
 
     ``written`` says whether it wrote the CSV. ``unreadable`` names what in the clipboard
     laddercodec cannot read or write, or is None when nothing.

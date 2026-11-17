@@ -70,7 +70,7 @@ def _trigger(text: str) -> int | str | None:
 
 
 class LinkDialog(tk.Toplevel):
-    """Ask which tag drives *feedback* and how it responds."""
+    """Asks which tag drives *feedback* and how it responds."""
 
     def _kind(self) -> PhysicalKind:
         return physical_kind(self._kind_var.get())

@@ -21,10 +21,10 @@ if TYPE_CHECKING:
 
 
 class SharedDataviewData:
-    """Provide the model behind the Dataview Editor.
+    """The model behind the Dataview Editor.
 
-    - Look up nicknames and comments live from the AddressStore
-    - Find CDV files in the DataView folder that ``get_folder`` returns now
+    - Looks up nicknames and comments live from the AddressStore
+    - Finds CDV files in the DataView folder that ``get_folder`` returns now
 
     DataSession owns the window lifecycle. The editor window observes the store
     directly for nickname refreshes.

@@ -142,7 +142,7 @@ CONTACT_TITLES = ("Contact Normally Open", "Compare (A with B)")
 
 
 class FakeClick(cd.Desktop):
-    """Play CLICK v4 as the probe saw it, with switches for what can go wrong.
+    """Plays CLICK v4 as the probe saw it, with switches for what can go wrong.
 
     *surprise* names an event after which an unknown dialog appears; *stall* one whose
     effect never happens; *hang_on* one after which CLICK stops answering for *hang_for*
@@ -1656,7 +1656,7 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 class Prepare:
-    """Stand in for prepare_csv_load without SC_.mdb, and record the MDB asked for.
+    """A stand-in for prepare_csv_load without SC_.mdb. It records the MDB asked for.
 
     The fake's SC_.mdb is not a database."""
 
@@ -1693,7 +1693,7 @@ def run(
 
 
 class VirtualClock:
-    """Replace the runner's clock with one that moves only when the runner sleeps.
+    """The runner's clock, which moves only when the runner sleeps.
 
     It moves by the length of the sleep, and it never waits.
 
@@ -2694,7 +2694,7 @@ RECEIVE = {
 
 
 class Nicknames:
-    """Stand in for read_nicknames without a database, and record its calls.
+    """A stand-in for read_nicknames without a database. It records its calls.
 
     The fake's SC_.mdb is not a database."""
 
@@ -2838,7 +2838,7 @@ def test_try_record_dumps_each_case(tmp_path, setup):
 
 
 class Stored:
-    """Stand in for read_stored on the fake's Scr*.tmp, which holds text.
+    """A stand-in for read_stored on the fake's Scr*.tmp, which holds text.
 
     It raises for the files named."""
 
@@ -4269,7 +4269,7 @@ def test_a_list_that_changes_while_the_fields_are_filled_is_not_taken(tmp_path, 
 
 
 class StallsInTheFill(FakeClick):
-    """Make CLICK stop answering once the first field of an instruction dialog is set.
+    """A CLICK that stops answering once the first field of an instruction dialog is set.
 
     The dialog's WM_SETTEXT goes unanswered (*on* "set") or its WM_GETTEXT does (*on* "read"). With
     *on* "interrupt", the first one raises KeyboardInterrupt."""
@@ -4495,7 +4495,10 @@ LIVE_ERROR_LIST = (
 
 
 class Rows:
-    """Stand in for read_rows on the fake's SC_.mdb, which holds JSON, and record the files read."""
+    """A stand-in for read_rows on the fake's SC_.mdb, which holds JSON.
+
+    It records the files read.
+    """
 
     def __init__(self, *, fails: bool = False) -> None:
         self.read: list[Path] = []
@@ -4967,7 +4970,7 @@ def test_read_data_that_writes_no_file_aborts_once_the_reading_ends(tmp_path, se
 
 
 class PickerRows(Rows):
-    """Read rows, treating a new project's SC_.mdb (``b"mdb"`` in the fake) as no rows."""
+    """Rows that read a new project's SC_.mdb (``b"mdb"`` in the fake) as no rows."""
 
     def __call__(self, mdb: Path) -> dict[str, dict]:
         if mdb.read_bytes() == b"mdb":

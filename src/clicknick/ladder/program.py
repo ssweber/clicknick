@@ -80,7 +80,7 @@ class ProgramInfo:
 
 @dataclass(frozen=True)
 class LegacyEncoding:
-    """Describe a rung that CLICK holds in a form an older laddercodec wrote.
+    """A rung that CLICK holds in a form an older laddercodec wrote.
 
     The rung must be pasted again. Either CLICK runs it differently from how its CSV text
     reads, or (if *unreadable* is set) laddercodec cannot read one of its instructions.

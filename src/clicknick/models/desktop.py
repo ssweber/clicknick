@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Window:
-    """Describe a visible top-level window."""
+    """A visible top-level window."""
 
     hwnd: int
     cls: str
@@ -21,7 +21,7 @@ class Window:
 
 @dataclass(frozen=True)
 class Control:
-    """Describe a child window of a top-level window, at any depth."""
+    """A child window of a top-level window, at any depth."""
 
     hwnd: int
     parent: int

@@ -42,7 +42,7 @@ REDRAW_COMMAND = "Redraw Nicknames in CLICK"
 
 
 class ConnectionHost(Protocol):
-    """Describe the part of the app (``ClickNickApp``) that ConnectionController uses."""
+    """The part of the app (``ClickNickApp``) that ConnectionController uses."""
 
     root: tk.Tk
     # The connected session and the loaded data live only here. Assigning either one
@@ -86,7 +86,7 @@ class ConnectionHost(Protocol):
 
 
 class ConnectionController:
-    """Run the connection lifecycle: list, connect, follow, watch, close."""
+    """The connection lifecycle: list, connect, follow, watch, close."""
 
     def __init__(self, app: ConnectionHost) -> None:
         self._app = app

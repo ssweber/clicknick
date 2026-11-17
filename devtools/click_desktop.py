@@ -128,7 +128,7 @@ def check_command(command_id: int) -> str:
 
 @dataclass(frozen=True)
 class Window:
-    """Describe a visible top-level window."""
+    """A visible top-level window."""
 
     hwnd: int
     cls: str
@@ -140,7 +140,7 @@ class Window:
 
 @dataclass(frozen=True)
 class Control:
-    """Describe a child window of a top-level window, at any depth.
+    """A child window of a top-level window, at any depth.
 
     *text* is GetWindowText. It is empty for another process's edit controls. Read those
     with ``Desktop.read_text``.
@@ -157,7 +157,7 @@ class Control:
 
 
 class Desktop(ABC):
-    """List what the runner may do on the desktop."""
+    """What the runner may do on the desktop."""
 
     def command(self, hwnd: int, command_id: int) -> str:
         """Post WM_COMMAND *command_id* to *hwnd* and return the command's name.
@@ -615,7 +615,7 @@ def capture_screen(left: int, top: int, width: int, height: int) -> bytes:
 
 
 class Win32Desktop(Desktop):
-    """Act on the real desktop. Messages go with a timeout, so a hung CLICK cannot hang it."""
+    """The real desktop. Messages go with a timeout, so a hung CLICK cannot hang it."""
 
     def __init__(self) -> None:
         self._user32 = _user32()

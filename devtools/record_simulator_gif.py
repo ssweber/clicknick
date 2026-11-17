@@ -311,7 +311,7 @@ class Frame:
 
 
 class Recorder:
-    """Grab the window from a thread. Identical frames collapse into one."""
+    """Grabs the window from a thread. Identical frames collapse into one."""
 
     def _run(self) -> None:
         period = 1 / CAPTURE_FPS
@@ -464,7 +464,7 @@ def _exact_palette(sheet: Image.Image, colors: int) -> Image.Image:
 
 @dataclass(frozen=True)
 class Capture:
-    """Hold a recording before encoding, so you can encode again without recording again."""
+    """A recording before encoding, so you can encode again without recording again."""
 
     size: tuple[int, int]
     ticker: Box
@@ -581,7 +581,7 @@ Scene = Iterator[float]
 
 
 class MenuLookalike:
-    """Draw a real menu's entries in a plain window, in the colors of Tk's native menus.
+    """Draws a real menu's entries in a plain window, in the colors of Tk's native menus.
 
     Windows' popup runs its own loop until it is dismissed. That would stall a scene.
     """

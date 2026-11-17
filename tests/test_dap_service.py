@@ -12,7 +12,7 @@ from clicknick.services.dap_service import DapRequestError, DapService, DapUnava
 
 
 class _Scripted(DapService):
-    """Answer each request from *answers*. None means no answer arrived in time."""
+    """Answers each request from *answers*. None means no answer arrived in time."""
 
     def __init__(self, answers, **callbacks) -> None:
         super().__init__(**callbacks)

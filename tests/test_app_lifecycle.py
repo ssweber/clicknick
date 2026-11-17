@@ -72,7 +72,7 @@ class FakeDataview(FakeEditor):
 
 
 class FakeRoot:
-    """Record after() callbacks so a test can run them."""
+    """Records after() callbacks so a test can run them."""
 
     def __init__(self) -> None:
         self.scheduled: dict[str, tuple[int, object]] = {}
@@ -986,7 +986,7 @@ def test_the_refresh_skips_editor_windows_that_are_gone(monkeypatch):
 
 
 class FakeDataviewWindow:
-    """Record the model that _open_dataview_editor builds and shows."""
+    """Records the model that _open_dataview_editor builds and shows."""
 
     def __init__(self, _root, *, session, **_kw):
         self.shared_data = session.dataview

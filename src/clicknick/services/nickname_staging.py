@@ -27,7 +27,7 @@ _FIELDS = ("nickname", "comment", "initial_value", "retentive")
 
 @dataclass(frozen=True)
 class FieldChange:
-    """Describe one field of one address that the file sets differently."""
+    """One field of one address that the file sets differently."""
 
     addr_key: int
     display_address: str
@@ -38,7 +38,7 @@ class FieldChange:
 
 @dataclass(frozen=True)
 class NicknamePlan:
-    """Describe how a nicknames.csv differs from a set of rows, field by field."""
+    """How a nicknames.csv differs from a set of rows, field by field."""
 
     changes: tuple[FieldChange, ...] = ()
 

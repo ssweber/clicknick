@@ -133,7 +133,7 @@ def _source_stamp(source: Path) -> tuple[tuple[str, int, int], ...]:
 
 
 class PlcSourceWatch:
-    """Tell whether a project's ``src/plc`` still holds what it held when the watch began.
+    """Tells whether a project's ``src/plc`` still holds what it held when the watch began.
 
     Each check reads only file sizes and times. It hashes the files again only when a size
     or time changed. An edit that you undo in an editor, or a file that you save unchanged,
@@ -492,7 +492,7 @@ def backup_modified_plc_source(project_dir: Path) -> tuple[Path, int] | None:
 
 @dataclass(frozen=True)
 class PlcRestore:
-    """Describe what ``restore_plc_source`` did."""
+    """What ``restore_plc_source`` did."""
 
     #: Where the restored backup is kept now. A backup of the edits moves the newest aside.
     restored_from: Path

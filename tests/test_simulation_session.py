@@ -32,7 +32,7 @@ from clicknick.simulation_session import (
 
 
 class FakeScheduler:
-    """Run zero-delay callbacks on demand. Keep timed ones until a test fires them."""
+    """Runs zero-delay callbacks on demand. Keeps timed ones until a test fires them."""
 
     def __init__(self) -> None:
         self._next = 0
@@ -79,7 +79,7 @@ def _dap_fields(values):
 
 
 class FakeDap:
-    """Model a small part of pyrung's adapter.
+    """Models a small part of pyrung's adapter.
 
     Like pyrung, it keys forces and bench links by tag name. It resolves an address with the
     names of the program it runs (*program_names*, read at launch and at each reload). A
@@ -1595,7 +1595,7 @@ def test_frames_name_tags_as_the_written_program_does_from_its_answer_on(ready, 
 
 
 class _GoneAfterTerminate(FakeDap):
-    """Behave like DapService. Once terminated, every request fails."""
+    """Behaves like DapService. Once terminated, every request fails."""
 
     gone = False
 
