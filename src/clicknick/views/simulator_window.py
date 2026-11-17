@@ -19,8 +19,8 @@ chip to draw the wire to the driving terminal. You make, cut and save links to t
 project from the right-click menu, and the Wiring menu lists them all.
 
 Cards are compact and flow into rows in rack order. A full rack fits without horizontal
-scrolling: the CPU, two option slots, eight expansions and a placeholder card at each
-position.
+scrolling: the CPU, two option slots and eight expansions. A card that is not installed
+is still drawn in its place, off the rail. With no CPU, a "No CPU" card stands first.
 
 The command console is a resizable pane under the rack. Ctrl+` shows or hides it. It
 pops out into its own window, and closing that window docks it back.

@@ -3207,7 +3207,11 @@ def test_try_refuses_a_bad_cases_file(tmp_path, setup, cases, reason):
 
 
 def test_the_cases_file_loads():
-    """The checked-in editor_cases.json loads and has cases for the rule table's rows."""
+    """The checked-in editor_cases.json loads, and it has cases for the table's rows.
+
+    The table is pyrung's and laddercodec's table of what CLICK's editor accepts. The rows
+    checked are A1 to A10, B1 to B6 and B8.
+    """
     cases, nicknames = cr.load_cases(Path(cd.__file__).parent / "editor_cases.json")
     rows = {case.row for case in cases}
     assert {"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"} <= rows
