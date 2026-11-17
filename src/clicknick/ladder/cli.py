@@ -64,12 +64,17 @@ def resolve_mdb_path(mdb_path: str | None = None) -> Path:
     return Path(db_path)
 
 
+class DatabaseError(RuntimeError):
+    """The rungs' addresses could not be added to the SC_.mdb that --mdb-path names."""
+
+
 def _database_for(mdb_path: str | None) -> Path | None:
     """Return the SC_.mdb to add the rungs' addresses to, or None if there is none.
 
     If *mdb_path* names no file, raise FileNotFoundError. Without *mdb_path*, look for the
-    SC_.mdb of the first CLICK window. If it has none, print a warning on stderr and return
-    None. The rungs can still be copied, so the command goes on.
+    SC_.mdb of the first CLICK window. If no CLICK window is open, raise RuntimeError. If the
+    window has no SC_.mdb, print a warning on stderr and return None. The rungs can still be
+    copied, so the command goes on.
     """
     try:
         return resolve_mdb_path(mdb_path)
@@ -104,7 +109,7 @@ def print_csv_shape(csv_path: Path) -> None:
 def _print_mdb_status(result: PrepareResult, database: Path | None, mdb_path: str | None) -> None:
     """Print how many of the rungs' addresses were added to *database*.
 
-    If adding them failed, raise RuntimeError when --mdb-path (*mdb_path*) named the
+    If adding them failed, raise DatabaseError when --mdb-path (*mdb_path*) named the
     database, because the command cannot do what was asked. Otherwise print the failure on
     stderr.
     """
@@ -117,7 +122,7 @@ def _print_mdb_status(result: PrepareResult, database: Path | None, mdb_path: st
         return
     message = f"Could not add the rungs' addresses to {database}: {result.mdb_error}"
     if mdb_path:
-        raise RuntimeError(message)
+        raise DatabaseError(message)
     print(f"  {message}", file=sys.stderr)
 
 
@@ -160,7 +165,7 @@ def _load_bin(bin_path: Path, mdb_path: str | None) -> bytes:
         raise
     except ValueError as exc:
         if mdb_path:
-            raise RuntimeError(
+            raise DatabaseError(
                 f"Could not add the addresses in {bin_path.name} to {database}."
                 f" The file could not be decoded: {exc}"
             ) from exc
@@ -292,6 +297,7 @@ def _run_guided(
     print()
 
     results: list[tuple[str, str, str]] = []
+    quit_run = False
 
     for idx, (name, csv_path) in enumerate(items):
         if name in done:
@@ -304,9 +310,16 @@ def _run_guided(
         except RuntimeError as exc:
             loaded = False
             while not loaded:
-                print(f"  {exc}")
+                print(f"  {exc}", file=sys.stderr)
                 print("  Press Enter to try again, or [s]kip / [q]uit")
                 choice = input("  > ").strip().lower()
+                if choice in ("s", "q") and isinstance(exc, DatabaseError):
+                    # A CSV left without the addresses that --mdb-path asked for is an error,
+                    # and the run exits 1.
+                    results.append((name, "error", str(exc)))
+                    _append_result(log_path, name, "error", str(exc))
+                    quit_run = choice == "q"
+                    break
                 if choice == "q":
                     print()
                     return
@@ -321,6 +334,8 @@ def _run_guided(
                     exc = exc2
             if not loaded:
                 print()
+                if quit_run:
+                    break
                 continue
         except Exception as exc:
             print(f"  Error: {exc}")
@@ -474,7 +489,10 @@ def main() -> None:
     )
     prog_save.add_argument("folder", metavar="FOLDER", help="Directory containing Scr*.tmp files")
     prog_save.add_argument(
-        "--output", "-o", metavar="DIR", help="Output directory for CSV bundle (default: FOLDER)"
+        "--output",
+        "-o",
+        metavar="DIR",
+        help="Folder to write main.csv and subroutines/ to (default: FOLDER)",
     )
 
     # --- load ---
@@ -509,8 +527,11 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    if args.mdb_path:
-        # Refuse a wrong --mdb-path before anything is copied or written.
+    uses_database = args.command in ("load", "guided") or (
+        args.command == "program" and args.program_command == "load"
+    )
+    if args.mdb_path and uses_database:
+        # Refuse a wrong --mdb-path before anything is copied.
         try:
             resolve_mdb_path(args.mdb_path)
         except FileNotFoundError as exc:
@@ -579,8 +600,8 @@ def main() -> None:
             for csv_path in result.subroutine_csvs:
                 print(f"  Saved {csv_path}")
             print(
-                f"\nProgram bundle: 1 main + {len(result.subroutine_csvs)} subroutine(s),"
-                f" {result.total_rungs} total rungs"
+                f"\nProgram: 1 main + {len(result.subroutine_csvs)} subroutine(s),"
+                f" {result.total_rungs} rungs"
             )
             legacy = [item for item in result.legacy_encodings if not item.unreadable]
             unreadable = [
@@ -600,9 +621,9 @@ def main() -> None:
                     print(f"  {describe_legacy_encoding(item)}")
             if unreadable:
                 print(
-                    "\nClickNick cannot read these rungs. The CSVs hold an empty rung in place of"
-                    " each. Paste them into CLICK again from your own copy of the program, or fix"
-                    " them in CLICK:"
+                    "\nClickNick cannot read these rungs. Each CSV holds an empty rung in place of"
+                    " each of these rungs. Paste them into CLICK again from your own copy of the"
+                    " program, or fix them in CLICK:"
                 )
                 for item in unreadable:
                     print(f"  {describe_legacy_encoding(item)}")
@@ -621,7 +642,7 @@ def main() -> None:
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
 
-        print(f"Program bundle: {folder}")
+        print(f"Program: {folder}")
         for name, _ in items:
             print(f"  {name}")
         print()

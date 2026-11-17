@@ -378,6 +378,50 @@ class TestDatabaseErrors:
 
         assert guided == []
 
+    @pytest.mark.parametrize("answer", ["s", "q"])
+    @pytest.mark.parametrize("command", [["guided"], ["program", "load"]])
+    def test_guided_ends_in_an_error_when_the_mdb_path_insert_fails(
+        self,
+        tmp_path: Path,
+        rung_csv: Path,
+        copied: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+        command: list[str],
+        answer: str,
+    ):
+        # A skip or a quit after the failure leaves the CSV without its addresses.
+        rung_csv.rename(tmp_path / "main.csv")
+        database = tmp_path / "SC_.mdb"
+        database.write_bytes(b"")
+        self._fail_to_add(monkeypatch)
+        monkeypatch.setattr("builtins.input", lambda _prompt="": answer)
+        monkeypatch.setattr(
+            "sys.argv",
+            ["clicknick-rung", "--mdb-path", str(database), *command, str(tmp_path)],
+        )
+
+        with pytest.raises(SystemExit, match="1"):
+            main()
+
+        assert copied == []
+        message = f"Could not add the rungs' addresses to {database}: the database is locked"
+        assert capsys.readouterr().err == f"  {message}\n"
+        log = (tmp_path / "verify_progress.log").read_text(encoding="utf-8")
+        assert f": error ({message})" in log
+
+    def test_save_does_not_read_the_mdb_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr("clicknick.ladder.cli.read_from_clipboard", lambda: b"rung")
+        out = tmp_path / "rung.bin"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["clicknick-rung", "--mdb-path", str(tmp_path / "none.mdb"), "save", str(out)],
+        )
+
+        main()
+
+        assert out.read_bytes() == b"rung"
+
 
 # ---------------------------------------------------------------------------
 # _collapse_cols
