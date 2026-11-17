@@ -2521,7 +2521,7 @@ def test_a_failed_build_keeps_what_was_pasted(monkeypatch, copies) -> None:
     window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
     window._on_action()  # Copy r1
     window._on_action()  # Next: r1 is in CLICK, not saved
-    failed = "Could not read CLICK's program; see the main window"
+    failed = "Could not read CLICK's program. See the main window."
 
     _change(window, SavedProgram(window.session, generation=2, note=failed))
     assert _note(window) == failed

@@ -353,7 +353,9 @@ def test_closed_session_drops_its_queued_build_and_tells_the_caller(tmp_path) ->
 
     assert done.wait(5)
     session.analysis.build.assert_not_called()
-    assert results == [(False, "The project changed while converting; conversion was discarded.")]
+    assert results == [
+        (False, "The project changed while converting. The conversion was discarded.")
+    ]
 
 
 def _settle(watcher) -> None:
