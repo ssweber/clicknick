@@ -62,7 +62,7 @@ def _copy_nicknames(click_dir: Path, staged: Path) -> str:
 
     database = click_dir / _DATABASE
     if not database.is_file():
-        return "its nicknames were left out: it has no database"
+        return "its nicknames were left out because it has no database"
     try:
         with MdbConnection(str(database)) as conn:
             rows = load_all_addresses(conn)

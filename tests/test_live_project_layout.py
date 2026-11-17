@@ -249,7 +249,7 @@ def test_restore_takes_an_older_backup_by_name(tmp_path: Path, monkeypatch):
     )
     assert older_plc_backups(tmp_path) == ["20261112T090000Z"]
     assert (tmp_path / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "edits A\n"
-    with pytest.raises(ValueError, match="older backups: 20261112T090000Z"):
+    with pytest.raises(ValueError, match="Older backups: 20261112T090000Z"):
         restore_plc_source(tmp_path, "20261112T080000Z")
 
 

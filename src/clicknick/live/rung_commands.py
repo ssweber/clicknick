@@ -83,7 +83,7 @@ def _get_before_files(project_dir: Path, *, analog_inputs: frozenset[str]) -> di
 
     csv_dir = project_dir / "csv"
     if not csv_dir.is_dir():
-        raise ValueError("workspace ladder CSV is missing; reload the workspace from CLICK")
+        raise ValueError("workspace ladder CSV is missing. Reload the workspace from CLICK.")
 
     nickname_csv = csv_dir / "nicknames.csv" if (csv_dir / "nicknames.csv").exists() else None
     return ladder_to_pyrung_project(
@@ -283,7 +283,7 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
     project_dir = _get_project_dir(ctx)
     click_dir = project_dir / "csv"
     if not click_dir.is_dir():
-        raise ValueError("workspace ladder CSV is missing; reload the workspace from CLICK")
+        raise ValueError("workspace ladder CSV is missing. Reload the workspace from CLICK.")
     proposal_dir = project_dir / "csv_output"
     source_dir = plc_source_dir(project_dir)
     programs = load_bundle(proposal_dir)

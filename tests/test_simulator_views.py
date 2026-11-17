@@ -1342,7 +1342,7 @@ def test_a_reopened_console_shows_a_command_still_running_and_stops_it(simulator
     console = again._console
     assert console.busy and ready.sim.console_busy
     assert console._send_btn.cget("text") == "Stop"
-    note = "A Console command is still running; the program can be written once it ends"
+    note = "A Console command is still running. You can write the program once it ends."
     assert note in ready.sim.program_change.text
     assert any(note in text for text, _labels in again._banner_key)
 
