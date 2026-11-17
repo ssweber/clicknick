@@ -105,7 +105,9 @@ def test_save_timeout_is_not_replayed(monkeypatch):
     stop = Mock()
     monkeypatch.setattr(worker, "_stop", stop)
     monkeypatch.setattr(jet_sidecar, "SAVE_TIMEOUT", 0.01)
-    with pytest.raises(jet_sidecar.JetTransportError, match="cannot tell whether your changes were saved"):
+    with pytest.raises(
+        jet_sidecar.JetTransportError, match="cannot tell whether your changes were saved"
+    ):
         worker._exchange("save", path="database.mdb", deletes=[], upserts=[])
     assert process.stdin.getvalue().count(b"\n") == 1
     stop.assert_called_once()
