@@ -9,6 +9,9 @@ branch_prefix = "bob/"                     # `worktree new NAME` makes branch <p
 job_memory_mb = 8192                       # cap per run, all its processes (Windows Job Object); 0 = no cap
 targeted_slots = 3                         # bounded runs at once; the rest wait. 0 = no limit
 targeted_wait = 1800                       # seconds a run waits for a slot, then exits 125
+# The job-notes directory (`<jobs>` in the skill): BRIEF, HANDOFF, REVIEW and design notes. The
+# read-only agents may write here too, but cannot remove or rename files. Not in a checkout.
+jobs_dir = "../clicknick-wt/buildbot/jobs"
 
 # PreToolUse hook. Regexes are searched in the shell command text, quoted strings and heredoc
 # bodies blanked.
