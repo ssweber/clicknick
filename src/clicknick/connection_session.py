@@ -32,30 +32,41 @@ if TYPE_CHECKING:
 # run one at a time.
 _BUILD_GATE = threading.Lock()
 
-# The reason a session builds nothing before ClickNick has read CLICK's database (has_database)
+# What to do when a command needs a CLICK window and none is connected
 CONNECT_FIRST = "Connect to a CLICK window first"
 
 
-def no_database_reason(session: ConnectionSession | None) -> str:
+# The advice added when a command needs only nicknames, which a CSV file can also give
+_OR_CSV = ", or use File > Load Nicknames from CSV"
+_USE_CSV = ". Use File > Load Nicknames from CSV"
+
+
+def no_database_reason(session: ConnectionSession | None, *, nicknames_needed: bool = False) -> str:
     """Say why ClickNick has not read CLICK's database for *session*, and what to do.
 
-    *session* is the connected window's session, or None when no window is connected. The
-    text has no final period, so that the status line can show it as it is.
+    *session* is the connected window's session, or None when no window is connected. With
+    *nicknames_needed*, the command needs only nicknames, so the text also offers a CSV file
+    when the database cannot be loaded now. The text has no final period, so that the status
+    line can show it as it is.
     """
     if session is None:
         return CONNECT_FIRST
     if session.reading_database:
         return "ClickNick is still reading CLICK's database. Try again when it has finished"
     if database_access_off():
-        return "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)"
+        return (
+            "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)"
+            f"{_USE_CSV if nicknames_needed else ''}"
+        )
     # The load failed or was cancelled, or the user loaded a CSV file instead. Picking the
     # window again connects to it and loads its database.
     return (
         "ClickNick has not loaded CLICK's database for this project. Select the window in the "
-        "CLICK Windows list to load it"
+        f"CLICK Windows list to load it{_OR_CSV if nicknames_needed else ''}"
     )
 
 
+# The reason a session builds nothing before ClickNick has read CLICK's database (has_database)
 NO_DATABASE = (
     "ClickNick has not read this project's database, SC_.mdb, so it cannot build the "
     "workspace. The build reads the nicknames from that database."

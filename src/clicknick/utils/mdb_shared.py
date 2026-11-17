@@ -52,7 +52,9 @@ def get_database_backend() -> str:
 
 
 def database_access_off() -> bool:
-    """Whether CLICKNICK_DB_BACKEND is none, so that ClickNick never reads CLICK's database."""
+    """Return whether CLICKNICK_DB_BACKEND is none, so that ClickNick never reads CLICK's
+    database.
+    """
     try:
         return get_database_backend() == "none"
     except ValueError:

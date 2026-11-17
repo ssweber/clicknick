@@ -134,7 +134,7 @@ def _old_profile(value: object) -> Response:
             upgraded += [token] if rewritten is None else [t.strip() for t in rewritten.split(",")]
         tokens = upgraded
     if any(token.startswith("profile=") for token in tokens):
-        raise ValueError(f"ClickNick cannot convert the old setting profile={text}")
+        raise ValueError(f"the old setting profile={text} has no upgrade")
     pairs = (token.partition("=") for token in tokens)
     return response_of({name: new.strip() if sep else True for name, sep, new in pairs})
 

@@ -108,9 +108,14 @@ class ClickNickApp:
         session = self._session
         return session if session is not None and session.has_database else None
 
-    def _report_no_project_session(self) -> None:
-        """Show in the status line why ``_project_session`` returned None, and what to do."""
-        self._update_status(f"⚠ {no_database_reason(self._session)}", "error")
+    def _report_no_project_session(self, *, nicknames_needed: bool = False) -> None:
+        """Show in the status line why ``_project_session`` returned None, and what to do.
+
+        With *nicknames_needed*, the command needs only nicknames, and the text also offers a
+        CSV file.
+        """
+        reason = no_database_reason(self._session, nicknames_needed=nicknames_needed)
+        self._update_status(f"⚠ {reason}", "error")
 
     def _report_no_data(self) -> None:
         """Show in the status line why no nicknames are loaded, and what to do.
@@ -121,7 +126,7 @@ class ClickNickApp:
         if self._session is None:
             self._update_status(_NO_NICKNAMES, "error")
         else:
-            self._report_no_project_session()
+            self._report_no_project_session(nicknames_needed=True)
 
     def _no_workspace_reason(self) -> str:
         """Say why the connected project has no workspace that a command can use, and what to do.
@@ -560,8 +565,7 @@ class ClickNickApp:
             if analysis.status is AnalysisStatus.FAILED:
                 messagebox.showerror(
                     title,
-                    f"Could not build the workspace: {analysis.error}\n\n"
-                    f"{purpose} needs the workspace.",
+                    f"{purpose} needs the workspace.\n\n{self._no_workspace_reason()}",
                     parent=self.root,
                 )
                 return None
@@ -837,26 +841,13 @@ class ClickNickApp:
         if analysis is None or not analysis.is_available:
             from .services.analysis_service import AnalysisStatus
 
-            status = analysis.status if analysis else None
-            if status is AnalysisStatus.FAILED:
-                messagebox.showerror(
-                    "Check Program",
-                    f"Could not build the workspace: {analysis.error}\n\n"
-                    "Check Program needs the workspace.",
-                    parent=self.root,
-                )
-            elif status is AnalysisStatus.BUILDING:
-                messagebox.showinfo(
-                    "Check Program",
-                    "ClickNick is still building the workspace. Try again when it finishes.",
-                    parent=self.root,
-                )
-            else:
-                messagebox.showinfo(
-                    "Check Program",
-                    f"Check Program needs the workspace.\n\n{self._no_workspace_reason()}",
-                    parent=self.root,
-                )
+            failed = analysis is not None and analysis.status is AnalysisStatus.FAILED
+            show = messagebox.showerror if failed else messagebox.showinfo
+            show(
+                "Check Program",
+                f"Check Program needs the workspace.\n\n{self._no_workspace_reason()}",
+                parent=self.root,
+            )
             return
 
         try:
@@ -890,8 +881,8 @@ class ClickNickApp:
         selection = analysis.check_selection if analysis is not None else None
         if selection is None:
             messagebox.showinfo(
-                "Check Settings",
-                f"Check Settings needs the workspace.\n\n{self._no_workspace_reason()}",
+                "Choose Checks",
+                f"Choose Checks needs the workspace.\n\n{self._no_workspace_reason()}",
                 parent=parent,
             )
             return
@@ -899,7 +890,7 @@ class ClickNickApp:
             CheckSelectionWindow(parent, selection, on_saved)
         except (OSError, ValueError) as exc:
             messagebox.showerror(
-                "Check Settings", f"Could not open the check settings: {exc}", parent=parent
+                "Choose Checks", f"Could not open Choose Checks: {exc}", parent=parent
             )
 
     def _analyze_program(self) -> None:

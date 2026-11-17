@@ -955,8 +955,9 @@ def test_a_bench_link_the_file_cannot_hold_is_reported(ready, tmp_path):
     )
     ready.sim.set_state_location("Line1", None)
     assert ready.messages("error") == (
-        "Could not restore the bench link on DF1: ClickNick cannot convert the old setting "
-        "profile=approach:toward=180. ClickNick removed it from the simulator settings."
+        "Could not restore the bench link on DF1: the old setting "
+        "profile=approach:toward=180 has no upgrade. ClickNick removed it from the simulator "
+        "settings."
     )
     assert ready.sim.restored_links == 1
 

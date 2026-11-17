@@ -1173,6 +1173,8 @@ _NOT_LOADED = (
     "CLICK Windows list to load it"
 )
 _DATABASE_OFF = "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)"
+_OR_CSV = ", or use File > Load Nicknames from CSV"
+_USE_CSV = ". Use File > Load Nicknames from CSV"
 
 
 def _set_state(app: ClickNickApp, state: str) -> None:
@@ -1204,14 +1206,18 @@ def _set_state(app: ClickNickApp, state: str) -> None:
             "No nicknames loaded. Connect to a CLICK window, or use File > Load Nicknames from CSV",
         ),
         ("reading", f"⚠ {_READING}"),
-        ("not loaded", f"⚠ {_NOT_LOADED}"),
+        ("not loaded", f"⚠ {_NOT_LOADED}{_OR_CSV}"),
+        ("access off", f"⚠ {_DATABASE_OFF}{_USE_CSV}"),
     ],
 )
 def test_without_nicknames_a_command_says_why(monkeypatch, action, state, expected):
     """With a window connected, no nicknames means that its database is loading or not loaded.
 
-    Only with no window connected does the status say to connect or to load a CSV file.
+    Only with no window connected does the status say to connect. A CSV file is offered
+    whenever the database cannot be loaded now.
     """
+    if state == "access off":
+        monkeypatch.setenv("CLICKNICK_DB_BACKEND", "none")
     app, prompts = _app(monkeypatch)
     _set_state(app, state)
 
@@ -1225,7 +1231,7 @@ def test_without_nicknames_a_command_says_why(monkeypatch, action, state, expect
     ("action", "title", "lead"),
     [
         ("_run_program_checks", "Check Program", "Check Program needs the workspace."),
-        ("_choose_program_checks", "Check Settings", "Check Settings needs the workspace."),
+        ("_choose_program_checks", "Choose Checks", "Choose Checks needs the workspace."),
         ("_export_pyrung_project", "Export Workspace", "There is no workspace to export."),
     ],
 )
@@ -1376,13 +1382,18 @@ def test_project_change_counts_text_still_in_a_dataview_cell(monkeypatch, commit
         ("building", "ClickNick is still building the workspace. Try again when it finishes."),
     ],
 )
-def test_check_settings_names_the_state_of_the_build(monkeypatch, build, reason):
-    """With the database loaded, Check Settings says what happened to the workspace build."""
+@pytest.mark.parametrize("action", ["_choose_program_checks", "_run_program_checks"])
+def test_workspace_commands_name_the_state_of_the_build(monkeypatch, action, build, reason):
+    """With the database loaded, Choose Checks and Check Program say what happened to the build."""
     from clicknick.services.analysis_service import AnalysisService
 
     app, _prompts = _app(monkeypatch)
     shown = []
-    monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *args, **kwargs: shown.append(args))
+    for kind in ("showinfo", "showerror"):
+        monkeypatch.setattr(
+            f"tkinter.messagebox.{kind}",
+            lambda *args, kind=kind, **kwargs: shown.append((kind, *args)),
+        )
     session = app._session
     session.has_database = True
     session.analysis = AnalysisService()
@@ -1390,6 +1401,39 @@ def test_check_settings_names_the_state_of_the_build(monkeypatch, build, reason)
     if build != "building":
         session.analysis.mark_failed("bad rung" if build == "failed" else "", serves=serves)
 
-    app._choose_program_checks(app.root, MagicMock())
+    if action == "_choose_program_checks":
+        app._choose_program_checks(app.root, MagicMock())
+        title = "Choose Checks"
+    else:
+        app._run_program_checks()
+        title = "Check Program"
 
-    assert shown == [("Check Settings", f"Check Settings needs the workspace.\n\n{reason}")]
+    kind = "showerror" if build.startswith("failed") and title == "Check Program" else "showinfo"
+    assert shown == [(kind, title, f"{title} needs the workspace.\n\n{reason}")]
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        ("bad rung", "Could not build the workspace: bad rung"),
+        ("", "Could not build the workspace."),
+    ],
+)
+def test_the_simulator_names_a_failed_build(monkeypatch, tmp_path, error, reason):
+    """The Simulator says why the workspace is missing, the same as the other commands."""
+    from clicknick.services.analysis_service import AnalysisService
+
+    app, prompts = _app(monkeypatch)
+    monkeypatch.setattr("clicknick.app.scr_files", lambda _folder: [tmp_path / "Scr1.tmp"])
+    app._live_mdb_path = lambda: tmp_path / "SC_.mdb"
+    app._start_analysis_build = MagicMock()
+    session = app._session
+    session.has_database = True
+    session.analysis = AnalysisService()
+    session.analysis.mark_failed(error)
+
+    assert app._simulation_for_window("Cannot Simulate", "The simulation") is None
+
+    assert prompts == [
+        ("showerror", "Cannot Simulate", f"The simulation needs the workspace.\n\n{reason}")
+    ]

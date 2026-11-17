@@ -43,8 +43,10 @@ and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`).
 - `no_database_reason` in `connection_session.py` says why a command cannot run. It tells the user to connect
   only when no window is connected. Otherwise it says that ClickNick is still reading the database
   (`reading_database`), that database access is off (`CLICKNICK_DB_BACKEND=none`), or to select the window
-  again to load the database. The status line (`_report_no_project_session`), the commands that need the
-  nicknames (`_report_no_data`) and the commands that need the workspace (`_no_workspace_reason`) all use it.
+  again to load the database. In the last two cases, a command that needs only nicknames (`nicknames_needed`)
+  also offers File > Load Nicknames from CSV. The status line (`_report_no_project_session`), the commands that
+  need the nicknames (`_report_no_data`) and the commands that need the workspace (`_no_workspace_reason`) all
+  use it.
 - ClickNick drops a database load if its session closed, or if a CSV load or another connect cancelled it. It
   does this also when that happens during the prompt to save the data that the load replaces.
 - While a CLICK window is connected, its session's watch (`_monitor_task`) checks every 100 ms whether the window
