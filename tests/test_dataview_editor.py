@@ -28,7 +28,7 @@ FIXTURES = Path(__file__).parent
 
 @pytest.fixture(scope="module")
 def tk_root():
-    """Return one root for the whole module. A root for each test fails intermittently."""
+    """Yield one root for the whole module. A root for each test fails intermittently."""
     for attempt in range(3):
         try:
             root = tk.Tk()
