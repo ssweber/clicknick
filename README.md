@@ -84,7 +84,7 @@ and the **Console** in a pane at the bottom (pop it out into its own window if y
 - Work from saved PLC and tag data while troubleshooting.
 - Right-click a point or use the Console to ask why something happened - or why it did not.
 - Ask how to reach a state, including routes that must pass through or avoid particular conditions.
-- Connect the Data View or an HMI over Modbus at `127.0.0.1:502`, like the real PLC.
+- Connect the Data View Editor or an HMI over Modbus at `127.0.0.1:502`, like the real PLC.
 
 Interrupts, PID, and high-speed instructions are not yet supported.
 

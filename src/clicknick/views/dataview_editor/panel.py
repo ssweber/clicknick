@@ -967,7 +967,7 @@ class DataviewPanel(ttk.Frame):
                 "File Changed",
                 f"'{path.name}' was changed by another program, such as CLICK, "
                 "after ClickNick read the rows you are saving.\n\n"
-                "Yes: save this dataview over it.\n"
+                "Yes: save this Data View over it.\n"
                 "No: reload it (Ctrl+Z brings your edits back).\n"
                 "Cancel: do neither.",
                 parent=self,

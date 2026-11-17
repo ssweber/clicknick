@@ -61,7 +61,7 @@ class NewDataviewDialog(tk.Toplevel):
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Label
-        ttk.Label(main_frame, text="Enter the name of the dataview:").pack(anchor=tk.W)
+        ttk.Label(main_frame, text="Enter the name of the Data View:").pack(anchor=tk.W)
 
         # Entry with character count
         entry_frame = ttk.Frame(main_frame)
@@ -88,7 +88,7 @@ class NewDataviewDialog(tk.Toplevel):
         # Info label
         info_label = ttk.Label(
             main_frame,
-            text="Use up to 24 characters. No special characters.",
+            text=f"Use up to {CLICK_NAME_MAX_LENGTH} letters, digits, spaces, hyphens or underscores.",
             font=("TkDefaultFont", 9),
             foreground="gray",
         )
@@ -110,7 +110,7 @@ class NewDataviewDialog(tk.Toplevel):
             parent: Parent widget
         """
         super().__init__(parent)
-        self.title("New Dataview")
+        self.title("New Data View")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()

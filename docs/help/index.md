@@ -35,7 +35,7 @@ The rules:
 - Before you choose, the Simulator lists the forces it will release and the links that moved with a nickname. Afterwards it tells you what it kept, and why it did not keep anything else.
 - **Restart** on the Simulator's toolbar starts over from what the workspace holds now (CLICK's last save and any edits). It starts from power-on values or your [PLC data file](#plc-data-file), in the same mode, and keeps your switches, forces and bench links. The Simulator also offers Restart when loading the new program fails.
 - In the Console, `reload` loads the new program the same way.
-- The simulation keeps running after you close the Simulator, so a Data View or HMI can stay connected. To stop it, click **Stop** beside the Test heading in the main window. That heading also shows whether the simulation is running (**Test - Sim on :502**). If another program already uses Modbus port 502, the Simulator offers **Change port...**.
+- The simulation keeps running after you close the Simulator, so the Data View Editor or an HMI can stay connected. To stop it, click **Stop** beside the Test heading in the main window. That heading also shows whether the simulation is running (**Test - Sim on :502**). If another program already uses Modbus port 502, the Simulator offers **Change port...**.
 
 Each thing you do on the panel appears in the Console as a green `#` line with the matching command, such as `# force Motor_Run false`. This teaches you the Console's commands as you use the panel.
 

@@ -1780,9 +1780,9 @@ class SimulatorWindow(tk.Toplevel):
             "or from the PLC data file. It keeps the same mode, your switches,\n"
             "forces and bench links.",
         )
-        ttk.Button(bar, text="Dataview", command=self._open_dataview).pack(
-            side=tk.RIGHT, padx=(0, 4)
-        )
+        dataview_btn = ttk.Button(bar, text="Data View", command=self._open_dataview)
+        dataview_btn.pack(side=tk.RIGHT, padx=(0, 4))
+        bind_tooltip(dataview_btn, "Open the Data View Editor")
         # The button names the loaded PLC data file. The panel and the console both start from
         # that file's values.
         self._plc_data_btn = ttk.Button(bar, text="PLC Data...", command=self._browse_plc_data)
