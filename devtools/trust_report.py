@@ -893,7 +893,7 @@ evidence for this release. They are not a formal security audit.</p>
 <tr><td>Runtime distributions</td><td>{len(rep.dists)}</td></tr>
 <tr><td>First-party</td><td>{len(first)}</td></tr>
 <tr><td>Third-party</td><td>{len(third)}</td></tr>
-<tr><td>Known vulnerabilities</td><td>{esc(vuln_count)}, from {rep.audited_packages} dependencies checked against the advisory database. The check leaves out ClickNick itself, because it is the package being built.</td></tr>
+<tr><td>Known vulnerabilities</td><td>{esc(vuln_count)}, from {rep.audited_packages} dependencies checked against the advisory database. The check does not cover ClickNick itself. It is the package being built.</td></tr>
 <tr><td>Non-PyPI third-party dependencies</td><td>{len([d for d in third if d.source != "PyPI"])}</td></tr>
 <tr><td>Unresolved licenses</td><td>{len([d for d in rep.dists if d.license.startswith("UNRESOLVED")])}</td></tr>
 <tr><td>SBOM SHA256 ({esc(rep.sbom_name)})</td><td class="mono hash">{esc(rep.sbom_sha256)}</td></tr>
