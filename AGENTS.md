@@ -96,8 +96,9 @@ The store keeps three layers:
 3. **Visible Layer** (`visible_state`) - Computed projection of base + overrides
 
 - **Inputs vs derived:** base rows and the user's overrides are the inputs. One method, `AddressStore._derive()`,
-  computes everything else: visible rows, validation, dirty fields, the nickname index and block colors. It runs
-  in one fixed order after every change (edit, undo, redo, discard, save, external reload)
+  computes everything else: visible rows, validation, dirty fields, the nickname index and block
+  colors. It computes them in one fixed order, after every change (edit, undo, redo, discard, save,
+  external reload)
 - **External Updates:** Database refreshes update the base layer and keep user overrides
 
 ### Edit Session Pattern
@@ -116,8 +117,9 @@ The store keeps three layers:
 Cascades (`AddressStore._apply_cascades`): a Retentive change mirrors across the T/TD or CT/CTD pair. A row's
 block tag can change, judged by the old tag against the new tag and not by the comment text. Then
 `BlockService` updates the matching open or close tag and the `_D` tags of the pairs. It renames them in place or
-removes them. If the pair is untagged and the tag was added or renamed, it appends them. The cascade reads "the
-caller set this field" before any cascade runs, and a cascade never writes that field.
+removes them. If the pair is untagged and the tag was added or renamed, it appends them.
+`_apply_cascades` records which fields the caller set before any cascade runs. A cascade never
+writes one of those fields.
 
 **The Rules** (`tests/test_store_boundaries.py` enforces rules 2, 3 and 5. For rule 5 it checks that nothing
 outside the store touches `_current_session`):
@@ -194,16 +196,17 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   redraw ends. **Tools > Redraw Nicknames in CLICK** works the same way. A redraw's result and a pending request
   belong to the CLICK window (its hwnd). If another window is connected, or none, they are dropped. A skipped or
   failed redraw shows as a status line and never fails the Sync
-- `loaded_with_error` marks CLICK's own X/SC/SD names, which are exempt from our nickname rules. One helper,
-  `_flag_loaded_error`, sets it on every base row, on load, reload and Sync alike
+- `loaded_with_error` marks an X, SC or SD nickname from CLICK that breaks our nickname rules.
+  The flag exempts it from those rules. One helper, `_flag_loaded_error`, sets it on every base row,
+  on load, reload and Sync alike
 - One edit session, "Trim spaces" (`_stage_trims`), trims a loaded nickname or comment that has a space at either
   end. It covers the rows that a load or a read of the data source (file monitor, Sync's pre-read) changed, and
   every row after a Discard. Sync writes the trim. An undone trim comes back only when the data source changes
   that row. A field the user edits is left as it is. A nickname flagged `loaded_with_error` is trimmed too. Once
   it is shown trimmed, the flag is off and `_validate_row` exempts only its format, so its duplicates are
   reported (`_is_trimmed_loaded_nickname`). No SC/SD name in pyclickplc's table has an edge space. CLICK
-  generates the X `_IO` names, and nothing checks them. Rows read while a session is open wait until it ends
-  (`_pending_trims`)
+  generates the X `_IO` names. No table lists them, so nothing shows that they have no edge space.
+  Rows read while a session is open wait until it ends (`_pending_trims`)
 
 ### Undo/Redo
 - Undo and Redo track only the overlay layer (user intent), up to `MAX_UNDO_DEPTH` (50) frames
@@ -256,10 +259,10 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   backup aside. Then it backs up `src/plc` if that differs from both the last generation and the chosen backup,
   and replaces `src/plc`. Its pruning keeps the restored backup, so six may be kept until the next backup
 - A build, backup or restore that succeeds leaves the edits that `src/plc` held as the newest backup (or in
-  `src/plc`, as the backup it restored). A tree that was once in a backup, or in `src/plc` with edits when a
-  build began, is gone only when 5 kept backups were the newest after it. `tests/test_backup_oracle.py` checks
-  these rules over random edits, builds, backups and restores, with injected copy, move, time-file and prune
-  failures
+  `src/plc`, as the backup it restored). A tree that was once in a backup, or that was in
+  `src/plc` with edits when a build, backup or restore began, can be deleted only after 5 newer
+  backups are kept. `tests/test_backup_oracle.py` checks these rules over random edits, builds,
+  backups and restores, with injected copy, move, time-file and prune failures
 - Each workspace folder has one lock (`workspace_writing`). A build's publish holds it from its backup of edits
   to the generation record. `backup`, `restore` and choosing a workspace hold it throughout. The build waits for
   the lock. The others run on the Tk thread, so they are refused (`WorkspaceBusyError`) and do not freeze the
@@ -287,8 +290,9 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   the list. It keeps a copy that is, or holds, a folder that an open Review Changes window shows
   (`remove_stale_snapshots`)
 - `services/rung_diff.py` is the one comparison of a CSV bundle with CLICK's last save (`csv/`). It finds which
-  programs differ, which rungs differ, and the diff text. It compares rungs by `rung_fingerprint`. Pyrung source
-  only shows a difference
+  programs differ, which rungs differ, and the diff text. It compares rungs by `rung_fingerprint`.
+  The diff text shows the rungs that differ as pyrung source. Pyrung source plays no part in the
+  comparison
 - CLICK pastes over the selected rung. The first pasted rung replaces that rung and the rest go in below it.
   `ProgramChange.steps` turns a program's differences into steps on that basis. It works from the top, so each
   step's rung numbers are the ones CLICK shows. A step pastes over one rung, pastes over a new empty rung, or
@@ -325,8 +329,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   legacy-encoded rungs of it (a whole paste re-pastes skipped rungs from ClickNick's reading); a step of it is
   done; its rungs were asked for by number; or the user clicked **Step Through** for it
   (`_copied_whole_for_steps`). Every difference of a program locks while one of its steps is half done
-- A folder CSV that cannot be read is left out (`_left_out`), with a notice. It is no step and does not hold the
-  window open
+- A folder CSV that cannot be read is left out (`_left_out`), with a notice. It gets no step, and it
+  does not hold the window open
 - A program that is only in CLICK (`only_in_click`) is a row like the others. If it is taken, its step is
   deleting it in CLICK ("Next" marks it done, and a CLICK save that still has it makes it a step again). If you
   untick **Delete it in CLICK**, the program is kept (`_kept`), and a kept program does not hold the window open
@@ -394,8 +398,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
 - A write (`_write_program`) is one job on the action worker. The Console refuses commands until the write is
   answered. No write is offered while a Console command runs, and Restart waits for the write. Console commands
   run through `run_console_command`, which counts them in flight until each one returns. So closing the pane
-  mid-command does not hold writes back. Every pane shows busy, with Stop, from that count (`console_busy`), and
-  the offer says a Console command holds the write.
+  mid-command does not hold writes back. While that count is above zero (`console_busy`), every
+  pane shows busy and offers Stop. The offer to write says that a Console command is still running.
   An agent on `pyrung live` can still change forces and links while a write runs. The write reads pyrung's force
   and link listing, which is the truth whatever the Console did since the last frame. `plan_carry`
   (`services/program_carry.py`) decides each entry's name in the new program. One `pyrungReload`

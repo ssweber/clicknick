@@ -90,9 +90,9 @@ The version comes from the git tag, so there is no version number to edit.
    Windows, publishes to PyPI, and attaches the trust report and SBOM to the release. It also
    deploys the docs from the release's tag, except for a pre-release. The public site changes
    only at this step, because merges to `main` don't deploy it. To publish a docs fix between
-   releases, or after you promote a pre-release, run Docs by hand, with an empty `ref` to
-   rebuild the latest release:
-   `gh workflow run docs.yml --ref main -f ref=<tag or commit>`
+   releases, or after you promote a pre-release, run Docs by hand:
+   `gh workflow run docs.yml --ref main -f ref=<tag or commit>`. If `ref` is empty, Docs
+   rebuilds the latest release.
 
 ## Basic Developer Workflows
 
