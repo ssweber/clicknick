@@ -305,6 +305,12 @@ def _differences_of(change: ProgramChange) -> list[Opcode]:
     return [opcode for opcode in change.opcodes if opcode[0] != "equal"]
 
 
+def _whole_replaces(rung_count: int) -> str:
+    """Say that a whole paste replaces CLICK's copy of the program, and how long it is."""
+    rungs = "rung" if rung_count == 1 else "rungs"
+    return f"the whole program replaces what CLICK has. It has {rung_count} {rungs}"
+
+
 def _what_skipping_keeps(opcode: Opcode) -> str:
     """Say what a skipped difference leaves in CLICK."""
     _tag, i1, i2, _j1, _j2 = opcode
@@ -1486,12 +1492,12 @@ class ReviewChangesWindow(tk.Toplevel):
                 )
                 kept = "difference" if skipped == 1 else "differences"
                 whole = (
-                    f"the whole program as you chose it, {count} rungs, with {skipped} skipped "
-                    f"{kept} left as CLICK has them, replaces what CLICK has"
+                    f"{_whole_replaces(count)}. For the {skipped} skipped {kept}, the copy "
+                    "keeps CLICK's rungs"
                 )
                 button = f"Copy, {skipped} skipped"
             else:
-                whole = f"the whole program, {rung_count} rungs, replaces what CLICK has"
+                whole = _whole_replaces(rung_count)
                 button = "Copy"
             prompt = f'{name}: {whole}.\nClick "{button}". {self._whole_placement(name)}'
             if steps := self._copied_whole_for_steps(name):
@@ -2041,22 +2047,20 @@ class ReviewChangesWindow(tk.Toplevel):
         """Return what the window did, for when a CLICK save holds all of it and it closes."""
         skipped = self._skipped_count()
         if not skipped:
-            message = "CLICK saved everything from Review Changes"
+            sentences = ["CLICK saved everything from Review Changes"]
         else:
-            message = (
-                f"CLICK saved everything taken from Review Changes; {skipped} skipped "
-                f"difference{'s' if skipped != 1 else ''} left as CLICK has "
-                f"{'it' if skipped == 1 else 'them'}"
-            )
+            stays = "difference stays" if skipped == 1 else "differences stay"
+            sentences = [
+                "CLICK saved everything that you took in Review Changes",
+                f"{skipped} skipped {stays} as CLICK has {'it' if skipped == 1 else 'them'}",
+            ]
             if self._source_dir is not None:
-                message += (
-                    " (skipped edits are in backup/src/plc; clicknick-cli restore list for "
-                    "older ones)"
-                )
+                sentences.append("Skipped edits are in backup/src/plc")
+                sentences.append("For older backups, run clicknick-cli restore list")
         if left_out := self._left_out_names():
             verb = "was" if len(left_out) == 1 else "were"
-            message += f"; {', '.join(left_out)} could not be read and {verb} left out"
-        return message
+            sentences.append(f"{', '.join(left_out)} could not be read and {verb} left out")
+        return ". ".join(sentences)
 
     def _close_if_settled(self, was_pending: bool) -> bool:
         """Close the window once CLICK holds the last of what was left to do.

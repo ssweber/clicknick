@@ -563,7 +563,7 @@ def test_whole_program_switch_copies_the_program_in_one_step(monkeypatch, copies
 
     _switch_copy(window, whole=True)
     assert _action(window) == "Copy"
-    assert "the whole program, 4 rungs, replaces what CLICK has" in _status(window)
+    assert "the whole program replaces what CLICK has. It has 4 rungs" in _status(window)
     clear_first = "select all of its rungs (Shift+Up/Down) and delete them, then paste"
     assert clear_first in _status(window)
 
@@ -1771,7 +1771,10 @@ def test_whole_program_copies_the_program_as_chosen(monkeypatch, copies) -> None
     window._toggle("main.csv", 0)  # Skip r1: CLICK has no rung there
 
     assert _action(window) == "Copy, 1 skipped"
-    whole = "the whole program as you chose it, 3 rungs, with 1 skipped difference"
+    whole = (
+        "the whole program replaces what CLICK has. It has 3 rungs. For the 1 skipped "
+        "difference, the copy keeps CLICK's rungs"
+    )
     assert whole in _status(window)
 
     window._on_action()
@@ -1914,7 +1917,8 @@ def test_window_closes_once_click_holds_everything_not_skipped(monkeypatch, copi
     _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     window._on_pasted.assert_called_once_with(
-        "CLICK saved everything taken from Review Changes; 1 skipped difference left as CLICK has it"
+        "CLICK saved everything that you took in Review Changes. "
+        "1 skipped difference stays as CLICK has it"
     )
     window.destroy.assert_called_once_with()
 
@@ -1934,7 +1938,7 @@ def test_skipped_workspace_edits_are_warned_of(monkeypatch, tmp_path: Path) -> N
     assert "stay only in backup/src/plc" in notice
     assert "For older backups, run clicknick-cli restore list." in notice
     assert window._pasted_message().endswith(
-        "(skipped edits are in backup/src/plc; clicknick-cli restore list for older ones)"
+        ". Skipped edits are in backup/src/plc. For older backups, run clicknick-cli restore list"
     )
 
 
@@ -1971,7 +1975,7 @@ def test_rung_clicknick_cannot_read_is_red_and_the_program_pasted_whole(
     assert window._needs_paste("main.csv")
     assert _action(window) == "Copy"
     assert _status(window).splitlines() == [
-        "main.csv: the whole program, 4 rungs, replaces what CLICK has.",
+        "main.csv: the whole program replaces what CLICK has. It has 4 rungs.",
         f'Click "Copy". {_WHOLE}',
         "CLICK's copy of rung 3 cannot be read. Paste the whole program again.",
         f"  rung 3, Compare: {_REFUSED}",
@@ -2042,7 +2046,7 @@ def test_click_copy_no_read_accepts_is_deleted_whole_before_the_paste(monkeypatc
     window = _on_main(monkeypatch, change)
 
     status = _status(window)
-    assert status.startswith("main.csv: the whole program, 4 rungs, replaces what CLICK has.")
+    assert status.startswith("main.csv: the whole program replaces what CLICK has. It has 4 rungs.")
     assert "select all of its rungs (Shift+Up/Down) and delete them, then paste" in status
     assert _action(window) == "Copy"
 
