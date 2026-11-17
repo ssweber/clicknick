@@ -1350,6 +1350,101 @@ class TestSyncAgainstALiveDatabase:
         assert store.can_undo()
 
 
+class CsvSource(LiveSource):
+    """A nickname CSV: rewritten whole, no Used field."""
+
+    supports_used_field = False
+    is_database = False
+
+
+class TestSyncListeners:
+    """Issue #36: the sync listeners hear every Sync that writes rows into CLICK's database."""
+
+    @staticmethod
+    def _rename(store, addr_key, nickname="Typed"):
+        with store.edit_session("Rename") as session:
+            session.set_field(addr_key, "nickname", nickname)
+
+    def test_called_with_the_rows_written_after_the_store_holds_them(self):
+        c1, c2 = get_addr_key("C", 1), get_addr_key("C", 2)
+        store, source = _live_store({})
+        heard = []
+        store.add_sync_listener(
+            lambda keys: heard.append((keys, store.has_unsaved_changes(), len(source.saved)))
+        )
+        self._rename(store, c1)
+        self._rename(store, c2, "Other")
+        # CLICK already holds C1's edit, so only C2 is written
+        source.rows[c1] = AddressRow(memory_type="C", address=1, nickname="Typed")
+
+        assert store.save_all_changes() == {c2}
+
+        assert heard == [({c2}, False, 1)]
+
+    def test_not_called_after_a_csv_save(self):
+        c1 = get_addr_key("C", 1)
+        source = CsvSource({})
+        store = AddressStore(source)
+        store.load_initial_data()
+        heard = []
+        store.add_sync_listener(heard.append)
+        self._rename(store, c1)
+
+        store.save_all_changes()
+
+        assert source.saved
+        assert heard == []
+
+    def test_not_called_after_a_failed_sync(self):
+        c1 = get_addr_key("C", 1)
+        store, source = _live_store({})
+        heard = []
+        store.add_sync_listener(heard.append)
+        self._rename(store, c1)
+        source.fail_load = True
+
+        with pytest.raises(OSError):
+            store.save_all_changes()
+        source.fail_load = False
+        self._rename(store, get_addr_key("C", 2), "Bad!Name")
+        with pytest.raises(RuntimeError, match="validation errors"):
+            store.save_all_changes()
+
+        assert heard == []
+
+    def test_not_called_when_nothing_is_written(self):
+        c1 = get_addr_key("C", 1)
+        store, source = _live_store({})
+        heard = []
+        store.add_sync_listener(heard.append)
+        assert store.save_all_changes() == set()
+        self._rename(store, c1)
+        source.rows[c1] = AddressRow(memory_type="C", address=1, nickname="Typed")
+
+        assert store.save_all_changes() == set()
+
+        assert source.saved == []
+        assert heard == []
+
+    def test_a_listener_error_does_not_fail_the_sync(self, caplog):
+        c1 = get_addr_key("C", 1)
+        store, source = _live_store({})
+        heard = []
+
+        def broken(_keys):
+            raise RuntimeError("redraw broke")
+
+        store.add_sync_listener(broken)
+        store.add_sync_listener(heard.append)
+        self._rename(store, c1)
+
+        assert store.save_all_changes() == {c1}
+
+        assert heard == [{c1}]
+        assert not store.has_unsaved_changes()
+        assert "redraw broke" in caplog.text
+
+
 class TestUndoBookkeeping:
     """store#10: a session that changes nothing is not an undo step; descriptions carry over."""
 

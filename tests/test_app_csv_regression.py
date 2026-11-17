@@ -42,6 +42,7 @@ class FakeAddressStore:
         self._unsaved = unsaved
         self.load_initial_data = MagicMock()
         self.start_file_monitoring = MagicMock()
+        self.add_sync_listener = MagicMock()
         self.stop_file_monitoring = MagicMock()
         self.save_all_changes = MagicMock()
 

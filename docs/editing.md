@@ -12,7 +12,7 @@ The Address Editor opens different address sections in separate windows, takes p
 
 ![Address Editor demo](https://github.com/user-attachments/assets/ee7b1914-2f18-483a-ace1-84c2aa8eea98)
 
-Existing ladder logic may not show a renamed nickname until you use CLICK's Address Picker (<kbd>Ctrl</kbd>+<kbd>T</kbd>) or reopen the project. See [issue #36](https://github.com/ssweber/clicknick/issues/36).
+After a Sync, CLICK redraws the renamed nicknames in its ladder. If CLICK had a dialog open, ClickNick says so: close the dialog, then choose **Tools > Redraw Nicknames in CLICK**.
 
 ## Organize
 
