@@ -1,24 +1,20 @@
-# Simulation, the main window and the connection
+# Simulation
 
-These notes cover the files at the top of `src/clicknick/` (`app.py`, `connection_controller.py`,
-`workspace_controller.py`, `simulation_session.py`) and the code that they drive: the simulation services
+Nothing loads this file automatically. The table in the root `AGENTS.md` says when to read it.
+
+These notes cover `simulation_session.py` and the code that it drives: the simulation services
 (`services/dap_service.py`, `services/sim_state.py`, `services/program_carry.py`,
-`services/link_annotation.py`), the Simulator (`views/simulator_window.py`, `views/console_panel.py`), the
-Dataview Editor's link to the simulation, and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`).
+`services/link_annotation.py`), the Simulator (`views/simulator_window.py`, `views/console_panel.py`) and the
+Dataview Editor's link to the simulation.
 
 ## Rules
 
-- Never call `ClickNickApp._refresh_ui()` by hand. See "Main window refresh".
-- Add no new structured DAP request for a panel change. See "Commands and the planned rework".
+- Add no new structured DAP request for a panel change. See "Commands".
 - Views never own a `DapService`.
 - Key desired state by CLICK address. It never holds a tag name. Desired state is what the user chose for the
   simulation: the switches, the forces and the bench links.
-- The Dataview Editor and Verify use only the connected window's DataView folder (`click_dataview_folder`).
-  They never use another `CLICK (*` folder.
 
-## Simulation
-
-### Who owns it
+## Who owns it
 
 - `ConnectionSession.simulation`, a `SimulationSession`, is the one home of the simulated PLC. It holds the
   pyrung DAP subprocess, its Modbus client, the switch, analog and force settings, and the saving of those
@@ -31,7 +27,7 @@ Dataview Editor's link to the simulation, and CLICK's temp folder (`utils/click_
   `views/console_panel.py`. The Dataview attaches while the simulation serves Modbus. While the simulation is
   off, both windows stay open and offer Start.
 
-### How ClickNick talks to it
+## How ClickNick talks to it
 
 - The session launches pyrung with `keepForcesOnRun`, so forces survive STOP -> RUN. The switch and analog
   patches go with `set_mode("run")`.
@@ -46,20 +42,16 @@ Dataview Editor's link to the simulation, and CLICK's temp folder (`utils/click_
   writes the tag names with `to_tag()`. The console pane shows the command as a comment. Only actions that
   reach a running simulation echo. Analog values echo once they settle.
 
-### Commands and the planned rework
+## Commands
 
 Panel changes (switches, analog values, forces, mode, step, speed, links) go as structured DAP requests today.
-The next release will send them as pyrung command lines with a source such as `panel`, over the connection that
-the session already has. The principle is this: commands are text with a source, state is data, and the write
-is a plan. The command language lives in pyrung, and ClickNick will send lines verbatim.
+Add no new one. The design that replaces them is in `scratchpad/visual-simulator-design.md`, in the section
+"Commands and recording".
 
-Today the Console pane splits a line on `;` (`ConsolePanel._submit_command_text`). Its `autoreload` and
-`reload` refusals rely on that split. The split goes with the rework. ClickNick's own echo goes too, once
-pyrung broadcasts the command text. Frames, force and link listings, Modbus info and causal queries stay
-structured reads. The program write stays `pyrungReload` with its carry plan. Launch and terminate stay
-structured. The design is in `scratchpad/visual-simulator-design.md`, in the section "Commands and recording".
+The Console pane splits a line on `;` (`ConsolePanel._submit_command_text`). Its `autoreload` and `reload`
+refusals rely on that split.
 
-### Bench links and names
+## Bench links and names
 
 - A bench link is session-only feedback wiring (`sim_state.BenchLink`, keyed by feedback address). Bench links
   are desired state, like forces. ClickNick saves them. It applies them again over DAP after a launch. It adopts
@@ -73,7 +65,7 @@ structured. The design is in `scratchpad/visual-simulator-design.md`, in the sec
 - When the session loads its saved settings, `load_state` skips each force or bench link whose key is not a
   CLICK address and lists it. The session reports each one as an error.
 
-### Writing a changed program
+## Writing a changed program
 
 The workspace is the pyrung project that ClickNick generates from the connected CLICK project.
 
@@ -106,7 +98,7 @@ The workspace is the pyrung project that ClickNick generates from the connected 
   (`console_busy`), every pane shows busy and offers Stop. The offer to write says that a Console command is
   still running.
 
-### Carrying forces and links
+## Carrying forces and links
 
 The write reads pyrung's force and link listing. That listing is the truth, whatever the Console did since the
 last frame. `plan_carry` (`services/program_carry.py`) decides each entry's name in the new program. One
@@ -136,7 +128,7 @@ Suppose a write is answered after another build started. The session keeps the o
 again. No build counts as run until the next write or launch, because nobody knows which program pyrung read.
 The switch shows the position that it had until the write is answered.
 
-### When a write fails
+## When a write fails
 
 - A reload that fails changes nothing in pyrung. The old program keeps running with its forces and links. A
   write made in RUN sends continue again, because pyrung may have paused. **Restart** is added to the offer.
@@ -147,7 +139,7 @@ The switch shows the position that it had until the write is answered.
   plan releases. The switch position stays the user's (`_position_held`). So Restart starts in that position,
   and the write offered is for that position, until the user moves the switch.
 
-### Restart
+## Restart
 
 **Restart**, which is also on the toolbar, launches the simulation again on what the workspace holds now. It
 starts from power-on values or the PLC data file, with the same desired state and switch position. These events
@@ -171,74 +163,3 @@ is reported. An unanswered link listing is asked for again on the next frame.
 A failed DAP request undoes the user's action only when the simulation that was asked refused it. It does not
 undo the action when the simulation has since stopped or restarted (the token check) or never answered
 (`DapUnavailableError`).
-
-## Main window refresh
-
-- `ClickNickApp._refresh_ui()` recomputes the window title and the Workspace details. It also sets the Test
-  group's legend and its Start/Stop label. It enables or disables Tools > Redraw Nicknames in CLICK and the
-  system nickname entry of the Repairs menu.
-- Assigning `_data` or `_session` (`_ShownState` attributes) schedules one refresh for when Tk is idle.
-  Requests made before it runs merge into it.
-- These also call `_request_ui_refresh()`: the `ConnectionSession` events (sync count, analysis progress,
-  staged rungs), the simulation's status and Modbus events, and Workspace setup when it pairs another
-  workspace.
-- `_refresh_ui` also re-titles the open editor windows, and it skips a window that is being destroyed. The
-  windows take the project name and analysis as getters, so they follow a project change.
-
-## Connection and lifecycle
-
-- `ConnectionController` (`ClickNickApp._connection`) lists the CLICK windows, connects, follows a project change
-  and runs the watch tick. It writes the session and the data only through the app (`_session`, `_open_data`,
-  `_close_data`).
-- `WorkspaceController` (`ClickNickApp._workspace`) runs the Workspace group, its menu entries and Workspace
-  setup. It reads the session through the app each time.
-- Connecting opens a `ConnectionSession` before CLICK's database loads. A project change replaces the session.
-- `ConnectionController.close_session` is the one teardown. It drops the database load in flight, and it ends
-  the watch, the popup, the Workspace setup window, the Simulator window, the simulation, the ScrWatcher and the
-  analysis.
-- Until ClickNick has read the database, the session builds nothing. `has_database` is False while the database
-  loads and after the CSV fallback. In that time, the Workspace's **Review Changes**, **Reload from CLICK**, the
-  simulation and applying Workspace setup ask the user to connect first (`_project_session`). **Compare with >
-  Folder** works without it.
-- ClickNick drops a database load if its session closed, or if a CSV load or another connect cancelled it. It
-  does this also when that happens during the prompt to save the data that the load replaces.
-- While a CLICK window is connected, its session's watch (`_monitor_task`) checks every 100 ms whether the window
-  closed or shows another project. The watch shows autocomplete popups while `monitoring` is on and data is
-  loaded. The new project's session starts watching even when following the project fails part way.
-- When the session opens, it pairs the durable workspace for the project's PLC name (`pair_workspace`). The
-  Workspace setup window and its unapplied choice (`pending_workspace`) belong to the session. They close with
-  it, when CLICK's window closes or shows another project.
-- `monitoring` is the user's choice. It starts on. **Stop** turns it off, and only **Start** or a window that the
-  user picks turns it on again. A project change, the CSV fallback and an automatic connect leave it as it was.
-- When the window closes, database data closes without a prompt, and CSV data stays loaded. The app reads the
-  CSV path (`_csv_path`) from the loaded CSV store.
-- Refreshing the window list connects to the first window only when nothing is connected and no data is loaded.
-  Otherwise the user picks. The list skips titles without a project. So ClickNick closes a connected window that
-  is missing from the list only when its process is gone.
-- The combobox always lists and selects the connected window, under the project that it shows
-  (`_show_instances`).
-- Closing ClickNick goes through `_close_data(prompt_save=True)`. Cancel or a failed save keeps ClickNick open.
-
-### Another project in the same window
-
-When the window shows another project, CSV data stays loaded. A Save As keeps the window's `CLICK (hwnd)`
-folder, database and DataView folder, and so does opening another project. ClickNick cannot tell the two apart.
-So it asks whether to keep the unsaved address and Dataview edits on database data for the new project
-(`_keeps_edits_for`). Text in a cell that will not commit counts as an edit.
-
-- If you keep them, the data and its windows stay open, the store's file monitor reads the new database, and
-  Sync and the Dataview Save write there.
-- If you do not, the database data closes with nothing saved, and the new database loads. A save after
-  File > Open would overwrite the other project's .cdv files.
-- Over CSV data, the question covers only Dataview edits, including text in a Dataview cell.
-- A Dataview Editor that stays open lists its folder again when the edits were kept. Otherwise ClickNick closes
-  it without saving and opens it again on the window's DataView folder (`_reopen_dataview_editor`).
-
-## CLICK's temp folder
-
-CLICK keeps each open project in a `CLICK ({hwnd:08X})` folder, one per window. The hwnd is the handle of
-CLICK's window. ClickNick looks for that folder under the Windows temp folder (GetTempPathW), in its long form.
-The root `AGENTS.md` has the rule that every lookup goes through `utils/click_temp.py`.
-
-The Dataview model takes the folder as a getter (`_dataview_folder`). With no window connected, the getter
-returns the loaded CSV's folder, or none.

@@ -85,7 +85,7 @@ presses only the mode's radio button, Open and the one button of the "Completed!
 import's Open dialog by its three import modes and its control ids, never by Windows' own strings. If the
 redraw fails while that dialog is the only other window open, it cancels the dialog. It leaves any other
 window to the user, including an Open dialog that it did not recognise. The tests drive it through a fake
-`ClickDesktop`. The redraw works after a Sync on CLICK 2.60, 3.43, 3.71, 3.92 and 4.00. `save_all_changes`
+`ClickDesktop`. It was checked live after a Sync on CLICK 2.60, 3.43, 3.71, 3.92 and 4.00. `save_all_changes`
 calls the store's sync listeners (`add_sync_listener`) once it has written rows into the database. Every Sync
 path goes through `save_all_changes`: the Address Editor's Sync and Sync and Close, and Yes to a save prompt.
 The app's listener runs the redraw for the connected window off the Tk thread

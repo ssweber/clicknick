@@ -1,7 +1,7 @@
 # ClickNick Agent Guidance
 
 **IMPORTANT: Do not use `cd` before commands. The working directory is already the project root.**
-**IMPORTANT: Always use `make` commands, not direct `uv run` commands.**
+**IMPORTANT: Use `make` to install, lint, test and build. Never run `uv run pytest` or `uv sync` directly, because they drop the sibling installs.**
 
 ## Writing
 
@@ -14,8 +14,7 @@ Prose in this repo follows the `writing` skill in the bob plugin (`/bob:writing`
 - Run the tests with `make test`. Never run `uv run pytest`.
 - Everything that looks for SC_.mdb, Address.csv, Project.ini, Scr*.tmp or the DataView folder goes through
   `utils/click_temp.py` (`click_temp_dir`), from the connected window's hwnd.
-- Before you change code in a folder, read the AGENTS.md files that the table at the end of this file names
-  for it.
+- Before you change code in a folder, read the files that the table at the end of this file names for it.
 
 `tests/test_store_boundaries.py` enforces rules 2, 3 and 5. For rule 5 it checks that nothing outside the store
 touches `_current_session`.
@@ -122,12 +121,12 @@ touches.
 
 | Before you change code in | Read |
 |---|---|
-| `src/clicknick/` (the files at the top) | `src/clicknick/AGENTS.md`. For `connection_session.py`, also `src/clicknick/services/AGENTS.md` (analysis builds). For the redraw in `connection_controller.py`, also `src/clicknick/data/AGENTS.md` (Sync). |
-| `src/clicknick/data/`, `src/clicknick/models/` | `src/clicknick/data/AGENTS.md`. For `data/cdv_file.py`, also `src/clicknick/AGENTS.md` (CLICK's temp folder). |
-| `src/clicknick/services/` | `src/clicknick/services/AGENTS.md` (analysis, backups, the workspace lock). `src/clicknick/data/AGENTS.md` for `block_service.py` and `click_redraw.py`. `src/clicknick/views/AGENTS.md` for `rung_diff.py`, `click_snapshot.py` and `nickname_staging.py`. `src/clicknick/AGENTS.md` for `dap_service.py`, `sim_state.py`, `program_carry.py` and `link_annotation.py`. |
-| `src/clicknick/views/` | `src/clicknick/views/AGENTS.md` (Review Changes). `src/clicknick/data/AGENTS.md` for `address_editor/`, which edits through the store. `src/clicknick/AGENTS.md` for `simulator_window.py`, `console_panel.py` and `dataview_editor/`. |
+| `src/clicknick/` (the files at the top) | `src/clicknick/SIMULATION.md` for `simulation_session.py`. `src/clicknick/CONNECTION.md` for the others. For `connection_session.py`, also `src/clicknick/services/AGENTS.md` (analysis builds). For the redraw in `connection_controller.py`, also `src/clicknick/data/AGENTS.md` (Sync). |
+| `src/clicknick/data/`, `src/clicknick/models/` | `src/clicknick/data/AGENTS.md`. For `data/cdv_file.py`, also `src/clicknick/CONNECTION.md` (CLICK's temp folder). |
+| `src/clicknick/services/` | `src/clicknick/services/AGENTS.md` (analysis, backups, the workspace lock). `src/clicknick/data/AGENTS.md` for `block_service.py` and `click_redraw.py`. `src/clicknick/views/AGENTS.md` for `rung_diff.py`, `click_snapshot.py` and `nickname_staging.py`. `src/clicknick/SIMULATION.md` for `dap_service.py`, `sim_state.py`, `program_carry.py` and `link_annotation.py`. |
+| `src/clicknick/views/` | `src/clicknick/views/AGENTS.md` (Review Changes). `src/clicknick/data/AGENTS.md` for `address_editor/`, which edits through the store. `src/clicknick/SIMULATION.md` for `simulator_window.py`, `console_panel.py` and `dataview_editor/`. `src/clicknick/CONNECTION.md` (Rules, CLICK's temp folder) for the DataView folder that `dataview_editor/` uses. |
 | `src/clicknick/live/` | `src/clicknick/services/AGENTS.md` (`clicknick-cli` backup, restore and `rung apply`). `src/clicknick/views/AGENTS.md` for `rung apply`. |
-| `src/clicknick/utils/` | `src/clicknick/AGENTS.md` for `click_temp.py`. |
+| `src/clicknick/utils/` | `src/clicknick/CONNECTION.md` for `click_temp.py`. |
 | `src/clicknick/ladder/` | `src/clicknick/ladder/AGENTS.md`. |
 | `tests/` | `tests/AGENTS.md`, and the file for the code that the test covers. |
 | `src/clicknick/widgets/`, `detection/`, `resources/` | Only this file. |

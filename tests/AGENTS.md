@@ -34,7 +34,7 @@ The service tests need no Tk window. They still load tkinter, because importing 
   a block tag.
 - `test_row_service.py` tests fill down, clone structure and the edit session integration.
 - `test_blocktag.py` tests pyclickplc's block tag functions: parsing edge cases, finding the paired tag, and
-  block ranges. Its docstring names `blocktag.py`, which no longer exists in ClickNick.
+  block ranges.
 
 ## Backup tests
 
