@@ -48,11 +48,11 @@ Usage::
     # Pick a specific session
     clicknick-cli -s MyProject get DS1
 
-Each argument is one word, as the shell passed it. A command given as one
-argument is split into words at spaces outside quotes; a backslash escapes
-only ``"`` and ``\\`` inside double quotes and stays as it is elsewhere.
-Commands may be chained with ``;``: at the end of an argument, as an argument
-of its own, or outside quotes in that one argument::
+Each argument is one word, as the shell passed it. If you give the command as a single
+argument, it is split into words at spaces outside quotes. Inside double quotes, a
+backslash escapes only ``"`` and ``\\``. Anywhere else it stays as it is.
+You can chain commands with ``;`` in three places: at the end of an argument, as an
+argument of its own, or outside quotes in a single-argument command::
 
     clicknick-cli "set C1 nickname Pump ; set C2 nickname Valve"
 
@@ -73,10 +73,10 @@ from .session import find_sessions, workspace_for_port_file
 def _commands(argv: list[str], parser: argparse.ArgumentParser) -> list[list[str]]:
     """Return the words of each command in *argv*.
 
-    One argument is a command line of its own (``"set DS1 comment 'a b'"``);
-    more are the words the shell already split. Then a word ending in ``;``
-    ends a command (cmd.exe passes ``Pump; set`` as ``Pump;`` and ``set``); a
-    ``;`` anywhere else in a word is part of it.
+    A single argument is a command line of its own (``"set DS1 comment 'a b'"``).
+    Several arguments are words that the shell already split. In that case a word that
+    ends in ``;`` ends a command (cmd.exe passes ``Pump; set`` as ``Pump;`` and ``set``).
+    A ``;`` anywhere else in a word is part of the word.
     """
     if len(argv) == 1:
         try:
@@ -109,8 +109,8 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--session", "-s", help="Session label (.ckp project name)")
-    # REMAINDER: from the first command word on, every word (``--select``
-    # included) is the command's, and argparse reads none of them.
+    # REMAINDER: from the first command word on, every word belongs to the command,
+    # including ``--select``. argparse reads none of them.
     parser.add_argument("command", nargs=argparse.REMAINDER, help="Command (chain with ';')")
     args = parser.parse_args()
 

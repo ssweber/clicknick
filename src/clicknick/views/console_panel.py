@@ -1,10 +1,10 @@
-"""The Simulator's command console: a bottom pane that pops out into its own window.
+"""Show the Simulator's command console, a bottom pane that pops out into its own window.
 
-It observes the connection's SimulationSession like the rest of the Simulator,
-and sends commands to the pyrung LiveServer via ``pyrung.dap.live.send_command()``.
-The Simulator owns the transcript and command history, so both survive moving
-the console between its pane and its own window. Start, Retry and the PLC data
-file live on the Simulator's toolbar and banners, not here.
+The panel observes the connection's SimulationSession like the rest of the Simulator. It
+sends commands to the pyrung LiveServer through ``pyrung.dap.live.send_command()``. The
+Simulator owns the transcript and the command history, so both survive when you move the
+console between its pane and its own window. Start, Retry and the PLC data file are on the
+Simulator's toolbar and banners, not here.
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ if TYPE_CHECKING:
     from ..simulation_session import SimEvent, SimulationSession
 
 _COPY_FLASH_MS = 1200
-# Plain text, not a clipboard emoji: the emoji renders in colour from a
-# different font and sits oddly among ttk's monochrome controls.
+# Use plain text, not a clipboard emoji. The emoji renders in colour from a different
+# font and looks out of place among ttk's monochrome controls.
 _COPY_LABEL = "Copy"
 _COPIED_LABEL = "Copied"
 _DIVIDER = "#c8c8c8"
@@ -38,7 +38,7 @@ Transcript = list[tuple[str, str | None]]
 
 
 class ConsolePanel(ttk.Frame):
-    """Transcript over a command line, under a slim header of console actions."""
+    """Show a transcript over a command line, under a slim header of console actions."""
 
     def _start_background(self, target: Callable[[], None], *, name: str) -> None:
         """Start a named daemon worker."""
@@ -109,8 +109,8 @@ class ConsolePanel(ttk.Frame):
         except FileNotFoundError:
             return False, "Session not available (DAP may still be starting)"
         except (ConnectionRefusedError, OSError, EOFError) as exc:
-            # EOFError is what a killed DAP looks like mid-command: the socket
-            # closes before the result frame arrives.
+            # A DAP killed mid-command raises EOFError, because the socket closes before
+            # the result frame arrives.
             return False, f"Connection failed: {exc}"
 
     def _animate_prompt(self) -> None:
@@ -137,11 +137,11 @@ class ConsolePanel(ttk.Frame):
         self._start_background(_worker, name="console-stop")
 
     def _show_busy(self) -> None:
-        """Show the session's Console command state: busy, with Stop, while one runs.
+        """Show the busy state, with Stop, while the session runs a Console command.
 
-        The command may come from a panel that has since closed; Stop still
-        cancels it, through this panel's own connection. Only a command this panel
-        sent writes its output here, so only that one keeps Pop out off.
+        The command may come from a panel that has since closed. Stop still cancels it,
+        through this panel's own connection. Only a command that this panel sent writes its
+        output here, so only that command keeps Pop out off.
         """
         busy = self.busy
         if busy == (self._busy_tick >= 0):
@@ -151,8 +151,8 @@ class ConsolePanel(ttk.Frame):
             self._cancel_requested = False
             self._busy_tick = 0
             self._console_input.set_busy(True)
-            # Repurpose Send as Stop rather than greying it out -- it's the
-            # control the user's hand is already on.
+            # Turn Send into Stop instead of greying it out, because the user's hand is
+            # already on it.
             self._send_btn.configure(text="Stop", state="normal", command=self._request_stop)
             self._animate_prompt()
         else:
@@ -175,7 +175,7 @@ class ConsolePanel(ttk.Frame):
         elif event.kind == "message":
             self._append_output(event.text.rstrip("\n") + "\n", event.level)
         elif event.kind == "echo":
-            # What the user just did on the panel, as the command that does it.
+            # Echo what the user just did on the panel, written as the command that does it.
             self._append_output(f"# {event.text}\n", "echo")
 
     # ------------------------------------------------------------------
@@ -183,10 +183,10 @@ class ConsolePanel(ttk.Frame):
     # ------------------------------------------------------------------
 
     def _submit_command_text(self, command: str) -> None:
-        """Called by ConsoleInput when the user submits a command."""
+        """Handle a command that the user submitted in ConsoleInput."""
         self._append_output(f">>> {command}\n", "prompt")
         if self._simulation.writing:
-            # The write reads what pyrung has forced and linked; a command now would race it.
+            # The write reads what pyrung has forced and linked, so a command now would race it.
             self._append_output(
                 "Writing the program to the simulation... Send it again once it is written.\n",
                 "error",
@@ -209,7 +209,8 @@ class ConsolePanel(ttk.Frame):
             return
         if "reload" in verbs:
             if [sub.lower() for sub in subs] == ["reload"]:
-                # RUN Time Edit in RUN, Write otherwise; a refusal comes back as a message.
+                # Reload does a RUN Time Edit in RUN and a Write otherwise. A refusal comes
+                # back as a message.
                 self._simulation.reload()
             else:
                 self._append_output("Send reload on its own.\n", "error")
@@ -231,14 +232,14 @@ class ConsolePanel(ttk.Frame):
         def _done(results: list[tuple[bool, str]]) -> None:
             self._sent_here = False
             if self._destroyed:
-                return  # closed meanwhile; the session still counted the command
+                return  # The panel closed meanwhile. The session still counted the command
             for ok, text in results:
                 if not text:
                     continue
                 if ok:
                     tag = "output"
                 else:
-                    # A stop we asked for isn't a failure -- don't shout it in red.
+                    # A stop that we asked for is not a failure, so do not show it in red.
                     tag = "progress" if self._cancel_requested else "error"
                 self._append_output(text + "\n", tag)
             self._cancel_requested = False
@@ -249,8 +250,8 @@ class ConsolePanel(ttk.Frame):
             except Exception as exc:  # never leave the console stuck busy
                 return [(False, f"Console error: {exc}")]
 
-        # The session runs it and says when it ends (a "desired" event), even if
-        # this panel closes first; the panel shows busy from that.
+        # The session runs the command and reports when it ends (a "desired" event), even if
+        # this panel closes first. The panel shows the busy state from that event.
         self._sent_here = True
         self._simulation.run_console_command(_worker, _done)
 
@@ -296,7 +297,7 @@ class ConsolePanel(ttk.Frame):
     def _header_button(
         self, header: ttk.Frame, text: str, command: Callable[[], None], tip: str
     ) -> ttk.Button:
-        """A flat header action (VS Code panel style) that still looks clickable on hover."""
+        """Add a flat header action (VS Code panel style) that still looks clickable on hover."""
         button = ttk.Button(header, text=text, style="Toolbutton", cursor="hand2", command=command)
         button.pack(side=tk.RIGHT)
         bind_tooltip(button, tip)
@@ -307,7 +308,7 @@ class ConsolePanel(ttk.Frame):
             self._divider.configure(background=_DIVIDER_ACTIVE if active else _DIVIDER)
 
     def _bind_resize(self, handles: tuple[ttk.Frame | ttk.Label, ...]) -> None:
-        """Dragging the header resizes the pane, like the sash just above it."""
+        """Make dragging the header resize the pane, like the sash just above it."""
         on_resize = self._on_resize
         assert on_resize is not None
         dragging = False
@@ -331,7 +332,8 @@ class ConsolePanel(ttk.Frame):
             handle.bind("<Leave>", lambda _e: dragging or self._set_divider_active(False))
 
     def _create_widgets(self, *, popped: bool) -> None:
-        # The pane's top edge; it lights up while the header can be dragged.
+        # The pane's top edge. It lights up while the pointer is on the header or the header
+        # is being dragged.
         self._divider = tk.Frame(self, height=1, background=_DIVIDER)
         self._divider.pack(fill=tk.X)
         # Header: what this pane is, then its actions, VS Code panel style.
@@ -359,9 +361,9 @@ class ConsolePanel(ttk.Frame):
         )
         self._header_button(header, "Help", self._show_help, "List the console's commands")
 
-        # Command line at the bottom, terminal style. Packed before the output:
-        # the Text asks for more height than a slim pane has, and pack starves
-        # whatever was packed last.
+        # Command line at the bottom, terminal style. Pack it before the output, because the
+        # Text asks for more height than a slim pane has and pack starves whatever it packed
+        # last.
         input_frame = ttk.Frame(self, padding=(8, 4, 8, 6))
         input_frame.pack(side=tk.BOTTOM, fill=tk.X)
         self._prompt_label = ttk.Label(input_frame, text=">>>")
@@ -436,7 +438,8 @@ class ConsolePanel(ttk.Frame):
         self._history = history
         self._on_pop = on_pop
         self._on_hide = on_hide
-        # Called with the pointer's screen y as the header is pressed (True) and dragged.
+        # Called with the pointer's screen y when the header is pressed (True) and when it
+        # is dragged (False).
         self._on_resize = on_resize
         self._filter_func = filter_func
 
@@ -456,19 +459,22 @@ class ConsolePanel(ttk.Frame):
 
     @property
     def busy(self) -> bool:
-        """A Console command is in flight, from this panel or one that closed."""
+        """Return whether a Console command is in flight, from this panel or one that closed."""
         return self._simulation.console_busy
 
     @property
     def running_here(self) -> bool:
-        """The running Console command was sent from this panel: its output arrives here."""
+        """Return whether this panel sent the running Console command (its output arrives here)."""
         return self.busy and self._sent_here
 
     def focus_input(self) -> None:
         self._console_input.focus_set()
 
     def run(self, command: str) -> bool:
-        """Run *command* as if typed (it joins the history); False while one is running."""
+        """Run *command* as if the user typed it, and add it to the history.
+
+        Return False while a command is running or after the panel closed.
+        """
         if self.busy or self._destroyed:
             return False
         self._console_input.remember(command)
@@ -485,7 +491,7 @@ class ConsolePanel(ttk.Frame):
 
 
 class ConsoleWindow(tk.Toplevel):
-    """The console popped out of the Simulator; closing it docks it back."""
+    """Show the console popped out of the Simulator. Closing the window docks it back."""
 
     def __init__(
         self, parent: tk.Misc, *, title: str, on_dock: Callable[[], None], **panel_options

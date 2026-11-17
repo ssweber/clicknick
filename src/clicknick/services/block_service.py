@@ -122,15 +122,14 @@ def _transform_block_name_for_pair(name: str, source_type: str, target_type: str
 
 
 def _block_tag_span(comment: str) -> tuple[int, int] | None:
-    """Return where the tag parse_block_tag finds sits in *comment* (start, end exclusive)."""
+    """Return (start, end) of the tag in *comment* that parse_block_tag finds, end exclusive."""
     pos = 0
     while (start := comment.find("<", pos)) != -1:
         end = comment.find(">", start)
         if end == -1:
             return None
-        # The text from this '<' to the next '>' is the tag exactly when it
-        # parses on its own with nothing left over; parse_block_tag tries the
-        # same '<' positions in the same order.
+        # The text from this '<' to the next '>' is the tag if it parses on its own with
+        # nothing left over. parse_block_tag tries the same '<' positions in the same order.
         candidate = parse_block_tag(comment[start : end + 1])
         if candidate.tag_type is not None and candidate.remaining_text == "":
             return start, end + 1
@@ -146,7 +145,7 @@ def add_block_tag(comment: str, tag_text: str) -> str:
 def remove_block_tag(comment: str) -> str:
     """Remove the block tag and the one space that set it apart from the text.
 
-    The inverse of add_block_tag; the rest of the comment is kept as it is.
+    This is the inverse of add_block_tag. The rest of the comment is kept as it is.
     """
     span = _block_tag_span(comment)
     if span is None:
@@ -168,7 +167,7 @@ def replace_block_tag(comment: str, tag_text: str) -> str:
 
 
 def rename_block_tag(comment: str, new_name: str) -> str:
-    """Change only the block tag's name; its colour, spacing and the text around it stay."""
+    """Change only the block tag's name. Its colour, its spacing and the text around it stay."""
     span = _block_tag_span(comment)
     if span is None:
         return comment
@@ -176,7 +175,7 @@ def rename_block_tag(comment: str, new_name: str) -> str:
     tag_text = comment[span[0] : span[1]]
     at = tag_text.find(tag.name)
     if at == -1:
-        # The name is split by its bg attribute (`<A bg="x" B>`): write the tag anew.
+        # The bg attribute splits the name (`<A bg="x" B>`), so write the tag anew.
         renamed = format_block_tag(new_name, tag.tag_type, tag.bg_color)
     else:
         renamed = tag_text[:at] + new_name + tag_text[at + len(tag.name) :]
@@ -184,25 +183,25 @@ def rename_block_tag(comment: str, new_name: str) -> str:
 
 
 def same_block_tag(a: BlockTag, b: BlockTag) -> bool:
-    """True when two parsed tags are the same tag (name, kind and colour)."""
+    """Return True if two parsed tags are the same tag (name, kind and colour)."""
     return a.name == b.name and a.tag_type == b.tag_type and a.bg_color == b.bg_color
 
 
 class BlockService:
-    """Block tag cascades: what a row's tag change means for the rows tied to it.
+    """Handle block tag cascades: what a row's tag change means for the rows tied to it.
 
-    Each method takes the tag before and after the edit and returns the other
-    row's new comment, or None to leave it alone. Callers decide which rows to
-    pass; these never look at more than the one comment they are given.
+    Each method takes the tag before and after the edit and returns the other row's new
+    comment, or None to leave it alone. Callers decide which rows to pass. These methods
+    never look at more than the one comment they are given.
     """
 
     @staticmethod
     def matching_tag_comment(
         match_comment: str, old_tag: BlockTag, new_tag: BlockTag
     ) -> str | None:
-        """The open/close partner's comment after its block tag went from old to new.
+        """Return the open/close partner's comment after its block tag went from old to new.
 
-        A deleted tag removes the partner's tag; a renamed one renames it in
+        A deleted tag removes the partner's tag. A renamed tag renames the partner's tag in
         place. A change of colour or kind alone leaves the partner as it is.
         """
         if new_tag.name is None:
@@ -221,13 +220,15 @@ class BlockService:
         source_type: str,
         pair_type: str,
     ) -> str | None:
-        """The T/TD (CT/CTD) pair's comment after the source row's tag went from old to new.
+        """Return the T/TD (CT/CTD) pair's comment after the source row's tag changed.
 
-        The pair's block name carries the _D suffix on TD/CTD. A pair without a
-        tag gets the new one appended when the tag was added or renamed (a colour
-        or kind change alone leaves it alone); a pair holding the old block's tag
-        has it renamed in place, re-coloured or removed; a pair holding some other
-        block's tag is left alone.
+        The pair's block name carries the _D suffix on TD/CTD. The cases are:
+
+        - A pair without a tag gets the new tag appended when the tag was added or renamed.
+          A change of colour or kind alone leaves it alone.
+        - A pair that holds the old block's tag has it renamed in place, re-coloured or
+          removed.
+        - A pair that holds some other block's tag is left alone.
         """
         pair_tag = parse_block_tag(pair_comment)
         if pair_tag.name is None:
