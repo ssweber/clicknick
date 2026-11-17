@@ -328,3 +328,41 @@ def test_double_clicking_a_nickname_with_children_shows_it_and_them_only(store) 
 
     assert vars_["text"] == "tree:Tank_Pump1"
     assert [rows[i].nickname for i in shown[-1]] == ["Tank_Pump1", "Tank_Pump1_Run"]
+
+
+class _Menu:
+    """Record the entries that the window adds to a menu. A separator is None."""
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        self.labels: list[str | None] = []
+
+    def add_command(self, *, label: str, **_kwargs) -> None:
+        self.labels.append(label)
+
+    def add_cascade(self, *, label: str, menu: _Menu) -> None:
+        self.labels.append(label)
+        self.cascades = {**getattr(self, "cascades", {}), label: menu}
+
+    def add_checkbutton(self, *, label: str, **_kwargs) -> None:
+        self.labels.append(label)
+
+    def add_separator(self) -> None:
+        self.labels.append(None)
+
+    def index(self, what: str) -> int:
+        assert what == "end"
+        return len(self.labels) - 1
+
+
+def test_the_file_menu_has_no_refresh_and_relabels_save_all(monkeypatch) -> None:
+    # Refresh discarded the edits and reloaded nothing. Discard Changes does the same.
+    monkeypatch.setattr(f"{MODULE}.tk", SimpleNamespace(Menu=_Menu, BooleanVar=Mock()))
+    window = AddressEditorWindow.__new__(AddressEditorWindow)
+    window.config = Mock()
+
+    window._create_menu()
+
+    labels = window._file_menu.labels
+    assert "Refresh" not in labels
+    assert labels[window._save_menu_index] == "Save All"
+    assert "Discard Changes" in labels

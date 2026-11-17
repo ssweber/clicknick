@@ -451,29 +451,6 @@ class AddressEditorWindow(tk.Toplevel):
         except Exception as e:
             messagebox.showerror(f"{save_label} Error", str(e), parent=self)
 
-    def _refresh_all(self) -> None:
-        """Discard every unsaved edit, after the user confirms, and redraw the tabs.
-
-        discard_all_changes() returns every row to the value that the data source holds.
-        It then notifies the store's observers. This window is one of them, so
-        _on_address_store_changed() redraws the panels.
-        """
-        if self._store.has_unsaved_changes():
-            result = messagebox.askyesno(
-                "Unsaved Changes",
-                "You have unsaved changes. Refresh will discard them. Continue?",
-                parent=self,
-            )
-            if not result:
-                return
-
-        try:
-            self._store.discard_all_changes()
-            self.status_var.set(f"Refreshed - {len(self._store.all_nicknames)} nicknames loaded")
-
-        except Exception as e:
-            messagebox.showerror("Refresh Error", str(e), parent=self)
-
     def _discard_changes(self) -> None:
         """Discard all unsaved changes by resetting to original values."""
         if not self.commit_open_cell_editor():
@@ -1152,7 +1129,6 @@ class AddressEditorWindow(tk.Toplevel):
         self._file_menu.add_command(label="Import from CSV...", command=self._import_from_csv)
         self._file_menu.add_command(label="Export to CSV...", command=self._export_to_csv)
         self._file_menu.add_separator()
-        self._file_menu.add_command(label="Refresh", command=self._refresh_all)
         # _update_save_ui_labels() relabels this item once the data has loaded.
         self._save_menu_index = self._file_menu.index("end") + 1
         self._file_menu.add_command(label="Save All", command=self._save_all, accelerator="Ctrl+S")
