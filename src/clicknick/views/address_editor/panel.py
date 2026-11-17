@@ -52,7 +52,6 @@ class AddressPanel(ttk.Frame):
     scrollable view, with section boundaries for navigation.
     """
 
-    # Column indices imported from panel_constants
     COL_USED = COL_USED
     COL_NICKNAME = COL_NICKNAME
     COL_COMMENT = COL_COMMENT
@@ -91,10 +90,13 @@ class AddressPanel(ttk.Frame):
             return None
 
     def _save_selection(self) -> None:
-        """Save the currently selected row index (in self.rows) and its visual position before filter changes."""
+        """Save the selected row and its position on screen before the filter changes.
+
+        The row is saved as an index into self.rows, and its position as the number of lines
+        below the top visible row.
+        """
         selected = self.sheet.get_selected_rows()
         if selected:
-            # Get the first selected display row and map to actual row index
             display_idx = min(selected)
             # Use our _displayed_rows list for consistent conversion
             if display_idx < len(self._displayed_rows):
@@ -126,53 +128,47 @@ class AddressPanel(ttk.Frame):
                     >0 means row is that many lines down from the top.
         """
         if align_top:
-            # Calculate scroll position
             total_rows = len(self._displayed_rows)
             if total_rows > 0:
                 if offset is not None:
-                    # Scroll so that the row at 'offset' lines from top is at the top
+                    # Scroll so that the row lands *offset* lines below the top
                     target_top_row = max(0, display_idx - offset)
                     self.sheet.yview_moveto(target_top_row / total_rows)
                 else:
-                    # Put target row at the top
                     self.sheet.yview_moveto(display_idx / total_rows)
 
                 self.sheet.see(display_idx, self.COL_NICKNAME)
-            # Select the row after scrolling
             self.sheet.select_row(display_idx)
         else:
-            # Original behavior: just ensure it's visible
             self.sheet.see(display_idx, self.COL_NICKNAME)
             self.sheet.select_row(display_idx)
 
     def _restore_selection(self) -> None:
-        """Restore selection to the previously selected row at the same visual position after filter changes."""
+        """Reselect the saved row after the filter changes, at the same position on screen."""
         if self._selected_row_idx is None:
             return
 
-        # Find the display index for the saved row in currently displayed rows
         try:
             display_idx = self._displayed_rows.index(self._selected_row_idx)
 
-            # Clear existing selection and select the row
             self.sheet.deselect()
             self.sheet.select_row(display_idx)
 
-            # Use helper function for scrolling with offset
             self._scroll_to_row(
                 display_idx, align_top=True, offset=self._selected_row_visual_offset
             )
         except ValueError:
-            # Row is not visible in current filter - clear saved selection
+            # The filter hides the saved row. Leave the selection as it is.
             pass
 
     def _resolve_analysis_prefix(self, prefix: str, arg: str | None) -> set[int] | None:
         """Resolve an analysis prefix to a set of addr_keys, or None."""
         if prefix == "tree":
-            # An item of the Outline: the nickname and those under it
+            # tree:Name selects an Outline item. It matches the row whose nickname is Name
+            # and the rows whose nicknames continue Name after an underscore.
             if not arg:
                 return None
-            # Case-sensitive, like Rename
+            # The match is case-sensitive, as in Rename.
             return {row.addr_key for row in self.rows if nickname_under(row.nickname, arg)}
 
         svc = self._get_analysis()
@@ -197,22 +193,18 @@ class AddressPanel(ttk.Frame):
         Supports analysis prefixes (input:, output:, upstream:Tag, tree:Nickname, etc.)
         and anchor patterns (^pattern, pattern$, ^pattern$).
         """
-        # Save current selection before changing filter
         self._save_selection()
 
         # Text filter only applies when "Filter:" checkbox is enabled
         filter_enabled = self.filter_enabled_var.get()
         raw_filter = self.filter_var.get() if filter_enabled else ""
 
-        # Parse analysis prefix
         prefix_name, prefix_arg, remaining = parse_analysis_prefix(raw_filter)
 
-        # Resolve analysis prefix to addr_key set
         analysis_keys: set[int] | None = None
         if prefix_name is not None:
             analysis_keys = self._resolve_analysis_prefix(prefix_name, prefix_arg)
 
-        # Parse anchors from remaining text
         anchor_start = remaining.startswith("^")
         anchor_end = remaining.endswith("$")
         filter_text = remaining.lower()
@@ -224,18 +216,14 @@ class AddressPanel(ttk.Frame):
         # Row filter: all, content, changed, errors
         row_filter = self.row_filter_var.get()
 
-        # Check if any filters are active
         no_filters = not filter_text and row_filter == "all" and analysis_keys is None
 
         if no_filters:
-            # Show all rows
             self._displayed_rows = list(range(len(self.rows)))
             self.sheet.display_rows("all", redraw=True)
         else:
-            # Build list of rows to display
             self._displayed_rows = []
             for i, row in enumerate(self.rows):
-                # Analysis pre-filter
                 if analysis_keys is not None and row.addr_key not in analysis_keys:
                     continue
 
@@ -253,7 +241,6 @@ class AddressPanel(ttk.Frame):
                     if not (addr_match or nick_match or comment_match):
                         continue
 
-                # Row filter modes
                 if row_filter == "content" and row.is_empty:
                     continue
                 if row_filter == "changed" and not self._store.is_dirty(row.addr_key):
@@ -265,14 +252,14 @@ class AddressPanel(ttk.Frame):
 
             self.sheet.display_rows(rows=self._displayed_rows, all_displayed=False, redraw=True)
 
-        # Restore selection after filter change
         self._restore_selection()
 
     def _show_stored(self, data_idx: int, col: int, typed: str, stored: str) -> None:
-        """Put the stored value back in the cell if the store kept the text as it was.
+        """Set the cell to *stored* if the user typed something else.
 
-        If the user types ``"Pump "`` over ``"Pump"``, nothing changes in the store, so the
-        store notifies no one. This method sets the cell to what the row holds.
+        The caller uses this when the typed text, once trimmed, equals the value that the row
+        already holds. If the user types ``"Pump "`` over ``"Pump"``, nothing changes in the
+        store, so the store notifies no one. Without this call, the cell would keep the space.
         """
         if typed != stored:
             self.sheet.set_cell_data(data_idx, col, stored)
@@ -288,8 +275,7 @@ class AddressPanel(ttk.Frame):
         if self._suppress_notifications:
             return
 
-        # Get modified cells from event
-        cells = getattr(event, "cells", None)
+        cells =getattr(event, "cells", None)
         if not cells:
             return
 
@@ -320,7 +306,6 @@ class AddressPanel(ttk.Frame):
                         self._show_stored(data_idx, col, new_nickname, address_row.nickname)
                         continue
 
-                    # Use session to set the field
                     session.set_field(addr_key, "nickname", new_nickname)
 
                 elif col == self.COL_COMMENT:
@@ -331,11 +316,9 @@ class AddressPanel(ttk.Frame):
                         self._show_stored(data_idx, col, new_comment, address_row.comment)
                         continue
 
-                    # Use session to set the field
                     session.set_field(addr_key, "comment", new_comment)
 
                 elif col == self.COL_INIT_VALUE:
-                    # Skip if type doesn't allow editing initial value
                     if not address_row.can_edit_initial_value:
                         continue
 
@@ -345,29 +328,23 @@ class AddressPanel(ttk.Frame):
                         paired_row.retentive if paired_row else address_row.retentive
                     )
                     if address_row.is_initial_value_masked(effective_retentive):
-                        # Revert the cell display back to "-"
                         self.sheet.set_cell_data(data_idx, col, "-")
                         continue
 
-                    # Standard update logic
                     if address_row.data_type == DataType.BIT:
                         new_init = "1" if bool(new_value) else "0"
                     else:
                         new_init = new_value if new_value else ""
 
-                    # Skip if no change
                     if new_init == address_row.initial_value:
                         continue
 
-                    # Use session to set the field
                     session.set_field(addr_key, "initial_value", new_init)
 
                 elif col == self.COL_RETENTIVE:
-                    # Skip if type doesn't allow editing retentive
                     if not address_row.can_edit_retentive:
                         continue
 
-                    # Handle retentive checkbox toggle - value is boolean
                     new_retentive = bool(new_value)
 
                     # For TD/CTD rows, update the paired T/CT row instead
@@ -375,11 +352,9 @@ class AddressPanel(ttk.Frame):
                     target_row = paired_row if paired_row else address_row
                     target_key = target_row.addr_key
 
-                    # Skip if no change
                     if new_retentive == target_row.retentive:
                         continue
 
-                    # Use session to set the field on the target row
                     session.set_field(target_key, "retentive", new_retentive)
 
         # edit_session exited - validation and notification happened automatically
@@ -387,13 +362,12 @@ class AddressPanel(ttk.Frame):
     def _discard_cell_changes(self) -> None:
         """Discard changes for the currently selected cell(s).
 
-        Note: With the new architecture, discarding restores the base_state value.
+        Each field goes back to its value in base_state.
         """
         selected = self.sheet.get_selected_cells()
         if not selected:
             return
 
-        # Collect cells to discard
         cells_to_discard: list[tuple[int, str]] = []
         for display_row, col in selected:
             data_idx = self._get_data_index(display_row)
@@ -411,7 +385,6 @@ class AddressPanel(ttk.Frame):
         if not cells_to_discard:
             return
 
-        # Use edit_session to restore base values
         with self._store.edit_session("Discard cell changes") as session:
             for data_idx, field_name in cells_to_discard:
                 row = self.rows[data_idx]
@@ -427,7 +400,6 @@ class AddressPanel(ttk.Frame):
         if not selected:
             return
 
-        # Collect rows to discard
         rows_to_discard: list[int] = []
         for display_row in selected:
             data_idx = self._get_data_index(display_row)
@@ -441,7 +413,6 @@ class AddressPanel(ttk.Frame):
         if not rows_to_discard:
             return
 
-        # Use edit_session to restore base values
         with self._store.edit_session("Discard row changes") as session:
             for data_idx in rows_to_discard:
                 row = self.rows[data_idx]
@@ -567,19 +538,16 @@ class AddressPanel(ttk.Frame):
     def _setup_header_notes(self) -> None:
         """Set up tooltip notes on column headers with hints."""
 
-        # Used column
         self.sheet.note(
             self.sheet.span(num2alpha(self.COL_USED), header=True, table=False),
             note="Used in PLC program",
         )
 
-        # Nickname column
         self.sheet.note(
             self.sheet.span(num2alpha(self.COL_NICKNAME), header=True, table=False),
             note="Nickname (≤24 chars, unique)",
         )
 
-        # Init Value column - show all type hints
         init_hints = [
             f"BIT: {DATA_TYPE_HINTS[DataType.BIT]}",
             f"INT: {DATA_TYPE_HINTS[DataType.INT]}",
@@ -593,13 +561,11 @@ class AddressPanel(ttk.Frame):
             note="Initial value\n" + "\n".join(init_hints),
         )
 
-        # Retentive column
         self.sheet.note(
             self.sheet.span(num2alpha(self.COL_RETENTIVE), header=True, table=False),
             note="Retains value across power cycles",
         )
 
-        # Comment column
         self.sheet.note(
             self.sheet.span(num2alpha(self.COL_COMMENT), header=True, table=False),
             note="Comment (max 128 chars)",
@@ -607,11 +573,10 @@ class AddressPanel(ttk.Frame):
 
     def _create_widgets(self) -> None:
         """Create all panel widgets."""
-        # Filter controls frame
         filter_frame = ttk.Frame(self)
         filter_frame.pack(fill=tk.X, padx=5, pady=2)
 
-        # Filter enabled checkbutton (replaces "Filter:" label)
+        # The checkbutton that turns the text filter on also serves as its "Filter:" label
         self.filter_enabled_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             filter_frame,
@@ -625,10 +590,8 @@ class AddressPanel(ttk.Frame):
         self.filter_entry.pack(side=tk.LEFT, padx=(5, 0))
         self.filter_var.trace_add("write", lambda *_: self._apply_filters())
 
-        # Vertical separator between text filter and checkbox filters
         ttk.Separator(filter_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
-        # Row filter radio buttons: All, Content, Changed, Errors
         ttk.Label(filter_frame, text="Show:").pack(side=tk.LEFT)
         self.row_filter_var = tk.StringVar(value="all")
         for value, text in [
@@ -670,7 +633,7 @@ class AddressPanel(ttk.Frame):
             self,
             headers=["Used", "Nickname", "Comment", "Init Value", "Ret"],
             show_row_index=True,
-            index_align="w",  # Left-align the row index
+            index_align="w",
             height=400,
             width=800,
             note_corners=True,  # Enable note indicators
@@ -692,7 +655,7 @@ class AddressPanel(ttk.Frame):
         self.sheet.enable_bindings()
         # Change Find/Replace binding from Ctrl+H to Ctrl+R
         self.sheet.set_options(toggle_replace_bindings=["<Control-r>", "<Control-R>"])
-        # Disable column header right-click menu and sorting options
+        # Turn off drag and drop, the right-click inserts and deletes, sorting and tksheet's undo
         self.sheet.disable_bindings(
             "column_drag_and_drop",
             "row_drag_and_drop",
@@ -711,26 +674,22 @@ class AddressPanel(ttk.Frame):
         # Unbind Ctrl+Space from sheet - we use it for filter toggle at window level
         self.sheet.unbind("<Control-space>")
 
-        # Bind right-click to dynamically show/hide "Discard changes" menu item
+        # Show or hide the "Discard changes" and "Edit Annotations..." items before each menu
         self.sheet.add_begin_right_click(self._on_right_click)
 
-        # Set column widths (address is in row index now)
+        # The address is in the row index, so it has no column
         self.sheet.set_column_widths([40, 200, 400, 90, 50])
         self.sheet.row_index(70)  # Set row index width
         self.sheet.readonly_columns([self.COL_USED])
 
-        # Set up header notes with hints
         self._setup_header_notes()
 
-        # Bind to <<SheetModified>> for post-edit processing ===
-        # This fires AFTER the sheet has been modified, not during
+        # tksheet fires <<SheetModified>> after it has applied the edit
         self.sheet.bind("<<SheetModified>>", self._on_sheet_modified)
 
-        # Apply initial column visibility
         self._toggle_used_column()
         self._toggle_init_ret_columns()  # hidden by default
 
-        # Footer with status
         footer = ttk.Frame(self)
         footer.pack(fill=tk.X, padx=5, pady=(2, 5))
 
@@ -769,7 +728,7 @@ class AddressPanel(ttk.Frame):
         self._selected_row_idx: int | None = None
         self._selected_row_visual_offset = None
 
-        # Styler will be initialized after load_data() populates self.rows
+        # initialize_from_view() creates the styler once self.rows is set
         self._styler: AddressRowStyler | None = None
 
         self._create_widgets()
@@ -795,7 +754,6 @@ class AddressPanel(ttk.Frame):
         """
         if self._styler:
             if modified_rows is not None:
-                # Incremental update - only refresh modified rows
                 self._styler.update_rows_styling(modified_rows)
             else:
                 # Full refresh (for filter changes, etc.)
@@ -816,18 +774,16 @@ class AddressPanel(ttk.Frame):
             List of display values for the row's columns
         """
 
-        # Used column display
         used_display = "\u2713" if row.used else ""
 
-        # Init value: logic to determine if we show "-", Checkbox (bool), or Text
+        # The Init Value cell shows "-", a checkbox (a bool) or text
         paired_row = find_paired_row(row, self.rows)
         effective_retentive = paired_row.retentive if paired_row else row.retentive
 
-        # If Retentive is ON and not exempt, force display to "-"
+        # Show "-" when Retentive is on, except on types whose initial value cannot be edited
         if effective_retentive and row.memory_type not in NON_EDITABLE_TYPES:
             init_value_display = "-"
         else:
-            # Otherwise show the underlying value
             # For BIT types, return bool so tksheet knows to check/uncheck the checkbox
             if row.data_type == DataType.BIT:
                 init_value_display = row.initial_value == "1"
@@ -854,7 +810,6 @@ class AddressPanel(ttk.Frame):
         row = self.rows[data_idx]
         display_data = self._build_row_display_data(row)
 
-        # Update each cell in the row
         for col, value in enumerate(display_data):
             # Special handling for Init Value to switch between Checkbox and Text
             if col == self.COL_INIT_VALUE:
@@ -862,10 +817,8 @@ class AddressPanel(ttk.Frame):
                 self.sheet.delete_checkbox(data_idx, col)
 
                 if value == "-":
-                    # Just set the text "-"
                     self.sheet.set_cell_data(data_idx, col, value)
                 elif row.data_type == DataType.BIT:
-                    # It's a BIT type and not masked -> Create Checkbox
                     is_checked = value is True
                     state = "normal" if row.can_edit_initial_value else "readonly"
                     self.sheet.create_checkbox(
@@ -878,7 +831,6 @@ class AddressPanel(ttk.Frame):
                     # Also set the data model to the boolean value
                     self.sheet.set_cell_data(data_idx, col, is_checked)
                 else:
-                    # Standard value (Word/Float/Text) -> Just set data
                     self.sheet.set_cell_data(data_idx, col, value)
             else:
                 self.sheet.set_cell_data(data_idx, col, value)
@@ -919,10 +871,8 @@ class AddressPanel(ttk.Frame):
         if type_key not in self.section_boundaries:
             return False
 
-        # Get the row index where this section starts
         row_idx = self.section_boundaries[type_key]
 
-        # Find the display index for this row
         if row_idx in self._displayed_rows:
             display_idx = self._displayed_rows.index(row_idx)
         else:
@@ -953,15 +903,12 @@ class AddressPanel(ttk.Frame):
 
         This sets up the full dataset and creates cell-specific checkboxes.
         """
-        # Build and set all data at once
         data = [self._build_row_display_data(row) for row in self.rows]
 
         self.sheet.set_sheet_data(data, reset_col_positions=False)
         self.sheet.set_index_data([row.display_address for row in self.rows])
 
-        # Create checkboxes
         for data_idx, row in enumerate(self.rows):
-            # Retentive checkbox
             self.sheet.create_checkbox(
                 r=data_idx,
                 c=self.COL_RETENTIVE,
@@ -969,7 +916,6 @@ class AddressPanel(ttk.Frame):
                 state="normal" if row.can_edit_retentive else "readonly",
                 text="",
             )
-            # Initial value checkbox
             if row.data_type == DataType.BIT:
                 init_val = data[data_idx][self.COL_INIT_VALUE]
                 if init_val != "-":
@@ -980,24 +926,23 @@ class AddressPanel(ttk.Frame):
                         state="normal" if row.can_edit_initial_value else "readonly",
                         text="",
                     )
-            # Make the cells that the store ignores read-only
+            # Make read-only the cells whose edits _on_sheet_modified ignores
             if not row.can_edit_retentive:
                 self.sheet.readonly_cells(data_idx, self.COL_RETENTIVE)
             if not row.can_edit_initial_value:
                 self.sheet.readonly_cells(data_idx, self.COL_INIT_VALUE)
 
     def initialize_from_view(self, rows: list):
-        """Initializes the panel with row data and sets up styling.
+        """Initialize the panel with row data and set up styling.
 
-        Note: Validation is handled by edit_session during data loading,
-        so rows are already validated when this is called.
+        The store validates the rows when it loads them, so they are already validated
+        when this is called.
         """
         self.rows = rows
 
         self._populate_sheet_data()
         self._apply_filters()
 
-        # Initialize styler with store reference
         self._styler = AddressRowStyler(
             sheet=self.sheet,
             store=self._store,
@@ -1012,10 +957,8 @@ class AddressPanel(ttk.Frame):
         Call this when AddressRow objects have been updated externally
         to sync the sheet's cell data.
 
-        Note: Validation is handled by edit_session, so this only refreshes
-        the display without re-validating.
+        The store validates rows itself, so this method only refreshes the display.
         """
-        # Update all row displays to sync AddressRow data to sheet cells
         for data_idx in range(len(self.rows)):
             self._update_row_display(data_idx)
 
@@ -1025,7 +968,7 @@ class AddressPanel(ttk.Frame):
         """Refresh only specific rows after external data changes.
 
         More efficient than refresh_from_external() when only a few rows changed.
-        Used by observer callbacks to handle targeted updates from edit_session.
+        The window calls it when the store reports which rows changed.
 
         Args:
             addr_keys: Set of address keys that changed
@@ -1036,17 +979,15 @@ class AddressPanel(ttk.Frame):
         # self.rows is the store's unified view list. The store refreshes it from
         # visible_state before it notifies observers.
 
-        # Convert addr_keys to row indices in this panel
         row_indices = self._keys_to_indices(addr_keys)
 
         if not row_indices:
             return
 
-        # Update display for affected rows only
         for data_idx in row_indices:
             self._update_row_display(data_idx)
 
-        # Refresh styling for affected rows only (validation already done by edit_session)
+        # Refresh styling for the affected rows only. The store has already validated them.
         self._refresh_display(modified_rows=row_indices)
 
     def get_dirty_rows(self) -> list[AddressRow]:
@@ -1089,7 +1030,6 @@ class AddressPanel(ttk.Frame):
         Returns:
             True if address was found and scrolled to
         """
-        # Find the row index for this address
         row_idx = None
         if memory_type:
             for i, row in enumerate(self.rows):
@@ -1107,7 +1047,7 @@ class AddressPanel(ttk.Frame):
         if row_idx is None:
             return False
 
-        # Check if it's visible in current filter
+        # If the filters hide the row, clear them
         if row_idx not in self._displayed_rows:
             self.filter_var.set("")
             self.row_filter_var.set("all")
@@ -1116,7 +1056,6 @@ class AddressPanel(ttk.Frame):
         try:
             display_idx = self._displayed_rows.index(row_idx)
 
-            # Use helper function for scrolling
             self._scroll_to_row(display_idx, align_top=align_top)
 
             # Highlight the row briefly to show the user where it is
