@@ -1258,8 +1258,9 @@ class SimulationSession:
 
         The program must not run if ``program_save`` replaced a rung that ClickNick cannot read
         with an empty stand-in rung. The simulation would run without that rung and look fine.
-        A finding with no rung number does not mean a stand-in rung, because pyrung read that
-        CSV itself.
+        A finding with no rung number is not a reason. It means that laddercodec could not read
+        the program's CSV back. No stand-in rung was written, the CSV still holds every rung,
+        and pyrung parses that CSV itself.
         """
         from .ladder.program import describe_legacy_encoding, read_legacy_encodings
 
@@ -1930,7 +1931,8 @@ class SimulationSession:
             if listing.carried:
                 self._set_notice(listing.carried)
         # Read the links back with the tag names that apply after the write. A reload drops a
-        # bench link that the new program declares.
+        # bench link when the new program declares the same wiring on that feedback. It keeps
+        # a bench link when the program declares different wiring there.
         self._links_synced = False
         self._links_refetch = False
         self._fetch_links(dap, token, sync=True)
