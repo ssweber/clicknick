@@ -742,9 +742,10 @@ class DapService:
 
         *plan* is ``{forces, links, declared}`` keyed by the running program's names
         (``CarryPlan.as_dap``). Tag values, timers, counters and the mode stay. If the
-        simulation is scanning continuously, pyrung pauses it first. A reload that fails
-        changes nothing. Return ``{result, carried}``. *result* is pyrung's summary, and
-        *carried* says what became of every force, bench change and declared link.
+        simulation is scanning continuously, pyrung pauses it first. If pyrung refuses the
+        reload, nothing changes in pyrung. Return ``{result, carried}``. *result* is
+        pyrung's summary, and *carried* says what became of every force, bench change and
+        declared link.
         """
         try:
             return self._request("pyrungReload", dict(plan), timeout=60.0)

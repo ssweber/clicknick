@@ -170,7 +170,8 @@ _GENERATED_FILE_NAMES = {
     "README.pyrung.md",
 }
 #: The user's guidance files. ClickNick changes them only to put back a missing line that
-#: points to pyrung's guidance.
+#: points to pyrung's guidance. There is one exception. A file that an older pyrung wrote in
+#: full is renamed to ``*.previous.md``, and pyrung's generated file takes its place.
 _WORKSPACE_GUIDANCE_FILES = {"AGENTS.md", "README.md"}
 #: The pointer line that pyrung writes into each of them starts with this.
 _GUIDANCE_MARKER = "<!-- pyrung:guidance -->"

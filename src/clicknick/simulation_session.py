@@ -1930,9 +1930,10 @@ class SimulationSession:
             self._message("OK - the simulation runs the new program.", "progress")
             if listing.carried:
                 self._set_notice(listing.carried)
-        # Read the links back with the tag names that apply after the write. A reload drops a
-        # bench link when the new program declares the same wiring on that feedback. It keeps
-        # a bench link when the program declares different wiring there.
+        # Read the links back with the tag names that apply after the write. In a reload,
+        # pyrung drops a bench link that the new program declares with the same wiring, a
+        # bench cut whose declared link is gone, and a bench link that does not fit the new
+        # program. Reading its listing back makes the user's links the ones that it kept.
         self._links_synced = False
         self._links_refetch = False
         self._fetch_links(dap, token, sync=True)
