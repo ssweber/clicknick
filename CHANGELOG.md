@@ -22,10 +22,10 @@
 
 - After a Sync, CLICK's ladder now shows the new nicknames. If a CLICK dialog is in the way, close it and choose **Tools > Redraw Nicknames in CLICK**.
 - In CLICK 4's Receive and Send, autocomplete now appears in Starting Master Address, the status flags and Exception Response. On a Modbus TCP port it used to appear in the IP address field. Starting Master Address now offers only the memory types that the selected Function Code accepts.
-- Autocomplete now offers DS and TD nicknames in Out's Delay Setting. It no longer offers X, T or CT in Out, Set and Reset, because CLICK refuses them there.
+- Autocomplete now offers DS and TD nicknames in Out's Delay Setting. It no longer offers X, T or CT in Out, Set and Reset, because CLICK rejects them there.
 - The Simulator now starts from a PLC data file that has a DF value CLICK shows as `Err-Format`.
 - The Simulator now loads a text value of a space from a PLC data file as a space. It used to load `$20`.
-- `clicknick-cli` and the Simulator now use the name the program gives to an address that has no nickname inside a `:block` range, such as `Fill3`.
+- `clicknick-cli` and the Simulator now use the name that the program gives to an address that has no nickname inside a `:block` range, such as `Fill3`.
 - In a CLICK 4 project whose Project.ini also has an old `[PLCName]` section, ClickNick now reads the PLC name that CLICK 4 shows. It uses the workspace and Simulator settings for that name.
 - ClickNick now loads a nickname CSV that CLICK exported with a Text initial value of a comma or a double quote. It used to lose the value or misread the rows after it. A save now writes such a value so that it reads back as written.
 - When the nicknames.csv in a folder has a bad Address, a wrong Data Type or extra cells, Review Changes now names the line. It used to offer to stage the nicknames. When pyrung cannot convert the folder, the diff now says why instead of showing the rungs without their source.
