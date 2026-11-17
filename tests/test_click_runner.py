@@ -391,7 +391,7 @@ class FakeClick(cd.Desktop):
             action()
             self.events.append(event)
             if event == self.hang_on:
-                self.hung_until = time.monotonic() + self.hang_for
+                self.hung_until = cr.time.monotonic() + self.hang_for
             if event == self.surprise:
                 assert self.main is not None
                 self._window("#32770", "Set a Project Password", self.main.hwnd)
@@ -537,7 +537,7 @@ class FakeClick(cd.Desktop):
         def scanned() -> None:
             plcs.items = self.options["plc_rows"]
             if self.options["late_row"] is not None:
-                self.late_row_at = time.monotonic() + self.options["late_row"]
+                self.late_row_at = cr.time.monotonic() + self.options["late_row"]
 
         self._later("scan", scanned)
 
@@ -948,7 +948,7 @@ class FakeClick(cd.Desktop):
                 return
             if self.slow_options:
                 self.slow_options = False
-                self.busy_until = time.monotonic() + 1.5 * cr.OPTION_WAIT
+                self.busy_until = cr.time.monotonic() + 1.5 * cr.OPTION_WAIT
             self._later("option", lambda: toggle(button))
 
         for id in spec.options:
@@ -1333,7 +1333,7 @@ class FakeClick(cd.Desktop):
         ]
 
     def hung(self) -> bool:
-        return time.monotonic() < self.hung_until
+        return cr.time.monotonic() < self.hung_until
 
     def _message(self, what: str) -> bool:
         """Whether a message is answered; one sent or posted while CLICK hangs is noted."""
@@ -1390,7 +1390,7 @@ class FakeClick(cd.Desktop):
         if not self._message("LVM_GETITEMCOUNT"):
             return None
         control = self._find(hwnd)
-        if self.late_row_at is not None and time.monotonic() >= self.late_row_at:
+        if self.late_row_at is not None and cr.time.monotonic() >= self.late_row_at:
             control.items += 1
             self.late_row_at = None
         return control.items
@@ -1469,7 +1469,7 @@ class FakeClick(cd.Desktop):
 
     def idle(self, hwnd: int, timeout: float) -> bool:
         # SMTO_ABORTIFHUNG gives up at once on a hung window
-        return not self.hung() and time.monotonic() >= self.busy_until
+        return not self.hung() and cr.time.monotonic() >= self.busy_until
 
     def screenshot(self, hwnd: int, path: Path) -> bool:
         if not self.exists(hwnd):
@@ -1677,8 +1677,42 @@ def run(
     return code, result
 
 
+class VirtualClock:
+    """The runner's clock: it moves only when the runner sleeps, by the sleep, and never waits.
+
+    The fakes answer by poll count, and the runner's settle times and timeouts count
+    seconds. On a machine busy with other test runs the two drift apart on the wall
+    clock (a hold of 0.1 s ends between two polls), so a test runs on this clock and
+    gives the same answer however loaded the machine is. The timings the runner records
+    (``timings``, ``elapsed``, ``seconds``) are virtual seconds under it.
+
+    A loop that reads the clock this many times without a sleep would wait for ever, so
+    it fails the test instead.
+    """
+
+    MAX_READS_WITHOUT_SLEEP = 100_000
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+        self.reads = 0
+
+    def monotonic(self) -> float:
+        self.reads += 1
+        assert self.reads <= self.MAX_READS_WITHOUT_SLEEP, (
+            "the runner read the clock "
+            f"{self.MAX_READS_WITHOUT_SLEEP} times without sleeping: a loop that never sleeps "
+            "would wait for ever on this clock"
+        )
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.reads = 0
+        self.now += seconds
+
+
 @pytest.fixture(autouse=True)
 def fast_poll(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(cr, "time", VirtualClock())
     monkeypatch.setattr(cr, "POLL_INTERVAL", 0.001)
     monkeypatch.setattr(cr, "PLC_SETTLE", 0.02)
     monkeypatch.setattr(cr, "IMPORT_SETTLE", 0.1)
@@ -5055,6 +5089,8 @@ def test_the_allowlist_is_the_nineteen_commands():
 def test_a_process_in_the_job_dies_when_the_job_closes():
     """What keeps CLICK from outliving a runner that is killed: Windows closes the job's
     handle when the runner's process ends, however it ends."""
+    # On real time on purpose: a real child and a kernel job, which the virtual clock
+    # (``fast_poll``) does not reach
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     try:
         job = cd.kill_on_close(int(child._handle))  # pyright: ignore[reportAttributeAccessIssue]
