@@ -615,7 +615,10 @@ def capture_screen(left: int, top: int, width: int, height: int) -> bytes:
 
 
 class Win32Desktop(Desktop):
-    """The real desktop. Messages go with a timeout, so a hung CLICK cannot hang it."""
+    """The real desktop.
+
+    It posts each message or sends it with a timeout, so that a hung CLICK cannot hang it.
+    """
 
     def __init__(self) -> None:
         self._user32 = _user32()

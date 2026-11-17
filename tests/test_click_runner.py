@@ -1846,7 +1846,9 @@ def test_a_paste_that_did_not_land_aborts(tmp_path, setup, monkeypatch, empty_ma
 
 
 def test_a_saved_main_that_differs_is_reported_not_aborted(tmp_path, setup, monkeypatch):
-    """A saved main that differs from the pasted rung is reported in the result, not aborted on."""
+    """A saved main that differs from the pasted rung is reported in the result, not aborted on.
+
+    What CLICK makes of a rung is what a run is for."""
     csv, exe = setup
     other = read_csv(csv)
     other[0] = empty_rung("CLICK changed it")
@@ -2112,9 +2114,10 @@ def test_an_unexpected_dialog_after_saving_is_not_answered(tmp_path, setup):
     ],
 )
 def test_a_click_error_box_aborts_with_its_code(tmp_path, setup, event, step):
-    """An error box with PTC-013 during connect (live run 3) aborts the run.
+    """A CLICK error box at connect, paste, save or disconnect aborts the run with its code.
 
-    Nothing is pressed in the box and nothing is retried."""
+    The box is the one that live run 3 met during connect (PTC-013). Nothing is pressed in the
+    box and nothing is retried."""
     csv, exe = setup
     fake = FakeClick(tmp_path, error_on=event)
     out = tmp_path / "out"
@@ -2554,7 +2557,9 @@ def test_a_hung_click_is_dumped_without_a_message_and_ended(tmp_path, setup, mon
 
 
 def test_a_status_bar_out_of_reach_leaves_the_connection_unconfirmed(tmp_path, setup):
-    """Win32Desktop.status_bar refuses a buffer a 32-bit CLICK cannot reach, and logs it once."""
+    """Win32Desktop.status_bar refuses a buffer that a 32-bit CLICK cannot reach.
+
+    The runner logs the refusal once and leaves the connection unconfirmed."""
     csv, exe = setup
     fake = FakeClick(tmp_path)
 
@@ -3445,9 +3450,10 @@ def test_a_field_an_option_opens_is_filled_once_it_opens(tmp_path, setup):
 
 
 def test_a_field_open_after_filling_without_a_press_is_not_taken(tmp_path, setup):
-    """A field that is closed as the fields are filled stays closed for the case.
+    """If a field is closed while the fields are filled, the runner treats it as closed.
 
-    Only an option or a mode pressed after the fields opens it, as before options were set."""
+    It counts the field as open only if an option or a mode pressed after the fields opened it.
+    Here the field opens with no press, and the case is not taken."""
     _, exe = setup
     fake = FakeClick(tmp_path)
 

@@ -155,7 +155,10 @@ class ConnectionSession:
     # -- Database load -----------------------------------------------------
 
     def begin_load(self) -> object:
-        """Record that a database load is starting. Its result counts while ``loads(token)``."""
+        """Record that a database load is starting, and return its token.
+
+        Use the load's result only while ``loads(token)`` returns True.
+        """
         self._load_token = token = object()
         return token
 
@@ -259,7 +262,8 @@ class ConnectionSession:
 
         analysis = self.analysis
         assert analysis is not None
-        # Read once, Workspace setup may pair another workspace on the Tk thread meanwhile.
+        # Read the workspace once. Workspace setup may pair another workspace on the Tk thread
+        # while this build runs.
         workspace_dir = self.workspace_dir
         persistent_workspace = workspace_dir is not None
         persist = workspace_dir or (request.scr_folder / "pyrung_project")
@@ -291,8 +295,8 @@ class ConnectionSession:
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
-            # Failed before build() ran, so nothing else ends the "building" status. A build
-            # queued since then will.
+            # The build failed before build() ran, so nothing else ends the "building" status.
+            # The only exception is a build that was queued after this one.
             if analysis.status is AnalysisStatus.BUILDING:
                 analysis.mark_failed(error, traceback.format_exc(), serves=request.serves)
 

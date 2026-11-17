@@ -353,7 +353,8 @@ def carry_skipped(
 class BundleComparison:
     """How a bundle compares with the program now in CLICK."""
 
-    # False if nothing was compared because what CLICK has is unknown.
+    # False if nothing was compared. That happens when what CLICK has is unknown, or when
+    # the bundle has no main.csv.
     compared: bool = False
     # Proposed program name -> its change. A program that CLICK lacks is all new rungs.
     # A program that cannot be read is absent, because its change is unknown.
@@ -854,9 +855,10 @@ class Gap:
 class RenderedDiff:
     """A program's change as text.
 
-    A line that starts with ``-`` is one of CLICK's rungs, and ``+`` a proposed rung. A
-    line that starts with a space (`` ``) is unchanged, either in a changed rung or in the
-    unchanged rungs shown around it. ``@@`` stands for unchanged rungs that are not shown.
+    A line that starts with ``-`` belongs to one of CLICK's rungs. A line that starts with
+    ``+`` belongs to a proposed rung. A line that starts with a space (`` ``) is unchanged,
+    either in a changed rung or in the unchanged rungs shown around it. ``@@`` stands for
+    unchanged rungs that are not shown.
     """
 
     lines: tuple[str, ...] = ()

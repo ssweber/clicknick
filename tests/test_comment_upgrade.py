@@ -181,7 +181,7 @@ def test_the_repairs_entry_lists_comments_to_fix_by_hand(monkeypatch):
 
 @pytest.fixture(scope="module")
 def tk_root():
-    """Return one Tk root for the whole module. A root for each test fails intermittently."""
+    """Yield one Tk root for the whole module. A root for each test fails intermittently."""
     tk = pytest.importorskip("tkinter")
     # Creating a root after another module destroyed its own sometimes fails to find
     # init.tcl. A second try works, and only a real lack of a display should skip.

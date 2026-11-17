@@ -526,7 +526,10 @@ class ClickNickApp:
         return simulation
 
     def _toggle_simulation(self) -> None:
-        """Start or stop the simulation. Only this control and teardown stop it."""
+        """Start or stop the simulation from the Test group's Start/Stop button.
+
+        Only this button and teardown stop the simulation.
+        """
         session = self._session
         simulation = session.simulation if session is not None else None
         if simulation is not None and simulation.enabled:
@@ -1763,8 +1766,9 @@ class ClickNickApp:
     def _report_legacy_encodings(self) -> None:
         """Say once which rungs CLICK holds in an old encoding or ClickNick cannot read.
 
-        The text of a rung in an old encoding matches, so nothing else would show that CLICK
-        runs it differently, and Review Changes pastes it again. The workspace holds an
+        A rung in an old encoding reads the same as the workspace rung, so no other check
+        shows that CLICK runs it differently. This message says so, and Review Changes pastes
+        the rung again. The workspace holds an
         empty rung for each rung it cannot read, so the user must supply those from their
         own copy. The same goes for a program whose CSV laddercodec cannot read.
         """
