@@ -447,7 +447,8 @@ def _format_help() -> str:
 def _no_addresses_reason(ctx: DispatchContext) -> str:
     """Say why ClickNick has no addresses loaded, and what to do.
 
-    With a CLICK window connected, the text says why ClickNick has not loaded its database.
+    With a CLICK window connected, the text says why ClickNick has not loaded CLICK's database for
+    that window.
     """
     from ..connection_session import no_database_reason
 

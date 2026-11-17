@@ -49,9 +49,11 @@ and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`).
 - `no_workspace_reason` says why a command that needs the workspace cannot run. Without the database, it
   returns the text of `no_database_reason`. Otherwise it says that the build failed, is running, or has not
   started. The app's commands use it.
-- `clicknick-cli` gives the same reasons. The live server reads the session through a getter (`get_session`
-  on `DispatchContext`). A command that needs the addresses uses `no_database_reason`. A command that needs the
-  workspace uses `no_workspace_reason` when the session has no analysis.
+- `clicknick-cli` gives the same reasons as the app, except while a build runs. Then it raises
+  `WorkspaceBusyError`, the error that the workspace lock also raises. The live server reads the session through
+  a getter (`get_session` on `DispatchContext`). A command that needs the addresses uses `no_database_reason`. A
+  command that needs the workspace reports a failed build itself, and uses `no_workspace_reason` in every other
+  case without a workspace.
 - ClickNick drops a database load if its session closed, or if a CSV load or another connect cancelled it. It
   does this also when that happens during the prompt to save the data that the load replaces.
 - While a CLICK window is connected, its session's watch (`_monitor_task`) checks every 100 ms whether the window

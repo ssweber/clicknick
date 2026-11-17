@@ -202,6 +202,10 @@ def _session_in(state: str, monkeypatch) -> ConnectionSession | None:
     if state == "building":
         session.analysis = AnalysisService()
         session.analysis.mark_building()
+    elif state == "build cleared":
+        # invalidate() leaves an analysis with no workspace, as when the user pairs another one
+        session.analysis = AnalysisService()
+        session.analysis.invalidate()
     elif state.startswith("failed"):
         session.analysis = AnalysisService()
         session.analysis.mark_failed("no Scr*.tmp files" if state == "failed with reason" else "")
@@ -250,6 +254,11 @@ def test_without_addresses_a_command_says_why(monkeypatch, state, advice):
         ("load failed", f"There is no workspace. {_NOT_LOADED}."),
         (
             "not started",
+            "There is no workspace. ClickNick has not started building the workspace. Save the"
+            " project in CLICK, then try again.",
+        ),
+        (
+            "build cleared",
             "There is no workspace. ClickNick has not started building the workspace. Save the"
             " project in CLICK, then try again.",
         ),
