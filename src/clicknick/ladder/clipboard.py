@@ -61,15 +61,16 @@ def find_click_hwnd() -> int:
 
 
 def parse_click_major_version(title: str) -> int | None:
-    """CLICK's major version from its main window title, or None if the title has none."""
+    """Return CLICK's major version from its main window title, or None if the title has none."""
     match = _CLICK_VERSION_RE.search(title)
     return int(match.group(1)) if match else None
 
 
 def is_click_v4(hwnd: int | None = None) -> bool:
-    """Whether the CLICK window *hwnd* is v4 or later.
+    """Return True if the CLICK window *hwnd* is v4 or later.
 
-    None checks the window ``copy_to_clipboard`` would pick: the first CLICK found.
+    If *hwnd* is None, check the window that ``copy_to_clipboard`` would pick, which is the
+    first CLICK found.
     """
     import win32gui
 

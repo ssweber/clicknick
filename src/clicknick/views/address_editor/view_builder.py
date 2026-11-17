@@ -1,9 +1,9 @@
 """View building functions for Address Editor.
 
-build_unified_view orders the store's visible rows into the one UnifiedView
-every Address Editor panel displays. The store caches it (set_unified_view) and,
-because rows are immutable, swaps each changed row's new instance into it
-before notifying observers.
+build_unified_view orders the store's visible rows into the one UnifiedView that
+every Address Editor panel displays. The store caches the view with
+set_unified_view. Rows are immutable, so the store swaps each changed row's new
+instance into the view before it notifies observers.
 """
 
 from __future__ import annotations
