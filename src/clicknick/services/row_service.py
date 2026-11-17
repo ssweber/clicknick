@@ -72,18 +72,18 @@ class RowService:
 
     @staticmethod
     def _comment_without_block_tag(comment: str) -> str:
-        """The comment with every block tag removed, so a copy names no block.
+        """Return the comment with every block tag removed, so that a copy names no block.
 
-        Tags are removed until none is left. The space on one side of each
-        removed tag goes with it and the ends are trimmed; whitespace elsewhere
-        in the text stays as written.
+        Remove tags until none is left. The space on one side of each removed tag goes
+        with it, and the ends are trimmed. Whitespace elsewhere in the text stays as
+        written.
         """
         text = comment
         while True:
             stripped = strip_block_tag(text)
             if stripped == text:
                 break
-            # Where the tag stood: the first character the two texts differ at
+            # Find where the tag stood: the first position where the two texts differ
             at = 0
             while at < len(stripped) and at < len(text) and stripped[at] == text[at]:
                 at += 1
@@ -96,10 +96,10 @@ class RowService:
     def _set_copied_comment(
         session: EditSession, store: AddressStore, dest_key: int, comment: str
     ) -> None:
-        """Copy a comment to a destination row, keeping a block tag the destination has.
+        """Copy a comment to a destination row, keeping a block tag that the destination has.
 
-        A destination's own tag (for example the closing row of a block the
-        fill runs through) stays, with its comment, as the copy would remove it.
+        A destination's own tag stays, with its comment. For example, the closing row of
+        a block that the fill runs through keeps its tag, which the copy would remove.
         """
         if parse_block_tag(store.visible_state[dest_key].comment).tag_type is not None:
             return
@@ -107,10 +107,10 @@ class RowService:
 
     @staticmethod
     def fill_down_targets(rows: list[AddressRow]) -> list[AddressRow]:
-        """Rows below the first that Fill Down writes: the first row's memory type only.
+        """Return the rows below the first that Fill Down writes.
 
-        A T/TD or CT/CTD selection holds both types; only the source row's
-        type is numbered.
+        These are only the rows of the first row's memory type. A T/TD or CT/CTD selection
+        contains both types, and only the source row's type is numbered.
         """
         if not rows:
             return []
@@ -119,12 +119,12 @@ class RowService:
 
     @staticmethod
     def block_tag_keys(rows: list[AddressRow]) -> tuple[int, int]:
-        """Address keys that get the opening and closing tags of a block over `rows`.
+        """Return the address keys that get the opening and closing tags of a block over `rows`.
 
-        `rows` are in address order. When the selection holds both rows of an
-        interleaved pair (T and TD, CT and CTD), the tags go on the T/CT row at
-        the first and last address and the store's pair cascade writes the
-        matching `_D` tags. Otherwise they are the first and last rows.
+        `rows` are in address order. If the selection contains both rows of an interleaved
+        pair (T and TD, CT and CTD), the tags go on the T/CT row at the first and last
+        address, and the store's pair cascade writes the matching `_D` tags. Otherwise the
+        tags go on the first and last rows.
         """
         types = {r.memory_type for r in rows}
 
@@ -302,7 +302,7 @@ class RowService:
             template.append(
                 {
                     "nickname": row.nickname,
-                    # A block tag names one block; a copy would duplicate it
+                    # A block tag names one block, so a copy would duplicate it
                     "comment": RowService._comment_without_block_tag(row.comment),
                     "initial_value": row.initial_value,
                     "retentive": row.retentive,
