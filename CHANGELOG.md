@@ -23,6 +23,7 @@
 - A Sync or Save in the Address Editor no longer shows a box when it succeeds. The editor's status line says how many rows it wrote, such as "Synced 3 rows".
 - The Dataview Editor is now called the **Data View Editor**, and every title, menu and message writes **Data View** the way CLICK does.
 - About 90 messages, tooltips and help texts are reworded in shorter sentences. They say the same things as before. If a script of yours matches on ClickNick's message text, check it.
+- The Tag Browser now shows a bit's Retentive setting after a comma, as in `BIT, Retentive`. It used to show `BIT = Retentive`, which read as the bit's value. An initial value still follows `=`, as in `BIT = ON, Non-retentive`.
 
 ### Fixed
 
@@ -50,6 +51,7 @@
 - The Workspace commands and the Simulator no longer tell you to connect to a CLICK project when a CLICK window is already connected. While ClickNick reads CLICK's database, they ask you to try again when it has finished. If ClickNick did not load the database, they tell you to select the window in the CLICK Windows list. If you cancel the Name PLC prompt in Workspace setup, ClickNick no longer shows a message.
 - **Tools > Repairs > Clean MDB** and **Verify MDB & CDV** now work only on CLICK's database. When the nicknames come from a CSV file, they tell you to load the database from the CLICK window. Clean MDB used to report an error loading the CSV file as an MDB, and Verify counted the CSV rows as database addresses.
 - When ClickNick cannot build the workspace, the Workspace group now says **Could not build the workspace**, and **Help > About CLICK Project** shows the reason. It used to say "Analysis failed" or "Build failed", and the choice depended only on whether an older workspace folder existed.
+- After the Simulator writes a program, a problem with putting the switch position back now starts "The program was written". It used to say "Restoring simulator settings failed", although no saved settings were being restored.
 
 ## v0.24.1 - 2026-11-15
 
