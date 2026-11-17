@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
-# Address types each edit control accepts. For CLICK v4's Receive, Send, Out, Set and Reset they
-# are the banks the Address Picker leaves open when a field's "..." button opens it ("Address
-# Picker : Pickup Mode" greys the others), as live probes found them (2026-11-16); the other
-# lists were not probed
+# Address types each edit control accepts. For CLICK v4's Receive, Send, Out, Set and Reset,
+# they are the banks that the Address Picker leaves open when a field's "..." button opens it
+# ("Address Picker : Pickup Mode" greys the others). Live probes found them (2026-11-16).
+# The other lists were not probed.
 BITS = ["X", "Y", "C", "T", "CT", "SC"]
 COILS = ["Y", "C", "SC"]  # Out, Set and Reset
 COMPARE = ["DS", "TD", "SD", "DD", "DH", "CTD", "DF"]
@@ -16,11 +16,11 @@ EXCEPTION_CODE = ["DS", "DD"]
 
 @dataclass(frozen=True)
 class ByChoice:
-    """Address types that follow the item a drop-down list of the same dialog shows.
+    """Give the address types that follow the item a drop-down list of the same dialog shows.
 
-    *control* names the list as the overlay names controls (``ComboBox2``); *types* maps each
-    item to the address types the field takes with it. A list that cannot be read, or shows
-    another item, gives every item's types (``every``).
+    *control* names the list the way the overlay names controls (``ComboBox2``). *types* maps
+    each item to the address types that the field accepts with it. If the list cannot be
+    read, or shows another item, every item's types apply (``every``).
     """
 
     control: str
@@ -28,11 +28,11 @@ class ByChoice:
 
     @property
     def every(self) -> list[str]:
-        """The address types of all items, each once, in the order the items give them."""
+        """Return the address types of all items, each once, in the order the items give them."""
         return list(dict.fromkeys(t for types in self.types.values() for t in types))
 
     def shown(self, item: str) -> list[str]:
-        """The address types the field takes while the list shows *item*."""
+        """Return the address types that the field accepts while the list shows *item*."""
         return self.types.get(item, self.every)
 
 
@@ -61,17 +61,18 @@ DIALOG_CLASS = "#32770"
 
 
 def unprefixed(class_name: str) -> str:
-    """A window or control class name without Delphi's leading T (TEdit1 -> Edit1)."""
+    """Return a window or control class name without Delphi's leading T (TEdit1 -> Edit1)."""
     return class_name.removeprefix("T")
 
 
 def window_key(window_class: str, title: str) -> str:
-    """The CLICK_PLC_WINDOW_MAPPING key for a CLICK window.
+    """Return the CLICK_PLC_WINDOW_MAPPING key for a CLICK window.
 
-    Delphi forms are keyed by class without the leading T: every instruction dialog before
-    CLICK v4, and the Data View and Address Picker in every version. Standard dialogs all
-    share the class #32770, so they are keyed by title: the v4 instruction dialogs, and
-    Find / Replace in every version.
+    Delphi forms are keyed by class without the leading T. That covers every instruction
+    dialog before CLICK v4, and the Data View and Address Picker in every version.
+
+    Standard dialogs all share the class #32770, so they are keyed by title. That covers the
+    v4 instruction dialogs, and Find / Replace in every version.
     """
     if window_class != DIALOG_CLASS:
         return unprefixed(window_class)
@@ -80,10 +81,11 @@ def window_key(window_class: str, title: str) -> str:
     return title
 
 
-# Each CLICK window (see window_key) -> its edit controls (AHK ClassNN without the leading T)
-# -> the address types they accept, or a ByChoice for types that follow a list of the dialog.
-# A v4 dialog's edits are numbered over every Edit window in it, hidden ones and those inside
-# other controls included: Receive's and Send's IP address control holds Edit2 to Edit5
+# Each CLICK window (see window_key) maps to its edit controls (AHK ClassNN without the
+# leading T). Each control maps to the address types it accepts, or to a ByChoice for types
+# that follow a list of the dialog.
+# A v4 dialog's edits are numbered over every Edit window in it, including hidden ones and
+# those inside other controls. Receive's and Send's IP address control holds Edit2 to Edit5.
 CLICK_PLC_WINDOW_MAPPING = {
     # CLICK v2/v3 instruction dialogs (Delphi forms)
     "frmContactNO": {"Edit1": BITS},  # "Contact Normally Open"

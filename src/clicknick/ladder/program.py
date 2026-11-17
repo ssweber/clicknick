@@ -80,10 +80,10 @@ class ProgramInfo:
 
 @dataclass(frozen=True)
 class LegacyEncoding:
-    """A rung CLICK holds in a form an older laddercodec wrote, so it must be pasted again.
+    """Describe a rung that CLICK holds in a form an older laddercodec wrote.
 
-    Either CLICK runs it differently from how its CSV text reads, or (*unreadable*)
-    laddercodec cannot read one of its instructions.
+    The rung must be pasted again. Either CLICK runs it differently from how its CSV text
+    reads, or (if *unreadable* is set) laddercodec cannot read one of its instructions.
     """
 
     # The bundle names the program main.csv or subroutines/<stem>.csv
@@ -125,11 +125,11 @@ class PrepareResult:
 
 
 class NeedsClickV4Error(ValueError):
-    """The rungs use CLICK v4 instructions, but the target CLICK is older."""
+    """Raised when the rungs use CLICK v4 instructions but the target CLICK is older."""
 
 
 class UnreadableRungError(ValueError):
-    """Decoded rungs hold an instruction laddercodec cannot read, so they have no CSV."""
+    """Raised when decoded rungs hold an instruction that laddercodec cannot read."""
 
 
 # ---------------------------------------------------------------------------
@@ -142,9 +142,9 @@ _V4_ONLY_LISTED = 5
 def check_click_version(rungs: list[Rung], *, click_v4: bool, first_rung: int = 1) -> None:
     """Raise NeedsClickV4Error if *rungs* need CLICK v4 and the target is older.
 
-    An older CLICK takes a v4 rung on paste without complaint and silently
-    changes it, so this refuses before anything reaches the clipboard.
-    *first_rung* numbers the rungs in the message.
+    An older CLICK accepts a v4 rung on paste without complaint and silently changes it.
+    So this raises before anything reaches the clipboard. *first_rung* numbers the rungs in
+    the message.
     """
     if click_v4:
         return
@@ -392,7 +392,7 @@ def describe_csv(csv_path: Path, *, best_effort: bool = False) -> str:
 def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
     """Encode a CSV file and return the payload bytes.
 
-    Raises ValueError when the CSV holds no rungs: there is nothing to paste.
+    Raise ValueError if the CSV holds no rungs, because there is nothing to paste.
     """
     rungs = read_csv(csv_path, strict=not best_effort)
     if not rungs:
@@ -403,10 +403,10 @@ def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
 
 
 def _instruction_name(raw: bytes) -> str:
-    """Name the instruction an ``UnknownCondition`` holds, e.g. "Compare".
+    """Return the name of the instruction that an ``UnknownCondition`` holds, e.g. "Compare".
 
-    A Scr*.tmp gives only the name, in ASCII. The clipboard gives the whole
-    instruction, which starts with its name in UTF-16 ended by a null.
+    A Scr*.tmp stores only the name, in ASCII. The clipboard stores the whole instruction,
+    which starts with its name in UTF-16, ended by a null.
     """
     end = next((i for i in range(0, len(raw) - 1, 2) if raw[i : i + 2] == b"\0\0"), None)
     try:
@@ -417,7 +417,7 @@ def _instruction_name(raw: bytes) -> str:
 
 
 def _unreadable_instructions(rung: Rung) -> list[str]:
-    """Name each instruction of *rung* that laddercodec cannot read, once each."""
+    """Return the name of each instruction of *rung* that laddercodec cannot read, once each."""
     cells = [cell for row in rung.conditions for cell in row]
     names = (
         _instruction_name(cell.raw)
@@ -434,8 +434,8 @@ def _unreadable_detail(name: str) -> str:
 def decode_to_csv(data: bytes, path: Path) -> None:
     """Decode clipboard/program bytes and write canonical CSV.
 
-    Raises UnreadableRungError, before writing anything, when a rung holds an
-    instruction laddercodec cannot read.
+    Raise UnreadableRungError, before writing anything, if a rung holds an instruction
+    that laddercodec cannot read.
     """
     rungs = _decode_to_rungs(data)
     found = [
@@ -484,8 +484,8 @@ def _dedupe_filename_stem(stem: str, used_stems: set[str]) -> str:
 def _decode_program_recording_legacy(data: bytes) -> tuple[Program, list[Warning]]:
     """Decode one Scr*.tmp, collecting the legacy encodings laddercodec warns about.
 
-    Other warnings are passed on once decoding is done. A laddercodec too old
-    to warn about legacy encodings decodes as before and reports none.
+    Pass on warnings of other kinds once decoding is done. A laddercodec too old to warn
+    about legacy encodings decodes as before, and this function returns no legacy warnings.
     """
     legacy_type = getattr(laddercodec, "LegacyEncodingWarning", None)
     if legacy_type is None:
@@ -503,7 +503,7 @@ def _decode_program_recording_legacy(data: bytes) -> tuple[Program, list[Warning
 
 
 def _legacy_encoding(file: str, prog: Program, warning: Warning) -> LegacyEncoding:
-    """Name a legacy-encoding warning's rung the way CLICK and the bundle name it."""
+    """Return a LegacyEncoding for *warning*, naming its rung the way CLICK and the bundle do."""
     rung = getattr(warning, "rung", None)
     return LegacyEncoding(
         file=file,
@@ -516,7 +516,7 @@ def _legacy_encoding(file: str, prog: Program, warning: Warning) -> LegacyEncodi
 
 
 def empty_rung(comment: str) -> Rung:
-    """A one-row rung with no instructions, holding only *comment*."""
+    """Return a one-row rung with no instructions, holding only *comment*."""
     return Rung(
         logical_rows=1,
         conditions=[[""] * len(CONDITION_COLUMNS)],
@@ -526,14 +526,14 @@ def empty_rung(comment: str) -> Rung:
 
 
 def is_empty_rung(rung: Rung) -> bool:
-    """Whether *rung* holds only wires and no instruction, as a stand-in does."""
+    """Return True if *rung* holds only wires and no instruction, as a stand-in does."""
     return all(isinstance(cell, str) for row in rung.conditions for cell in row) and all(
         token in ("", "NOP") for token in rung.instructions
     )
 
 
 def _stand_in(rung: Rung, names: Sequence[str]) -> Rung:
-    """An empty rung, keeping the rung numbers below it, that says which rung it replaces."""
+    """Return an empty rung that says which rung it replaces, so the rung numbers below it stay."""
     lines = [STAND_IN_COMMENT, f"ClickNick cannot read its {', '.join(names)}. Paste it again."]
     if rung.comment:
         lines += ["", rung.comment]
@@ -541,9 +541,9 @@ def _stand_in(rung: Rung, names: Sequence[str]) -> Rung:
 
 
 def _replace_unreadable(file: str, prog: Program) -> tuple[list[Rung], list[LegacyEncoding]]:
-    """The program's rungs, each one laddercodec cannot read swapped for a stand-in.
+    """Return the program's rungs, with a stand-in for each rung that laddercodec cannot read.
 
-    Also returns a finding for each instruction it cannot read.
+    Also return a finding for each instruction that it cannot read.
     """
     rungs: list[Rung] = []
     found: list[LegacyEncoding] = []
@@ -563,13 +563,13 @@ def _replace_unreadable(file: str, prog: Program) -> tuple[list[Rung], list[Lega
 
 
 def is_stand_in(rung: Rung) -> bool:
-    """Whether *rung* is the empty rung program_save wrote for a rung it cannot read."""
+    """Return True if *rung* is the empty rung that program_save wrote for an unreadable rung."""
     first = (rung.comment or "").split("\n", 1)[0]
     return first in (STAND_IN_COMMENT, _OLD_STAND_IN_COMMENT) and is_empty_rung(rung)
 
 
 def unreadable_copy(file: str, program: str, exc: Exception) -> LegacyEncoding:
-    """A finding that laddercodec cannot read a whole CSV. *exc* says why."""
+    """Return a finding that laddercodec cannot read a whole CSV. *exc* says why."""
     lines = str(exc).strip().splitlines()
     reason = lines[0] if lines else type(exc).__name__
     detail = f"ClickNick cannot read CLICK's copy of this program. {reason}"
@@ -577,10 +577,10 @@ def unreadable_copy(file: str, program: str, exc: Exception) -> LegacyEncoding:
 
 
 def _read_back(path: Path, file: str, program: str) -> list[LegacyEncoding]:
-    """A finding when laddercodec cannot read the CSV just written at *path*.
+    """Return a finding if laddercodec cannot read the CSV just written at *path*.
 
-    pyrung reads CSVs on its own, so the build would not notice. Review Changes
-    would, and then it pastes the whole program again.
+    pyrung reads CSVs on its own, so the build would not notice. Review Changes would
+    notice, and then it pastes the whole program again.
     """
     try:
         read_csv(path)
@@ -592,7 +592,7 @@ def _read_back(path: Path, file: str, program: str) -> list[LegacyEncoding]:
 
 
 def write_legacy_encodings(csv_dir: Path, found: Sequence[LegacyEncoding]) -> None:
-    """Record *found* beside the bundle in *csv_dir*, or remove the record when none."""
+    """Record *found* beside the bundle in *csv_dir*, or remove the record if *found* is empty."""
     path = csv_dir / LEGACY_ENCODINGS_FILE
     if not found:
         path.unlink(missing_ok=True)
@@ -609,7 +609,7 @@ def describe_legacy_encoding(item: LegacyEncoding, *, program: bool = True) -> s
     """Say which rung holds a legacy encoding and what CLICK runs instead.
 
     ``Main Program rung 12, Math H70000: it is stored as 16-bit and CLICK runs
-    it as 4464.`` Without *program* the line starts at ``rung 12``.
+    it as 4464.`` Without *program*, the line starts at ``rung 12``.
     """
     what = " ".join(part for part in (item.instruction, item.token) if part)
     if item.rung is None and not what:
@@ -622,9 +622,9 @@ def describe_legacy_encoding(item: LegacyEncoding, *, program: bool = True) -> s
 
 
 def read_legacy_encodings(csv_dir: Path) -> tuple[LegacyEncoding, ...]:
-    """Read the legacy encodings ``program_save`` recorded beside *csv_dir*'s bundle.
+    """Read the legacy encodings that ``program_save`` recorded beside *csv_dir*'s bundle.
 
-    Empty when it found none, or when the record cannot be read.
+    Return an empty tuple if it found none, or if the record cannot be read.
     """
     try:
         payload = json.loads((csv_dir / LEGACY_ENCODINGS_FILE).read_text(encoding="utf-8"))
@@ -737,10 +737,10 @@ def prepare_rungs_load(
 ) -> PrepareResult:
     """Encode parsed rungs and provision every referenced MDB address.
 
-    Raises NeedsClickV4Error, before touching the MDB, if the rungs need a
-    newer CLICK than the target (*click_v4*). Raises UnreadableRungError for a
-    stand-in rung, whose paste would replace the rung in CLICK with an empty one.
-    Raises ValueError when there are no rungs: there is nothing to paste.
+    Raise NeedsClickV4Error, before touching the MDB, if the rungs need a newer CLICK than
+    the target (*click_v4*). Raise UnreadableRungError for a stand-in rung, because pasting
+    it would replace the rung in CLICK with an empty one. Raise ValueError if there are no
+    rungs, because there is nothing to paste.
     """
     if not rungs:
         raise ValueError("there are no rungs to copy")
@@ -841,7 +841,7 @@ def list_csv_folder(folder: Path) -> list[tuple[str, Path]]:
 def rung_fingerprint(rung: Rung) -> tuple[tuple[str, ...], ...]:
     """Serialize a rung into laddercodec's canonical CSV rows, for comparison.
 
-    Independent of how the CSV was written (rung index column, header comment).
+    The rows do not depend on how the CSV was written (rung index column, header comment).
     """
     from laddercodec.csv.writer import decoded_rung_to_rows
 
@@ -861,9 +861,9 @@ def read_csv_comment(csv_path: Path) -> str:
 
 
 def count_csv_rungs(csv_path: Path) -> int:
-    """Count rungs in a ladder CSV.  Returns 0 when it cannot be opened.
+    """Count the rungs in a ladder CSV, or return 0 if it cannot be opened.
 
-    A CSV laddercodec cannot read is counted by its rows that start a rung.
+    For a CSV that laddercodec cannot read, count the rows that start a rung.
     """
     try:
         return len(read_csv(csv_path, strict=False))

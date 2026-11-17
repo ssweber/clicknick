@@ -121,7 +121,7 @@ class AnnotationDialog(tk.Toplevel):
         kind = self._response_kind()
         for key in kind.keys if kind is not None else ():
             if key.is_flag:
-                # A required flag (toggle) is the kind itself.
+                # A required flag (toggle) is always True, because it is what defines the kind.
                 values[key.name] = key.required or bool(self._key_vars[key.name].get())
             else:
                 values[key.name] = str(self._key_vars[key.name].get()).strip()
@@ -333,7 +333,7 @@ class AnnotationDialog(tk.Toplevel):
         self._update_preview()
 
     def _on_kind_changed(self) -> None:
-        """Show the chosen kind's keys. Each key keeps its own value across kinds."""
+        """Show the keys of the chosen kind. Each key keeps its value when you switch kinds."""
         for child in self._response_frame.winfo_children():
             child.destroy()
         kind = self._response_kind()
@@ -563,7 +563,7 @@ class AnnotationDialog(tk.Toplevel):
         feedback: FeedbackType | None = None,
         responds: bool = True,
     ):
-        """*feedback* limits the kinds to bool or analog. ``None`` offers every kind.
+        """Limit the response kinds to *feedback* (bool or analog). ``None`` offers every kind.
 
         A text tag passes ``responds=False``, because no kind applies to text. The response
         row then shows only for a comment that already declares a response.
@@ -578,7 +578,7 @@ class AnnotationDialog(tk.Toplevel):
         self._free_text = free_text
         self._block_tag_str = block_tag_str
         self._meta = current_meta or TagMeta()
-        # The comment's own kind stays on offer, even when it doesn't suit the tag's type.
+        # Always offer the kind that the comment already declares, even if it does not suit the tag.
         current_kind = response_kind(meta_response(self._meta))
         self._kinds = tuple(
             kind

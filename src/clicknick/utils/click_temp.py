@@ -1,10 +1,10 @@
-"""Where CLICK keeps an open project: the ``CLICK (hwnd)`` folder in the temp folder.
+"""Locate the ``CLICK (hwnd)`` folder in the temp folder, where CLICK keeps an open project.
 
-CLICK makes one folder per window, ``CLICK ({hwnd:08X})``, holding SC_.mdb, Address.csv,
-Project.ini, the Scr*.tmp saves and the DataView folder. ClickNick looks for it under
-the Windows temp folder (GetTempPathW), and everything that looks for
-it goes through ``click_temp_dir``. Pure ``os``/``pathlib``/``ctypes``, so the
-lightweight CLI can use it.
+CLICK makes one folder per window, ``CLICK ({hwnd:08X})``. It holds SC_.mdb, Address.csv,
+Project.ini, the Scr*.tmp saves and the DataView folder. ClickNick looks for the folder
+under the Windows temp folder (GetTempPathW), and everything that looks for it goes
+through ``click_temp_dir``. The module uses only ``os``, ``pathlib`` and ``ctypes``, so
+the lightweight CLI can use it.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ def _call_with_buffer(call: Callable[[int, object], int]) -> str | None:
 
 
 def _windows_temp_path() -> str | None:
-    """The Windows temp path (GetTempPathW: TMP, then TEMP, then the user profile)."""
+    """Return the Windows temp path (GetTempPathW: TMP, then TEMP, then the user profile)."""
     try:
         import ctypes
 
@@ -42,10 +42,10 @@ def _windows_temp_path() -> str | None:
 
 
 def _long_path(path: str) -> str:
-    """*path* with 8.3 short names spelled out (GetLongPathNameW); as given if that fails.
+    """Return *path* with 8.3 short names spelled out (GetLongPathNameW), or as given on failure.
 
     TMP can hold a short name (``C:\\PROGRA~1``) while a file dialog returns the long
-    one, and paths of one file must compare equal.
+    one, so two paths to the same file must compare equal.
     """
     try:
         import ctypes
@@ -57,16 +57,16 @@ def _long_path(path: str) -> str:
 
 
 def temp_root() -> Path:
-    """The folder CLICK makes its ``CLICK (hwnd)`` folders in, in its long form.
+    """Return the folder in which CLICK makes its ``CLICK (hwnd)`` folders, in its long form.
 
-    ClickNick takes CLICK's temp folder to be the Windows temp path,
-    or Python's temp folder where Windows gives none.
+    ClickNick takes CLICK's temp folder to be the Windows temp path, or Python's temp folder
+    if Windows gives none.
     """
     return Path(_long_path(_windows_temp_path() or tempfile.gettempdir()))
 
 
 def click_temp_dir(hwnd: int) -> Path:
-    """The temp folder of the CLICK window *hwnd* (it may not exist)."""
+    """Return the temp folder of the CLICK window *hwnd*. The folder may not exist."""
     return temp_root() / f"CLICK ({hwnd:08X})"
 
 
@@ -74,10 +74,10 @@ _SCR_NAME = re.compile(r"Scr\d+\.tmp", re.IGNORECASE)
 
 
 def scr_files(folder: Path) -> list[Path]:
-    """The program files CLICK saved in *folder*: ``Scr<N>.tmp``, sorted by name.
+    """Return the program files that CLICK saved in *folder*: ``Scr<N>.tmp``, sorted by name.
 
-    A save also makes short-lived copies such as ``Scr23.tmp~RFcf1eba5.TMP``
-    (and one left behind if CLICK is killed mid-save); those are not programs.
+    A save also makes short-lived copies such as ``Scr23.tmp~RFcf1eba5.TMP``. If CLICK is
+    killed mid-save, one can be left behind. Those copies are not programs.
     """
     return sorted(
         (p for p in folder.glob("Scr*") if _SCR_NAME.fullmatch(p.name)),
