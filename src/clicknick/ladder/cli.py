@@ -379,7 +379,7 @@ def _run_guided(
                     break
                 except RuntimeError as exc:
                     print(f"  {exc}")
-                    print("  Copy the rung back and press Enter to try again, or [s]kip")
+                    print("  Copy the rung back and press Enter to retry, or [s]kip")
                     if input("  > ").strip().lower() == "s":
                         break
         results.append((name, "worked", ""))

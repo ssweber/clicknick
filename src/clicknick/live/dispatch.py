@@ -379,18 +379,16 @@ data:
     unused C1031 C1414  -> one free bit near each neighbor
 
 workspace:
-  backup                              -> copy src/plc to backup/src/plc
-                                         The backup before it moves to backup/older/<time>.
-                                         ClickNick keeps 5 backups.
-  restore                             -> replace src/plc with backup/src/plc
-                                         If src/plc has edits that no backup holds,
-                                         ClickNick backs them up first.
+  backup                              -> snapshot src/plc to backup/src/plc
+                                         (the one before moves to backup/older/<time>; 5 kept)
+  restore                             -> replace src/plc from backup/src/plc
+                                         (edits in src/plc no backup holds are backed up first)
   restore list                        -> list the older backups, newest first
   restore <time>                      -> replace src/plc from backup/older/<time>
                                          (a backup taken again takes a new name)
 
 analysis:
-  check                               -> lint src/plc with the rules of Tools > Check Program
+  check                               -> lint src/plc (Tools > Check Program rules)
 
 tags:
   tag show <tag>

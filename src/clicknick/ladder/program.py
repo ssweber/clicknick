@@ -659,7 +659,7 @@ def program_save(
     so every other rung keeps CLICK's number. So is a CSV laddercodec cannot read back.
 
     Raises FileNotFoundError if no Scr*.tmp files found.
-    Raises ValueError if none of them holds the main program (prog_idx 1).
+    Raises ValueError if no main program (prog_idx=1) found.
     """
     programs_found = scr_files(scr_folder)
     if not programs_found:
