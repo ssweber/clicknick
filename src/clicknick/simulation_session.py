@@ -987,8 +987,8 @@ class SimulationSession:
             return None
         tail = (
             f" Could not write the program: {self._write_error}. Click Restart to start a new "
-            "simulation from the workspace as it is now. It starts from power-on values, "
-            "or from your PLC data file if you chose one."
+            "simulation from the workspace as it is now (CLICK's last save and any edits). "
+            "It starts from power-on values, or from the PLC data file."
             if self._write_error
             else ""
         )

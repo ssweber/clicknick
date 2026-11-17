@@ -497,7 +497,7 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
 - CLICK comment edit + quick rename in ClickNick + Sync.
 - Remove Block leaves 'Fill' (no leading space).
 - Edit two nicknames, let CLICK save one first, Sync -> "Synced 1 changes", main window "1 tags synced".
-- Edit a nickname, save the same in CLICK, Sync -> "CLICK already had these changes; nothing to write."
+- Edit a nickname, save the same in CLICK, Sync -> "CLICK already has these changes. There is nothing to write."
 - (4b) CSV Save reports the number of rows edited.
 
 ### Tag Browser, Dataview, Overlay

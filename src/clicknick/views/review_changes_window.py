@@ -1833,7 +1833,7 @@ class ReviewChangesWindow(tk.Toplevel):
             )
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
         except RuntimeError as exc:
-            self._status_var.set(f"Clipboard error: {exc}\nIs Click running?")
+            self._status_var.set(f"Clipboard error: {exc}\nIs CLICK running?")
             return False
         except Exception as exc:
             self._status_var.set(f"Error loading {name}: {exc}")
