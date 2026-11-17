@@ -1,10 +1,10 @@
-"""A copy of what another CLICK window last saved, as a folder Review Changes compares.
+"""A copy of what another CLICK window last saved, as a folder that Review Changes compares.
 
-Comparing with another CLICK window (a sister PLC's project, say) reads its
-last save the way a folder of ladder CSVs is read: its Scr*.tmp files become
-main.csv and subroutines/, and its database's nicknames become nicknames.csv.
-The copy lives in a ClickNick folder, one per CLICK window, and is replaced
-whole each time it is taken, so it never mixes two saves.
+When you compare with another CLICK window, such as a sister PLC's project, ClickNick
+reads that window's last save the way it reads a folder of ladder CSVs. The Scr*.tmp
+files become main.csv and subroutines/, and the database's nicknames become nicknames.csv.
+The copy lives in a ClickNick folder, one per CLICK window. Each new copy replaces the
+old one whole, so a copy never mixes two saves.
 """
 
 from __future__ import annotations
@@ -28,16 +28,16 @@ def _snapshots_root() -> Path:
 
 
 def snapshot_dir(hwnd: int) -> Path:
-    """Where the copy of the CLICK window *hwnd*'s last save is kept."""
+    """Return the folder that holds the copy of the CLICK window *hwnd*'s last save."""
     return _snapshots_root() / f"CLICK ({hwnd:08X})"
 
 
 def remove_stale_snapshots(keep_hwnds: Iterable[int], keep_dirs: Iterable[Path]) -> list[Path]:
     """Delete the copies of CLICK windows other than *keep_hwnds*; return what was deleted.
 
-    A copy that is or holds one of *keep_dirs* (folders a window shows) stays, and
-    so does anything in the folder that is not a copy. A copy cut short leaves a
-    ``.CLICK (hwnd)-*`` folder behind; those go too.
+    A copy that is one of *keep_dirs*, or holds one, stays. Those are the folders that a
+    window shows. Anything in the folder that is not a copy stays too. A copy that was cut
+    short leaves a ``.CLICK (hwnd)-*`` folder behind. Those are deleted as well.
     """
     root = _snapshots_root()
     if not root.is_dir():
@@ -57,7 +57,7 @@ def remove_stale_snapshots(keep_hwnds: Iterable[int], keep_dirs: Iterable[Path])
 
 
 def _copy_nicknames(click_dir: Path, staged: Path) -> str:
-    """Write the window's nicknames beside its program; say why not, or return ""."""
+    """Write the window's nicknames beside its program. Return why not, or "" on success."""
     from ..utils.mdb_operations import MdbConnection, load_all_addresses
 
     database = click_dir / _DATABASE
@@ -66,7 +66,7 @@ def _copy_nicknames(click_dir: Path, staged: Path) -> str:
     try:
         with MdbConnection(str(database)) as conn:
             rows = load_all_addresses(conn)
-    except Exception as exc:  # The driver's own errors, a locked file
+    except Exception as exc:  # The driver's own errors, or a locked file
         return f"its nicknames were left out: {exc}"
     CsvDataSource(str(staged / _NICKNAMES)).save_changes(list(rows.values()))
     return ""
@@ -75,18 +75,19 @@ def _copy_nicknames(click_dir: Path, staged: Path) -> str:
 def snapshot_click_program(click_dir: Path, dest: Path) -> str:
     """Copy the program CLICK last saved in *click_dir*, and its nicknames, into *dest*.
 
-    *click_dir* is the CLICK window's ``CLICK (hwnd)`` temp folder. *dest* is
-    swapped for the copy only once all of it is written: the last copy is
-    renamed aside first, so a file held open in it leaves it whole. Returns
-    why the nicknames were left out ("" when they were copied); its database is
-    only needed for them. Raises FileNotFoundError when the window has nothing
-    saved, as ``program_save`` does, ValueError when the save has no main
-    program, and OSError when the last copy cannot be moved aside.
+    *click_dir* is the CLICK window's ``CLICK (hwnd)`` temp folder. This function replaces
+    *dest* with the new copy only after it has written all of it. It first renames the last
+    copy aside. A file that is held open in the last copy then leaves that copy whole.
+
+    It returns the reason the nicknames were left out, or "" when it copied them. Only the
+    nicknames need the database. It raises FileNotFoundError when the window has nothing
+    saved, as ``program_save`` does. It raises ValueError when the save has no main program,
+    and OSError when it cannot move the last copy aside.
     """
     from ..ladder.program import program_save
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-    # A copy left behind, or one a file is held open in, must not fail a good copy
+    # A copy that is left behind, or that has a file held open in it, must not fail a good copy
     with TemporaryDirectory(
         prefix=f".{dest.name}-", dir=dest.parent, ignore_cleanup_errors=True
     ) as stage_root:

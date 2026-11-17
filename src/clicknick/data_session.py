@@ -1,10 +1,10 @@
 """Data session: the loaded address data and everything bound to it.
 
-One home for "which store is current". The AddressStore, the Dataview model
-built on it, and the editor windows showing it all belong to one DataSession.
-CSV and database data are both a DataSession. Loading different data closes
-this session (prompting about unsaved edits) and opens a new one, so no window
-or model can keep pointing at a replaced store.
+A DataSession is the one place that knows which store is current. The AddressStore, the
+Dataview model built on it, and the editor windows that show it all belong to one
+DataSession. CSV data and database data are both a DataSession. When you load different
+data, ClickNick closes the current session, prompting about unsaved edits, and opens a
+new one. No window or model can keep pointing at a replaced store.
 """
 
 from __future__ import annotations
@@ -30,13 +30,13 @@ class EditorWindow(Protocol):
 
 class AddressEditor(EditorWindow, Protocol):
     def commit_open_cell_editor(self) -> bool:
-        """Make text typed in an open cell editor an edit; False if it would not commit."""
+        """Turn text typed in an open cell editor into an edit. Return False if it cannot commit."""
         ...
 
 
 class DataviewWindow(EditorWindow, Protocol):
     def commit_open_cell_editor(self) -> bool:
-        """Make text typed in an open cell editor an edit; False if it would not commit."""
+        """Turn text typed in an open cell editor into an edit. Return False if it cannot commit."""
         ...
 
     def refresh_file_list(self) -> None: ...
@@ -56,7 +56,7 @@ def _close_quietly(window: EditorWindow) -> None:
 
 
 class DataSession:
-    """Owns the current AddressStore and the windows and models bound to it."""
+    """Own the current AddressStore and the windows and models bound to it."""
 
     def __init__(self, store: AddressStore) -> None:
         self.store = store
@@ -68,12 +68,12 @@ class DataSession:
 
     @property
     def editors(self) -> tuple[AddressEditor, ...]:
-        """Open Address Editor windows."""
+        """Return the open Address Editor windows."""
         return tuple(self._editors)
 
     @property
     def dataview_window(self) -> DataviewWindow | None:
-        """The open Dataview Editor window, if any (only one at a time)."""
+        """Return the open Dataview Editor window, or None. Only one can be open at a time."""
         return self._dataview_window
 
     @property
@@ -96,9 +96,9 @@ class DataSession:
             self._dataview_window = None
 
     def commit_open_cell_editors(self) -> bool:
-        """Make text still typed in Address Editor cells edits; False if a cell won't commit.
+        """Turn text still typed in Address Editor cells into edits. Return False if a cell fails.
 
-        Every editor is tried, even after one fails.
+        This method tries every editor, even after one fails.
         """
         committed = [editor.commit_open_cell_editor() for editor in self._editors]
         return all(committed)
@@ -106,11 +106,11 @@ class DataSession:
     def _confirm_close(self, parent: tk.Misc | None) -> bool:
         from tkinter import messagebox
 
-        # Text still in a cell editor is an edit; a cell that won't commit stops the close.
+        # Text still in a cell editor is an edit. A cell that cannot commit stops the close.
         if not self.commit_open_cell_editors():
             return False
 
-        # Editor windows are Tk Toplevels; the protocols only name what we call.
+        # Editor windows are Tk Toplevels. The protocols only name the methods we call.
         window = self._dataview_window
         if window is not None and not window.commit_open_cell_editor():
             return False
@@ -153,9 +153,8 @@ class DataSession:
     def close(self, parent: tk.Misc | None = None, *, prompt_save: bool = True) -> bool:
         """Close every window and stop monitoring the store.
 
-        With prompt_save, unsaved Dataview and address edits are offered for
-        saving first. Returns False, with nothing closed, if the user cancels
-        or a save fails.
+        With prompt_save, ClickNick first offers to save unsaved Dataview and address edits.
+        If the user cancels or a save fails, this method closes nothing and returns False.
         """
         if prompt_save and not self._confirm_close(parent):
             return False

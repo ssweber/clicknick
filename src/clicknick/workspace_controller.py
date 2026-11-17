@@ -1,9 +1,9 @@
 """The main window's Workspace: its status, its folder, Workspace setup and its commands.
 
-The facts live elsewhere: the connected session (``ClickNickApp._session``) holds the
-workspace pairing, the setup window and the choice not applied yet; its analysis holds
-the build. ``WorkspaceController`` reads them through the app each time, so it follows
-a project change, and keeps only the Open Workspace menu entries it updates and
+The facts live elsewhere. The connected session (``ClickNickApp._session``) holds the
+workspace pairing, the setup window and the choice that is not applied yet. Its analysis
+holds the build. ``WorkspaceController`` reads them through the app each time, so it
+follows a project change. It keeps only the Open Workspace menu entries that it updates and
 the setup window's list of workspaces (``_config_combobox``).
 """
 
@@ -26,15 +26,15 @@ if TYPE_CHECKING:
 
 
 class WorkspaceHost(Protocol):
-    """What WorkspaceController uses of the app (``ClickNickApp``)."""
+    """Name the parts of the app (``ClickNickApp``) that WorkspaceController uses."""
 
     root: tk.Tk
     _live_server: LiveServer | None
-    # Shown in Workspace setup: the details the main window shows too
+    # The details that Workspace setup shows. The main window shows them too.
     plc_name_var: tk.StringVar
     mirror_setup_status_var: tk.StringVar
     mirror_detail_var: tk.StringVar
-    # Workspace setup's form: the workspace chosen and the action that applies it
+    # Workspace setup's form: the workspace that was chosen and the action that applies it
     mirror_project_selection_var: tk.StringVar
     mirror_location_selection_var: tk.StringVar
     workspace_setup_action_var: tk.StringVar
@@ -54,20 +54,20 @@ class WorkspaceHost(Protocol):
 
 
 class WorkspaceController:
-    """The connected project's workspace, as the main window shows and changes it."""
+    """Show and change the connected project's workspace for the main window."""
 
     def __init__(self, app: WorkspaceHost) -> None:
         self._app = app
-        # Each menu's Open Workspace entry, as (menu, index): it follows the workspace
+        # Each menu's Open Workspace entry, as (menu, index). Each entry follows the workspace.
         self._open_entries: list[tuple[tk.Menu, int]] = []
-        # Workspace setup's list of known workspaces, once the window was built
+        # Workspace setup's list of known workspaces, set once the window has been built
         self._config_combobox: ttk.Combobox | None = None
 
     # -- Status and folders --------------------------------------------------
 
     @property
     def pairing(self) -> WorkspacePairing:
-        """The connected project's durable workspace, as its session holds it."""
+        """Return the connected project's durable workspace, as its session holds it."""
         from .services.workspace_mirror import WorkspacePairing
 
         session = self._app._session
@@ -84,24 +84,24 @@ class WorkspaceController:
         )
 
     def source_dir(self) -> Path | None:
-        """The workspace the last build published, if any."""
+        """Return the workspace that the last build published, or None."""
         session = self._app._session
         analysis = session.analysis if session else None
         return analysis.project_dir if analysis else None
 
     def configured_dir(self) -> Path | None:
-        """The paired durable workspace's folder, if one is paired."""
+        """Return the paired durable workspace's folder, or None if none is paired."""
         config = self.pairing.config
         return config.workspace_path if config is not None else None
 
     def display_dir(self) -> Path | None:
-        """Return the active path, or its configured target while rebuilding."""
+        """Return the active path, or the configured target while a rebuild runs."""
         return self.source_dir() or self.configured_dir()
 
     def plc_name(self) -> str | None:
         """Return CLICK's configured PLC name from its active temp workspace.
 
-        None when the project has no name or its Project.ini cannot be read.
+        Return None when the project has no name or its Project.ini cannot be read.
         """
         session = self._app._session
         return session.plc_name() if session is not None else None
@@ -113,7 +113,7 @@ class WorkspaceController:
         return get_workspace_directory_info(self.pairing.config, self.source_dir())
 
     def earlier_save_build_error(self) -> str | None:
-        """The build's error when it failed and the workspace is an earlier save's, else None."""
+        """Return the build's error if it failed and the workspace is an old save's, else None."""
         from .services.analysis_service import AnalysisStatus
 
         session = self._app._session
@@ -182,7 +182,7 @@ class WorkspaceController:
         if success:
             if app._session is not None:
                 app._session.record_rung_stage(0)
-            # The edits were thrown away: so is the window offering to paste them.
+            # The edits were thrown away, so close the window that offers to paste them.
             app._close_workspace_reviews()
             app._update_status("Workspace reloaded from CLICK", "connected")
             app._request_ui_refresh()
@@ -248,18 +248,21 @@ class WorkspaceController:
     # -- Workspace setup -----------------------------------------------------
 
     def _setup_parent(self):
-        """Workspace setup's window while it is open (its dialogs' parent), else the main one."""
+        """Return Workspace setup's window while it is open, else the main window.
+
+        The returned window is the parent of the setup dialogs.
+        """
         session = self._app._session
         window = session.setup_window if session is not None else None
         return window or self._app.root
 
     def _setup_unchanged(self, session: ConnectionSession, window) -> bool:
-        """Whether *session* is still the connected one, with Workspace setup's *window*.
+        """Return True when *session* is still the connected one and *window* is its setup window.
 
-        A dialog runs Tk's loop: CLICK's window can close or show another project
-        meanwhile, closing the session and its setup window. Workspace setup acts
-        after a dialog only when this holds, so it never writes one project's
-        choice into another's session, nor parents a dialog to a closed window.
+        A dialog runs Tk's loop. While it runs, CLICK's window can close or show another
+        project, which closes the session and its setup window. Workspace setup acts after a
+        dialog only when this check passes. It therefore never writes one project's choice
+        into another project's session, and never parents a dialog to a closed window.
         """
         return session is self._app._session and session.setup_window is window
 
@@ -283,7 +286,7 @@ class WorkspaceController:
         window = session.setup_window
         parent = self._setup_parent()
         while True:
-            # Checked before each prompt too: the error box before it is a dialog
+            # Check before each prompt too, because the error box before it is a dialog.
             if not self._setup_unchanged(session, window):
                 return None
             value = simpledialog.askstring(
@@ -451,7 +454,7 @@ class WorkspaceController:
         mirror_path = config.workspace_path.resolve()
         source = self.source_dir()
         changing_location = source is not None and source.resolve() != mirror_path
-        # Refused before asking for a PLC name, which is written into CLICK's folder
+        # Refuse before asking for a PLC name, because the name is written into CLICK's folder.
         build_error = self.earlier_save_build_error()
         if build_error is not None and changing_location:
             messagebox.showerror(
@@ -611,7 +614,7 @@ class WorkspaceController:
     def open_setup_window(self) -> None:
         """Show workspace details before offering setup or reconfiguration.
 
-        The window is the connected session's: it closes with the session.
+        The window belongs to the connected session and closes with it.
         """
         app = self._app
         session = app._session

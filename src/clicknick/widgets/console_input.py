@@ -239,7 +239,7 @@ class ConsoleInput(ttk.Combobox):
         self._on_submit = on_submit
         self._dropdown = DropdownManager(self)
 
-        # Shared with the caller when given, so it outlives this widget.
+        # If the caller passes a history, this widget shares it, so it outlives the widget.
         self._history: list[str] = history if history is not None else []
         self._history_idx: int = len(self._history)
 
@@ -262,7 +262,7 @@ class ConsoleInput(ttk.Combobox):
     # ------------------------------------------------------------------
 
     def remember(self, command: str) -> None:
-        """Add a command run from elsewhere to the history, so Up brings it back."""
+        """Add a command that was run from elsewhere to the history, so Up brings it back."""
         self._push_history(command)
 
     def submit(self) -> None:

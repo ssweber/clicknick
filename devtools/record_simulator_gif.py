@@ -88,8 +88,8 @@ from clicknick.views.simulator_window import SimulatorWindow
 PROJECT_FILE = "ClickConveyor.ckp"
 #: C0-11DD1E-D CPU (X001-X008, Y001-Y006) and a C0-08ND3 expansion (X101-X108).
 PROJECT_INI = "[SystemConfig]\nItem1=212\nItem2=8\n"
-#: Draw the UI as a 125% display does. Fonts get real extra pixels, so text stays sharp;
-#: resizing a capture would only blur it.
+#: Draw the UI as a 125% display does. Fonts get real extra pixels, so text stays sharp.
+#: Resizing a capture would only blur it.
 UI_SCALE = 1.25
 WINDOW_SIZE = (1125, 850)
 CONSOLE_HEIGHT = 350
@@ -286,7 +286,7 @@ def build_mock_project(root: Path) -> MockProject:
 
 
 def window_bounds(hwnd: int) -> tuple[int, int, int, int]:
-    """The window's visible rectangle, without the invisible resize borders."""
+    """Return the window's visible rectangle, without the invisible resize borders."""
     rect = wintypes.RECT()
     DWMWA_EXTENDED_FRAME_BOUNDS = 9
     ctypes.windll.dwmapi.DwmGetWindowAttribute(
@@ -311,7 +311,7 @@ class Frame:
 
 
 class Recorder:
-    """Grabs the window from a thread; identical frames collapse into one."""
+    """Grab the window from a thread. Identical frames collapse into one."""
 
     def _run(self) -> None:
         period = 1 / CAPTURE_FPS
@@ -368,7 +368,7 @@ _ARROW = [
 
 @lru_cache
 def _pointer_sprite() -> tuple[Image.Image, tuple[int, int]]:
-    """A smooth white arrow with a dark edge and a soft shadow, and where its tip sits."""
+    """Return a smooth white arrow with a dark edge and a soft shadow, and its tip position."""
     scale = 8
     margin = 6
     side = 44 * scale
@@ -390,7 +390,7 @@ def _pointer_sprite() -> tuple[Image.Image, tuple[int, int]]:
 
 @lru_cache
 def _dot_mask(radius: int, alpha: float) -> Image.Image:
-    """A smooth-edged circle, drawn large and scaled down (Pillow draws without antialiasing)."""
+    """Return a smooth-edged circle, drawn large and scaled down since Pillow does not antialias."""
     scale = 4
     side = radius * 2 * scale
     mask = Image.new("L", (side, side), 0)
@@ -420,7 +420,7 @@ def _draw_pointer(image: Image.Image, pointer: tuple[int, int], click: float | N
 
 
 def _palette_sheet(samples: list[Image.Image]) -> Image.Image:
-    """The samples, plus copies dotted all over, so the palette has the blended colors too."""
+    """Return the samples plus dotted copies, so the palette has the blended colors too."""
     width, height = samples[0].size
     dotted: list[Image.Image] = []
     for sample, color, alpha in (
@@ -441,9 +441,10 @@ def _palette_sheet(samples: list[Image.Image]) -> Image.Image:
 
 
 def _exact_palette(sheet: Image.Image, colors: int) -> Image.Image:
-    """The Simulator's own colors, then the most used, so flat UI colors stay exact.
+    """Build a palette from the Simulator's own colors, then add the most used colors.
 
-    The padlock and LEDs cover few pixels, so going by use alone can lose them.
+    Flat UI colors stay exact this way. The padlock and LEDs cover few pixels, so choosing by use
+    alone could lose them.
     """
     named = vars(sim_palette).values()
     chosen = {
@@ -463,7 +464,7 @@ def _exact_palette(sheet: Image.Image, colors: int) -> Image.Image:
 
 @dataclass(frozen=True)
 class Capture:
-    """A recording before encoding, so encoding can be redone without recording again."""
+    """Hold a recording before encoding, so you can encode again without recording again."""
 
     size: tuple[int, int]
     ticker: Box
@@ -488,7 +489,7 @@ class Encoding:
     fps: float = 12.0
     #: The scan counter changes every frame. Showing it this often is enough to look alive.
     ticker_fps: float = 4.0
-    #: Fewer than this roughens antialiased text edges.
+    #: The palette size. A smaller palette roughens antialiased text edges.
     colors: int = 256
     #: Final frame hold, in seconds of the finished gif.
     end_hold: float = 3.0
@@ -504,7 +505,7 @@ def _inside(inner: Box, outer: Box) -> bool:
 
 
 def _keep_frames(capture: Capture, encoding: Encoding) -> list[Frame]:
-    """Drop what no one would miss: frames too close together, and most scan-counter ticks."""
+    """Drop frames that are too close together and most scan-counter ticks."""
     size = capture.size
     frames = capture.frames
     kept = [frames[0]]
@@ -526,9 +527,9 @@ def _keep_frames(capture: Capture, encoding: Encoding) -> list[Frame]:
 
 
 def write_gif(capture: Capture, path: Path, encoding: Encoding) -> None:
-    """Encode with one shared palette, so unchanged pixels stay unchanged between frames.
+    """Encode the gif with one shared palette, so unchanged pixels stay the same between frames.
 
-    That is what lets `optimize` store them as transparent, which is most of the size saving.
+    `optimize` can then store those pixels as transparent. That is most of the size saving.
     """
     size = capture.size
     frames = _keep_frames(capture, encoding)
@@ -580,9 +581,9 @@ Scene = Iterator[float]
 
 
 class MenuLookalike:
-    """Draws a real menu's entries in a plain window, in the colors of Tk's native menus.
+    """Draw a real menu's entries in a plain window, in the colors of Tk's native menus.
 
-    Windows' popup runs its own loop until it is dismissed, which would stall a scene.
+    Windows' popup runs its own loop until it is dismissed. That would stall a scene.
     """
 
     BACKGROUND = "#f0f0f0"
@@ -621,7 +622,7 @@ class MenuLookalike:
         self.window.update()
 
     def row_center(self, label: str) -> tuple[int, int]:
-        """Screen coordinates of the middle of *label*'s row."""
+        """Return the screen coordinates of the middle of *label*'s row."""
         _index, row, _labels = self.rows[label]
         return (
             row.winfo_rootx() + row.winfo_width() // 2,
@@ -657,7 +658,7 @@ class Driver:
         return self._canvas_point((x0 + x1) / 2, (y0 + y1) / 2)
 
     def switch_point(self, address: str) -> tuple[int, int]:
-        # A Momentary input shows a pushbutton cap; its toggle knob is hidden and has no bbox.
+        # A Momentary input shows a pushbutton cap. Its toggle knob is hidden and has no bbox.
         if not self.sim.is_momentary(address):
             return self._item_point(self.win._inputs[address]["knob"])
         # Press the bezel just below the cap, so the arrow doesn't hide it lighting up.
@@ -769,7 +770,7 @@ class Driver:
         )
 
     def click_input(self) -> Scene:
-        """Click into the command line, then get the pointer off the Console's output."""
+        """Click into the command line, then move the pointer off the Console's output."""
         yield from self.move(self.input_point())
         self.recorder.show_click()
         self.win._console._console_input.focus_force()
@@ -783,7 +784,8 @@ class Driver:
     def _dropdown_above_input(self) -> None:
         """Open completions upward, as they do at the bottom of the screen.
 
-        The input is the window's last row, so they would otherwise fall outside the capture.
+        The input is the window's last row, so the completions would otherwise fall outside the
+        capture.
         """
         entry = self.win._console._console_input
         if not entry._dropdown.is_dropdown_open():
@@ -837,7 +839,7 @@ class Driver:
 
 
 def walkthrough(driver: Driver) -> Scene:
-    """Press Start and nothing happens: ask the Console why, then how, and do it on the panel."""
+    """Press Start and nothing happens. Ask the Console why, then how, and do it on the panel."""
     sim = driver.sim
     yield from driver.wait_until(lambda: sim.status is SimStatus.READY, "the simulation", 60)
     yield from driver.wait_until(lambda: sim.modbus_available, "the Modbus server", 15)
@@ -846,7 +848,7 @@ def walkthrough(driver: Driver) -> Scene:
     driver.recorder.start()
     yield 1.5
 
-    # The machine, in STOP. RUN it and press Start: nothing happens.
+    # The machine is in STOP. Switch to RUN and press Start. Nothing happens.
     yield from driver.click(driver.mode_point("run"))
     driver.leave_canvas()
     yield from driver.wait_until(lambda: sim.switch_position == "run", "RUN")
@@ -875,7 +877,7 @@ def walkthrough(driver: Driver) -> Scene:
     yield from driver.park()
     yield 3.5
 
-    # Force the motor off: the padlock shows, and the program can't change it.
+    # Force the motor off. The padlock shows, and the program can't change it.
     yield from driver.double_click(driver.output_point("Y001"))
     driver.leave_canvas()
     yield from driver.park()

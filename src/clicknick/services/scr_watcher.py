@@ -12,10 +12,10 @@ if TYPE_CHECKING:
     from ..utils.scheduling import Scheduler
 
 SCR_WATCH_INTERVAL_MS = 3000
-# After a change, checks this often until the files stop changing.
+# After a change, the watcher checks this often until the files stop changing.
 SCR_SETTLE_MS = 500
-# A save counts once this many settle checks in a row find the files unchanged
-# (about 1 s), so a pause CLICK makes between two Scr*.tmp writes is not a save.
+# A save counts once this many settle checks in a row find the files unchanged (about 1 s).
+# A pause that CLICK makes between two Scr*.tmp writes is then not a save.
 SCR_QUIET_CHECKS = 2
 
 
@@ -29,12 +29,11 @@ def _resolved(path: Path) -> Path:
 class ScrWatcher:
     """Monitors a folder's Scr*.tmp files and fires a callback on change.
 
-    Uses the same tkinter.after() polling as FileMonitor. Any change to the
-    set of Scr*.tmp files, or to one file's mtime or size, counts as a save,
-    including an earlier mtime (a copied-back file or a clock step). After a
-    change it checks again every SCR_SETTLE_MS and fires once SCR_QUIET_CHECKS
-    of those in a row find the files the same, so a save caught half written is
-    one save, not two.
+    Uses the same tkinter.after() polling as FileMonitor. A save is any change to the set of
+    Scr*.tmp files, or to one file's mtime or size. An earlier mtime counts too, for example
+    a copied-back file or a clock step. After a change, the watcher checks again every
+    SCR_SETTLE_MS. It fires once SCR_QUIET_CHECKS of those checks in a row find the files
+    the same. A save that was caught half written is therefore one save, not two.
     """
 
     def _snapshot(self) -> frozenset[tuple[str, int, int]]:
@@ -56,14 +55,14 @@ class ScrWatcher:
         self._folder = scr_folder
         self._on_changed = on_changed
         self._on_sync_status_changed = on_sync_status_changed
-        # Addresses synced into CLICK's database since CLICK last saved. A set,
-        # so syncing the same tag twice still counts it once.
+        # Addresses synced into CLICK's database since CLICK last saved. This is a set, so syncing
+        # the same tag twice counts it once.
         self._synced_keys: set[int] = set()
         self._staged_rungs: int = 0
         self._last_snapshot = self._snapshot()
-        # A change seen at the last check, not counted until it holds for one more.
+        # A change seen at the last check. It does not count until it holds for one more check.
         self._settling: frozenset[tuple[str, int, int]] | None = None
-        # Checks in a row that found _settling unchanged.
+        # The number of checks in a row that found _settling unchanged.
         self._quiet_checks = 0
         self._after_id: str | None = None
         self._active = False
@@ -84,8 +83,9 @@ class ScrWatcher:
     def watch(self, scr_folder: Path) -> None:
         """Watch another folder from now on, keeping the synced and staged counts.
 
-        The same folder spelled another way (a short 8.3 name, `..`) keeps its
-        snapshot, so a save CLICK made since the last check still counts.
+        If you pass the same folder spelled another way, such as a short 8.3 name or `..`,
+        the watcher keeps its snapshot. A save that CLICK made since the last check then
+        still counts.
         """
         if _resolved(scr_folder) != _resolved(self._folder):
             self._folder = scr_folder

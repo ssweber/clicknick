@@ -51,16 +51,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# One row's unsaved edits: content field -> the value the user set. Read-only,
-# and once _derive has run it holds only fields that differ from base.
+# One row's unsaved edits, as content field -> the value the user set. It is read-only.
+# After _derive has run, it holds only the fields that differ from base.
 RowOverride = Mapping[str, str | bool]
 
 
 def _value_differs(base_row: AddressRow, field: str, value: str | bool) -> bool:
     """Check whether setting one content field to *value* changes *base_row*.
 
-    initial_value needs the default-aware comparison rather than raw inequality -
-    see initial_values_differ.
+    initial_value needs the default-aware comparison, not plain inequality. See
+    initial_values_differ.
     """
     if field == "initial_value":
         return initial_values_differ(replace(base_row, initial_value=value), base_row)
@@ -68,13 +68,13 @@ def _value_differs(base_row: AddressRow, field: str, value: str | bool) -> bool:
 
 
 def _flag_loaded_error(row: AddressRow) -> AddressRow:
-    """Set loaded_with_error on a base row: an X/SC/SD nickname CLICK holds that breaks our rules.
+    """Return *row* with loaded_with_error set when CLICK holds a nickname that breaks our rules.
 
-    CLICK writes system nicknames (such as `log` on SC, a reserved word) that
-    ClickNick would refuse from the user; the flag exempts them while the
-    nickname stays as the database has it. Every base row passes through here
-    (load, reload, Sync), so the flag is the same whichever way the row arrived.
-    It depends on the row alone; duplicates are reported by validation.
+    This applies to X, SC and SD nicknames. CLICK writes system nicknames, such as `log` on
+    SC (a reserved word), that ClickNick would refuse from the user. The flag exempts them
+    while the nickname stays as the database has it. Every base row passes through here on
+    load, reload and Sync, so the flag is the same whichever way the row arrived. It depends
+    on the row alone. Validation reports duplicates.
     """
     flagged = False
     if row.memory_type in SYSTEM_NICKNAME_TYPES and row.nickname:
@@ -95,10 +95,10 @@ TRIM_DESCRIPTION = "Trim spaces"
 
 
 def _is_trimmed_loaded_nickname(nickname: str, base_row: AddressRow) -> bool:
-    """True when *nickname* is *base_row*'s flagged nickname as the trim on load stores it.
+    """Return True when *nickname* is *base_row*'s flagged nickname after the trim on load.
 
-    ``_IO1_Module_Error `` loaded and shown as ``_IO1_Module_Error``: the name
-    CLICK holds, without the space CLICK's editor would strip.
+    Example: ``_IO1_Module_Error `` was loaded and is shown as ``_IO1_Module_Error``. That is
+    the name CLICK holds, without the space that CLICK's editor would strip.
     """
     return (
         base_row.loaded_with_error
@@ -109,7 +109,7 @@ def _is_trimmed_loaded_nickname(nickname: str, base_row: AddressRow) -> bool:
 
 
 def _database_row(row: AddressRow, db_row: AddressRow) -> AddressRow:
-    """*row* holding *db_row*'s database fields, flagged by _flag_loaded_error."""
+    """Return *row* with *db_row*'s database fields, flagged by _flag_loaded_error."""
     return _flag_loaded_error(
         replace(
             row,
@@ -173,7 +173,7 @@ class AddressStore:
 
         # Observer callbacks - called with set of affected addr_keys
         self._observers: list[Callable[[object, set[int] | None], None]] = []
-        # Called after a Sync wrote rows into CLICK's database (add_sync_listener)
+        # Called after a Sync writes rows into CLICK's database (add_sync_listener)
         self._sync_listeners: list[Callable[[set[int]], None]] = []
 
         # Track if initial data has been loaded
@@ -201,7 +201,7 @@ class AddressStore:
 
     @property
     def is_database(self) -> bool:
-        """True when backed by CLICK's project database rather than a CSV export."""
+        """Return True when the store reads CLICK's project database rather than a CSV export."""
         return self._data_source.is_database
 
     # --- Skeleton Creation ---
@@ -301,8 +301,8 @@ class AddressStore:
                 "initial_value_valid": init_valid,
                 "initial_value_error": init_error,
             }
-            # Validation is derived state: it lives on visible rows only, never on
-            # overrides (which are user input and are captured in undo frames).
+            # Validation is derived state. It lives on visible rows only, never on overrides,
+            # because overrides are user input and undo frames capture them.
             self.visible_state[addr_key] = replace(row, **validation)
 
     def _validate_all_rows(self) -> None:
@@ -376,8 +376,8 @@ class AddressStore:
     def _merge_base_with_override(self, addr_key: int, base_row: AddressRow) -> AddressRow:
         """Apply the user's override values on top of a base row.
 
-        Fields the user did not set stay at their base values, so external DB
-        changes to them show even while the row has other pending edits.
+        Fields the user did not set stay at their base values. External database changes
+        to those fields show even while the row has other pending edits.
         """
         override = self.user_overrides.get(addr_key)
         if not override:
@@ -391,14 +391,13 @@ class AddressStore:
     def _rebase_override(self, addr_key: int) -> None:
         """Drop override fields whose value the current base row already holds.
 
-        A field base holds is not an edit: is_dirty() is presence-based, so it
-        would report the row as changed, list it under "Changed" and write it on
-        Sync while no cell differed. It gets there three ways: writing a row's
-        own value back (re-typing the same text, importing a CSV that already
-        matches the project), CLICK saving the value the user typed, and undo
-        restoring a frame recorded before a save. Once dropped, later base
-        changes to that field show through. An override with no fields left
-        is removed.
+        A field that holds the base value is not an edit. is_dirty() only checks whether an
+        override exists, so it would report the row as changed, list it under "Changed" and
+        write it on Sync, although no cell differs. An override reaches this state in three
+        ways. You write a row's own value back, by re-typing the same text or by importing a
+        CSV that already matches the project. CLICK saves the value you typed. Or undo
+        restores a frame that was recorded before a save. Once the field is dropped, later
+        base changes to it show through. An override with no fields left is removed.
         """
         override = self.user_overrides.get(addr_key)
         base_row = self.base_state.get(addr_key)
@@ -469,8 +468,8 @@ class AddressStore:
     def _keys_defining_blocks(self, names: set[str]) -> set[int]:
         """Return keys whose comment opens or self-closes a block with one of these names.
 
-        Block-name uniqueness is checked across rows, so when a block tag
-        changes, every other definition of that name must be revalidated too.
+        Validation checks block-name uniqueness across rows. When a block tag changes,
+        every other definition of that name must be validated again.
         """
         if not names:
             return set()
@@ -486,15 +485,15 @@ class AddressStore:
     def _derive(self, changed: set[int]) -> None:
         """Bring derived state up to date for changed keys, then notify.
 
-        Every path that changes the inputs (base_state, user_overrides) ends
-        here, so derived state is computed one way, in one order:
-        1. dirty: drop override fields base now holds (_rebase_override), so a
+        Every path that changes the inputs (base_state, user_overrides) ends here, so
+        derived state is always computed the same way, in this order:
+        1. dirty: drop override fields that base now holds (_rebase_override), so a
            field is dirty exactly when it is in its row's override
         2. visible = base merged with overrides
-        3. nickname diff (visible before vs after)
+        3. nickname diff (visible before and after)
         4. nickname index (duplicate checks read it, so it goes before validation)
-        5. validate changed keys, every row sharing an old or new nickname, and
-           every row defining a block whose name was added or removed
+        5. validate the changed keys, every row that shares an old or new nickname, and
+           every row that defines a block whose name was added or removed
         6. block colors, if any comment changed
         7. notify observers
 
@@ -554,25 +553,27 @@ class AddressStore:
             self._stage_trims(changed)
 
     def _stage_trims(self, keys: Iterable[int]) -> None:
-        """Stage the trim of each loaded nickname or comment with a space at either end.
+        """Stage the trim of each loaded nickname or comment that has a space at either end.
 
-        CLICK stores neither with an edge space, so a value read with one
-        (from a CSV, or a database another tool wrote) becomes an unsaved edit
-        holding the trimmed value: one undo step, "Trim spaces", that Sync
-        writes. Undo puts the spaces back, and validation flags them again.
+        CLICK stores neither with an edge space. A value that was read with one, from a CSV
+        or from a database that another tool wrote, becomes an unsaved edit that holds the
+        trimmed value. It is one undo step, "Trim spaces", and Sync writes it. Undo puts the
+        spaces back, and validation flags them again.
 
-        Only base rows in *keys* are looked at: callers pass the rows just
-        loaded, the rows a read of the data source changed, or every row after
-        a Discard, so a trim the user undid is staged again only when the data
-        source changes that row. A field the user already edits is left alone.
-        A nickname flagged ``loaded_with_error`` is trimmed too. Once trimmed
-        it keeps only the exemption of its format, and is checked for
-        duplicates as any other nickname (``_validate_row``). No SC or SD name
-        in pyclickplc's table has an edge space, so a documented one is never
-        changed; an X ``_IO`` name is generated by CLICK and is checked by no
-        table. No undo step is pushed when no row needs a trim. While an edit
-        session is open (sessions do not nest) the rows wait in
-        ``_pending_trims``, staged when that session ends or by the next call.
+        This method looks only at the base rows in *keys*. Callers pass the rows that were
+        just loaded, the rows that a read of the data source changed, or every row after a
+        Discard. A trim that the user undid is therefore staged again only when the data
+        source changes that row. A field that the user already edits is left alone.
+
+        A nickname flagged ``loaded_with_error`` is trimmed too. After the trim it keeps only
+        the exemption of its format, and ``_validate_row`` checks it for duplicates like any
+        other nickname. No SC or SD name in pyclickplc's table has an edge space, so a
+        documented name is never changed. CLICK generates the X ``_IO`` names, and no table
+        checks them.
+
+        No undo step is pushed when no row needs a trim. Edit sessions do not nest. While a
+        session is open, the rows wait in ``_pending_trims``. They are staged when that
+        session ends or by the next call.
         """
         keys = set(keys) | self._pending_trims
         self._pending_trims = set()
@@ -636,7 +637,10 @@ class AddressStore:
         )
 
     def _matching_tag_key(self, addr_key: int, tag: BlockTag) -> int | None:
-        """Key of the row whose open/close tag pairs with *tag* on *addr_key*, as rows are now."""
+        """Return the key of the row whose open/close tag pairs with *tag* on *addr_key*.
+
+        The pairing uses the rows as they are now.
+        """
         if tag.tag_type not in ("open", "close"):
             return None
         keys = self._keys_by_type.get(self.visible_state[addr_key].memory_type)
@@ -650,16 +654,16 @@ class AddressStore:
     def _apply_cascades(self, session: EditSession) -> None:
         """Write what the caller's edits imply for rows tied to the edited ones.
 
-        - Retentive changed on a T/TD (CT/CTD) row is set on its pair too; setting
-          the value the row already has changes nothing on the pair.
-        - A row whose block tag changed (old tag vs new tag, not its text) has
-          the matching open/close row's tag renamed or removed, and the T/TD
-          pair of each of the two follows (BlockService says how). A comment
-          whose tag stayed the same changes nothing else.
+        - If the caller changes Retentive on a T/TD (CT/CTD) row, the same value is set on
+          its pair. Setting the value that the row already has changes nothing on the pair.
+        - If a row's block tag changed (the tag, not the comment text), the matching
+          open/close row's tag is renamed or removed. The T/TD pair of each of those two
+          rows follows (BlockService says how). A comment whose tag stayed the same changes
+          nothing else.
 
-        What the caller set is read once, before any cascade writes a builder,
-        and a cascade never writes a field the caller set. Old tags come from
-        the visible rows: they do not change while a session is open.
+        This method reads what the caller set once, before any cascade writes a builder.
+        A cascade never writes a field that the caller set. Old tags come from the visible
+        rows, which do not change while a session is open.
         """
         caller_set = {key: builder.changes() for key, builder in session.pending.items()}
         cascaded: dict[int, str] = {}  # comments written by cascades so far
@@ -733,11 +737,10 @@ class AddressStore:
     def _freeze_session(self, session: EditSession) -> set[int]:
         """Freeze session builders' values into user_overrides.
 
-        A nickname or comment is frozen as CLICK stores it, without a space at
-        either end (trim_entry): this is the one place every edit, cascades
-        included, passes through. Values the base row already holds are kept
-        here and dropped by _derive (see _rebase_override), the one place dirty
-        is decided.
+        A nickname or comment is frozen as CLICK stores it, without a space at either end
+        (trim_entry). Every edit passes through here, cascades included. Values that the
+        base row already holds are kept here. _derive drops them (see _rebase_override),
+        and that is the one place where dirty is decided.
 
         Returns:
             Set of affected addr_keys
@@ -761,15 +764,15 @@ class AddressStore:
     def _commit_session(self, session: EditSession, description: str) -> None:
         """Commit pending changes from an edit session.
 
-        This method handles all the steps to finalize an edit session:
+        This method runs these steps:
         1. Apply cascades (T/TD sync, block tags)
-        2. Freeze builders into user_overrides, dropping values base already holds
-        3. If the overrides changed: push the undo frame (the overrides before),
-           clear redo, derive visible, index, validation and block colors, notify.
+        2. Freeze builders into user_overrides, dropping values that base already holds
+        3. If the overrides changed, push the undo frame (the overrides from before),
+           clear redo, derive visible rows, index, validation and block colors, and notify.
            A session that changes nothing is not an undo step.
 
-        If any step raises, the inputs (overrides and undo/redo stacks) are
-        restored and derived state is rebuilt from them before re-raising.
+        If any step raises, this method restores the overrides and the undo/redo stacks,
+        rebuilds derived state from them, and raises again.
         """
         saved_overrides = dict(self.user_overrides)
         saved_undo = list(self.undo_stack)
@@ -803,16 +806,14 @@ class AddressStore:
     def edit_session(self, description: str = "") -> Generator[EditSession]:
         """Context manager for making changes with undo support.
 
-        All modifications should happen within an edit_session. On a clean exit
-        (see _commit_session):
-        1. Applies cascades (T/TD sync, block tags)
-        2. Freezes builders into user_overrides, dropping values base already holds
-        3. If the overrides changed: pushes the undo frame (the overrides before),
-           clears redo, then derives visible rows, validation and block colors and
-           notifies observers. A session that changes nothing is not an undo step
-           and notifies no one.
+        Make all modifications inside an edit_session. On a clean exit (see _commit_session):
+        1. It applies cascades (T/TD sync, block tags)
+        2. It freezes builders into user_overrides, dropping values that base already holds
+        3. If the overrides changed, it pushes the undo frame (the overrides from before),
+           clears redo, derives visible rows, validation and block colors, and notifies
+           observers. A session that changes nothing is not an undo step and notifies no one.
 
-        A body that raises commits nothing.
+        If the body raises, nothing is committed.
 
         Args:
             description: Human-readable description for undo menu
@@ -985,9 +986,9 @@ class AddressStore:
         is an opening tag (<Name>) or self-closing tag (<Name />). Closing tags
         (</Name>) are NOT duplicates - they're supposed to match their opening tag.
 
-        The first definition in address order is the valid one; later ones are
-        duplicates. Deciding by position rather than edit history means the
-        result is the same after an edit as after reopening the project.
+        The first definition in address order is the valid one. Later ones are duplicates.
+        This method decides by position, not by edit history, so the result is the same after
+        an edit as after reopening the project.
 
         Args:
             block_name: The block name to check
@@ -1031,8 +1032,11 @@ class AddressStore:
             self._observers.remove(callback)
 
     def add_sync_listener(self, callback: Callable[[set[int]], None]) -> None:
-        """Call *callback* with the addr_keys written after each Sync that writes rows
-        into CLICK's database: not after a CSV save, nor one that writes nothing or fails."""
+        """Call *callback* with the addr_keys written after each Sync that writes rows.
+
+        The rows are written into CLICK's database. A CSV save, a Sync that writes nothing and
+        a Sync that fails do not call it.
+        """
         if callback not in self._sync_listeners:
             self._sync_listeners.append(callback)
 
@@ -1065,17 +1069,16 @@ class AddressStore:
     def save_all_changes(self) -> set[int]:
         """Save changes to data source.
 
-        CLICK writes SC_.mdb while it is connected, so for the database the
-        rows are read again first (as a file-monitor poll would): the rows
-        written then carry CLICK's current value for every field the user did
-        not change, and whether a row is inserted, updated or deleted is
-        decided from that read. An edit the database already holds is not
-        written. A CSV file is rewritten whole. Once rows are written into the
-        database, the sync listeners are called (``add_sync_listener``).
+        CLICK writes SC_.mdb while it is connected. For the database, this method first reads
+        the rows again, as a file-monitor poll would. The rows it writes then carry CLICK's
+        current value for every field that the user did not change. That read also decides
+        whether a row is inserted, updated or deleted. An edit that the database already holds
+        is not written. A CSV file is rewritten whole. Once rows are written into the
+        database, this method calls the sync listeners (``add_sync_listener``).
 
         Returns:
-            The addr_keys of the edited rows written: for the database, the
-            ones still edits after the fresh read
+            The addr_keys of the edited rows that were written. For the database, these are
+            the rows that are still edits after the fresh read.
 
         Raises:
             RuntimeError: The data source is read-only, or rows have validation
@@ -1119,9 +1122,9 @@ class AddressStore:
         self.undo_stack.clear()
         self.redo_stack.clear()
 
-        # The file monitor is deliberately not told about our own write. Its next
-        # poll reloads, which is a no-op for what we just saved (base already
-        # matches) and still picks up anything CLICK wrote in the meantime.
+        # The file monitor is deliberately not told about our own write. Its next poll reloads.
+        # That reload changes nothing for what we just saved, because base already matches.
+        # It still picks up anything that CLICK wrote in the meantime.
         self._derive(affected_keys)
 
         if writes_dirty_rows and dirty_keys:
@@ -1137,8 +1140,8 @@ class AddressStore:
     def discard_all_changes(self) -> None:
         """Discard all unsaved changes.
 
-        Discard is confirmed by the user and is not undoable, so it clears the
-        undo/redo history too; otherwise Undo would restore a partial snapshot.
+        The user confirms a Discard, and it cannot be undone. It therefore clears the undo/redo
+        history too. Otherwise Undo would restore a partial snapshot.
         """
         if not self.user_overrides:
             return

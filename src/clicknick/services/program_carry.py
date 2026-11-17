@@ -1,34 +1,32 @@
-"""What a write does with each force and bench link when the program changes.
+"""Decide what a write does with each force and bench link when the program changes.
 
-pyrung carries forces and bench links over a plain reload by tag name. A
-program change can rename a tag, give its name to another address or drop it,
-so :func:`plan_carry` decides, for each entry pyrung lists, which name it has
-in the new program, or that it is released. The plan is keyed by the running
-program's names and goes with the write as pyrung's ``pyrungReload`` takes it
-(:meth:`CarryPlan.as_dap`). pyrung answers with what became of each entry,
-which :meth:`CarryPlan.written` puts in words. Pure logic: no tkinter, no DAP.
+pyrung carries forces and bench links over a plain reload by tag name. A program change
+can rename a tag, give its name to another address or drop it. For each entry that pyrung
+lists, :func:`plan_carry` decides which name the entry has in the new program, or that it
+is released. The plan uses the running program's names as keys. It goes with the write in
+the form that pyrung's ``pyrungReload`` takes (:meth:`CarryPlan.as_dap`). pyrung answers
+with what became of each entry, and :meth:`CarryPlan.written` puts that in words. This
+module is pure logic. It uses no tkinter and no DAP.
 
-The rule:
+The rules:
 
-- A bench link (or cut) follows each of its names, feedback and enable, while
-  the new program still has it. A name that is gone stays on its address,
-  under the address's new name. A name that now sits on another address is
-  noted.
-- Two links that land on one feedback: the one that followed its name wins
-  and the other is dropped (released), with a note.
-- A force stays on its address, under the address's new name when its name
-  is gone (a pure rename, an unnamed address gaining a nickname included).
-- A force whose name now sits on another address stays on its address too
-  when that is hardware (X, Y and the analog channels' DF registers). On
-  internal memory it is released.
-- A link the program declares (in its feedback's comment) follows its
-  feedback's name while the new program declares a link on that name: pyrung
-  carries the coil on by name. When the name is gone, or now sits on an
-  address the new program declares no link on, the coil carries on at its
-  address, under the address's new name, timing included (``declared``).
+- A bench link (or cut) follows each of its names, the feedback and the enable, while the
+  new program still has that name. A name that is gone stays on its address, under the
+  address's new name. If a name now sits on another address, the plan adds a note.
+- If two links land on one feedback, the one that followed its name wins. The other is
+  dropped (released), with a note.
+- A force stays on its address. If its name is gone, it takes the address's new name.
+  This includes a pure rename, and an unnamed address that gains a nickname.
+- If a force's name now sits on another address, the force still stays on its own address
+  when that is hardware (X, Y and the analog channels' DF registers). On internal memory
+  the force is released.
+- A link that the program declares (in its feedback's comment) follows its feedback's name
+  while the new program declares a link on that name. pyrung carries the coil on by name.
+  If the name is gone, or now sits on an address where the new program declares no link,
+  the coil carries on at its address, under the address's new name, with its timing
+  (``declared``).
 
-Entries whose name is on no CLICK address are not the user's: pyrung carries
-them as they are.
+An entry whose name is on no CLICK address is not the user's. pyrung carries it as it is.
 """
 
 from __future__ import annotations
@@ -53,7 +51,7 @@ Section = Literal["released", "renamed", "moved"]
 
 @dataclass(frozen=True)
 class LinkTarget:
-    """A bench link's names in the new program; no *enable* for a cut."""
+    """Hold a bench link's names in the new program. A cut has no *enable*."""
 
     feedback: str
     enable: str | None
@@ -66,7 +64,7 @@ class LinkTarget:
 
 @dataclass(frozen=True)
 class CarryNote:
-    """One part of the notice: about the force on *name*, or the bench change on feedback *name*."""
+    """One part of the notice, about the force on *name* or the bench change on feedback *name*."""
 
     kind: Literal["force", "link"]
     name: str
@@ -74,18 +72,18 @@ class CarryNote:
     text: str
 
 
-#: Drops that lose nothing: the Console already removed the entry, or the
+#: Drops that lose nothing. Either the Console already removed the entry, or the
 #: program now declares the bench link itself.
 _NO_LOSS = frozenset({"not forced", "no bench change", "in program"})
-#: A declared link's coil does not move because the new program has no link
-#: like the old one there: the program changed, so that is expected.
+#: These reasons mean the new program has no link like the old one at the coil's place.
+#: The coil does not move. The program changed, so that is expected.
 _DECLARED_NO_LOSS = frozenset({"unlinked", "gone", "changed kind"})
 
 
 def _drop_line(entry: Mapping[str, Any], declared: Mapping[str, str]) -> str:
-    """An entry of pyrung's ``carried`` that could not be kept, in words; "" for none.
+    """Describe in words an entry of pyrung's ``carried`` that could not be kept, or return "".
 
-    *declared* is the plan's: where each declared link's coil was to go.
+    *declared* is the plan's. It says where each declared link's coil was to go.
     """
     if not entry.get("dropped"):
         return ""
@@ -122,13 +120,13 @@ def _render(notes: Iterable[CarryNote], *, written: bool) -> str:
 
 @dataclass(frozen=True)
 class CarryPlan:
-    """Each listed entry, by its name in the running program.
+    """Say what happens to each listed entry, keyed by its name in the running program.
 
-    *forces* maps an old tag name to its new name, or None to release it;
-    *links* an old feedback name to its new names, or None to drop it;
-    *declared* the feedback of a link the program declares to the name its
-    address has in the new program. The notes say why a force is released, an
-    entry renamed, a link moved with its names or dropped, in listing order.
+    *forces* maps an old tag name to its new name, or to None to release it. *links* maps an
+    old feedback name to its new names, or to None to drop it. *declared* maps the feedback
+    of a link that the program declares to the name that its address has in the new program.
+    The notes say, in listing order, why a force is released, which entry is renamed, and
+    which link moved with its names or was dropped.
     """
 
     forces: Mapping[str, str | None] = field(default_factory=dict)
@@ -137,7 +135,7 @@ class CarryPlan:
     notes: tuple[CarryNote, ...] = ()
 
     def as_dap(self) -> dict[str, Any]:
-        """The plan as ``pyrungReload`` takes it: ``{"forces", "links", "declared"}``."""
+        """Return the plan as ``pyrungReload`` takes it: ``{"forces", "links", "declared"}``."""
         return {
             "forces": dict(self.forces),
             "links": {
@@ -148,11 +146,11 @@ class CarryPlan:
 
     @property
     def notice(self) -> str:
-        """What the write would do, listed before the user writes; "" when nothing."""
+        """Return what the write would do, listed before the user writes, or "" for nothing."""
         return _render(self.notes, written=False)
 
     def _as_planned(self, note: CarryNote, entry: Mapping[str, Any] | None) -> bool:
-        """Whether pyrung did with the entry what the plan asked."""
+        """Return True when pyrung did with the entry what the plan asked."""
         if entry is None or entry.get("dropped"):
             return False
         to = entry.get("to")
@@ -165,10 +163,10 @@ class CarryPlan:
         return to == link.feedback and entry.get("enable") == link.enable
 
     def written(self, carried: Iterable[Mapping[str, Any]]) -> str:
-        """What the write did, from pyrung's ``carried`` report; "" when nothing.
+        """Return what the write did, from pyrung's ``carried`` report, or "" for nothing.
 
-        A note stays for each entry pyrung placed as planned, and each entry
-        it could not keep is said with pyrung's reason.
+        The result keeps a note for each entry that pyrung placed as planned. It also says
+        which entries pyrung could not keep, with pyrung's reason for each.
         """
         entries = [entry for entry in carried if isinstance(entry, Mapping)]
         outcome = {
@@ -190,22 +188,22 @@ class _Program:
         self.tags, self.keys = maps
 
     def address(self, name: str) -> str | None:
-        """The CLICK address *name* is on in this program; None for a tag on none."""
+        """Return the CLICK address that *name* is on in this program, or None for a tag on none."""
         address = normalize_address(name)
         if address is not None:
-            # An address no nickname covers keeps its address as its name.
+            # An address that no nickname covers has the address itself as its name.
             key = get_addr_key(*parse_address(address))
             return address if self.keys.get(key, address) == name else None
         key = self.tags.get(name)
         return None if key is None else format_address_display(*parse_addr_key(key))
 
     def name(self, address: str) -> str:
-        """This program's tag on *address*: its nickname, or the address itself."""
+        """Return this program's tag on *address*, which is its nickname or the address itself."""
         return self.keys.get(get_addr_key(*parse_address(address))) or address
 
 
 def address_of(name: str, maps: TagMaps) -> str | None:
-    """The CLICK address tag *name* is on in the program *maps* names; None for none."""
+    """Return the CLICK address that tag *name* is on in the program *maps* describes, or None."""
     return _Program(maps).address(name)
 
 
@@ -216,7 +214,10 @@ def _hardware(address: str, analog: Collection[str]) -> bool:
 def _force(
     name: str, old: _Program, new: _Program, analog: Collection[str]
 ) -> tuple[str | None, str]:
-    """The new name for a force on *name* (None: released) and the note when it changes."""
+    """Return the new name for a force on *name*, and the note if it changes.
+
+    The new name is None when the force is released.
+    """
     address = old.address(name)
     if address is None:
         return name, ""  # not on a CLICK address: pyrung carries it
@@ -231,7 +232,10 @@ def _force(
 
 
 def _link_name(name: str, address: str, new: _Program) -> str:
-    """One name of a bench link, on *address* now: followed, or the address's new name."""
+    """Return one name of a bench link, which is on *address* now.
+
+    The name is the old name if it was followed, or else the address's new name.
+    """
     return name if new.address(name) is not None else new.name(address)
 
 
@@ -250,13 +254,12 @@ def plan_carry(
 ) -> CarryPlan:
     """Decide what a write does with each force and bench link pyrung lists.
 
-    *old* and *new* are the tag maps of the running and the new program.
-    *forces* is pyrung's force listing (tag name -> value); *links* its bench
-    links (feedback name -> enable name, None for a cut). *analog* holds the
-    DF addresses the I/O configuration gives analog channels. *declared* holds
-    the feedbacks of the links the running program declares and runs (those
-    no bench change replaces); *linked* the feedbacks the new program declares
-    links on.
+    *old* and *new* are the tag maps of the running and the new program. *forces* is pyrung's
+    force listing (tag name -> value). *links* is its bench links (feedback name -> enable
+    name, None for a cut). *analog* holds the DF addresses that the I/O configuration gives
+    analog channels. *declared* holds the feedbacks of the links that the running program
+    declares and runs, which are the links that no bench change replaces. *linked* holds the
+    feedbacks that the new program declares links on.
     """
     before, after = _Program(old), _Program(new)
     carried_forces: dict[str, str | None] = {}
@@ -291,7 +294,7 @@ def plan_carry(
             names.append(f"the {kind} on {feedback} is now on {new_feedback}")
         if new_enable != enable:
             names.append(f"the link on {feedback} now comes from {new_enable} (was {enable})")
-        # A name followed to another address: the link now runs between other points.
+        # If a name followed to another address, the link now runs between other points.
         now = after.address(feedback) if new_feedback == feedback else feedback_at
         if now != feedback_at:
             places.append(f"the {kind} on {feedback} now feeds {now} (was {feedback_at})")
@@ -299,8 +302,8 @@ def plan_carry(
         if now != enable_at:
             places.append(f"the link on {feedback} now follows {enable} on {now} (was {enable_at})")
 
-    # A link that stayed on its address can land where another followed its name:
-    # the one that followed wins, and the other is dropped.
+    # A link that stayed on its address can land where another link followed its name.
+    # The one that followed wins, and the other is dropped.
     moved: list[CarryNote] = []
     for feedback, (names, places) in link_notes.items():
         target = carried_links[feedback]
@@ -314,8 +317,8 @@ def plan_carry(
         moved.extend(CarryNote("link", feedback, "moved", text) for text in places)
     notes.extend(moved)
 
-    # A declared link's coil follows its name while the new program declares a link
-    # on it: pyrung carries it on by name, with no plan. Otherwise it carries on on
+    # A declared link's coil follows its name while the new program declares a link on
+    # that name. pyrung carries it on by name, with no plan. Otherwise the coil stays on
     # its address, under the address's new name.
     carried_declared: dict[str, str] = {}
     for feedback in declared:
