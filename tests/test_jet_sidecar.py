@@ -432,12 +432,17 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
     gc.collect()
     connection._load_instance_database(session)
     assert not session.has_database
+    assert session.reading_database
     threads[0].join(timeout=30)
     assert not threads[0].is_alive(), "Background database load did not finish"
     assert native_threads and all(t != ui_thread for t in native_threads)
     if outcome == "cancelled":
         session.cancel_load()
+    else:
+        assert session.reading_database
     callbacks.pop(0)()
+    # Whatever the outcome, ClickNick is no longer reading the database.
+    assert not session.reading_database
     if outcome == "success":
         store = view._data.store
         assert store.loaded_row_count == 408
