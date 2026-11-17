@@ -1302,7 +1302,7 @@ def test_the_console_waits_while_the_program_is_written(simulator, ready):
     win._refresh_toolbar()
     assert str(win._restart_btn.cget("state")) == "disabled"
     win._console._submit_command_text("force C1 1")
-    assert "Send it again once it is written." in _output(win._console)
+    assert "Send the command again when the write is done." in _output(win._console)
     assert sent == []
 
     while jobs:

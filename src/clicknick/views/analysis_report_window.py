@@ -431,10 +431,16 @@ class AnalysisReportWindow:
             if data is not None:
                 self._show_data(data)
             else:
-                self._source.configure(text="Checks were not refreshed; showing previous results.")
+                self._source.configure(
+                    text="The checks did not run again. These are the results of the last run."
+                )
         except Exception as exc:
-            self._source.configure(text="Checks failed; showing previous results.")
-            messagebox.showerror("Analysis Error", f"Validation failed:\n{exc}", parent=self.window)
+            self._source.configure(
+                text="The checks stopped with an error. These are the results of the last run."
+            )
+            messagebox.showerror(
+                "Check Program", f"The checks stopped with an error:\n{exc}", parent=self.window
+            )
         finally:
             if self.window.winfo_exists():
                 self._run_btn.configure(state=tk.NORMAL, text="Run Checks")

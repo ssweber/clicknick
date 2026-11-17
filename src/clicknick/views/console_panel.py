@@ -107,11 +107,14 @@ class ConsolePanel(ttk.Frame):
 
             return send_command(self._simulation.session_name, command, on_progress=on_progress)
         except FileNotFoundError:
-            return False, "Session not available (DAP may still be starting)"
+            return False, (
+                "Could not find the running simulation. If it is still starting, wait a "
+                "moment and send the command again."
+            )
         except (ConnectionRefusedError, OSError, EOFError) as exc:
             # If the DAP is killed mid-command, send_command raises EOFError, because the
             # socket closes before the result frame arrives.
-            return False, f"Connection failed: {exc}"
+            return False, f"Lost the connection to the simulation: {exc}"
 
     def _animate_prompt(self) -> None:
         if self._destroyed or self._busy_tick < 0:
@@ -189,7 +192,8 @@ class ConsolePanel(ttk.Frame):
             # The write reads what pyrung has forced and linked. A command sent during the
             # write could change those while the write reads them.
             self._append_output(
-                "Writing the program to the simulation... Send it again once it is written.\n",
+                "ClickNick is writing the program to the simulation. Send the command again "
+                "when the write is done.\n",
                 "error",
             )
             return
@@ -360,7 +364,7 @@ class ConsolePanel(ttk.Frame):
         self._pop_btn = self._header_button(header, pop[0], self._on_pop, pop[1])
         self._copy_btn = self._header_button(
             header, _COPY_LABEL, self._copy_output,
-            "Copy output (or the current selection) to the clipboard",
+            "Copy the selected text, or all the output if nothing is selected",
         )  # fmt: skip
         self._header_button(
             header, "Workspace", self._open_project_folder, "Open the workspace folder"
