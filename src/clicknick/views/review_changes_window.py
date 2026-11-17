@@ -1736,8 +1736,10 @@ class ReviewChangesWindow(tk.Toplevel):
             return
         self._view_name, self._view_block = name, block
         if self._locked(name, block):
-            if self._pasted_already(name, block) or name in self._done:
+            if self._pasted_already(name, block):
                 why = "That difference is already pasted into CLICK, so you can no longer skip it"
+            elif name in self._done:
+                why = f"{name} is marked done, so you can no longer take or skip its differences"
             else:
                 why = (
                     f"A step of {name} is under way in CLICK. Finish it and click "

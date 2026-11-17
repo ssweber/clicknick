@@ -1809,6 +1809,24 @@ def test_skipping_what_is_left_after_a_paste_finishes_the_program(monkeypatch, c
     assert window._done == {"main.csv"}
 
 
+
+def test_a_skipped_difference_of_a_done_program_says_the_program_is_done(
+    monkeypatch, copies
+) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    window._on_action()  # Copy r1
+    window._on_action()  # Next
+    window._toggle("main.csv", 1)  # Skip r3..4
+    window._on_action()  # Next: main.csv is done
+    assert window._done == {"main.csv"}
+
+    window._toggle("main.csv", 1)  # Try to take r3..4 again
+
+    assert window._skipped_in("main.csv") == 1
+    assert _status(window) == (
+        "main.csv is marked done, so you can no longer take or skip its differences"
+    )
+
 def _three_changed(monkeypatch):
     """Return a window where every program differs from CLICK in two places: r1 and r3 are new."""
     csv_dir = Path("workspace/csv")
