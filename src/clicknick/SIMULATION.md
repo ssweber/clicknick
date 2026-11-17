@@ -54,12 +54,11 @@ refusals rely on that split.
 
 - A bench link is feedback wiring that the user adds in the Simulator and the program does not declare
   (`sim_state.BenchLink`, keyed by feedback address). Bench links are desired state, like forces. ClickNick
-  saves them. It applies them again over DAP after every launch, until the user removes one or uses "Save to
-  project". It adopts
-  them from the simulation when a frame's `linksRevision` changes, because the Console can edit them too.
+  saves them. It applies them again over DAP after every launch, until the user removes one. It adopts them
+  from the simulation when a frame's `linksRevision` changes, because the Console can edit them too.
 - "Save to project" in the Simulator window writes the link into the feedback's comment through the store
-  (`services/link_annotation.py`). After a Sync and a rebuild, pyrung drops the bench copy, because the program
-  declares the same link.
+  (`services/link_annotation.py`). It does not remove the bench link, and ClickNick keeps applying it. After a
+  Sync and a rebuild, pyrung drops the bench copy, because the program declares the same link.
 - pyrung reports tag names. ClickNick maps them with the names of the program that the simulation runs
   (`_tag_maps`). Those are the workspace's `project_tag_to_addr_key`, which the session takes at launch and at
   each write. So a rename in CLICK does not move desired state until that program is written.

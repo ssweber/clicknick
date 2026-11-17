@@ -696,10 +696,10 @@ class DapService:
         """Add or replace the bench link on *feedback*.
 
         A bench link wires a feedback to its command. The program does not declare it, and
-        ClickNick saves it and applies it to each new simulation. *feedback* and *enable* are tag names or CLICK addresses. *response*
-        holds pyrung's response keys in the form that a comment writes them, such as
-        ``(("on_delay", "2s"),)``. Return ``{text, command}``, where *command* is the
-        equivalent console line.
+        ClickNick saves it and applies it to each new simulation. *feedback* and *enable*
+        are tag names or CLICK addresses. *response* holds pyrung's response keys in the form
+        that a comment writes them, such as ``(("on_delay", "2s"),)``. Return
+        ``{text, command}``, where *command* is the equivalent console line.
         """
         arguments: dict[str, Any] = {"feedback": feedback, "enable": enable}
         if trigger is not None:

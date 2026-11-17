@@ -2,11 +2,12 @@
 
 A bench link is a change to the feedback wiring of one input that the user makes in the
 Simulator window. The program does not declare it. ClickNick saves it and applies it each
-time a simulation starts, until the user removes it or uses "Save to project". That
-turns a simulator bench link into the comment metadata that pyrung reads
-(``[link=Motor_Run, on_delay=2s, off_delay=500ms]``). After a Sync and a rebuild, the
-program declares the link. pyrung then drops the bench copy if the declared link has the
-same wiring. If the wiring differs, the bench link stays while it still fits the program.
+time a simulation starts, until the user removes it. "Save to project" writes the link
+into the comment metadata that pyrung reads
+(``[link=Motor_Run, on_delay=2s, off_delay=500ms]``). It does not remove the bench link.
+After a Sync and a rebuild, the program declares the link. pyrung then drops the bench
+copy if the declared link has the same wiring. If the wiring differs, the bench link
+stays while it still fits the program.
 
 This module has no tkinter code and no store. `linked_feedbacks` reads a workspace's
 nicknames.csv.
