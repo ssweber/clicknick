@@ -604,7 +604,7 @@ def test_waiting_is_bounded_by_the_timeout(ready):
             break
         ready.scheduler.fire(ANALYSIS_POLL_MS)
     assert not ready.sim.is_waiting, "poll loop never terminated"
-    assert "timed out" in ready.messages()
+    assert "the workspace was still not built after" in ready.messages()
     assert ready.sim.status is SimStatus.FAILED
 
 
@@ -704,7 +704,7 @@ def test_saving_the_plc_data_file_again_reloads_it(ready, tmp_path):
     os.utime(data, (later, later))  # CLICK saved the dump again
     ready.scheduler.fire(WATCH_MS)
     assert len(ready.daps) == 3
-    assert "PLC data file changed. Reloading..." in ready.messages()
+    assert "The PLC data file changed. Restarting the simulation from it..." in ready.messages()
 
 
 # ----------------------------------------------------------------------
@@ -951,8 +951,8 @@ def test_a_bench_link_the_file_cannot_hold_is_reported(ready, tmp_path):
     )
     ready.sim.set_state_location("Line1", None)
     assert ready.messages("error") == (
-        "Could not restore the bench link on DF1: no upgrade reads "
-        "profile=approach:toward=180. Dropped it."
+        "Could not restore the bench link on DF1: ClickNick cannot convert the old setting "
+        "profile=approach:toward=180. ClickNick removed it from the simulator settings."
     )
     assert ready.sim.restored_links == 1
 
@@ -1048,7 +1048,8 @@ def test_loading_plc_data_sets_switches_and_analog_values(ready, tmp_path):
     assert ready.sim.analog_value("DF1") == 6.5
     assert ready.sim.forces == {"Y001": True}, "forces stay"
     assert (
-        ready.sim.notice == "Loaded PLC data from dump.csv. The switches are set from the snapshot."
+        ready.sim.notice
+        == "Loaded PLC data from dump.csv. The switches and analog inputs now have its values."
     )
     assert ready.dap.calls[0][2]["snapshot_path"] == data
 
@@ -1374,7 +1375,10 @@ def test_saved_forces_and_links_not_on_an_address_are_reported(ready, tmp_path):
     ready.sim.set_state_location("Line1", None)
     assert ready.sim.forces == {"Y001": True}
     errors = ready.messages("error")
-    assert "Could not restore the force on Start: it is not a CLICK address. Dropped it." in errors
+    assert (
+        "Could not restore the force on Start: it is not a CLICK address. ClickNick removed it "
+        "from the simulator settings."
+    ) in errors
     assert "Could not restore the bench link on Prox: it is not a CLICK address." in errors
 
 
@@ -1825,7 +1829,7 @@ def test_a_save_during_the_write_keeps_the_old_names_and_offers_it_again(ready):
     _rebuild(ready)  # CLICK saved again before pyrung's answer was handled
     ready.scheduler.run_ready()
 
-    assert "changed while it was written" in ready.messages("error")
+    assert "The workspace was rebuilt while the program was written" in ready.messages("error")
     assert ready.sim.to_tag("X001") == "Start"
     change = ready.sim.program_change
     assert change is not None and change.cause == "save"
@@ -1965,7 +1969,7 @@ def test_a_build_after_a_write_that_raced_a_build_is_offered(ready):
     ready.sim.run_time_edit()
     _rebuild(ready)  # CLICK saved again before pyrung's answer was handled
     ready.scheduler.run_ready()
-    assert "changed while it was written" in ready.messages("error")
+    assert "The workspace was rebuilt while the program was written" in ready.messages("error")
 
     main.write_text(before, encoding="utf-8")  # a save of the program before the write
     _rebuild(ready, {"X001": "Start"}, same_program=True)
@@ -1988,7 +1992,7 @@ def test_a_build_running_when_the_write_is_answered_can_bring_another_program(re
     _rebuild(ready, saved=False)  # it built another rung
     ready.scheduler.fire(WATCH_MS)
 
-    assert "changed while it was written" in ready.messages("error")
+    assert "The workspace was rebuilt while the program was written" in ready.messages("error")
     assert ready.sim.to_tag("X001") == "Start"
     change = ready.sim.program_change
     assert change is not None and change.cause == "save"
@@ -1997,7 +2001,10 @@ def test_a_build_running_when_the_write_is_answered_can_bring_another_program(re
 
 def test_writes_that_cannot_start_say_why(ready):
     ready.sim.reload()
-    assert "Cannot write the program: the simulation is not running." in ready.messages("error")
+    assert (
+        "Cannot write the program, because the simulation is not running. Start the simulation "
+        "first."
+    ) in ready.messages("error")
 
     jobs = _queued(ready)
     ready.open()
@@ -2005,7 +2012,9 @@ def test_writes_that_cannot_start_say_why(ready):
     _rebuild(ready)
     ready.sim.write_program()
     ready.sim.reload()
-    assert "The program is being written to the simulation." in ready.messages("error")
+    assert (
+        "The program is already being written to the simulation. Wait for that write to finish."
+    ) in ready.messages("error")
     _run_jobs(ready, jobs)
     assert ready.dap.calls.count(("reload",)) == 1
 
@@ -2328,7 +2337,7 @@ def test_a_restore_request_that_goes_unanswered_does_not_stop_the_rest(ready):
     assert ("force", "C1", True) in ready.dap.calls
     assert [call[0] for call in ready.dap.calls][-2:] == ["set_mode", "continue"]
     assert ready.sim.forces == {"Y001": True, "C1": True}
-    assert "no answer for the force on Y001" in ready.messages("error")
+    assert "The simulation did not answer for the force on Y001." in ready.messages("error")
     assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
 
     _frame(ready)  # reads the links again
@@ -2665,7 +2674,7 @@ def test_a_write_pyrung_never_answers_sends_nothing_by_name(ready):
         "`force Run` would land on C2 if pyrung did load the new program"
     )
     assert ready.dap.plans[-1]["forces"] == {"Run": None}
-    assert "Which program the simulation runs is unknown" in ready.messages("error")
+    assert "ClickNick cannot tell which program it runs" in ready.messages("error")
     assert ready.sim.program_change.actions[-1] == "restart"
 
 
@@ -2757,8 +2766,8 @@ def test_a_write_pyrung_never_answers_keeps_the_switch_position_for_restart(read
 
     assert ready.sim.switch_position == "step"
     text = ready.sim.program_change.text
-    assert "it may be paused" in text
-    assert "If it runs the new program, it released the force on Run" in text
+    assert "The simulation may be paused" in text
+    assert "If the simulation runs the new program, it released the force on Run" in text
     assert ready.sim.program_change.actions[-1] == "restart"
 
     ready.sim.restart()
@@ -2891,7 +2900,9 @@ def test_a_plc_data_change_during_a_write_relaunches_once_the_write_is_answered(
 
     _data_file_saved_again(ready, data)
     assert len(ready.daps) == daps, "never in the middle of a write"
-    assert "PLC data file changed. Reloading once the program is written." in ready.messages()
+    assert (
+        "The PLC data file changed. The simulation restarts from it once the program is written."
+    ) in ready.messages()
     assert "Cannot restart" not in ready.messages("error")
 
     _run_jobs(ready, jobs)

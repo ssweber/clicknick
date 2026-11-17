@@ -134,7 +134,7 @@ def _old_profile(value: object) -> Response:
             upgraded += [token] if rewritten is None else [t.strip() for t in rewritten.split(",")]
         tokens = upgraded
     if any(token.startswith("profile=") for token in tokens):
-        raise ValueError(f"no upgrade reads profile={text}")
+        raise ValueError(f"ClickNick cannot convert the old setting profile={text}")
     pairs = (token.partition("=") for token in tokens)
     return response_of({name: new.strip() if sep else True for name, sep, new in pairs})
 
@@ -259,7 +259,7 @@ def load_state(path: Path) -> SimulatorState:
     try:
         return _parse(tomllib.loads(text))
     except tomllib.TOMLDecodeError as exc:
-        raise ValueError(f"invalid simulator state file: {path}") from exc
+        raise ValueError(f"{path} is not valid TOML: {exc}") from exc
 
 
 def _sorted_items(values: Mapping[str, object]) -> list[tuple[str, object]]:

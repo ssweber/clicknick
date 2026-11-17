@@ -649,7 +649,7 @@ class SimulationSession:
             return f"{SWITCH_LABELS[self.switch_position]}{scan_text}"
         if status is SimStatus.WAITING:
             seconds = self._waited_ms // 1000
-            return f"Building program analysis...{f' ({seconds}s)' if seconds else ''}"
+            return f"Preparing the workspace...{f' ({seconds}s)' if seconds else ''}"
         if status is SimStatus.STARTING:
             return "Starting..."
         if status is SimStatus.FAILED:
@@ -897,7 +897,7 @@ class SimulationSession:
         )
         self._schedule_save()
         self._set_notice(
-            f"Loaded PLC data from {path.name}. The switches are set from the snapshot."
+            f"Loaded PLC data from {path.name}. The switches and analog inputs now have its values."
         )
 
     def _follow_program(self) -> bool:
@@ -1008,8 +1008,8 @@ class SimulationSession:
                 reason = analysis.error or "Program conversion failed."
                 return ProgramChange(
                     "unconverted",
-                    f"CLICK's last save could not be converted ({reason}). "
-                    "The simulation still runs the previous program.",
+                    "ClickNick could not convert CLICK's last save. The simulation still runs "
+                    f"the previous program. The error was: {reason}",
                 )
             if analysis.status is not AnalysisStatus.READY:
                 return None  # The build is not finished.
@@ -1118,9 +1118,12 @@ class SimulationSession:
             if mtime is not None and (self._plc_data_mtime is None or mtime > self._plc_data_mtime):
                 self._plc_data_mtime = mtime
                 if self._writing:
-                    self._message("PLC data file changed. Reloading once the program is written.")
+                    self._message(
+                        "The PLC data file changed. The simulation restarts from it once the "
+                        "program is written."
+                    )
                 else:
-                    self._message("PLC data file changed. Reloading...")
+                    self._message("The PLC data file changed. Restarting the simulation from it...")
                 self._adopt_snapshot(self._plc_data_path)
                 self._restart_due = True
         if not self._follow_program():  # A launch also does any restart that is due.
@@ -1293,27 +1296,27 @@ class SimulationSession:
 
         if analysis is None:
             return (
-                "program analysis has not started. Connect to a Click project, "
-                "then save it in Click Software.",
+                "ClickNick has not started building the workspace. Connect to a CLICK "
+                "project, then save it in CLICK.",
                 None,
             )
         if analysis.status is AnalysisStatus.FAILED:
             return self._analysis_failure(analysis)
         if not analysis.is_available or not analysis.project_is_current:
-            return "program analysis has not finished.", None
+            return "ClickNick has not finished building the workspace.", None
         project_dir = analysis.project_dir
         if project_dir is None:
             return (
-                "no pyrung project folder was generated. "
-                "Save the project in Click Software, then retry.",
+                "ClickNick has not generated the workspace. Save the project in CLICK, then "
+                "try again.",
                 None,
             )
         # A rebuild empties this folder before it regenerates it, so the folder can exist
         # before run.py is written.
         if not (project_dir / "run.py").is_file():
             return (
-                f"the generated project at {project_dir} has no run.py. "
-                "Save the project in Click Software, then retry.",
+                f"the workspace at {project_dir} has no run.py. Save the project in CLICK, "
+                "then try again.",
                 None,
             )
         unreadable = self._unreadable_reason(project_dir / "csv")
@@ -1338,10 +1341,7 @@ class SimulationSession:
         Every path that waits for the conversion calls this method, so none waits forever.
         """
         if self._waited_ms >= ANALYSIS_TIMEOUT_MS:
-            self._fail(
-                f"timed out after {ANALYSIS_TIMEOUT_MS // 1000}s waiting for "
-                "program analysis to finish."
-            )
+            self._fail(f"the workspace was still not built after {ANALYSIS_TIMEOUT_MS // 1000} s.")
             return
         self._cancel(self._analysis_after_id)
         self._analysis_after_id = self._scheduler.after(ANALYSIS_POLL_MS, self._poll_analysis)
@@ -1383,9 +1383,9 @@ class SimulationSession:
             self._wait_for_analysis()
             return
         self._status = SimStatus.FAILED
-        self._error = f"the simulation backend failed to start: {exc}"
+        self._error = f"the simulation could not start: {exc}"
         self._error_detail = None
-        self._message(f"Simulation backend failed to start: {exc}", "error")
+        self._message(f"The simulation could not start: {exc}", "error")
         self._emit("status")
 
     def _update_state(self, **changes: Any) -> None:
@@ -1421,7 +1421,9 @@ class SimulationSession:
         self._update_state(links=links)
         for address, reason in failed:
             self._message(
-                f"Could not restore the bench link on {address}: {reason}. Dropped it.", "error"
+                f"Could not restore the bench link on {address}: {reason}. ClickNick removed it "
+                "from the simulator settings.",
+                "error",
             )
 
     def _wired(self, row: Mapping[str, Any]) -> WiredLink:
@@ -1537,7 +1539,9 @@ class SimulationSession:
             if not bench_wiring:
                 reason = refusal("bench wiring off", partial(dap.set_links, bench=False))
                 if reason is not None:
-                    problems.append(f"bench wiring off: {reason}")
+                    problems.append(
+                        f"The simulation refused to stop applying bench links: {reason}."
+                    )
             self._fetch_links(dap, token, sync=True)
             # Launched with keepForcesOnRun, so forces set in STOP survive into RUN.
             failed = [
@@ -1555,11 +1559,14 @@ class SimulationSession:
                 if reason is None and position == "run":
                     reason = refusal("the switch position", dap.continue_)
                 if reason is not None:
-                    problems.append(f"the switch position: {reason}")
+                    problems.append(f"The simulation refused the switch position: {reason}.")
             if unanswered:
-                problems.append(f"no answer for {', '.join(unanswered)}; they stay set")
+                problems.append(
+                    f"The simulation did not answer for {', '.join(unanswered)}. ClickNick keeps "
+                    "them in your settings."
+                )
             if problems:
-                raise RuntimeError("; ".join(problems))
+                raise RuntimeError(" ".join(problems))
 
         self._submit(job, "Restoring simulator settings")
 
@@ -1772,7 +1779,7 @@ class SimulationSession:
             try:
                 self._on_retry_analysis()
             except Exception as exc:
-                self._message(f"Retry failed: {exc}", "error")
+                self._message(f"Could not start the workspace build: {exc}", "error")
         if self._enabled:
             self.start()
         else:
@@ -1880,9 +1887,7 @@ class SimulationSession:
         # Compare later frames with this listing, by address.
         self._forces_baseline = dict(listing.forces)
         if listing.problems:
-            self._message(
-                "Restoring simulator settings failed: " + "; ".join(listing.problems), "error"
-            )
+            self._message("The program was written. " + " ".join(listing.problems), "error")
 
     def _on_written(
         self,
@@ -1917,8 +1922,9 @@ class SimulationSession:
             # or launch, do not record any build as the running program.
             self._program_source = None
             self._message(
-                "CLICK's program changed while it was written. Write it again once it "
-                "is converted.",
+                "The workspace was rebuilt while the program was written, so ClickNick "
+                "cannot tell which files the simulation read. Write the program again when "
+                "the build finishes.",
                 "error",
             )
         else:
@@ -1961,9 +1967,15 @@ class SimulationSession:
             return
         self._writing = False
         if not known:
-            text = f"{text}. Which program the simulation runs is unknown, and it may be paused"
+            text = (
+                f"{text}. The simulation did not answer, so ClickNick cannot tell which program "
+                "it runs. The simulation may be paused"
+            )
             if released:
-                text = f"{text}. If it runs the new program, it released {', '.join(released)}"
+                text = (
+                    f"{text}. If the simulation runs the new program, it released "
+                    f"{', '.join(released)}"
+                )
             # Frames may show it paused. Restart starts in the position that the user had.
             self._position_held = True
         self._write_error = text
@@ -2030,10 +2042,18 @@ class SimulationSession:
         """
         dap = self._dap
         if not self.is_ready or dap is None:
-            self._message("Cannot write the program: the simulation is not running.", "error")
+            self._message(
+                "Cannot write the program, because the simulation is not running. Start the "
+                "simulation first.",
+                "error",
+            )
             return
         if self._writing:
-            self._message("The program is being written to the simulation.", "error")
+            self._message(
+                "The program is already being written to the simulation. Wait for that write "
+                "to finish.",
+                "error",
+            )
             return
         if self._console_commands:
             self._message("Cannot write the program while a Console command runs.", "error")
@@ -2157,9 +2177,9 @@ class SimulationSession:
             if reason is None and position == "run":
                 reason = refusal("the switch position", dap.continue_)
             if reason is not None:
-                problems.append(f"the switch position: {reason}")
+                problems.append(f"The simulation refused the switch position: {reason}.")
             if unanswered:
-                problems.append(f"no answer for {', '.join(unanswered)}")
+                problems.append(f"The simulation did not answer for {', '.join(unanswered)}.")
 
             carried = [e for e in body.get("carried") or () if isinstance(e, Mapping)]
             names = target.names
@@ -2728,8 +2748,8 @@ class SimulationSession:
                 "The hardware changed since the last session. " if result.hardware_changed else ""
             )
             self._set_notice(
-                f"{lead}Settings for {', '.join(result.dropped)} no longer match an "
-                "installed input and were dropped."
+                f"{lead}ClickNick removed the settings for {', '.join(result.dropped)}, "
+                "because no installed input has those addresses."
             )
         if changed:
             self._emit("desired")
@@ -2804,16 +2824,23 @@ class SimulationSession:
             try:
                 loaded = load_state(state_file.path)
             except (OSError, ValueError) as exc:
-                self._message(f"Simulator settings could not be read: {exc}", "error")
+                self._message(
+                    f"Could not read the simulator settings: {exc}. ClickNick starts without "
+                    "them and replaces the file at the next change.",
+                    "error",
+                )
                 loaded = SimulatorState()
             for key in loaded.unread_forces:
                 self._message(
-                    f"Could not restore the force on {key}: it is not a CLICK address. Dropped it.",
+                    f"Could not restore the force on {key}: it is not a CLICK address. ClickNick "
+                    "removed it from the simulator settings.",
                     "error",
                 )
             for key, reason in loaded.unread_links:
                 self._message(
-                    f"Could not restore the bench link on {key}: {reason}. Dropped it.", "error"
+                    f"Could not restore the bench link on {key}: {reason}. ClickNick removed it "
+                    "from the simulator settings.",
+                    "error",
                 )
             loaded = replace(loaded, unread_links=(), unread_forces=())
             self._state = loaded
