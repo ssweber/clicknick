@@ -44,18 +44,19 @@ def _get_project_dir(ctx: DispatchContext) -> Path:
     """Get the active project workspace, or raise."""
     analysis = ctx.analysis
     if analysis is None:
-        raise ValueError(
-            "There is no workspace. Connect to a CLICK project, and wait until ClickNick has"
-            " read CLICK's database."
-        )
+        from ..connection_session import no_workspace_reason
+
+        raise ValueError(f"There is no workspace. {no_workspace_reason(ctx.get_session())}")
     project_dir = analysis.project_dir
     status = getattr(getattr(analysis, "status", None), "value", None)
     if status == "building":
         raise WorkspaceBusyError(project_dir or "the workspace")
     if project_dir is None or not project_dir.is_dir():
-        error = getattr(analysis, "error", None)
-        if status == "failed" and error:
-            raise ValueError(f"Could not build the workspace: {error}")
+        if status == "failed":
+            error = getattr(analysis, "error", None)
+            if error:
+                raise ValueError(f"Could not build the workspace: {error}")
+            raise ValueError("Could not build the workspace.")
         raise ValueError(
             "There is no workspace yet. Save the project in CLICK, or use"
             " Workspace > Reload from CLICK."

@@ -30,6 +30,7 @@ from .session import LABEL_FILENAME, PORT_FILENAME, WORKSPACE_FILENAME
 if TYPE_CHECKING:
     import tkinter as tk
 
+    from ..connection_session import ConnectionSession
     from ..data.address_store import AddressStore
     from ..services.analysis_service import AnalysisService
 
@@ -63,6 +64,8 @@ class LiveServer:
         get_session_dir: Callable returning the directory to advertise the port
             file in (or None to advertise nowhere). Re-checked periodically so
             the port file follows the active CLICK connection.
+        get_session: Callable returning the connected window's ``ConnectionSession``, or
+            None when no window is connected. A command reads it to say why it cannot run.
     """
 
     def __init__(
@@ -72,6 +75,7 @@ class LiveServer:
         get_session_dir: Callable[[], Path | None],
         get_session_label: Callable[[], str | None] | None = None,
         get_analysis: Callable[[], AnalysisService | None] | None = None,
+        get_session: Callable[[], ConnectionSession | None] | None = None,
         get_workspace_dir: Callable[[], Path | None] | None = None,
         show_proposal: Callable[[Path, Path, str | None, list[int] | None, bool], None]
         | None = None,
@@ -87,6 +91,7 @@ class LiveServer:
         self._get_session_dir = get_session_dir
         self._get_session_label = get_session_label
         self._get_analysis = get_analysis
+        self._get_session = get_session or (lambda: None)
         self._get_workspace_dir = get_workspace_dir
         self._show_proposal = show_proposal
         self._get_mdb_path = get_mdb_path
@@ -188,6 +193,7 @@ class LiveServer:
             store=self._get_store(),
             resolve_tag=resolve_tag,
             analysis=analysis,
+            get_session=self._get_session,
             show_proposal=self._show_proposal,
             show_address_editor=show_address_editor,
             show_save_prompt=show_save_prompt,
