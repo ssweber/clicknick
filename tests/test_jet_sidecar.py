@@ -307,7 +307,7 @@ def test_none_disables_database_connections_and_probes(monkeypatch, path):
     assert not mdb_shared.uses_jet_backend()
     result = mdb_shared.probe_database_connection(path)
     assert not result.success and result.message == (
-        "Database access is off, because CLICKNICK_DB_BACKEND is set to none."
+        "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)."
     )
     with pytest.raises(RuntimeError, match="CLICKNICK_DB_BACKEND is set to none"):
         mdb_shared.create_access_connection(path)
