@@ -1005,12 +1005,13 @@ class SimulationSession:
             )
         if new_build:
             if analysis.status is AnalysisStatus.FAILED:
-                reason = analysis.error or "Program conversion failed."
-                return ProgramChange(
-                    "unconverted",
-                    "ClickNick could not convert CLICK's last save. The simulation still runs "
-                    f"the previous program. The error was: {reason}",
+                text = (
+                    "Could not build the workspace from CLICK's last save. The simulation still "
+                    "runs the previous program."
                 )
+                if analysis.error:
+                    text = f"{text} The error was: {analysis.error}"
+                return ProgramChange("unconverted", text)
             if analysis.status is not AnalysisStatus.READY:
                 return None  # The build is not finished.
             if self._to_compare(analysis):
@@ -1245,10 +1246,9 @@ class SimulationSession:
             if analysis.project_dir is not None
             else ""
         )
+        error = f"{analysis.error}\n" if analysis.error else ""
         return (
-            "pyrung could not build this CLICK program for simulation.\n"
-            f"{analysis.error or 'Program conversion failed.'}\n"
-            f"{guidance}Nickname editing is still available.",
+            f"Could not build the workspace.\n{error}{guidance}Nickname editing is still available.",
             analysis.error_detail,
         )
 
@@ -1968,8 +1968,8 @@ class SimulationSession:
         self._writing = False
         if not known:
             text = (
-                f"{text}. The simulation did not answer, so ClickNick cannot tell which program "
-                "it runs. The simulation may be paused"
+                f"{text}. ClickNick cannot tell which program the simulation runs, and it may be "
+                "paused"
             )
             if released:
                 text = (

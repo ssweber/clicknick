@@ -476,7 +476,9 @@ def test_failed_conversion_during_poll_is_reported(ready):
     ready.scheduler.fire(ANALYSIS_POLL_MS)
     assert ready.sim.status is SimStatus.FAILED
     assert not ready.sim.is_waiting
-    assert "pyrung could not build this CLICK program for simulation" in ready.messages()
+    assert "Cannot start simulation: Could not build the workspace.\nbad rung\n" in (
+        ready.messages()
+    )
 
 
 def test_guidance_mentions_the_generated_workspace(tmp_path):
@@ -2644,7 +2646,7 @@ def test_a_link_that_lands_where_a_followed_name_went_is_dropped(ready):
     _frame(ready)
     _rebuild(ready, {"X001": "Begin", "X002": "Start"})
     assert (
-        "The cut on X002 is removed, because the link on Start moved onto the same address."
+        "The cut on X002 is removed, because the link on Start moved onto X002."
     ) in ready.sim.program_change.text
     mark = len(ready.dap.calls)
 
@@ -2678,7 +2680,10 @@ def test_a_write_pyrung_never_answers_sends_nothing_by_name(ready):
         "`force Run` would land on C2 if pyrung did load the new program"
     )
     assert ready.dap.plans[-1]["forces"] == {"Run": None}
-    assert "ClickNick cannot tell which program it runs" in ready.messages("error")
+    assert (
+        "ClickNick cannot tell which program the simulation runs, and it may be paused"
+        in ready.messages("error")
+    )
     assert ready.sim.program_change.actions[-1] == "restart"
 
 
@@ -2770,7 +2775,7 @@ def test_a_write_pyrung_never_answers_keeps_the_switch_position_for_restart(read
 
     assert ready.sim.switch_position == "step"
     text = ready.sim.program_change.text
-    assert "The simulation may be paused" in text
+    assert "cannot tell which program the simulation runs, and it may be paused" in text
     assert "If the simulation runs the new program, it released the force on Run" in text
     assert ready.sim.program_change.actions[-1] == "restart"
 
