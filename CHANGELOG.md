@@ -32,6 +32,8 @@
 - `clicknick-rung` now stops with an error when `--mdb-path` names no file, or when it cannot add the rungs' addresses to that SC_.mdb. It used to copy the rungs anyway, without a word, and add no addresses. Without `--mdb-path`, it now warns when it cannot find the CLICK window's SC_.mdb or add the addresses to it.
 - `clicknick-rung guided` now says that it compares the rung you copy back with the .bin file saved before. It used to say that the bytes differ from the encoder's, but it never compared them with the encoder's output.
 - `clicknick-cli prompt-save` now names the Address Editor's **File > Save All** when a CSV file is loaded, and **File > Sync All** for CLICK's database. It used to name File → Sync in both cases. When a row has an error, it now says that Sync writes nothing while any row has one. It used to blame the unsaved changes, even when the errors were in rows that you had not changed.
+- When a CSV file is loaded, the `clicknick-cli` commands that stage edits now say to use **File > Save All**. They used to say to Sync.
+- `clicknick-cli list` no longer says that a workspace is building when there is none. When a build fails, `clicknick-cli ping` and the commands that need the workspace now give the reason.
 
 ## v0.24.1 - 2026-11-15
 

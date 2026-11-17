@@ -14,6 +14,7 @@ class MockDataSource:
     supports_used_field = True
     file_path = "test.mdb"
     is_read_only = False
+    is_database = True
 
     def __init__(self, rows):
         self.rows = rows

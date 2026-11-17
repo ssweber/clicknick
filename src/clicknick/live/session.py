@@ -126,9 +126,12 @@ def resolve_address(label: str | None = None) -> tuple[str, int]:
         for lbl, port, _ in sessions:
             if lbl == label:
                 return ("localhost", port)
-        raise FileNotFoundError(f"Session '{label}' not found")
+        raise FileNotFoundError(
+            f"No running ClickNick has the session {label!r}. Run 'clicknick-cli list' to see"
+            " the sessions."
+        )
     if not sessions:
-        raise FileNotFoundError("No active ClickNick session found")
+        raise FileNotFoundError("Found no running ClickNick. Start ClickNick and try again.")
     if len(sessions) > 1:
         labels = ", ".join(lbl for lbl, _, _ in sessions)
         raise LookupError(f"Multiple sessions are active ({labels}). Pick one with --session.")

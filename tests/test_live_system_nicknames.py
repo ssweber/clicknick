@@ -1,5 +1,6 @@
 """Tests for staged vendor system-nickname repairs."""
 
+import pytest
 from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
@@ -11,6 +12,7 @@ class MockDataSource:
     supports_used_field = True
     file_path = "test.mdb"
     is_read_only = False
+    is_database = True
 
     def __init__(self, rows):
         self.rows = rows
@@ -22,7 +24,7 @@ class MockDataSource:
         return len(rows)
 
 
-def _store_with_stale_vendor_names():
+def _store_with_stale_vendor_names(*, is_database: bool = True):
     rows = {
         get_addr_key("SD", 132): AddressRow(
             memory_type="SD", address=132, nickname="_Port1_AL_Denied_Count"
@@ -33,7 +35,9 @@ def _store_with_stale_vendor_names():
         get_addr_key("SD", 134): AddressRow(memory_type="SD", address=134),
         get_addr_key("SD", 135): AddressRow(memory_type="SD", address=135),
     }
-    store = AddressStore(MockDataSource(rows))
+    source = MockDataSource(rows)
+    source.is_database = is_database
+    store = AddressStore(source)
     store.load_initial_data()
     return store
 
@@ -66,3 +70,16 @@ def test_repair_command_is_noop_when_values_are_current():
 
     assert result == "system nickname repair: no known corrections needed"
     assert not store.has_unsaved_changes()
+
+
+@pytest.mark.parametrize(("is_database", "save"), [(True, "Sync"), (False, "Save")])
+def test_repair_command_names_the_menu_entry_that_writes_the_data_loaded(is_database, save):
+    # The Address Editor syncs CLICK's database and saves a CSV file.
+    store = _store_with_stale_vendor_names(is_database=is_database)
+
+    result = dispatch(DispatchContext(store=store), "tag repair-system-nicknames")
+
+    assert result.splitlines()[-2:] == [
+        f"Review them in the Address Editor under Changed, then use File > {save} All.",
+        f"[4 tags staged | Next: {save} tags in ClickNick]",
+    ]

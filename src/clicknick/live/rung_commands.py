@@ -44,12 +44,22 @@ def _get_project_dir(ctx: DispatchContext) -> Path:
     """Get the active project workspace, or raise."""
     analysis = ctx.analysis
     if analysis is None:
-        raise ValueError("workspace not available (no Click project connected)")
+        raise ValueError(
+            "There is no workspace. Connect to a CLICK project, and wait until ClickNick has"
+            " read CLICK's database."
+        )
     project_dir = analysis.project_dir
-    if getattr(getattr(analysis, "status", None), "value", None) == "building":
+    status = getattr(getattr(analysis, "status", None), "value", None)
+    if status == "building":
         raise WorkspaceBusyError(project_dir or "the workspace")
     if project_dir is None or not project_dir.is_dir():
-        raise ValueError("pyrung project not persisted to disk yet")
+        error = getattr(analysis, "error", None)
+        if status == "failed" and error:
+            raise ValueError(f"Could not build the workspace: {error}")
+        raise ValueError(
+            "There is no workspace yet. Save the project in CLICK, or use"
+            " Workspace > Reload from CLICK."
+        )
     return project_dir
 
 
@@ -60,7 +70,9 @@ def _resolve_file(project_dir: Path, file_stem: str) -> Path:
     else:
         path = plc_source_dir(project_dir) / "subroutines" / f"{file_stem}.py"
     if not path.is_file():
-        raise ValueError(f"file not found: {path}")
+        raise ValueError(
+            f"There is no program named {file_stem!r}. Run 'rung list' to see the names."
+        )
     return path
 
 
@@ -83,7 +95,7 @@ def _get_before_files(project_dir: Path, *, analog_inputs: frozenset[str]) -> di
 
     csv_dir = project_dir / "csv"
     if not csv_dir.is_dir():
-        raise ValueError("workspace ladder CSV is missing. Reload the workspace from CLICK.")
+        raise ValueError("The workspace has no csv folder. Use Workspace > Reload from CLICK.")
 
     nickname_csv = csv_dir / "nicknames.csv" if (csv_dir / "nicknames.csv").exists() else None
     return ladder_to_pyrung_project(
@@ -283,7 +295,7 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
     project_dir = _get_project_dir(ctx)
     click_dir = project_dir / "csv"
     if not click_dir.is_dir():
-        raise ValueError("workspace ladder CSV is missing. Reload the workspace from CLICK.")
+        raise ValueError("The workspace has no csv folder. Use Workspace > Reload from CLICK.")
     proposal_dir = project_dir / "csv_output"
     source_dir = plc_source_dir(project_dir)
     programs = load_bundle(proposal_dir)
@@ -309,7 +321,9 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
         lines = ["changed files:", *changed] if changed else []
         if comparison.only_in_click:
             only = ", ".join(Path(name).stem for name in sorted(comparison.only_in_click))
-            lines.append(f"only in CLICK (delete there if no longer used): {only}")
+            lines.append(
+                f"only in CLICK: {only}. Delete a program in CLICK if you no longer use it."
+            )
         if ctx.show_proposal is not None:
             ctx.show_proposal(proposal_dir, source_dir, None, None, bool(lines))
         return "\n".join(lines) or "(no changes)", staged_rungs
@@ -352,7 +366,7 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
         what = f"{len(rungs)} selected rung{'s' if len(rungs) != 1 else ''}"
     else:
         what = _describe_change(change, new=program.name in comparison.missing_in_click)
-    return f"OK: paste window opened for {label} ({what})", staged_rungs
+    return f"OK: opened Review Changes for {label} ({what})", staged_rungs
 
 
 def _run_export(project_dir: Path) -> Path:
@@ -367,7 +381,9 @@ def _run_export(project_dir: Path) -> Path:
 
     script = project_dir / "project_to_csv.py"
     if not script.is_file():
-        raise ValueError("project_to_csv.py not found in project directory")
+        raise ValueError(
+            "The workspace has no project_to_csv.py. Use Workspace > Reload from CLICK."
+        )
     output_dir = project_dir / "csv_output"
     earlier = {path: path.stat().st_mtime_ns for path in output_dir.rglob("*.csv")}
 

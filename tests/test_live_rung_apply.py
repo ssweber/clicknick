@@ -101,7 +101,7 @@ def test_reports_every_program_that_differs_and_opens_review_changes(
 
     # The files come in the order Review Changes walks them: subroutines before main.
     assert "changed files:\n  rinse_cycle: new, 1 rung\n  main: R2\n" in reply
-    assert "only in CLICK (delete there if no longer used): Fill" in reply
+    assert "only in CLICK: Fill. Delete a program in CLICK if you no longer use it." in reply
     assert staged == [2]
     ctx.show_proposal.assert_called_once_with(
         tmp_path / "csv_output", tmp_path / "src" / "plc", None, None, True
@@ -137,7 +137,7 @@ def test_one_file_opens_review_changes_on_that_program(project, tmp_path: Path) 
 
     reply = dispatch(ctx, "rung apply main")
 
-    assert "OK: paste window opened for main (R2..3)" in reply
+    assert "OK: opened Review Changes for main (R2..3)" in reply
     assert staged == [2]
     ctx.show_proposal.assert_called_once_with(
         tmp_path / "csv_output", tmp_path / "src" / "plc", "main.csv", None, True
@@ -150,7 +150,7 @@ def test_selection_names_the_rungs_to_paste(project, tmp_path: Path) -> None:
 
     reply = dispatch(ctx, "rung apply main --select r1..2")
 
-    assert "OK: paste window opened for main (2 selected rungs)" in reply
+    assert "OK: opened Review Changes for main (2 selected rungs)" in reply
     assert staged == [2]
     ctx.show_proposal.assert_called_once_with(
         tmp_path / "csv_output", tmp_path / "src" / "plc", "main.csv", [1, 2], True
@@ -174,7 +174,7 @@ def test_new_subroutine_file_is_found_by_its_title(project) -> None:
 
     reply = dispatch(ctx, "rung apply rinse_cycle")
 
-    assert "OK: paste window opened for rinse_cycle (new, 2 rungs)" in reply
+    assert "OK: opened Review Changes for rinse_cycle (new, 2 rungs)" in reply
     assert ctx.show_proposal.call_args.args[2] == "subroutines/Rinse Cycle.csv"
 
 
@@ -271,7 +271,54 @@ def test_a_program_click_holds_unreadable_is_never_no_change(project, tmp_path: 
     selected = dispatch(ctx, "rung apply main --select r1")
     # Selecting rung 1 does not paste it alone. CLICK's R2 is unreadable, so the whole program
     # is pasted.
-    assert "OK: paste window opened for main (R2; CLICK's R2 unreadable; paste it whole)" in (
+    assert "OK: opened Review Changes for main (R2; CLICK's R2 unreadable; paste it whole)" in (
         selected
     )
     ctx.show_proposal.assert_called_with(ANY, ANY, "main.csv", None, True)
+
+
+class _Status:
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
+class _UnbuiltAnalysis:
+    is_available = False
+    project_dir = None
+
+    def __init__(self, status: str, error: str | None = None) -> None:
+        self.status = _Status(status)
+        self.error = error
+
+
+def test_a_failed_build_gives_its_reason() -> None:
+    ctx = DispatchContext(store=_Store(), analysis=_UnbuiltAnalysis("failed", "no Scr*.tmp files"))
+
+    with pytest.raises(ValueError) as caught:
+        dispatch(ctx, "rung list")
+
+    assert str(caught.value) == "Could not build the workspace: no Scr*.tmp files"
+
+
+def test_no_workspace_yet_says_how_to_build_one() -> None:
+    ctx = DispatchContext(store=_Store(), analysis=_UnbuiltAnalysis("idle"))
+
+    with pytest.raises(ValueError) as caught:
+        dispatch(ctx, "rung list")
+
+    assert str(caught.value) == (
+        "There is no workspace yet. Save the project in CLICK, or use"
+        " Workspace > Reload from CLICK."
+    )
+
+
+def test_an_unknown_program_is_named(tmp_path: Path) -> None:
+    (tmp_path / "src" / "plc").mkdir(parents=True)
+    ctx = DispatchContext(store=_Store(), analysis=_Analysis(tmp_path))
+
+    with pytest.raises(ValueError) as caught:
+        dispatch(ctx, "rung list nosuch")
+
+    assert str(caught.value) == (
+        "There is no program named 'nosuch'. Run 'rung list' to see the names."
+    )

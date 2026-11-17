@@ -22,9 +22,10 @@ from ..services.physical_response import (
     response_of,
 )
 from ..services.system_nickname_service import stage_system_nickname_repairs
-from .dispatch import _resolve_identifier
+from .dispatch import _resolve_identifier, save_command
 
 if TYPE_CHECKING:
+    from ..data.address_store import AddressStore
     from .dispatch import DispatchContext
 
 _BOOL_FLAGS = ("readonly", "external", "final", "public")
@@ -39,7 +40,7 @@ def _get_meta(ctx: DispatchContext, identifier: str) -> tuple[int, str | None, T
     addr_key = _resolve_identifier(ctx, identifier)
     row = ctx.store.get_visible_row(addr_key)
     if row is None:
-        raise ValueError(f"{identifier}: not in store")
+        raise ValueError(f"{identifier} has no row in the Address Editor.")
     block_tag, meta, free_text = AnnotationService.decompose_comment(row.comment)
     if meta is None:
         meta = TagMeta()
@@ -58,7 +59,7 @@ def _apply_meta(
     """Validate, recompose, and write the modified meta back to the comment field."""
     errors = AnnotationService.validate_meta(meta)
     if errors:
-        raise ValueError(f"validation failed: {'; '.join(errors)}")
+        raise ValueError(f"Could not change the annotations on {identifier}: {'; '.join(errors)}")
 
     new_comment = AnnotationService.recompose_comment(block_tag, meta, free_text)
     assert ctx.store is not None
@@ -69,6 +70,11 @@ def _apply_meta(
     return f"OK: {identifier} -> {bracket or '(no annotations)'} (staged change)"
 
 
+def _review(store: AddressStore) -> str:
+    """Return the line that tells the user where to review staged edits and how to write them."""
+    return f"Review them in the Address Editor under Changed, then use File > {save_command(store)} All."
+
+
 def _cmd_show(ctx: DispatchContext, parts: list[str]) -> str:
     if not parts:
         raise ValueError("usage: tag show <identifier>")
@@ -77,7 +83,7 @@ def _cmd_show(ctx: DispatchContext, parts: list[str]) -> str:
     addr_key = _resolve_identifier(ctx, identifier)
     row = ctx.store.get_visible_row(addr_key)
     if row is None:
-        raise ValueError(f"{identifier}: not in store")
+        raise ValueError(f"{identifier} has no row in the Address Editor.")
 
     block_tag, meta, free_text = AnnotationService.decompose_comment(row.comment)
     dirty = ctx.store.is_dirty(addr_key)
@@ -117,7 +123,7 @@ def _cmd_repair_system_nicknames(ctx: DispatchContext, parts: list[str]) -> str:
     lines = [f"OK: {len(repairs)} system nickname repairs staged"]
     for repair in repairs:
         lines.append(f"{repair.display_address}: {repair.current!r} -> {repair.replacement!r}")
-    lines.append("Review in Address Editor -> Changed, then Sync to save")
+    lines.append(_review(ctx.store))
     return "\n".join(lines)
 
 
@@ -140,9 +146,12 @@ def _cmd_upgrade_project(ctx: DispatchContext, parts: list[str]) -> str:
         lines.append(f"{upgrade.display_address}: {upgrade.current!r} -> {upgrade.replacement!r}")
     for upgrade in upgrades:
         if upgrade.problem:
-            lines.append(f"{upgrade.display_address}: fix by hand, {upgrade.problem}")
+            lines.append(
+                f"{upgrade.display_address}: ClickNick cannot upgrade this comment."
+                f" Fix it by hand: {upgrade.problem}"
+            )
     if staged:
-        lines.append("Review in Address Editor -> Changed, then Sync to save")
+        lines.append(_review(ctx.store))
     return "\n".join(lines)
 
 
@@ -395,7 +404,10 @@ def _load_export_rows(project_dir):
         "src/plc/tags.py"
     )
     if not baseline_src:
-        raise ValueError("could not reconstruct baseline tags.py from persisted CSVs")
+        raise ValueError(
+            "tag apply: could not rebuild the original tags.py from the workspace's csv folder."
+            " Without it, tag apply cannot tell what you changed."
+        )
     current_src = (plc_source_dir(project_dir) / "tags.py").read_text(encoding="utf-8")
 
     with tempfile.TemporaryDirectory(prefix="clicknick_tagapply_") as td:
@@ -504,7 +516,7 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
     changes = _compute_tag_changes(base_rows, cur_rows, store)
 
     if not changes:
-        return "tag apply: no changes (tags.py matches the persisted project)"
+        return "tag apply: no changes. tags.py matches the workspace's csv folder."
 
     with store.edit_session("AI: tag apply") as session:
         for addr_key, field_name, value in changes:
@@ -513,10 +525,7 @@ def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
     n_rows = len({addr_key for addr_key, _, _ in changes})
     if ctx.show_address_editor is not None:
         ctx.show_address_editor("changed")
-    return (
-        f"OK: {n_rows} tag{'s' if n_rows != 1 else ''} changed "
-        "(review in Address Editor → Changed, then Sync to save)"
-    )
+    return f"OK: {n_rows} tag{'s' if n_rows != 1 else ''} changed\n{_review(store)}"
 
 
 _SUBCOMMANDS = {

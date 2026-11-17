@@ -25,6 +25,7 @@ class MockDataSource:
     supports_used_field = True
     file_path = "test.mdb"
     is_read_only = False
+    is_database = True
 
     def load_all_addresses(self):
         return {}
@@ -162,7 +163,7 @@ def test_tag_apply_no_changes_leaves_editor_closed(store, tmp_path, monkeypatch)
 
 def test_tag_apply_requires_project(store):
     # No analysis -> no persisted project dir -> clear error, not a crash.
-    with pytest.raises(ValueError, match="workspace not available"):
+    with pytest.raises(ValueError, match="There is no workspace. Connect to a CLICK project"):
         dispatch(DispatchContext(store=store), "tag apply")
 
 
