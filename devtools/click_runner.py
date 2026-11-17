@@ -47,9 +47,10 @@ every open field, including the ones that the case leaves as the dialog filled t
 waits until the dialog is alone and presses OK.
 
 A case is ``not_taken`` when any of these is true: a field, list, mode or option is closed
-for entry (hidden or disabled); no option button shows an option label; a radio button is
-asked to be unchecked; a field, list or option reads back otherwise; or a list lacks the
-item asked for. In that case the runner closes the dialog with Cancel and does not press OK.
+for entry (hidden or disabled); no option button shows the label that the case names; a
+radio button is asked to be unchecked; a field, list or option reads back otherwise; or a
+list lacks the item asked for. In that case the runner closes the dialog with Cancel and
+does not press OK.
 The run stops if CLICK does not answer when a field is set or read, because CLICK may have
 stalled. It also stops if an option does not read as asked after ``OPTION_PRESSES`` presses.
 Live probe d4c saw a press lost. The case's ``controls`` list the dialog's visible buttons,
@@ -98,11 +99,11 @@ stops the run. Nothing starts a CLICK again by itself.
 ``try --keep`` also saves the project before each Delete, so that you can read what CLICK
 stores for an accepted instruction. It runs File > Save As ``DIR/saves/caseNN.ckp`` (NN is
 the case's number). Then it copies CLICK's Scr*.tmp files and Project.ini into
-``DIR/saves/caseNN/click/``. Once CLICK has ended (after an abort too), the runner decodes
-each copy into ``DIR/saves/caseNN/csv/`` and reads the tags that each instruction holds, as
-stored. With ``--wire``, CLICK's Edit > Copy then also copies rung 1, and the runner writes
-the clipboard's CLICK data to ``DIR/saves/caseNN.clip.bin``. If the clipboard has none, the
-run stops. The runner decodes that file with the copies into ``DIR/saves/caseNN.clip.csv``.
+``DIR/saves/caseNN/click/``. With ``--wire``, CLICK's Edit > Copy then also copies rung 1,
+and the runner writes the clipboard's CLICK data to ``DIR/saves/caseNN.clip.bin``. If the
+clipboard has none, the run stops. Once CLICK has ended (after an abort too), the runner
+decodes each copy into ``DIR/saves/caseNN/csv/`` and reads the tags that each instruction
+holds, as stored. It decodes the clipboard's file into ``DIR/saves/caseNN.clip.csv``.
 The case's ``clip_error`` names what in it laddercodec cannot read or write, or why it
 cannot be decoded at all. Each save renames the project, so a Syntax Check is compared with
 the empty program's without the project's name. The runner writes each decoded case's line
@@ -457,8 +458,9 @@ class Instruction:
     operators). Otherwise it presses the mode before them (Math empties its fields on a type
     click). *kind* is where the instruction sits in a rung: ``output`` (at AF, behind a
     contact with ``--wire``) or ``contact`` (at A, driving a coil with ``--wire``).
-    *option_radios* are the options that are radio buttons. Pressing one or its pair checks
-    it, and a press never unchecks it.
+    *option_radios* are the options that are radio buttons. Pressing a radio button checks
+    it. Only a press on its pair unchecks it, so the runner never presses a radio button to
+    uncheck it.
     """
 
     command: int
@@ -630,8 +632,8 @@ class OptionSet(NamedTuple):
     problem: str | None
 
 
-# What to count an entry as asking for a key that ``Case.asks`` gained later and the entry
-# lacks
+# The value to assume when an entry that an older runner wrote lacks a key that
+# ``Case.asks`` now returns
 _ASKED_BEFORE = {"options": {}}
 
 
@@ -1188,8 +1190,8 @@ def _read_stored(scr: Path) -> dict[str, Any]:
     ``column``, ``class``, ``type``, every scalar tag (``tags``, by its id in hex; a flag
     reads ``""``) and the indexed tags that are not empty (``indexed``). ``error`` is
     laddercodec's framing error, or None. This function uses laddercodec's own walk of the
-    file. The walk is private, because no public reader keeps the tags as stored. So a
-    laddercodec that changes it fails here, not in the run.
+    file. The walk is private, but no public reader keeps the tags as stored. If laddercodec
+    changes the walk, this function fails. The run itself does not fail.
     """
     from laddercodec.decode_program import _parse_header, _walk_until_framing_error
 
@@ -1489,7 +1491,10 @@ class Run:
         self.desktop.press(button.hwnd)
 
     def send_press(self, window: Window, button: Control) -> bool:
-        """Send BM_CLICK as ``press`` does. Return True once handled (``Desktop.send_press``)."""
+        """Do what ``press`` does, but send BM_CLICK instead of posting it.
+
+        Return True once the button has handled the click (``Desktop.send_press``).
+        """
         if button.cls not in ("Button", "TButton") or button.hwnd not in {
             c.hwnd for c in self.controls(window)
         }:
@@ -2145,9 +2150,10 @@ class Run:
         the counts, and the ``lines`` that name a code the empty program's check does not.
         ``kept`` is an accepted case's save with ``keep`` (see ``keep_case``), and None
         otherwise. ``seconds`` is how long the case took. ``out`` is the run it was tried in.
-        ``stops`` lists each run that the case stopped, with that run's ``out`` and
-        ``reason``. A Ctrl+C sets ``interrupted``. ``outcome`` is the answer the case had when
-        it stopped, which is then not the case's ``outcome``. A case that stops the run is the
+        ``stops`` lists each run that the case stopped. Each stop has that run's ``out`` and
+        ``reason``. A stop that Ctrl+C caused also has ``interrupted``. If the case had an
+        answer other than ``other`` when it stopped, the stop holds that answer as its own
+        ``outcome``, and the case's ``outcome`` is None. A case that stops the run is the
         result's ``stopped_at``.
         """
         entry: dict[str, Any] = {
@@ -2233,13 +2239,13 @@ class Run:
 
         The case becomes ``not_taken`` once the dialog's Cancel has closed it, and OK is not
         pressed, when any of these is true: a field, list, mode or option is closed for entry
-        (hidden or disabled); no option button shows an option label; a radio button is asked
-        to be unchecked; a field, list or option reads back other than asked; or a list lacks
-        the item asked for. The run stops (``Aborted``) if CLICK does not answer for a field,
-        or if an option does not read as asked after ``OPTION_PRESSES`` presses. A closed
-        dialog is ``accepted`` only when its Syntax Check names rung 2 for the missing END, as
-        an instruction in rung 1 makes it (``placed``). Otherwise the case is ``other`` and
-        the run stops.
+        (hidden or disabled); no option button shows the label that the case names; a radio
+        button is asked to be unchecked; a field, list or option reads back other than asked;
+        or a list lacks the item asked for. The run stops (``Aborted``) if CLICK does not
+        answer for a field, or if an option does not read as asked after ``OPTION_PRESSES``
+        presses. A closed dialog is ``accepted`` only when its Syntax Check names rung 2 for
+        the missing END, as an instruction in rung 1 makes it (``placed``). Otherwise the
+        case is ``other`` and the run stops.
         """
         title = instruction.title
         detail = " ".join(
@@ -2801,9 +2807,9 @@ class Run:
         """Save the project with the case's instruction in it as ``DIR/saves/<label>.ckp``.
 
         The runner copies CLICK's Scr*.tmp files and Project.ini into
-        ``DIR/saves/<label>/click/``, as ``paste`` copies them. It decodes the copy once CLICK
-        has ended (``decode_kept``). With ``wire``, CLICK's Edit > Copy then copies rung 1
-        (``copy_rung``) into ``DIR/saves/<label>.clip.bin``.
+        ``DIR/saves/<label>/click/``, as ``paste`` copies them. With ``wire``, CLICK's
+        Edit > Copy then copies rung 1 (``copy_rung``) into ``DIR/saves/<label>.clip.bin``.
+        The runner decodes both copies once CLICK has ended (``decode_kept``).
 
         The case's ``kept`` has these keys. ``ckp`` and ``click`` are the files copied.
         ``clip`` is the clipboard's file, or None. The decoding then sets ``csv`` (the files
@@ -3135,9 +3141,9 @@ class Run:
             self.fill_path(name, dump, [READ_DATA, SAVE_DATA])
             self.press(save, button)
             last: list[int | None] = [None]
-            # Since when the reading window has gone, the form is back and there is no file.
-            # That is a reading that wrote its file elsewhere, as live run d8's did before
-            # ``fill_path``
+            # The time at which the reading window had gone, the form was back and there was
+            # still no file. That happens when a reading writes its file elsewhere, as live run
+            # d8's did before ``fill_path``
             idle: list[float | None] = [None]
 
             def written(found: dict[str, Window]) -> bool:

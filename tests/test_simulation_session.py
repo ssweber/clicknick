@@ -3011,7 +3011,8 @@ def test_a_pyrung_without_the_planned_reload_refuses_the_write_and_nothing_chang
     ready.sim.run_time_edit()
     ready.scheduler.run_ready()
 
-    # The calls are a plain reload, with no release and re-apply around it.
+    # The session tries the planned reload once. It does not fall back to a plain reload with
+    # a release and re-apply around it.
     assert _calls_since(ready.dap, mark) == [("reload",), ("continue",)]
     assert ready.dap.forces == {"Motor": True}
     assert ready.dap.bench["X002"]["enable"] == "Motor"

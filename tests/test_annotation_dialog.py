@@ -122,7 +122,8 @@ def test_each_kind_shows_its_own_keys_and_writes_only_those(open_dialog):
     _choose(dialog, "")
     assert not dialog._response_frame.winfo_manager()
     assert _preview(dialog) == "[link=Run]"
-    # Clearing the kind keeps the key values, so choosing delay again restores them.
+    # Each key keeps its value while other kinds are chosen, so choosing delay again restores
+    # on_delay.
     _choose(dialog, "delay")
     assert _preview(dialog) == "[link=Run, on_delay=1s]"
 

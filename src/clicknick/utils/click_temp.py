@@ -45,7 +45,8 @@ def _long_path(path: str) -> str:
     """Return *path* with 8.3 short names spelled out (GetLongPathNameW), or as given on failure.
 
     TMP can hold a short name (``C:\\PROGRA~1``) while a file dialog returns the long
-    one, so two paths to the same file must compare equal.
+    one. Two paths to the same file must compare equal, so this function spells out the
+    short names.
     """
     try:
         import ctypes

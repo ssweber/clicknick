@@ -97,8 +97,8 @@ TRIM_DESCRIPTION = "Trim spaces"
 def _is_trimmed_loaded_nickname(nickname: str, base_row: AddressRow) -> bool:
     """Return True when *nickname* is *base_row*'s flagged nickname after the trim on load.
 
-    Example: ``_IO1_Module_Error `` was loaded and is shown as ``_IO1_Module_Error``. That is
-    the name CLICK holds, without the space that CLICK's editor would strip.
+    Example: CLICK holds ``_IO1_Module_Error `` with a space at the end, and ClickNick shows
+    ``_IO1_Module_Error``. CLICK's own editor would strip that space too.
     """
     return (
         base_row.loaded_with_error

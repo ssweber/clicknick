@@ -100,7 +100,7 @@ def comment_has_link(comment: str, link: BenchLink, enable_names: tuple[str, ...
 def declares_link(comment: str) -> bool:
     """Return True if *comment* declares a link that pyrung runs.
 
-    That means ``link=`` beside a response or a physical.
+    Such a comment has ``link=`` together with a response or a ``physical=`` key.
     """
     try:
         _block_tag, meta, _free_text = AnnotationService.decompose_comment(comment)

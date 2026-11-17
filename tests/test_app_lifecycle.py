@@ -297,11 +297,13 @@ def test_project_change_can_keep_unsaved_database_edits_for_the_new_project(monk
     assert "Keep them as unsaved changes for Renamed.ckp?" in message
     assert app._data.store is store
     assert not editor.closed
-    store.stop_file_monitoring.assert_not_called()  # The app reads the base from the new database.
+    # The store's file monitor keeps running and reads the base from the new database.
+    store.stop_file_monitoring.assert_not_called()
     assert not store.save_all_changes.called
     app._connection._load_instance_database.assert_not_called()
     old_session.close.assert_called_once()
-    # The kept edits belong to the new project's database, so the app builds the session at once.
+    # The kept edits are the new project's database data. So the new session has a database
+    # and starts its build at once.
     assert sessions == [(ClickConnection("111", 222, "Renamed.ckp"), True)]
     app._session.start_analysis.assert_called_once_with(app.root)
     assert app._click == ClickConnection("111", 222, "Renamed.ckp")
@@ -986,7 +988,10 @@ def test_the_refresh_skips_editor_windows_that_are_gone(monkeypatch):
 
 
 class FakeDataviewWindow:
-    """Records the model that _open_dataview_editor builds and shows."""
+    """A stand-in for the window that _open_dataview_editor builds.
+
+    It records the model that the window shows.
+    """
 
     def __init__(self, _root, *, session, **_kw):
         self.shared_data = session.dataview

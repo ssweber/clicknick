@@ -266,7 +266,8 @@ def test_a_program_click_holds_unreadable_is_never_no_change(project, tmp_path: 
     assert "  main: R2; CLICK's R2 unreadable; paste it whole" in reply
     assert "(no changes)" not in reply
     selected = dispatch(ctx, "rung apply main --select r1")
-    # Selecting rung 1 by number still pastes R2 whole, because CLICK's R2 is unreadable.
+    # Selecting rung 1 does not paste it alone. CLICK's R2 is unreadable, so the whole program
+    # is pasted.
     assert "OK: paste window opened for main (R2; CLICK's R2 unreadable; paste it whole)" in (
         selected
     )
