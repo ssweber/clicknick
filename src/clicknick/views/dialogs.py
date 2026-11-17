@@ -388,9 +388,7 @@ class CsvFallbackDialog:
         # Buttons frame
         button_frame = ttk.Frame(main_frame)
 
-        save_btn = ttk.Button(
-            button_frame, text="Save Copy and Load", command=self._on_save_copy
-        )
+        save_btn = ttk.Button(button_frame, text="Save Copy and Load", command=self._on_save_copy)
         save_btn.pack(side=tk.LEFT, padx=(0, 10))
 
         cancel_btn = ttk.Button(button_frame, text="Cancel", command=self._on_cancel)

@@ -81,9 +81,7 @@ def test_a_sync_with_nothing_to_write_still_says_so_in_a_box() -> None:
 
     window._save_all()
 
-    module.messagebox.showinfo.assert_called_once_with(
-        "Sync", "No changes to sync.", parent=window
-    )
+    module.messagebox.showinfo.assert_called_once_with("Sync", "No changes to sync.", parent=window)
     window._store.save_all_changes.assert_not_called()
 
 
