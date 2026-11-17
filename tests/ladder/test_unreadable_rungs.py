@@ -45,7 +45,8 @@ def _rung(coil: str, first=None, comment: str | None = None) -> Rung:
     )
 
 
-# A Scr*.tmp names the instruction laddercodec could not read, as decode_program.py does
+# A rung condition that laddercodec could not decode. Its raw bytes name the instruction,
+# "Compare". `_instruction_name` in src/clicknick/ladder/program.py reads that name.
 _REFUSED = UnknownCondition(raw=b"Compare")
 
 
