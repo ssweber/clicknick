@@ -416,8 +416,8 @@ def test_placeholder_subtitle_fits_a_card(simulator, ready):
         [_unassigned_module("cpu", 0, "C2-03CPU-2")], {"X201"}
     )
     win = simulator(ready)
-    assert "Used, no module configured" in _texts(win)
-    assert win._small.measure("Used, no module configured") <= win._card_w - 20
+    assert "Used I/O with no module" in _texts(win)
+    assert win._small.measure("Used I/O with no module") <= win._card_w - 20
 
 
 def test_cpu_placeholder_follows_the_housing_and_a_full_rack_of_them_fits(simulator, ready):
