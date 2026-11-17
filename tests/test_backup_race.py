@@ -64,7 +64,7 @@ def _staged(tmp_path: Path) -> Path:
 
 
 class _Paused:
-    """Run *target* on a thread that stops when a copy lists *directory*, until released."""
+    """Run *target* on a thread that stops when a copy lists *directory* and waits for release."""
 
     def __init__(self, monkeypatch, directory: Path, target: Callable[[], object]) -> None:
         self.reached = threading.Event()
@@ -119,21 +119,21 @@ def test_a_build_publishing_waits_for_a_backup_part_way_through(tmp_path: Path, 
     publish = threading.Thread(target=_publish_generated_project, args=(staged, workspace))
     publish.start()
     assert asked.wait(10), "the publish never asked for the workspace"
-    # It cannot finish without the workspace, which the paused backup holds.
+    # The publish cannot finish without the workspace, and the paused backup holds it.
     assert publish.is_alive()
     assert _read(plc_source_dir(workspace)) == _GENERATED
     backup.finish()
     publish.join(10)
     assert not publish.is_alive()
 
-    # Not main.py from one generation and subroutines/ from the next.
+    # The backup holds one generation. It must not mix main.py and subroutines/ from two.
     assert _read(plc_backup_dir(workspace)) == _GENERATED
     assert _read(plc_source_dir(workspace)) == _NEXT
     assert not plc_source_is_modified(workspace)
 
 
 class _Analysis:
-    """An analysis that does not say it is building (status FAILED or none)."""
+    """Stand in for an analysis that does not say it is building. Its status is FAILED or none."""
 
     def __init__(self, project_dir: Path) -> None:
         self.project_dir = project_dir

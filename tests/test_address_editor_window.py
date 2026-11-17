@@ -1,4 +1,4 @@
-"""Address Editor window: cell editor vs shortcuts, Fill Down targets, Tag Browser rename."""
+"""Address Editor window: cell editor against shortcuts, Fill Down targets, Tag Browser rename."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def _no_dialogs(monkeypatch) -> None:
 
 
 def _panel(rows, *, editor_open: bool = False):
-    """A panel showing `rows`, whose open cell editor commits by closing."""
+    """Return a panel that shows `rows`. Its open cell editor commits when it closes."""
     text_editor = SimpleNamespace(open=editor_open)
     mt = SimpleNamespace(text_editor=text_editor)
 
@@ -94,14 +94,14 @@ def test_save_commits_the_open_cell_editor_first() -> None:
     window._save_all()
 
     panel.sheet.MT.mouseclick_outside_editor_or_dropdown_all_canvases.assert_called_once()
-    # the commit came before the unsaved-changes check, so typed text was seen
+    # The commit runs before the unsaved-changes check, so the check sees the typed text.
     window._store.save_all_changes.assert_called_once()
 
 
 def test_closing_commits_the_open_cell_editor_before_asking_about_unsaved_changes() -> None:
     panel = _panel([], editor_open=True)
     window = _window(Mock(), panel)
-    # Typed text is an unsaved change only once it has been committed
+    # Typed text counts as an unsaved change only after the cell editor commits it.
     window._store.has_unsaved_changes = Mock(
         side_effect=lambda: not panel.sheet.MT.text_editor.open
     )

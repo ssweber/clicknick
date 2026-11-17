@@ -1,4 +1,4 @@
-"""Address Editor Sync: what it reports and whether it closes afterwards."""
+"""Address Editor Sync reports what it wrote and decides whether to close afterwards."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ MODULE = "clicknick.views.address_editor.window"
 
 
 def _editor(*, close_after_sync: bool) -> AddressEditorWindow:
-    """An editor on CLICK's database, without Tk."""
+    """Return an editor on CLICK's database, built without Tk."""
     window = AddressEditorWindow.__new__(AddressEditorWindow)
     window._store = Mock(is_database=True)
     window._store.has_errors.return_value = False
@@ -69,7 +69,7 @@ def test_a_failed_sync_leaves_the_window_open() -> None:
 
 
 class _ClickDatabase:
-    """SC_.mdb, which CLICK writes too without the store being told."""
+    """Stand in for SC_.mdb. CLICK writes to it too, without telling the store."""
 
     supports_used_field = True
     file_path = "live.mdb"
