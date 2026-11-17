@@ -385,3 +385,20 @@ def test_replace_all_with_a_bad_pattern_shows_only_the_error(tk_root, monkeypatc
     dialogs.showerror.assert_called_once()
     assert "not a valid regular expression" in dialogs.showerror.call_args.args[1]
     dialogs.showinfo.assert_not_called()  # It used to add "No matches found."
+
+
+@pytest.mark.parametrize(("is_database", "shown"), [(True, True), (False, False)])
+def test_the_first_run_tips_wait_for_clicks_database(
+    monkeypatch, tmp_path, is_database: bool, shown: bool
+) -> None:
+    """The tips are about CLICK's database, so nicknames from a CSV file do not use them up."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    window = AddressEditorWindow.__new__(AddressEditorWindow)
+    window._store = SimpleNamespace(is_database=is_database)
+
+    window._show_address_editor_popup()
+
+    from clicknick.views.address_editor import window as window_module
+
+    assert window_module.messagebox.showinfo.called is shown
+    assert (tmp_path / "ClickNick" / "address_editor_popup_seen").exists() is shown
