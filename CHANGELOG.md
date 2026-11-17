@@ -36,6 +36,7 @@
 - `clicknick-cli` now tells you to Save the unsaved edits when a CSV file is loaded, and to Sync them when CLICK's database is loaded. It used to say Sync in both cases. This holds for `prompt-save`, for the replies of `tag apply`, `tag repair-system-nicknames` and `tag upgrade-project`, and for the status line. When a row has an error, `prompt-save` now says that nothing is written while any row has one. It used to blame the unsaved edits, even when the errors were in rows that you had not changed. `list` no longer says that a workspace is building when there is none. When a build fails, `ping` and the commands that need the workspace now give the reason. `tag set-range` now names a value that is not a number.
 - When ClickNick cannot read CLICK's database and offers a copy of CLICK's address CSV file, the dialog no longer says that you must save a copy to continue. **Cancel** goes on without nicknames.
 - In Review Changes, when you try to take a skipped difference of a program that is marked done, the status line no longer says that the difference is already pasted into CLICK. It says that the program is marked done.
+- The tooltip of a linked input in the Simulator no longer ends with empty brackets when the link has no delay or response. After **Save link to project**, the tooltip and the note now say the same thing: the program's link replaces the bench link when the simulation loads the program from your next Sync.
 
 ## v0.24.1 - 2026-11-15
 

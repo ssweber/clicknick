@@ -565,6 +565,20 @@ def test_save_link_to_project_writes_the_comment(simulator, ready):
     assert store.edits == [(aux, "comment", "[link=Motor, on_delay=1s] Aux contact")]
     assert "Saved the link on X002 to the project" in str(win._banner_key)
     assert win._saved_to_project("X002", ready.sim.bench_links["X002"])
+    # The banner and the tooltip say the same thing about when the program's link applies.
+    replaces = "simulation loads the new program, the program's link replaces the bench link."
+    assert replaces in str(win._banner_key)
+    assert f"Saved to the project. After you Sync and the {replaces}" in win._link_text("X002")
+
+
+def test_a_link_with_no_response_shows_no_empty_brackets(simulator, ready):
+    from clicknick.services.sim_state import BenchLink
+
+    ready.sim.link("X002", BenchLink("Y001"))
+    win = simulator(ready)
+    _frame(ready)
+
+    assert win._link_text("X002").startswith("Bench link: driven by Y001.\n")
 
 
 def test_save_link_needs_a_nickname(simulator, ready, monkeypatch):

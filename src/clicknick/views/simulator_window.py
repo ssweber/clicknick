@@ -87,6 +87,13 @@ MIN_CONSOLE_H = 70
 #: Characters of the PLC data file's name shown on its toolbar button.
 PLC_DATA_NAME_MAX = 24
 TICK_MS = 500
+#: When a saved bench link stops applying. When the user writes a new program, pyrung drops
+#: a bench link that the program declares with the same wiring. See
+#: ``SimulationSession._on_written``.
+_PROGRAM_LINK_REPLACES_BENCH = (
+    "After you Sync and the simulation loads the new program, "
+    "the program's link replaces the bench link."
+)
 
 _FONT = ("Segoe UI", 9)
 _FONT_BOLD = ("Segoe UI", 9, "bold")
@@ -395,10 +402,11 @@ class SimulatorWindow(tk.Toplevel):
         driver = f"{enable} {nickname}" if nickname else enable
         when = when_text(link.enable, link.trigger)
         kind = "Program link" if link.source == "project" else "Bench link"
-        text = f"{kind}: driven by {driver}{when} ({link.response_label})."
+        response = f" ({link.response_label})" if link.response_label else ""
+        text = f"{kind}: driven by {driver}{when}{response}."
         bench = sim.bench_links.get(address)
         if link.source == "bench" and bench is not None and self._saved_to_project(address, bench):
-            text += "\nSaved to the project. The program takes it over after the next Sync."
+            text += f"\nSaved to the project. {_PROGRAM_LINK_REPLACES_BENCH}"
         return f"{text}\nRight-click for options."
 
     def _enables(self) -> list[str]:
@@ -622,7 +630,7 @@ class SimulatorWindow(tk.Toplevel):
             session.set_field(addr_key, "comment", comment)
         self._note = (
             f"Saved the link on {address} to the project. Sync to write it to CLICK. "
-            "After the next build, the program declares it and the bench copy is dropped."
+            f"{_PROGRAM_LINK_REPLACES_BENCH}"
         )
         self._refresh_banners()
 
