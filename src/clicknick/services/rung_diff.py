@@ -1,12 +1,12 @@
-"""Rung-by-rung comparison of a proposed ladder bundle with the program in CLICK.
+"""Compare a proposed ladder bundle with the program in CLICK, rung by rung.
 
-One comparison serves Review Changes (which programs to paste, and which of their
-rungs) and ``clicknick-cli rung apply`` (what to report). A bundle is laid out
-like ``program_save`` output, ``main.csv`` + ``subroutines/*.csv``, and its
-programs are named like ``list_csv_folder`` names them.
+Review Changes uses this comparison to decide which programs to paste and which of their
+rungs. ``clicknick-cli rung apply`` uses it to decide what to report. A bundle is laid out
+like ``program_save`` output: ``main.csv`` plus ``subroutines/*.csv``. Its programs are
+named the way ``list_csv_folder`` names them.
 
-Rungs are compared as CLICK would hold them (``rung_fingerprint``); pyrung
-source is only how a difference is shown.
+Rungs are compared as CLICK would hold them (``rung_fingerprint``). pyrung source is used
+only to show a difference.
 """
 
 from __future__ import annotations
@@ -39,16 +39,17 @@ _RUNG_MARKER_RE = re.compile(r"#\s*R(\d+)\s*$")
 _COMMENT_SUMMARY_LIMIT = 88
 # A line splits into words, runs of spaces, and single punctuation marks
 _WORD_RE = re.compile(r"\w+|\s+|[^\w\s]")
-# Paired lines sharing less than this are shown changed whole, not word by word
+# Paired lines whose similarity ratio is below this are shown as changed whole, not word by word
 _PAIRED_LINE_MIN_RATIO = 0.5
 # Unchanged rungs shown above and below each difference, like a diff's lines of context
 CONTEXT_RUNGS = 1
-# How many more unchanged rungs one click on a separator's arrow shows
+# One click on a separator's arrow shows this many more unchanged rungs
 EXPAND_RUNGS = 3
 
 # One SequenceMatcher step: (tag, CLICK start, CLICK end, proposed start, proposed end)
 Opcode = tuple[str, int, int, int, int]
-# The comment on each rung put in for a CLICK copy that cannot be read, to keep its rung count
+# Comment on each stand-in rung. A CLICK copy that cannot be read gets one stand-in per rung,
+# so the diff still shows the right rung count.
 _UNREAD_RUNG_COMMENT = "ClickNick cannot read this rung."
 
 
@@ -59,11 +60,11 @@ _UNREAD_RUNG_COMMENT = "ClickNick cannot read this rung."
 
 @dataclass(frozen=True)
 class ProposedProgram:
-    """One ladder CSV of a bundle, read once: what is compared is what gets copied."""
+    """One ladder CSV of a bundle, read once, so the rungs compared are the rungs copied."""
 
     name: str
     path: Path
-    # None when the CSV could not be read; *error* says why.
+    # None if the CSV could not be read. *error* says why.
     rungs: tuple[Rung, ...] | None
     rung_count: int
     description: str = ""
@@ -93,17 +94,17 @@ def load_bundle(folder: Path) -> list[ProposedProgram]:
 
 @dataclass(frozen=True)
 class DifferenceKey:
-    """Names one difference of a program by what it holds, not where it is.
+    """Names one difference of a program by its content, not its position.
 
-    It stays the same when CLICK saves or the proposal is read again, so a
-    choice made about a difference outlives the comparison it was made in.
+    The key stays the same when CLICK saves or the proposal is read again. A choice made
+    about a difference therefore survives the comparison it was made in.
     """
 
     # CLICK's rungs and the proposed rungs of the difference, as compared
     before: tuple[tuple[tuple[str, ...], ...], ...]
     after: tuple[tuple[tuple[str, ...], ...], ...]
-    # Earlier differences of the program holding the same rungs, so the same
-    # change made in two places is two differences
+    # How many earlier differences of the program hold the same rungs. This makes the
+    # same change in two places two different keys.
     occurrence: int = 0
 
 
@@ -111,19 +112,18 @@ class DifferenceKey:
 class PasteStep:
     """One thing to do in CLICK to turn its program into the proposed one.
 
-    Steps run from the top of the program: by the time one is reached,
-    everything above it is as it will be (pasted, or skipped and left as CLICK
-    has it), so its rung numbers are the ones CLICK shows. CLICK pastes over
-    the selected rung: that rung is replaced by the first pasted rung and the
-    rest go in below it.
+    Steps run from the top of the program. When you reach a step, everything above it is
+    already as it will end up, either pasted or skipped and left as CLICK has it. So the
+    step's rung numbers are the ones CLICK shows. CLICK pastes over the selected rung.
+    The first pasted rung replaces it and the rest go in below it.
     """
 
-    # Proposed rung numbers to copy; empty when the step only deletes
+    # Proposed rung numbers to copy. Empty when the step only deletes.
     rungs: tuple[int, ...] = ()
     # CLICK's rung to select and paste over
     over: int | None = None
-    # For new rungs, which have nothing to paste over: the rung they go in above.
-    # None with *over* also None means after the last rung.
+    # New rungs have nothing to paste over, so this is the CLICK rung they go in above.
+    # If this and *over* are both None, the rungs go after the last rung.
     above: int | None = None
     # CLICK's rungs to delete, when nothing is copied
     delete: tuple[int, ...] = ()
@@ -135,23 +135,23 @@ class PasteStep:
 class ProgramChange:
     """How a proposed program differs from the same program in CLICK."""
 
-    # CLICK's rungs; empty when CLICK does not have the program.
+    # CLICK's rungs. Empty if CLICK does not have the program.
     before: tuple[Rung, ...] = ()
     after: tuple[Rung, ...] = ()
     opcodes: tuple[Opcode, ...] = ()
-    # CLICK's rungs held in a legacy encoding, or that ClickNick cannot read.
-    # Each counts as differing even when its text matches, so it is pasted again.
+    # CLICK's rungs that are in a legacy encoding or that ClickNick cannot read.
+    # Each counts as a difference even if its text matches, so it is pasted again.
     legacy: tuple[LegacyEncoding, ...] = ()
     # One per difference (each opcode that is not "equal"), in order
     differences: tuple[DifferenceKey, ...] = ()
 
     @property
     def unreadable(self) -> bool:
-        """Whether ClickNick cannot read some of CLICK's copy.
+        """Return whether ClickNick cannot read some of CLICK's copy.
 
-        Such a program is pasted whole or not at all. Which proposed rung takes
-        the place of the one it cannot read is not known, so no step may keep
-        or delete that rung by its place in the diff.
+        Such a program is pasted whole or not at all. ClickNick cannot tell which proposed
+        rung replaces the rung it cannot read. So no step may keep or delete that rung by
+        its place in the diff.
         """
         return any(item.unreadable for item in self.legacy)
 
@@ -161,12 +161,12 @@ class ProgramChange:
 
     @property
     def empty_rungs(self) -> tuple[int, ...]:
-        """Proposed rung numbers that hold no instruction, such as a stand-in."""
+        """Return the proposed rung numbers that hold no instruction, such as a stand-in."""
         return tuple(number for number, rung in enumerate(self.after, 1) if is_empty_rung(rung))
 
     @property
     def changed(self) -> tuple[int, ...]:
-        """Proposed rung numbers CLICK lacks: the rungs to paste."""
+        """Return the proposed rung numbers that CLICK lacks. These are the rungs to paste."""
         return tuple(
             number
             for tag, _i1, _i2, j1, j2 in self.opcodes
@@ -176,7 +176,7 @@ class ProgramChange:
 
     @property
     def removed(self) -> tuple[int, ...]:
-        """CLICK rung numbers the proposal drops without putting anything in their place."""
+        """Return the CLICK rung numbers that the proposal drops with nothing in their place."""
         return tuple(
             number
             for tag, i1, i2, _j1, _j2 in self.opcodes
@@ -185,11 +185,11 @@ class ProgramChange:
         )
 
     def touches(self, selected: Iterable[int]) -> bool:
-        """Whether any of the *selected* proposed rungs is one to paste."""
+        """Return whether any of the *selected* proposed rungs is one to paste."""
         return self.unreadable or not set(selected).isdisjoint(self.changed)
 
     def blocks_holding(self, rungs: Iterable[int]) -> frozenset[DifferenceKey]:
-        """The differences that paste any of the proposed *rungs*."""
+        """Return the differences that paste any of the proposed *rungs*."""
         wanted = set(rungs)
         differences = (opcode for opcode in self.opcodes if opcode[0] != "equal")
         return frozenset(
@@ -199,10 +199,11 @@ class ProgramChange:
         )
 
     def merged(self, skipped: Collection[DifferenceKey] = ()) -> tuple[Rung, ...]:
-        """The program CLICK ends up with: proposed, except where a difference is *skipped*.
+        """Return the rungs CLICK ends up with.
 
-        A program ClickNick cannot read all of in CLICK is pasted as proposed.
-        Skipping would keep CLICK's empty rung in place of the one it cannot read.
+        These are the proposed rungs, except where a difference is *skipped*. If ClickNick
+        cannot read all of the program in CLICK, the program is pasted as proposed.
+        Skipping would keep CLICK's empty rung in place of the rung ClickNick cannot read.
         """
         if self.unreadable:
             return self.after
@@ -220,19 +221,20 @@ class ProgramChange:
     def steps(
         self, skipped: Collection[DifferenceKey] = (), pasted: Collection[DifferenceKey] = ()
     ) -> tuple[PasteStep, ...]:
-        """What to do in CLICK, from the top of the program down.
+        """Return what to do in CLICK, from the top of the program down.
 
-        A *skipped* difference is left as CLICK has it, and a *pasted* one is
-        in CLICK already (not saved yet): neither has steps, and the rung
-        numbers below them count CLICK's rungs or the pasted ones.
+        A *skipped* difference stays as CLICK has it. A *pasted* difference is already in
+        CLICK but not saved. Neither has steps. The rung numbers below a skipped difference
+        count CLICK's rungs, and the numbers below a pasted one count the pasted rungs.
 
-        Empty when ClickNick cannot read some of CLICK's copy, which is pasted whole.
+        Return no steps if ClickNick cannot read some of CLICK's copy. That program is
+        pasted whole.
         """
         if self.unreadable:
             return ()
 
         def _size(opcode: Opcode, key: DifferenceKey | None) -> int:
-            """How many rungs the opcode stands for in CLICK when its step comes."""
+            """Return how many rungs the opcode stands for in CLICK when its step comes."""
             _tag, i1, i2, j1, j2 = opcode
             return j2 - j1 if key is not None and key in pasted else i2 - i1
 
@@ -258,9 +260,9 @@ class ProgramChange:
                 leftover = i2 - i1
                 if tag == "replace":
                     steps.append(PasteStep(rungs, over=at + 1, block=block))
-                    leftover -= 1  # The paste took the place of the first of CLICK's rungs
+                    leftover -= 1  # The paste replaces the first of CLICK's rungs
                 if leftover:
-                    # They now stand right below what was pasted
+                    # The leftover rungs now sit right below the pasted ones
                     first = at + len(rungs) + 1
                     steps.append(
                         PasteStep(delete=tuple(range(first, first + leftover)), block=block)
@@ -274,10 +276,10 @@ def compare_rungs(
 ) -> ProgramChange:
     """Align CLICK's rungs with the proposed ones.
 
-    A rung that only moved (rungs were added or removed above it) is equal:
-    its number is not part of what it is. A rung of *legacy* (CLICK's rungs in
-    a legacy encoding) equals no proposed rung, and with no rung number it
-    stands for the whole program. A finding numbered past CLICK's last rung is ignored.
+    A rung that only moved because rungs were added or removed above it is equal. Its
+    number is not part of what it is. A rung in *legacy* (CLICK's rungs in a legacy
+    encoding) equals no proposed rung. A *legacy* item with no rung number stands for the
+    whole program. A finding numbered past CLICK's last rung is ignored.
     """
     before_prints = [rung_fingerprint(rung) for rung in before]
     after_prints = [rung_fingerprint(rung) for rung in after]
@@ -310,18 +312,18 @@ def compare_rungs(
 def carry_skipped(
     skipped: Collection[DifferenceKey], old: ProgramChange, new: ProgramChange
 ) -> frozenset[DifferenceKey]:
-    """The differences of *new* that are the ones *skipped* in *old*.
+    """Return the differences of *new* that correspond to the ones *skipped* in *old*.
 
-    A difference keeps its key when CLICK saves, except that the same change in
-    several places is numbered by occurrence: once some of those were pasted,
-    the ones left are taken to be the skipped ones.
+    A difference keeps its key when CLICK saves. The exception is the same change in
+    several places, which is numbered by occurrence. If some of those were pasted, the
+    ones left are taken to be the skipped ones.
     """
 
     def _content(key: DifferenceKey) -> tuple[object, object]:
         return key.before, key.after
 
     if new.unreadable:
-        # Nothing of a program pasted whole is skipped
+        # A program that is pasted whole has no skipped differences
         return frozenset()
     old_count: dict[tuple[object, object], int] = {}
     for key in old.differences:
@@ -339,7 +341,7 @@ def carry_skipped(
         if content not in skipped_count:
             continue
         if new_count[content] >= old_count.get(content, 0):
-            # None of them went: each is where it was
+            # None of them were pasted, so each is where it was
             if key in skipped:
                 carried.add(key)
         elif key.occurrence < skipped_count[content]:
@@ -351,26 +353,26 @@ def carry_skipped(
 class BundleComparison:
     """How a bundle compares with the program now in CLICK."""
 
-    # False when nothing was compared: what CLICK has is unknown.
+    # False if nothing was compared because what CLICK has is unknown.
     compared: bool = False
-    # Proposed program name -> its change (a program CLICK lacks is all new
-    # rungs). Programs that cannot be read are absent: unknown.
+    # Proposed program name -> its change. A program that CLICK lacks is all new rungs.
+    # A program that cannot be read is absent, because its change is unknown.
     changes: dict[str, ProgramChange] = field(default_factory=dict)
-    # Programs CLICK has that the bundle does not: name -> all rungs removed.
+    # Programs that CLICK has and the bundle does not: name -> change that removes all rungs.
     only_in_click: dict[str, ProgramChange] = field(default_factory=dict)
-    # Proposed program names CLICK does not have yet (readable or not).
+    # Names of proposed programs that CLICK does not have yet, whether readable or not.
     missing_in_click: frozenset[str] = frozenset()
 
 
 def _read_click_copy(
     name: str, path: Path, legacy: Mapping[str, Sequence[LegacyEncoding]]
 ) -> tuple[list[Rung], list[LegacyEncoding]]:
-    """CLICK's rungs of one program, and the findings that make some of them differ.
+    """Return CLICK's rungs of one program, and the findings that make some of them differ.
 
-    A copy that cannot be read gets a finding for the whole program, so it is
-    pasted again rather than left out. Its rungs are then whatever a lenient
-    read finds. When that fails too, an empty rung stands for each rung its
-    text holds. Either way the diff shows how many rungs CLICK has.
+    A copy that cannot be read gets a finding for the whole program, so it is pasted again
+    rather than left out. Its rungs are then whatever a lenient read finds. If that fails
+    too, an empty rung stands for each rung in its text. Either way the diff shows how
+    many rungs CLICK has.
     """
     found = list(legacy.get(name.casefold(), ()))
     try:
@@ -378,7 +380,7 @@ def _read_click_copy(
     except Exception as exc:
         finding = unreadable_copy(name, "", exc)
     if not any(item.rung is None and item.unreadable for item in found):
-        found.append(finding)  # program_save may have found it already
+        found.append(finding)  # program_save may already have added this finding
     try:
         rungs = read_csv(path, strict=False)
     except Exception:
@@ -389,11 +391,11 @@ def _read_click_copy(
 def compare_bundle(programs: Iterable[ProposedProgram], current_dir: Path) -> BundleComparison:
     """Compare a loaded bundle with the program now in CLICK.
 
-    *current_dir* holds the program now in CLICK, laid out like the bundle.
-    Names are matched ignoring case. A bundle without ``main.csv`` is not a
-    program and compares empty. CLICK's rungs that ``program_save`` found in a
-    legacy encoding, or cannot read, count as changed. So does every rung of
-    a CLICK copy that cannot be read now.
+    *current_dir* holds the program now in CLICK, laid out like the bundle. Names are
+    matched ignoring case. A bundle without ``main.csv`` is not a program, so the
+    comparison is empty. These CLICK rungs count as changed: the rungs that
+    ``program_save`` found in a legacy encoding or could not read, and every rung of a
+    CLICK copy that cannot be read now.
     """
     programs = list(programs)
     proposed_names = {program.name.casefold() for program in programs}
@@ -478,7 +480,7 @@ def comment_summary(value: str) -> str:
 
 
 def _program_name(relative: Path, source: str) -> str | None:
-    """Name the bundle program a ``src/plc`` file holds, or None for other files."""
+    """Return the name of the bundle program that a ``src/plc`` file holds, or None."""
     if relative.suffix != ".py":
         return None
     if relative.name == "main.py":
@@ -490,7 +492,7 @@ def _program_name(relative: Path, source: str) -> str | None:
 
 
 def _read_manifest(bundle_dir: Path) -> dict[str, dict[int, list[int]]]:
-    """Read the exporter's manifest: program -> proposed rung -> source lines."""
+    """Read the exporter's manifest into program -> proposed rung -> source lines."""
     try:
         manifest = json.loads((bundle_dir / "rung_sources.json").read_text(encoding="utf-8"))
         entries_by_name = {
@@ -521,18 +523,18 @@ def _read_manifest(bundle_dir: Path) -> dict[str, dict[int, list[int]]]:
 
 @dataclass(frozen=True)
 class BundleSources:
-    """pyrung source for a bundle's programs: how their rungs are shown.
+    """The pyrung source of a bundle's programs, which is how their rungs are shown.
 
-    A program without source is shown as rung numbers with each rung's
-    instructions and comment instead.
+    A program without source is shown as rung numbers, each with the rung's instructions
+    and comment.
     """
 
     # Program name (casefolded) -> source text
     texts: Mapping[str, str] = field(default_factory=dict)
     # Program name (casefolded) -> rung number -> the source lines it came from.
-    # Empty when each rung's ``# Rn`` marker already carries its number.
+    # Empty if each rung's ``# Rn`` marker already gives its number.
     rung_lines: Mapping[str, Mapping[int, Sequence[int]]] = field(default_factory=dict)
-    # Why pyrung could not convert the bundle, such as a nicknames.csv it refuses
+    # Why pyrung could not convert the bundle, for example because it rejects a nicknames.csv
     error: str = ""
 
     def text(self, name: str) -> str:
@@ -545,9 +547,9 @@ class BundleSources:
     def round_trip(cls, csv_dir: Path) -> BundleSources:
         """Generate source for a CSV bundle by converting it with pyrung.
 
-        Without text when pyrung cannot convert the bundle (showing it is all
-        that is lost); ``error`` then says why, such as the line of a
-        nicknames.csv that pyrung refuses.
+        If pyrung cannot convert the bundle, the result has no text. The only loss is that
+        the rungs cannot be shown as source. ``error`` says why, for example the line of a
+        nicknames.csv that pyrung rejects.
         """
         from pyrung.click import ladder_to_pyrung_project
 
@@ -586,7 +588,7 @@ class BundleSources:
 
 @dataclass
 class _SourceChunk:
-    """One numbered pyrung block, including its comment and continuations."""
+    """One numbered pyrung block, with its comment and continuations."""
 
     number: int
     marker_line: int
@@ -612,7 +614,7 @@ def _rung_context_kind(node: ast.AST) -> str | None:
 
 
 def _statement_rung_number(statement: ast.stmt, lines: list[str]) -> int | None:
-    """Read a rung marker anywhere in a possibly multiline statement."""
+    """Return the number in a rung marker on any line of a statement, which may span lines."""
     end_line = statement.end_lineno or statement.lineno
     for line in lines[statement.lineno - 1 : end_line]:
         marker = _RUNG_MARKER_RE.search(line)
@@ -622,7 +624,7 @@ def _statement_rung_number(statement: ast.stmt, lines: list[str]) -> int | None:
 
 
 def _source_chunks(source: str) -> list[_SourceChunk]:
-    """Parse generated pyrung into display chunks without treating Rn as identity."""
+    """Parse generated pyrung into display chunks. The Rn marker is not the rung's identity."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -704,11 +706,11 @@ def _chunks_by_rung(
 
 
 def _rung_summary(rung: Rung) -> str:
-    """Describe a rung that has no source to show: its instructions, then its comment."""
+    """Return a summary of a rung that has no source: its instructions, then its comment."""
     instructions = "; ".join(
         row[-1]
         for row in rung_fingerprint(rung)
-        # Not comment rows, blank outputs, or pins (".reset()") of the instruction above
+        # Skip comment rows, blank outputs, and pins (".reset()") of the instruction above
         if row[0] != "#" and row[-1] and not row[-1].startswith(".")
     )
     label = comment_summary(rung.comment or "")
@@ -721,7 +723,7 @@ def _render_rungs(
     source: str,
     chunks_by_rung: dict[int, tuple[_SourceChunk, ...]],
 ) -> list[str]:
-    """The lines that show *rung_numbers*, without line endings."""
+    """Return the lines that show *rung_numbers*, without line endings."""
     lines = source.splitlines()
     result: list[str] = []
     emitted: set[tuple[int, int]] = set()
@@ -744,15 +746,15 @@ Spans = tuple[tuple[int, int], ...]
 
 
 def _line_key(line: str) -> str:
-    """A source line as compared: its ``# Rn`` marker only numbers the rung."""
+    """Return a source line as it is compared. Its ``# Rn`` marker only numbers the rung."""
     return _RUNG_MARKER_RE.sub("", line).rstrip()
 
 
 def _changed_words(old: str, new: str) -> tuple[Spans, Spans]:
-    """Where two paired lines differ, word by word, as column ranges of each.
+    """Return where two paired lines differ, word by word, as column ranges in each.
 
-    Empty when they have too little in common for the words to mean anything:
-    the whole line is the change.
+    Return empty ranges if the lines have too little in common for the words to mean
+    anything. The whole line is then the change.
     """
     old_words = _WORD_RE.findall(old)
     new_words = _WORD_RE.findall(new)
@@ -782,16 +784,16 @@ def _changed_words(old: str, new: str) -> tuple[Spans, Spans]:
 def _diff_lines(old: list[str], new: list[str]) -> list[tuple[str, str, Spans]]:
     """Show one difference line by line, as (prefix, line, changed words).
 
-    Lines both sides share are context (`` ``), shown as proposed. A removed
-    line and an added line are paired, and their changed words picked out,
-    when a run of removed lines meets a run of added lines just as long.
+    Lines that both sides share are context (`` ``), shown as proposed. When a run of
+    removed lines meets a run of added lines of the same length, the lines are paired and
+    their changed words are picked out.
     """
     matcher = difflib.SequenceMatcher(
         a=[_line_key(line) for line in old], b=[_line_key(line) for line in new], autojunk=False
     )
     opcodes = matcher.get_opcodes()
     if all(tag == "equal" for tag, *_ in opcodes):
-        # The rungs differ in something their source does not show: show them whole
+        # The rungs differ in something that their source does not show, so show them whole
         return [("-", line, ()) for line in old] + [("+", line, ()) for line in new]
 
     rows: list[tuple[str, str, Spans]] = []
@@ -804,7 +806,7 @@ def _diff_lines(old: list[str], new: list[str]) -> list[tuple[str, str, Spans]]:
         added_words: list[Spans] = [()] * len(added)
         if len(removed) == len(added):
             for pair, (old_line, new_line) in enumerate(zip(removed, added, strict=True)):
-                # Columns of the compared text are columns of the line: only the end was cut
+                # Columns of the compared text are columns of the line: _line_key cuts only the end
                 removed_words[pair], added_words[pair] = _changed_words(
                     _line_key(old_line), _line_key(new_line)
                 )
@@ -821,12 +823,12 @@ def _rung_range(first: int, count: int) -> str:
 class Gap:
     """A run of unchanged rungs, shown around the differences beside it.
 
-    What is not shown is a separator line, whose arrows show more of it.
+    The rungs that are not shown become a separator line. Its arrows show more of them.
     """
 
-    # Its place in ``ProgramChange.opcodes``: what ``render_diff``'s *shown* is keyed by
+    # Its index in ``ProgramChange.opcodes``. ``render_diff``'s *shown* uses it as the key.
     opcode: int
-    # Rungs shown at its top (below the difference above) and at its bottom
+    # Number of rungs shown at its top (below the difference above) and at its bottom
     shown: tuple[int, int]
     hidden: int
     # Whether a difference is shown above it / below it
@@ -835,13 +837,14 @@ class Gap:
 
     @property
     def arrows(self) -> str:
-        """``↓`` shows more below the difference above, ``↑`` more above the one below, ``↕`` all."""
+        """Return the arrows. ``↓`` shows more below the difference above, ``↑`` more above the
+        one below, and ``↕`` all of it."""
         if self.follows and self.precedes:
             return "↕" if self.hidden <= EXPAND_RUNGS else "↓↑"
         return "↓" if self.follows else "↑"
 
     def expand(self, arrow: str) -> tuple[int, int]:
-        """What *shown* becomes when *arrow* is clicked."""
+        """Return what *shown* becomes when *arrow* is clicked."""
         top, bottom = self.shown
         more = self.hidden if arrow == "↕" else min(EXPAND_RUNGS, self.hidden)
         return (top, bottom + more) if arrow == "↑" else (top + more, bottom)
@@ -851,9 +854,9 @@ class Gap:
 class RenderedDiff:
     """A program's change as text.
 
-    ``-`` CLICK's rungs, ``+`` proposed, `` `` unchanged lines (of a changed
-    rung, or of the unchanged rungs shown around it), ``@@`` unchanged rungs
-    not shown.
+    A line that starts with ``-`` is one of CLICK's rungs, and ``+`` a proposed rung. A
+    line that starts with a space (`` ``) is unchanged, either in a changed rung or in the
+    unchanged rungs shown around it. ``@@`` stands for unchanged rungs that are not shown.
     """
 
     lines: tuple[str, ...] = ()
@@ -863,8 +866,8 @@ class RenderedDiff:
     # the program's differences (``PasteStep.block``) unless rungs were selected.
     # A block starts with the unchanged rungs shown above it.
     blocks: tuple[int, ...] = ()
-    # Lines (start, end) of each difference shown, in *blocks* order, without
-    # the unchanged rungs shown above it: what a click in the gutter picks
+    # Line range (start, end) of each difference shown, in *blocks* order, without the
+    # unchanged rungs shown above it. A click in the gutter picks this range.
     changed: tuple[tuple[int, int], ...] = ()
     # Index in *lines* -> column ranges of the words that changed on that line
     # (columns count the line's prefix). Lines without an entry changed whole.
@@ -892,11 +895,11 @@ def render_diff(
 ) -> RenderedDiff:
     """Show *change* as the pyrung source of the rungs that differ.
 
-    Each difference has ``CONTEXT_RUNGS`` unchanged rungs shown above and below
-    it; *shown* (``Gap.opcode`` -> ``Gap.shown``) shows more of a run. With
-    *selected*, only the blocks holding one of those proposed rungs are shown,
-    without unchanged rungs. *source* names where the proposal came from in the
-    ``+++`` header. Empty when nothing differs.
+    Each difference has ``CONTEXT_RUNGS`` unchanged rungs shown above and below it.
+    *shown* (``Gap.opcode`` -> ``Gap.shown``) makes a run show more rungs. If you pass
+    *selected*, only the blocks that hold one of those proposed rungs are shown, without
+    unchanged rungs. *source* names where the proposal came from in the ``+++`` header.
+    Return an empty diff if nothing differs.
     """
     before_text = before.text(name)
     after_text = after.text(name)
@@ -954,7 +957,7 @@ def render_diff(
         first = len(body)
         for prefix, line, spans in _diff_lines(old, new):
             if spans:
-                # Shifted past the prefix
+                # Shift the columns past the prefix
                 words[len(body)] = tuple((begin + 1, end + 1) for begin, end in spans)
             body.append(f"{prefix}{line}\n")
         changed.append((first, len(body)))

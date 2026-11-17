@@ -1,15 +1,16 @@
-"""Connecting to CLICK windows, and following the connected one.
+"""Connect to CLICK windows and follow the connected one.
 
-``ConnectionController`` lists the CLICK windows, connects to one (opening its
-``ConnectionSession`` and loading its database, or offering the CSV fallback),
-follows a project change, notices the window closing, and shows the autocomplete
-popup while monitoring is on, and has the window redraw its nicknames
-(``redraw_nicknames``). The facts it changes keep their homes on the app:
-the session in ``ClickNickApp._session``, the data in ``ClickNickApp._data``
-(through ``_open_data`` and ``_close_data``). It keeps only the window list, the
-user's monitoring choice, the Monitoring status still due after a load
-(``_status_after_id``), whether the ODBC warning has shown, and whether a redraw
-runs, with the one asked for meanwhile.
+``ConnectionController`` lists the CLICK windows and connects to one. Connecting opens the
+window's ``ConnectionSession`` and loads its database, or offers the CSV fallback. The
+controller also follows a project change, notices the window closing, shows the
+autocomplete popup while monitoring is on, and has the window redraw its nicknames
+(``redraw_nicknames``).
+
+The state it changes stays on the app. The session is in ``ClickNickApp._session`` and the
+data is in ``ClickNickApp._data`` (through ``_open_data`` and ``_close_data``). The
+controller itself keeps only these: the window list, the user's monitoring choice, the
+Monitoring status still due after a load (``_status_after_id``), whether the ODBC warning
+has shown, and whether a redraw is running, with the one requested in the meantime.
 """
 
 from __future__ import annotations
@@ -41,11 +42,11 @@ REDRAW_COMMAND = "Redraw Nicknames in CLICK"
 
 
 class ConnectionHost(Protocol):
-    """What ConnectionController uses of the app (``ClickNickApp``)."""
+    """The part of the app (``ClickNickApp``) that ConnectionController uses."""
 
     root: tk.Tk
-    # The connected session and the loaded data: their one home (assigning
-    # either refreshes the main window)
+    # The connected session and the loaded data live only here. Assigning either one
+    # refreshes the main window.
     _session: ConnectionSession | None
     _data: DataSession | None
     nickname_manager: NicknameManager
@@ -91,22 +92,24 @@ class ConnectionController:
         self._app = app
         # The CLICK windows the combobox lists (ClickInstance values)
         self.click_instances: list[ClickInstance] = []
-        # Autocomplete popups on or off: only the user's Start/Stop, or a window
-        # the user picks, changes it. The connection watch (_monitor_task) runs
-        # whenever a CLICK window is connected, whatever this says.
+        # Whether autocomplete popups are on. Only the user's Start/Stop, or a window the
+        # user picks, changes it. The connection watch (_monitor_task) runs whenever a
+        # CLICK window is connected, whatever this says.
         self.monitoring = True
         self._status_after_id = None
         self._odbc_warning_shown = False
-        # A nickname redraw runs (redraw_nicknames); the one asked for meanwhile, as
-        # (CLICK window, after_sync), runs when it ends
+        # Whether a nickname redraw is running (redraw_nicknames). A redraw requested
+        # meanwhile is kept as (CLICK window, after_sync) and runs when the running one ends.
         self._redraw_running = False
         self._redraw_pending: tuple[int, bool] | None = None
 
     # -- The window list -----------------------------------------------------
 
     def _instance_labels(self) -> list[str]:
-        """The combobox's label for each CLICK window: its filename, with the PID where
-        two windows show the same filename."""
+        """Return the combobox label for each CLICK window.
+
+        The label is the filename, plus the PID if two windows show the same filename.
+        """
         counts = Counter(instance.filename for instance in self.click_instances)
         return [
             f"{instance.filename} (PID {instance.pid})"
@@ -127,7 +130,7 @@ class ConnectionController:
         )
 
     def _select_connected_instance(self) -> None:
-        """Select the connected CLICK window in the combobox (nothing when none is)."""
+        """Select the connected CLICK window in the combobox, or clear it if none is connected."""
         click = self._app._click
         label = ""
         if click is not None:
@@ -140,9 +143,9 @@ class ConnectionController:
     def _show_instances(self, connected_title: str | None = None) -> None:
         """List the CLICK windows in the combobox and select the connected one.
 
-        The connected window is always listed, under the project it shows: the
-        list is read only now and then and leaves out a window whose title shows
-        no project. *connected_title* is its title when the caller knows it.
+        The connected window is always listed, under the project it shows. The list is read
+        only now and then, and it leaves out a window whose title shows no project.
+        *connected_title* is the window's title if the caller knows it.
         """
         click = self._app._click
         if click is not None:
@@ -163,10 +166,10 @@ class ConnectionController:
     def refresh_click_instances(self):
         """List the running CLICK windows.
 
-        Connects to the first one only when no window is connected and no data
-        is loaded: connecting replaces the loaded data, so otherwise the user
-        picks. The list leaves out windows whose title shows no project, so a
-        connected window missing from it is closed only if its process is gone.
+        Connect to the first one only if no window is connected and no data is loaded.
+        Connecting replaces the loaded data, so in other cases the user picks. The list
+        leaves out windows whose title shows no project. So a connected window that is
+        missing from the list is closed only if its process is gone.
         """
         app = self._app
         try:
@@ -205,8 +208,8 @@ class ConnectionController:
     def connect_to_instance(self, pid, title, filename, hwnd, *, user_picked: bool = False):
         """Connect to a specific Click.exe instance.
 
-        A window the user picked turns monitoring on; an automatic connect
-        leaves it as it is.
+        A window that the user picked turns monitoring on. An automatic connect leaves
+        monitoring as it is.
         """
         from .utils.mdb_shared import get_database_backend
 
@@ -240,8 +243,8 @@ class ConnectionController:
     ) -> None:
         """Open the session for the connected window and pair its workspace.
 
-        *has_database* when the loaded data is already this project's database
-        (kept edits after a project change); otherwise the database load sets it.
+        *has_database* is True when the loaded data is already this project's database
+        (kept edits after a project change). Otherwise the database load sets it.
         """
         from .connection_session import ConnectionSession
 
@@ -256,17 +259,17 @@ class ConnectionController:
         app._session = session
 
     def close_session(self) -> None:
-        """End the connection session: the one teardown of everything it owns."""
+        """End the connection session and tear down everything it owns."""
         session = self._app._session
         if session is not None:
             session.close()
             self._app._session = None
 
     def _load_instance_database(self, session: ConnectionSession) -> None:
-        """Select a backend and load a private store before attaching it to Tk.
+        """Load the window's database into a private store on a thread, then attach it to Tk.
 
-        The result counts only while *session* is open and nothing cancelled
-        the load (``ConnectionSession.cancel_load``).
+        The result is used only if *session* is still open and nothing called
+        ``ConnectionSession.cancel_load``.
         """
         import queue
         import threading
@@ -362,8 +365,8 @@ class ConnectionController:
     def load_csv(self, csv_path: str) -> bool:
         """Load nicknames from the CSV file at *csv_path*.
 
-        Watches the connected window while it is still open; otherwise its
-        session ends, as the data no longer follows it.
+        If the connected window is still open, watch it. Otherwise end its session, because
+        the data no longer follows it.
         """
         app = self._app
         if app._session is not None:
@@ -396,8 +399,11 @@ class ConnectionController:
             return False
 
     def _on_data_ready(self) -> None:
-        """Data for the connected window is loaded: watch the window, and while
-        monitoring is on say so a second later (after the load's own status)."""
+        """Handle data that has loaded for the connected window.
+
+        Watch the window. If monitoring is on, show the Monitoring status a second later,
+        after the load's own status.
+        """
         self._watch_connection()
         if self.monitoring:
             self.cancel_monitoring_status()
@@ -406,7 +412,7 @@ class ConnectionController:
     # -- Following the connected window ----------------------------------------
 
     def _handle_window_closed(self):
-        """Handle when connected window is no longer available."""
+        """Clean up after the connected window closed, and refresh the window list in 2 seconds."""
         app = self._app
         app._update_status("⚠ Connected ClickPLC window closed", "error")
         self.cancel_monitoring_status()
@@ -421,16 +427,15 @@ class ConnectionController:
         app.root.after(2000, self.refresh_click_instances)
 
     def _keeps_edits_for(self, old_filename: str, new_filename: str) -> bool:
-        """Ask whether unsaved edits stay, for the project CLICK shows now.
+        """Ask whether unsaved edits stay with the project CLICK shows now.
 
-        CLICK's Save As keeps the window's temp folder, its database and its
-        DataView folder, and so does opening another project in the same
-        window; ClickNick cannot tell the two apart, so the user says. The
-        question covers address edits on database data, text in a cell that will
-        not commit, and Dataview edits (on CSV data too: the Dataview Editor
-        shows the window's DataView folder). CSV address edits belong to the CSV
-        file and are not asked about. Nothing is saved here. False when there is
-        nothing unsaved.
+        CLICK's Save As keeps the window's temp folder, its database and its DataView
+        folder. Opening another project in the same window does the same. ClickNick cannot
+        tell the two apart, so the user answers. The question covers address edits on
+        database data, text in a cell that will not commit, and Dataview edits. Dataview
+        edits count on CSV data too, because the Dataview Editor shows the window's
+        DataView folder. CSV address edits belong to the CSV file, so the question does
+        not cover them. Nothing is saved here. Return False if nothing is unsaved.
         """
         data = self._app._data
         if data is None:
@@ -461,13 +466,12 @@ class ConnectionController:
         )
 
     def _reopen_dataview_editor(self, *, kept: bool) -> None:
-        """After a project change, show the window's DataView folder as it is now.
+        """Show the window's DataView folder as it is now, after a project change.
 
-        The window keeps its ``CLICK (hwnd)`` folder. When the user kept the
-        edits (*kept*) the editor stays as it is, with its tabs and its Modbus
-        connection, and lists the folder again. Otherwise it shows the files of
-        the project CLICK had open: it is closed without saving and opened again
-        on the window's DataView folder.
+        The window keeps its ``CLICK (hwnd)`` folder. If the user kept the edits (*kept*),
+        the editor stays as it is, with its tabs and its Modbus connection, and lists the
+        folder again. Otherwise the editor is closed without saving and opened again on the
+        window's DataView folder, so it shows the files of the project CLICK had open.
         """
         data = self._app._data
         dataview = data.dataview_window if data is not None else None
@@ -480,16 +484,15 @@ class ConnectionController:
         self._app._open_dataview_editor()
 
     def _handle_project_change(self, current_title: str, new_filename: str) -> None:
-        """The connected CLICK window shows another project: follow it.
+        """Follow the connected CLICK window to another project.
 
-        Unsaved address edits on database data, and Dataview edits, are kept
-        for the new project or discarded, as the user says (``_keeps_edits_for``).
-        Kept, the data and its windows stay open, and the store's file monitor
-        reads the base from the database the window now holds. Otherwise
-        database data closes with nothing saved, and the new project's database
-        is loaded. CSV data stays loaded. A Dataview Editor that stays open
-        lists its folder again when the edits were kept, and is otherwise opened
-        again on the window's DataView folder (``_reopen_dataview_editor``).
+        The user decides whether unsaved address edits on database data, and Dataview edits,
+        are kept for the new project or discarded (``_keeps_edits_for``). If they are kept,
+        the data and its windows stay open, and the store's file monitor reads the base from
+        the database that the window now holds. Otherwise database data closes with nothing
+        saved, and the new project's database is loaded. CSV data stays loaded. A Dataview
+        Editor that stays open lists its folder again if the edits were kept. Otherwise it
+        is opened again on the window's DataView folder (``_reopen_dataview_editor``).
         Monitoring stays as it was.
         """
         app = self._app
@@ -526,8 +529,8 @@ class ConnectionController:
             self._on_data_ready()
             app._start_analysis_build()
         elif app._data is None and app.nickname_manager.has_database_backend():
-            # Same off-thread load as connecting; a result for a project that
-            # changed again is dropped with its session.
+            # This is the same off-thread load as connecting. If the project changes again,
+            # the result is dropped with its session.
             self._load_instance_database(app._session)
         elif self.monitoring:
             self._update_status_monitoring()
@@ -572,12 +575,13 @@ class ConnectionController:
             session.overlay.withdraw()
 
     def _monitor_task(self):
-        """Every 100 ms while a CLICK window is connected (the session's watch):
-        notice it closing or changing project and, while monitoring is on, its
-        instruction popups.
+        """Run every 100 ms while a CLICK window is connected (the session's watch).
 
-        Stop turns off only the popups; the watch ends when the session does.
-        Popups need loaded data.
+        Notice the window closing or changing project. While monitoring is on, also notice
+        its instruction popups.
+
+        Stop turns off only the popups. The watch ends when the session does. Popups need
+        loaded data.
         """
         app = self._app
         session = app._session
@@ -594,9 +598,8 @@ class ConnectionController:
             try:
                 self._handle_project_change(current_title, new_filename)
             finally:
-                # The new project's session watches from here, starting now, even
-                # when following the project failed part way (the old session's
-                # watch ended when it closed)
+                # Start the watch of the new project's session now, even if following the
+                # project failed part way. The old session's watch ended when it closed.
                 self._watch_connection()
             return
 
@@ -607,7 +610,7 @@ class ConnectionController:
             session.hide_overlay()
 
     def _watch_connection(self) -> None:
-        """Start the connected session's watch (_monitor_task) unless it runs already."""
+        """Start the connected session's watch (_monitor_task) unless it is already running."""
         session = self._app._session
         if session is not None:
             session.watch(self._app.root, self._monitor_task)
@@ -617,14 +620,15 @@ class ConnectionController:
     def redraw_nicknames(self, *, after_sync: bool) -> None:
         """Make the connected CLICK window redraw its nicknames from SC_.mdb.
 
-        Runs ``services.click_redraw.redraw_nicknames`` off the Tk thread and shows its
-        result in the status line. *after_sync* when a Sync has just written
-        nicknames: a skipped or failed redraw then says they are in CLICK's database
-        and how to redraw them. A request made while a redraw runs runs once it ends,
-        as the running one may have read SC_.mdb before the Sync wrote it. A redraw
-        that ends once another CLICK window is connected, or none, shows nothing, and
-        one asked for on the window before does not run. A new session on the same
-        window (a project change) keeps both.
+        Run ``services.click_redraw.redraw_nicknames`` off the Tk thread and show its
+        result in the status line. Pass *after_sync* when a Sync has just written
+        nicknames. A skipped or failed redraw then says that the nicknames are in CLICK's
+        database and how to redraw them. A request made while a redraw runs waits and runs
+        when the running one ends, because the running one may have read SC_.mdb before the
+        Sync wrote it. If a redraw ends after another CLICK window, or none, is connected,
+        it shows nothing, and a request made for the earlier window does not run. A new
+        session on the same window (a project change) does not stop the status line or the
+        pending request.
         """
         session = self._app._session
         if session is None:
@@ -679,9 +683,12 @@ class ConnectionController:
 
     @staticmethod
     def _run_off_tk(work: Callable[[], None]) -> None:
-        """Run *work* on a thread of its own. Not a daemon: a redraw started as ClickNick
-        closes (the save prompt's Sync) runs to its end. Its waits are bounded, so that
-        takes about a minute at worst, and a second or two when CLICK answers."""
+        """Run *work* on a thread of its own.
+
+        The thread is not a daemon, so a redraw started as ClickNick closes (the save
+        prompt's Sync) runs to its end. Its waits are bounded. That takes about a minute at
+        worst, and a second or two when CLICK answers.
+        """
         import threading
 
         threading.Thread(target=work, name="clicknick-redraw").start()
@@ -709,7 +716,7 @@ class ConnectionController:
     # -- Monitoring ------------------------------------------------------------
 
     def cancel_monitoring_status(self) -> None:
-        """Drop the Monitoring status shown a second after a load, if it is still due."""
+        """Cancel the Monitoring status due a second after a load, if it is still pending."""
         if self._status_after_id is not None:
             self._app.root.after_cancel(self._status_after_id)
             self._status_after_id = None
@@ -718,7 +725,7 @@ class ConnectionController:
         self._app.start_button.configure(text="⏹ Stop" if self.monitoring else "▶ Start")
 
     def _update_status_monitoring(self):
-        """Update Status and Button to reflect Monitoring"""
+        """Show the Monitoring status and update the button when monitoring is on."""
         self.cancel_monitoring_status()
         click = self._app._click
         if not self.monitoring or click is None:
@@ -727,8 +734,10 @@ class ConnectionController:
         self._show_monitoring_button()
 
     def _start_monitoring_internal(self) -> bool:
-        """Internal method to start monitoring without status updates.
-        Returns True if successful, False otherwise."""
+        """Start monitoring but do not show the Monitoring status.
+
+        Return True if monitoring started, False otherwise.
+        """
         # Validate connection to Click instance
         if self._app._click is None:
             self._app._update_status("⚠ Not connected to ClickPLC window", "error")
@@ -748,7 +757,7 @@ class ConnectionController:
             self._update_status_monitoring()
 
     def stop_monitoring(self):
-        """Turn off popup detection; the connection watch keeps running."""
+        """Turn off popup detection. The connection watch keeps running."""
         self.monitoring = False
         self.cancel_monitoring_status()
         if self._app._session is not None:

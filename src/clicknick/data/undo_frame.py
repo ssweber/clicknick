@@ -18,11 +18,11 @@ MAX_UNDO_DEPTH = 50
 
 @dataclass
 class UndoFrame:
-    """Snapshot of user overrides before a change.
+    """A snapshot of the user overrides as they were before a change.
 
     Attributes:
         overrides: Dict mapping addr_key to that row's override (field -> value)
-                   at that point. Only contains rows that had unsaved edits.
+                   at that point. It contains only rows that had unsaved edits.
         description: Human-readable description of the change (for menu display).
     """
 

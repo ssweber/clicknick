@@ -16,7 +16,7 @@ class _Root:
 
 
 def _settle(watcher: ScrWatcher) -> None:
-    """One check sees the files change, the next two see them stay that way."""
+    """One check sees the files change. The next two checks see them stay changed."""
     watcher._check()
     watcher._check()
     watcher._check()
@@ -140,7 +140,7 @@ def test_a_save_caught_half_written_counts_once(tmp_path) -> None:
 
 
 class _Clock:
-    """Records each check scheduled; ``tick`` runs the latest one."""
+    """Records each scheduled check. ``tick`` runs the latest one."""
 
     def __init__(self) -> None:
         self.delays: list[int] = []
@@ -236,7 +236,7 @@ def test_no_scr_files_left_is_not_a_save(tmp_path) -> None:
 
 
 def _short_name(path: Path) -> Path:
-    """The 8.3 short spelling of an existing path, or the path when the volume has none."""
+    """Return the 8.3 short spelling of an existing path, or the path if the volume has none."""
     import ctypes
 
     buffer = ctypes.create_unicode_buffer(32768)

@@ -1,4 +1,4 @@
-"""Command dispatch for live editing.
+"""Dispatch commands for live editing.
 
 ``dispatch()`` ALWAYS runs on the Tk main thread (the ``LiveServer`` drain
 loop marshals it there), so it may freely call ``AddressStore.edit_session``
@@ -50,8 +50,9 @@ class DispatchContext:
     resolve_tag: Callable[[str], int | None] | None = None
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
     annotation: AnnotationService = field(default_factory=AnnotationService)
-    # (bundle folder, workspace source folder, program to select, its rungs to
-    # paste, open a window if none shows the folder) -> Review Changes
+    # Opens Review Changes. The arguments are the bundle folder, the workspace source
+    # folder, the program to select, its rungs to paste, and whether to open a window
+    # if none shows the folder.
     show_proposal: Callable[[Path, Path, str | None, list[int] | None, bool], None] | None = None
     show_address_editor: Callable[[str], None] | None = None
     show_save_prompt: Callable[[str, str], None] | None = None
@@ -68,10 +69,10 @@ _WHITESPACE = " \t\r\n"
 def _read_commands(text: str, *, chain: bool) -> list[list[str]]:
     """Read *text* into commands of words, as a POSIX shell quotes them.
 
-    Single or double quotes group words. Inside double quotes a backslash
-    escapes ``"`` and ``\\``; anywhere else it is an ordinary character, so a
-    Windows path such as ``C:\\temp`` stays as typed. With *chain*, a ``;``
-    outside quotes ends a command.
+    Single or double quotes group words. Inside double quotes a backslash escapes
+    ``"`` and ``\\``. Anywhere else a backslash is an ordinary character, so a Windows
+    path such as ``C:\\temp`` stays as typed. With *chain*, a ``;`` outside quotes ends
+    a command.
     """
     commands: list[list[str]] = [[]]
     word: list[str] = []
@@ -115,9 +116,9 @@ def _read_commands(text: str, *, chain: bool) -> list[list[str]]:
 
 
 def split_words(command: str) -> list[str]:
-    """Split one command into its words (``_read_commands`` says how).
+    """Split one command into its words, as ``_read_commands`` does.
 
-    ``quote_words`` writes words back so this returns them unchanged.
+    ``quote_words`` writes words back so that this function returns them unchanged.
     """
     commands = _read_commands(command, chain=False)
     return commands[0] if commands else []
@@ -190,7 +191,8 @@ def _cmd_set(ctx: DispatchContext, identifier: str, field_name: str, raw_value: 
     with ctx.store.edit_session(f"AI: set {identifier} {field_name}") as session:
         session.set_field(addr_key, field_name, value)
 
-    # As stored: a nickname or comment loses a space at either end, as in CLICK.
+    # Report the value as stored. The store trims a space from either end of a nickname
+    # or comment. CLICK does the same.
     stored = getattr(ctx.store.get_visible_row(addr_key), field_name)
     return f"OK: {identifier} {field_name} = {stored!r} (staged change)"
 

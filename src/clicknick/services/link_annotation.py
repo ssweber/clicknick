@@ -1,9 +1,10 @@
 """Bench links written into, and read back from, a feedback tag's comment.
 
-"Save to project" turns a simulator bench link into the comment metadata
-pyrung reads (``[link=Motor_Run, on_delay=2s, off_delay=500ms]``); after a
-Sync the program declares the link itself and the bench copy drops away.
-No tkinter, no store; `linked_feedbacks` reads a workspace's nicknames.csv.
+"Save to project" turns a simulator bench link into the comment metadata that
+pyrung reads (``[link=Motor_Run, on_delay=2s, off_delay=500ms]``). After a Sync,
+the program declares the link itself and the bench copy drops away. This module
+has no tkinter code and no store. `linked_feedbacks` reads a workspace's
+nicknames.csv.
 """
 
 from __future__ import annotations
@@ -23,9 +24,9 @@ from .tag_names import tag_names
 
 
 def bit_enable(address: str | None) -> bool:
-    """True when the CLICK *address* is a bit (X, Y, C, T, CT, SC): it is only ON or OFF.
+    """Return True if the CLICK *address* is a bit (X, Y, C, T, CT, SC), which is only ON or OFF.
 
-    A bit enable's trigger is 0 (drive while it is OFF) or none (while it is ON).
+    A bit enable's trigger is 0 (drive while it is OFF) or None (drive while it is ON).
     """
     normalized = normalize_address(address or "")
     if normalized is None:
@@ -35,7 +36,7 @@ def bit_enable(address: str | None) -> bool:
 
 
 def when_text(enable: str | None, trigger: int | str | None) -> str:
-    """When the enable drives the link, for labels: ``""``, ``" when OFF"`` or ``" = 3"``."""
+    """Return when the enable drives the link, for labels: ``""``, ``" when OFF"`` or ``" = 3"``."""
     if trigger is None:
         return ""
     if bit_enable(enable):
@@ -44,7 +45,7 @@ def when_text(enable: str | None, trigger: int | str | None) -> str:
 
 
 def link_text(enable_name: str, link: BenchLink) -> str:
-    """The ``link=`` value: the enable's nickname (or address), plus ``:trigger``.
+    """Return the ``link=`` value: the enable's nickname (or address), plus ``:trigger``.
 
     A bit enable that drives while OFF is written ``~Motor_Run``.
     """
@@ -56,7 +57,7 @@ def link_text(enable_name: str, link: BenchLink) -> str:
 
 
 def _link_texts(enable_name: str, link: BenchLink) -> set[str]:
-    """Every ``link=`` value that declares *link*; older projects spell ``~X`` as ``X:0``."""
+    """Return every ``link=`` value that declares *link*. Older projects spell ``~X`` as ``X:0``."""
     texts = {link_text(enable_name, link)}
     if link.trigger is not None:
         texts.add(f"{enable_name}:{link.trigger}")
@@ -64,11 +65,11 @@ def _link_texts(enable_name: str, link: BenchLink) -> set[str]:
 
 
 def comment_with_link(comment: str, link: BenchLink, enable_name: str) -> str:
-    """*comment* with its link and response replaced by *link*.
+    """Return *comment* with its link and response replaced by *link*.
 
-    The block tag, other metadata and free text are kept. A physical name is
-    dropped: the response now belongs to this tag alone, so it cannot clash
-    with a definition shared under that name.
+    The block tag, other metadata and free text stay. The physical name is dropped. The
+    response now belongs to this tag alone, so it cannot clash with a definition that is
+    shared under that name.
     """
     if link.cut:
         raise ValueError("a cut link has nothing to write to the project")
@@ -83,7 +84,7 @@ def comment_with_link(comment: str, link: BenchLink, enable_name: str) -> str:
 
 
 def comment_has_link(comment: str, link: BenchLink, enable_names: tuple[str, ...]) -> bool:
-    """True when *comment* already declares *link* (enable by any of *enable_names*)."""
+    """Return True if *comment* already declares *link*, with any of *enable_names* as enable."""
     if link.cut:
         return False
     try:
@@ -97,7 +98,10 @@ def comment_has_link(comment: str, link: BenchLink, enable_names: tuple[str, ...
 
 
 def declares_link(comment: str) -> bool:
-    """True when *comment* declares a link pyrung runs: ``link=`` beside a response or physical."""
+    """Return True if *comment* declares a link that pyrung runs.
+
+    That means ``link=`` beside a response or a physical.
+    """
     try:
         _block_tag, meta, _free_text = AnnotationService.decompose_comment(comment)
     except ValueError:
@@ -108,9 +112,9 @@ def declares_link(comment: str) -> bool:
 
 
 def linked_feedbacks(csv_dir: Path) -> frozenset[str]:
-    """The tags a workspace's program declares links on, from its ``nicknames.csv``.
+    """Return the tags that a workspace's program declares links on, from its ``nicknames.csv``.
 
-    Each is named as pyrung reads the file (``tag_names``). Empty when the
+    Each tag is named as pyrung reads the file (``tag_names``). Return an empty set if the
     file is missing or cannot be read.
     """
     path = csv_dir / "nicknames.csv"

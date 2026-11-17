@@ -110,7 +110,7 @@ class _Run:
         self.written.add(tree)
 
     def kept(self) -> dict[str, Tree]:
-        """Each listed backup by where it is: "newest" or an older backup's name."""
+        """Return each listed backup, keyed by "newest" or by an older backup's name."""
         backups: dict[str, Tree] = {}
         newest = _read(plc_backup_dir(self.project))
         if newest is not None:

@@ -25,7 +25,8 @@ PLC_BACKUP_TIME_PATH = Path("backup") / "backup-time.txt"
 OLDER_PLC_BACKUPS_PATH = Path("backup") / "older"
 #: Backups kept in all: backup/src/plc and the older ones.
 KEPT_PLC_BACKUPS = 5
-# Older backups are named in UTC, so a daylight-saving or time-zone change does not reorder them.
+# Older backups are named in UTC. A daylight-saving or time-zone change then does not
+# reorder them.
 _OLDER_NAME_FORMAT = "%Y%m%dT%H%M%SZ"
 _OLDER_NAME = re.compile(r"(\d{8}T\d{6}Z)(?:-(\d+))?")
 _PRUNING_PREFIX = ".pruning-"
@@ -36,7 +37,7 @@ _WORKSPACE_LOCKS_GUARD = threading.Lock()
 
 
 class WorkspaceBusyError(ValueError):
-    """A build is regenerating the workspace *where* (a folder, or words naming it)."""
+    """Raised when a build is regenerating the workspace *where* (a folder, or words naming it)."""
 
     def __init__(self, where: Path | str) -> None:
         super().__init__(
@@ -48,11 +49,11 @@ class WorkspaceBusyError(ValueError):
 def workspace_writing(project_dir: Path, *, wait: bool = False) -> Iterator[None]:
     """Hold *project_dir*'s lock while reading or writing its ``src/plc`` and backups.
 
-    A build's publish, a backup, a restore and choosing a workspace each hold
-    it, so none sees another's trees part way through. The build waits for it
-    (``wait=True``) on its worker thread. The others run on the Tk thread and
-    raise WorkspaceBusyError instead of freezing the window behind a build.
-    The thread that holds it may take it again.
+    A build's publish, a backup, a restore and choosing a workspace each hold the lock. None
+    of them can see another's trees part way through. The build waits for the lock
+    (``wait=True``) on its worker thread. The others run on the Tk thread. They raise
+    WorkspaceBusyError instead of freezing the window behind a build. The thread that holds
+    the lock may take it again.
     """
     key = os.path.normcase(str(project_dir.resolve()))
     with _WORKSPACE_LOCKS_GUARD:
@@ -103,7 +104,7 @@ def _source_fingerprint(source: Path) -> dict[str, str]:
 
 
 def _file_digest(path: Path) -> str | None:
-    """*path*'s content hash; None when it cannot be read."""
+    """Return *path*'s content hash, or None when it cannot be read."""
     try:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
@@ -111,7 +112,10 @@ def _file_digest(path: Path) -> str | None:
 
 
 def _source_stamp(source: Path) -> tuple[tuple[str, int, int], ...]:
-    """Each meaningful file's path, size and modification time: cheap, and moved by any edit."""
+    """Return each meaningful file's path, size and modification time.
+
+    This is cheap to compute, and any edit changes it.
+    """
     if not source.is_dir():
         return ()
     stamp: list[tuple[str, int, int]] = []
@@ -131,9 +135,9 @@ def _source_stamp(source: Path) -> tuple[tuple[str, int, int], ...]:
 class PlcSourceWatch:
     """Tells whether a project's ``src/plc`` still holds what it held when the watch began.
 
-    Each check reads only file sizes and times; the files are hashed again
-    only when one of those moved, so an edit undone in an editor, or a file
-    saved unchanged, does not count.
+    Each check reads only file sizes and times. It hashes the files again only when a size
+    or time changed. An edit that you undo in an editor, or a file that you save unchanged,
+    therefore does not count.
     """
 
     def __init__(self, project_dir: Path) -> None:
@@ -144,15 +148,16 @@ class PlcSourceWatch:
         try:
             self._fingerprint = _source_fingerprint(self._source)
         except OSError:
-            self._fingerprint = None  # unreadable: never reported as changed
+            self._fingerprint = None  # Unreadable, so the watch never reports a change
         self._run_digest = _file_digest(self._run_py)
         self._changed = False
 
     def same(self) -> bool:
-        """True only when ``src/plc`` and ``run.py`` were read at the start and now, and match.
+        """Return True only when ``src/plc`` and ``run.py`` read the same at the start and now.
 
-        What pyrung runs. A file that could not be read either time is not proof
-        of the same program, unlike :meth:`changed`, which then reports no change.
+        This is the program that pyrung runs. A file that could not be read either time does
+        not prove that the program is the same. :meth:`changed` differs here, because it
+        reports no change for such a file.
         """
         if self._fingerprint is None or self._run_digest is None:
             return False
@@ -176,7 +181,7 @@ class PlcSourceWatch:
         try:
             self._changed = _source_fingerprint(self._source) != self._fingerprint
         except OSError:
-            return self._changed  # a file being written: the next check reads it again
+            return self._changed  # A file is being written. The next check reads it again.
         self._stamp = stamp
         return self._changed
 
@@ -184,8 +189,9 @@ class PlcSourceWatch:
 def plc_source_is_modified(project_dir: Path) -> bool:
     """Return whether active source differs from the last CLICK generation.
 
-    A pre-existing project without recorded state is treated conservatively as
-    modified so its source is snapshotted before the first protected rebuild.
+    A project that already existed and has no recorded state counts as modified. That is the
+    cautious choice, because ClickNick then snapshots its source before the first protected
+    rebuild.
     """
     source = plc_source_dir(project_dir)
     if not source.is_dir():
@@ -218,11 +224,10 @@ def record_generated_plc_source(project_dir: Path) -> Path:
 
 
 def _replace_trees(pairs: Sequence[tuple[Path, Path]]) -> None:
-    """Copy each source over its destination: every destination changes, or none does.
+    """Copy each source over its destination. Either every destination changes, or none does.
 
-    Each copy is staged beside its destination first. The old trees then move
-    aside and the new ones in; if any rename fails, the new trees come out and
-    the old ones go back.
+    Each copy is staged beside its destination first. The old trees then move aside and the
+    new ones move in. If any rename fails, the new trees come out and the old ones go back.
     """
     moves: list[tuple[Path, Path, Path]] = []
     for source, destination in pairs:
@@ -299,10 +304,10 @@ def _latest_mtime(root: Path) -> dt.datetime | None:
 
 
 def plc_backup_time(project_dir: Path) -> dt.datetime | None:
-    """When the backup in ``backup/src/plc`` was taken, or None without one.
+    """Return when the backup in ``backup/src/plc`` was taken, or None without a backup.
 
-    Without a recorded time (a backup from an earlier ClickNick, or one whose
-    time could not be written) its newest file's time stands in.
+    Some backups have no recorded time. They come from an earlier ClickNick, or their time
+    could not be written. For those, the time of the backup's newest file is used instead.
     """
     backup = plc_backup_dir(project_dir)
     if not backup.is_dir():
@@ -315,11 +320,11 @@ def plc_backup_time(project_dir: Path) -> dt.datetime | None:
 
 
 def _record_backup_time(project_dir: Path, when: dt.datetime) -> None:
-    """Record *when*; a backup is in place either way, so a failure here never fails it.
+    """Record *when*. The backup is in place either way, so a failure here never fails it.
 
-    If the time cannot be written, the backup's files are dated *when*, since
-    their own times can be much older (a copy keeps them, and a backup an older
-    one already held keeps that one's files).
+    If the time cannot be written, the backup's files are dated *when*. Their own times can
+    be much older, because a copy keeps them, and a backup that an older one already held
+    keeps that one's files.
     """
     path = project_dir / PLC_BACKUP_TIME_PATH
     staging = path.with_suffix(f"{path.suffix}.staging")
@@ -327,7 +332,7 @@ def _record_backup_time(project_dir: Path, when: dt.datetime) -> None:
         staging.write_text(when.isoformat(timespec="seconds") + "\n", encoding="utf-8")
         staging.replace(path)
     except OSError:
-        # The time of the backup before would misname this one.
+        # The time of the previous backup would give this one the wrong time.
         for leftover in (staging, path):
             try:
                 leftover.unlink(missing_ok=True)
@@ -343,7 +348,7 @@ def _record_backup_time(project_dir: Path, when: dt.datetime) -> None:
 
 
 def older_plc_backup_time(name: str) -> dt.datetime:
-    """When the older backup *name* (one of ``older_plc_backups``) was taken, in UTC."""
+    """Return when the older backup *name* (one of ``older_plc_backups``) was taken, in UTC."""
     match = _OLDER_NAME.fullmatch(name)
     if match is None:
         raise ValueError(f"not an older backup name: {name!r}")
@@ -351,7 +356,7 @@ def older_plc_backup_time(name: str) -> dt.datetime:
 
 
 def older_plc_backups(project_dir: Path) -> list[str]:
-    """The names of the older backups, newest first.
+    """Return the names of the older backups, newest first.
 
     A second backup in the same second gets ``-2``, ``-3`` and so on after its time.
     Folders named otherwise are not backups and are left alone.
@@ -392,10 +397,11 @@ def _retire_newest_backup(project_dir: Path) -> Path:
 def _prune_older_backups(project_dir: Path, *, keep: str | None = None) -> None:
     """Delete the oldest backups beyond ``KEPT_PLC_BACKUPS``, never the older backup *keep*.
 
-    Callers prune once, after the whole operation succeeded. A kept older
-    backup beyond the limit stays (six for a while; the next backup trims to
-    five). Each is renamed out of the listing first, so a delete that stops part
-    way never leaves a broken backup that ``restore`` would take.
+    Callers prune once, after the whole operation succeeded. The older backup *keep* stays
+    even when it is beyond the limit. There are then six backups for a while, and the next
+    backup trims them to five. This function renames each backup out of the listing first.
+    A delete that stops part way therefore never leaves a broken backup that ``restore``
+    would take.
     """
     root = older_plc_backups_dir(project_dir)
     if not root.is_dir():
@@ -408,7 +414,7 @@ def _prune_older_backups(project_dir: Path, *, keep: str | None = None) -> None:
         try:
             (root / name).replace(doomed)
         except OSError:
-            continue  # still whole; the next backup tries again
+            continue  # The backup is still whole. The next backup tries again.
         shutil.rmtree(doomed, ignore_errors=True)
 
 
@@ -424,14 +430,14 @@ def _promote_older_backup(project_dir: Path, name: str) -> Path | None:
             (retired / PLC_PACKAGE_PATH).replace(newest)
             shutil.rmtree(retired, ignore_errors=True)
         raise
-    shutil.rmtree(slot, ignore_errors=True)  # empty now, and no longer listed
+    shutil.rmtree(slot, ignore_errors=True)  # The slot is empty now, and no longer listed.
     return retired
 
 
 def _back_up(project_dir: Path) -> tuple[int, Path | None]:
-    """Make ``src/plc`` the newest backup, without pruning: its file count and the slot made.
+    """Make ``src/plc`` the newest backup without pruning. Return its file count and the slot made.
 
-    A tree that any kept backup already holds makes no new one: the newest
+    If any kept backup already holds the same tree, no new backup is made. The newest backup
     only gets a new time, and an older one becomes the newest.
     """
     source = plc_source_dir(project_dir)
@@ -465,10 +471,10 @@ def _back_up(project_dir: Path) -> tuple[int, Path | None]:
 def backup_plc_source(project_dir: Path) -> tuple[Path, int]:
     """Copy the active ``src/plc`` tree to ``backup/src/plc``, keeping the backups before it.
 
-    The backup it replaces moves to ``backup/older/<YYYYMMDDTHHMMSSZ>/src/plc``
-    (the UTC time it was taken), and the oldest go so that ``KEPT_PLC_BACKUPS``
-    are kept in all. A tree that a kept backup already holds makes no new one:
-    that backup becomes the newest, with a new time.
+    The backup that this one replaces moves to ``backup/older/<YYYYMMDDTHHMMSSZ>/src/plc``,
+    where the name is the UTC time it was taken. The oldest backups are deleted, so that
+    ``KEPT_PLC_BACKUPS`` are kept in all. If a kept backup already holds the same tree, no
+    new backup is made. That backup becomes the newest, with a new time.
     """
     with workspace_writing(project_dir):
         file_count, _retired = _back_up(project_dir)
@@ -477,7 +483,7 @@ def backup_plc_source(project_dir: Path) -> tuple[Path, int]:
 
 
 def backup_modified_plc_source(project_dir: Path) -> tuple[Path, int] | None:
-    """Snapshot active source only when it contains work beyond regeneration."""
+    """Snapshot active source only when it holds work beyond what a regeneration produced."""
     with workspace_writing(project_dir):
         if not plc_source_is_modified(project_dir):
             return None
@@ -488,7 +494,7 @@ def backup_modified_plc_source(project_dir: Path) -> tuple[Path, int] | None:
 class PlcRestore:
     """What ``restore_plc_source`` did."""
 
-    #: Where the restored backup is kept now: a backup of the edits moves the newest aside.
+    #: Where the restored backup is kept now. A backup of the edits moves the newest aside.
     restored_from: Path
     file_count: int
     #: ``src/plc`` held edits other than the restored backup; they are now the newest backup.
@@ -531,11 +537,11 @@ def _restore(project_dir: Path, older: str | None) -> PlcRestore:
 def restore_plc_source(project_dir: Path, older: str | None = None) -> PlcRestore:
     """Replace active ``src/plc`` with the newest backup, or the older one named *older*.
 
-    Edits in ``src/plc`` that are neither the last generation nor the chosen
-    backup become the newest backup first (the rule of
-    ``backup_modified_plc_source``). The chosen backup is copied aside before
-    that, since that backup moves ``backup/src/plc`` to an older slot. Pruning
-    runs only once ``src/plc`` holds the restored tree, and keeps its backup.
+    Edits in ``src/plc`` that are neither the last generation nor the chosen backup become
+    the newest backup first (the rule of ``backup_modified_plc_source``). That backup moves
+    ``backup/src/plc`` to an older slot, so this function copies the chosen backup aside
+    before it. Pruning runs only once ``src/plc`` holds the restored tree, and it keeps the
+    chosen backup.
     """
     with workspace_writing(project_dir):
         return _restore(project_dir, older)
@@ -546,13 +552,13 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def headless_python() -> str:
-    """The interpreter for ClickNick's own Python children (the simulation, checks, exports).
+    """Return the interpreter for ClickNick's own Python children (the simulation, checks, exports).
 
-    Started from the ``clicknick`` GUI launcher, ``sys.executable`` is the venv's
-    pythonw.exe: a stub that starts the real interpreter as a second process, and
-    Windows shows its busy cursor for that GUI start until a window appears, which
-    never happens. The console python.exe, started with ``NO_WINDOW``, shows
-    neither a window nor the busy cursor.
+    When the ``clicknick`` GUI launcher starts ClickNick, ``sys.executable`` is the venv's
+    pythonw.exe. That is a stub that starts the real interpreter as a second process.
+    Windows shows its busy cursor for that GUI start until a window appears, and no window
+    ever appears. The console python.exe, started with ``NO_WINDOW``, shows neither a window
+    nor the busy cursor.
     """
     exe = Path(sys.executable)
     if exe.name.lower() == "pythonw.exe":

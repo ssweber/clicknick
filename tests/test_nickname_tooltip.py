@@ -1,4 +1,4 @@
-"""The overlay's nickname tooltip and the Tag Browser suffix show Retentive and initial value alike."""
+"""The overlay tooltip and the Tag Browser suffix show Retentive and the initial value alike."""
 
 import pytest
 from pyclickplc.banks import PAIRED_RETENTIVE_TYPES, DataType
@@ -111,7 +111,7 @@ def test_tooltip_and_tag_browser_agree(
 ):
     """The overlay tooltip, the Tag Browser and the Address Editor's masked initial value agree.
 
-    A TD/CTD row's Retentive is its T/CT row's, in all three.
+    All three show a TD/CTD row's Retentive as the Retentive of its T/CT row.
     """
     row = AddressRow(
         memory_type=memory_type,

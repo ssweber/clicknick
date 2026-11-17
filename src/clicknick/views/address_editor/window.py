@@ -179,7 +179,7 @@ class AddressEditorWindow(tk.Toplevel):
         if not can_fill:
             return False, [], reason
 
-        # Display indices of the rows Fill Down writes (the service picks them)
+        # Collect the display indices of the rows that Fill Down writes. The service picks them.
         targets = {row.addr_key for row in RowService.fill_down_targets(rows)}
         return (
             True,
@@ -423,7 +423,7 @@ class AddressEditorWindow(tk.Toplevel):
         return "Sync" if self._is_using_mdb() else "Save"
 
     def _cell_editor_is_open(self) -> bool:
-        """True while a cell editor is open in any tab."""
+        """Return True while a cell editor is open in any tab."""
         return any(panel.sheet.MT.text_editor.open for panel, *_ in self._tabs.values())
 
     def _save_all(self) -> None:
@@ -686,8 +686,8 @@ class AddressEditorWindow(tk.Toplevel):
 
         block_name, color = dialog.result
 
-        # Tag rows: the T/CT row when the selection interleaves T/TD or CT/CTD,
-        # so the store's pair cascade writes the matching _D tags
+        # Tag the T/CT row when the selection interleaves T/TD or CT/CTD rows. The store's
+        # pair cascade then writes the matching _D tags.
         first_key, last_key = RowService.block_tag_keys(selected_rows)
         visible = self._store.visible_state
         first_row = visible[first_key]
@@ -769,8 +769,8 @@ class AddressEditorWindow(tk.Toplevel):
         """Handle selection from outline tree.
 
         For single leaf nodes (exact nickname match): scrolls to address.
-        For folder nodes (multiple children): filters by path prefix using ^ anchor; a nickname
-        with others under it filters to itself and them (`tree:`).
+        For folder nodes (multiple children), filter by path prefix using the ^ anchor. A
+        nickname with others under it filters to itself and them (`tree:`).
 
         Args:
             path: Filter prefix for folders or exact nickname for leaves
@@ -1125,8 +1125,8 @@ class AddressEditorWindow(tk.Toplevel):
     ) -> None:
         """Handle notification that the store has changed.
 
-        The store replaces changed rows in the unified view (which every panel
-        shares) before notifying, so panels only need to redraw.
+        The store replaces changed rows in the unified view, which every panel shares, before
+        it notifies. Panels then only need to redraw.
 
         Args:
             sender: The store that changed
@@ -1172,7 +1172,7 @@ class AddressEditorWindow(tk.Toplevel):
     def _update_save_ui_labels(self) -> None:
         """Update Save/Sync labels in UI based on data source type."""
         save_label = self._get_save_label()
-        # Opened to Sync something staged elsewhere: the button closes the window too
+        # The window was opened to Sync something staged elsewhere, so the button closes it too.
         what = f"{save_label} and Close" if self._close_after_sync else f"{save_label} All"
 
         # Update menu item
@@ -1452,8 +1452,9 @@ class AddressEditorWindow(tk.Toplevel):
                 filter prefixes (None when there is none).
             on_synced: Called with the saved addr_keys after a successful save.
             get_synced_pending: Count of tags synced to CLICK but not yet saved there.
-            close_after_sync: The window was opened to Sync edits staged elsewhere: its
-                Sync button reads "Sync and Close" and closes it after a successful Sync.
+            close_after_sync: True if the window was opened to Sync edits staged elsewhere.
+                Its Sync button then reads "Sync and Close" and closes the window after a
+                successful Sync.
         """
         super().__init__(parent)
 
@@ -1480,7 +1481,7 @@ class AddressEditorWindow(tk.Toplevel):
         # Register as observer for shared data changes
         self._store.add_observer(self._on_address_store_changed)
 
-        # Register with the session (it closes all windows when data is replaced)
+        # Register with the session, which closes all windows when data is replaced.
         session.register_editor(self)
 
         # Handle window close
@@ -1503,7 +1504,7 @@ class AddressEditorWindow(tk.Toplevel):
         self._init_after_id = self.after(100, self._toggle_nav)
 
     def refresh_title(self) -> None:
-        """Show the project CLICK has open now; the app calls this when it changes."""
+        """Show the project that CLICK has open now. The app calls this when the project changes."""
         self.title(self._get_window_title())
 
     def commit_open_cell_editor(self) -> bool:
@@ -1511,8 +1512,8 @@ class AddressEditorWindow(tk.Toplevel):
 
         DataSession calls this before it closes the window or replaces its data.
 
-        Returns False, after telling the user, when an editor is still open
-        (tksheet commits nothing while the application has no focus).
+        Return False, after telling the user, if an editor is still open. tksheet commits
+        nothing while the application has no focus.
         """
         for panel, *_ in self._tabs.values():
             mt = panel.sheet.MT

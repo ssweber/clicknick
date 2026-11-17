@@ -35,7 +35,7 @@ class _Database:
 
 @pytest.fixture
 def store() -> AddressStore:
-    """CLICK's database: X001 is Start, X002 is Stop, X003 has no nickname."""
+    """Return a store on CLICK's database: X001 is Start, X002 is Stop, X003 has no nickname."""
     store = AddressStore(
         _Database(
             {
@@ -49,7 +49,7 @@ def store() -> AddressStore:
 
 
 def _rows(**by_address: tuple[str, str]) -> dict[int, AddressRow]:
-    """Rows of a nicknames.csv: ``X3=("Jog", "")`` gives X003 nickname Jog, no comment."""
+    """Return the rows of a nicknames.csv. ``X3=("Jog", "")`` is X003 with nickname Jog."""
     out = {}
     for address, (nickname, comment) in by_address.items():
         memory_type, number = address[0], int(address[1:])

@@ -385,7 +385,10 @@ def test_restore_of_clean_source_makes_no_backup(tmp_path: Path, monkeypatch):
 
 
 def _full_set(project_dir: Path) -> Path:
-    """Older O1-O4, newest N, and edits C in src/plc that no backup holds."""
+    """Build a project with older backups O1-O4, newest backup N, and edits C in src/plc.
+
+    No backup holds the edits C.
+    """
     source = project_dir / "src" / "plc"
     _generate(project_dir, "generated\n")
     for text in ("O1\n", "O2\n", "O3\n", "O4\n", "N\n"):

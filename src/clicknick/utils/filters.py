@@ -233,9 +233,9 @@ class ContainsPlusFilter(FilterBase):
 
     @lru_cache(maxsize=12000)  # noqa: B019
     def generate_tags(self, text):
-        """Generate searchable tags for a nickname, sorted and unique.
+        """Return the searchable tags for a nickname, sorted and unique.
 
-        Cached, so the result is a tuple shared between equal nicknames.
+        The result is cached. Equal nicknames share the same tuple.
         """
         words = self.split_into_words(text)
         tags = []
@@ -272,7 +272,7 @@ class ContainsPlusFilter(FilterBase):
     def _filter_multiple_words(self, completion_list, search_words):
         """Filter using intersection approach for multiple word searches.
 
-        Items keep their order in the list, so sorting and address order hold.
+        The matching items keep their order from the list, so sorting and address order stay.
         """
         # Sort words by length (longer/more specific words first for faster elimination)
         search_words = sorted(search_words, key=len, reverse=True)
@@ -303,7 +303,7 @@ class ContainsPlusFilter(FilterBase):
         # Split input into words for multi-word search
         search_words = self.split_into_words(current_text)
         if not search_words:
-            # Only one-letter words (p, Z, p_): a plain contains search
+            # The text has only one-letter words, such as p, Z or p_. Use a plain contains search.
             return self.contains_filter.filter_matches(completion_list, current_text.strip())
 
         # Route to appropriate filtering method

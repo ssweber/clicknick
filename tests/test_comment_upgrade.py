@@ -83,12 +83,12 @@ def test_every_upgrade_is_staged_in_one_edit_session():
         "<Tank:block> [ramp_on=0.8, ramp_off=-0.05, link=Fill] Level"
     )
     assert _comment(store, "X", 2) == "Plain [note]"
-    # One undo takes every upgrade back.
+    # A single undo reverts every upgrade.
     assert store.get_undo_description() == "Upgrade Project annotations"
     store.undo()
     assert _comment(store, "X", 1) == ENCODER
     assert _comment(store, "DF", 1) == LEVEL
-    # Each upgraded comment reads in the current form.
+    # After redo, each upgraded comment decomposes in the current form.
     store.redo()
     for bank, address in (("X", 1), ("DF", 1)):
         AnnotationService.decompose_comment(_comment(store, bank, address))
@@ -181,7 +181,7 @@ def test_the_repairs_entry_lists_comments_to_fix_by_hand(monkeypatch):
 
 @pytest.fixture(scope="module")
 def tk_root():
-    """One root for the whole module (per-test roots fail intermittently)."""
+    """Return one Tk root for the whole module. A root for each test fails intermittently."""
     tk = pytest.importorskip("tkinter")
     # Creating a root after another module destroyed its own sometimes fails to find
     # init.tcl. A second try works, and only a real lack of a display should skip.
@@ -214,7 +214,7 @@ def test_opening_the_repairs_menu_refreshes_the_upgrade_entry(tk_root):
         assert app.repairs_menu.entrycget(1, "label") == "Upgrade Project"
         tk_root.tk.eval(app.repairs_menu.cget("postcommand"))
         app._refresh_upgrade_entry.assert_called_once_with()
-        # Each Open Workspace entry the Workspace keeps current is the one it added
+        # Each entry that the workspace controller tracks is one it added, with the same label.
         assert app._workspace._open_entries
         for menu, index in app._workspace._open_entries:
             assert menu.entrycget(index, "label") == "Open Temporary Workspace"

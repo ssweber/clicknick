@@ -296,7 +296,7 @@ def test_new_legacy_encodings_pop_up_and_offer_review_changes(monkeypatch, answe
     assert "Open Review Changes now?" in message
     assert app._workspace.review_changes.called is answer
 
-    # The next build finds nothing new, so no popup shows
+    # The next build finds nothing new, so it shows no popup.
     ask.reset_mock()
     app._session.legacy_encodings_to_report.return_value = ()
     app._report_legacy_encodings()

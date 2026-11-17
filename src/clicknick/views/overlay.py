@@ -14,8 +14,8 @@ class Overlay(tk.Toplevel):
     def _insert_text_to_field(self, text):
         """Insert the string into the current field."""
         if not text or not self.target_window_id or not self.target_edit_control:
-            # Empty text is never sent: CLICK's Address Picker accepts an Enter with an
-            # empty field, and activating CLICK would pull its dialog back.
+            # Never send empty text. CLICK's Address Picker accepts an Enter with an empty
+            # field, and activating CLICK would pull its dialog back.
             return
 
         try:
@@ -78,8 +78,8 @@ class Overlay(tk.Toplevel):
         Handle nickname selection.
 
         If the nickname corresponds to an address, insert that address.
-        Otherwise pass on the text, in CLICK's display form when it is an
-        address ("c1" -> "C1", "x1" -> "X001").
+        Otherwise pass on the text. If the text is an address, pass it in CLICK's display
+        form ("c1" -> "C1", "x1" -> "X001").
         """
         address = self.nickname_manager.get_address_for_nickname(nickname, self.allowed_types)
         if not address:
@@ -199,7 +199,8 @@ class Overlay(tk.Toplevel):
             screen_x = win_x + ctrl_x
             screen_y = win_y + ctrl_y
 
-            # Find / Replace and the Address Picker edit inside a dropdown: cover its arrow too
+            # Find / Replace and the Address Picker use an edit inside a dropdown, so cover its
+            # arrow too
             if self.target_window_class in ("Find", "frmTagDB"):
                 return (screen_x - 5, screen_y - 5, ctrl_width + 28.5, ctrl_height + 10)
 
@@ -279,15 +280,15 @@ class Overlay(tk.Toplevel):
             return False
 
     def dismiss(self):
-        """Esc: hide the overlay and keep it hidden for this control.
+        """Hide the overlay on Esc and keep it hidden for this control.
 
-        It shows again for another control.
+        The overlay shows again for another control.
         """
         self._dismissed = True
         self.withdraw()
 
     def _stay_dismissed(self) -> bool:
-        """True while the overlay is dismissed for the target control."""
+        """Return True while the overlay is dismissed for the target control."""
         if not self._dismissed:
             return False
         try:
@@ -319,8 +320,8 @@ class Overlay(tk.Toplevel):
     def withdraw(self):
         """Override withdraw to cancel the pending hide and hide the tooltip.
 
-        The debounce reset is left to run: it is what lets the overlay show again
-        for the same control after a focus-out.
+        It does not cancel the pending debounce reset. That reset is what lets the overlay
+        show again for the same control after a focus-out.
         """
         # Hide the tooltip
         if hasattr(self, "tooltip"):

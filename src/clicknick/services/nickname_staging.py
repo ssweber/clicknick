@@ -1,12 +1,12 @@
 """Bring a folder's nicknames.csv into the Address Editor as edits to review and Sync.
 
-A folder of ladder CSVs may carry the nicknames its rungs use. They are not
-written to CLICK's database directly: they are staged in the AddressStore, so
-the Address Editor validates them and the user Syncs them like any other edit.
+A folder of ladder CSVs may carry the nicknames that its rungs use. ClickNick does not write
+them to CLICK's database directly. It stages them in the AddressStore, so the Address
+Editor validates them and the user Syncs them like any other edit.
 
-Only the addresses the file lists are touched. An address it leaves out keeps
-what it has; one it lists with no nickname has its nickname cleared. Only the
-fields the file has a column for are set.
+Staging touches only the addresses that the file lists. An address that the file leaves out
+keeps what it has. An address that the file lists with no nickname has its nickname cleared.
+Only the fields that the file has a column for are set.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from ..models.validation import trim_entry
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
 
-# The fields a nicknames.csv sets, in the order a change lists them
+# The fields that a nicknames.csv sets, in the order that a change lists them
 _FIELDS = ("nickname", "comment", "initial_value", "retentive")
 
 
@@ -47,7 +47,7 @@ class NicknamePlan:
 
     @property
     def added(self) -> int:
-        """Addresses that get a nickname where they had none."""
+        """Return the number of addresses that get a nickname where they had none."""
         return sum(1 for change in self._nicknames() if not change.old and change.new)
 
     @property
@@ -60,12 +60,17 @@ class NicknamePlan:
 
     @property
     def other(self) -> int:
-        """Addresses whose nickname stays but whose comment, initial value or retentive changes."""
+        """Return the number of addresses that keep their nickname but get a new comment,
+        initial value or retentive setting.
+        """
         renamed = {change.addr_key for change in self._nicknames()}
         return len({change.addr_key for change in self.changes} - renamed)
 
     def summary(self) -> str:
-        """``40 new, 12 renamed, 3 cleared, 5 other``; empty when nothing differs."""
+        """Return a summary such as ``40 new, 12 renamed, 3 cleared, 5 other``.
+
+        The summary is empty when nothing differs.
+        """
         parts = [
             f"{count} {word}"
             for count, word in (
@@ -79,7 +84,7 @@ class NicknamePlan:
         return ", ".join(parts)
 
     def describe(self, limit: int) -> list[str]:
-        """One line per change, ``X001 nickname: "" -> "Start"``, at most *limit* of them."""
+        """Return one line per change, ``X001 nickname: "" -> "Start"``, up to *limit* lines."""
         lines = [
             f"{change.display_address} {change.field}: {change.old!r} -> {change.new!r}"
             for change in self.changes[:limit]
@@ -98,15 +103,15 @@ def plan_nicknames(
     *,
     fields: Collection[str] = _FIELDS,
 ) -> NicknamePlan:
-    """What staging *rows* (a nicknames.csv) would change in *current*.
+    """Return what staging *rows* (a nicknames.csv) would change in *current*.
 
-    *current* is the store's visible rows (to see what is left to stage) or its
-    base rows (to see what CLICK's database still lacks). Addresses the store
-    does not track are left out. Only *fields* are compared: pass the fields
-    the file has a column for (``CsvDataSource.fields``), so a column it lacks
-    leaves that field as it is. A nickname or comment is taken as CLICK stores
-    it, without a space at either end (``trim_entry``), so ``"Jog "`` is staged
-    as ``"Jog"`` and is done once the database holds ``"Jog"``.
+    *current* is the store's visible rows, to see what is left to stage. It can also be the
+    store's base rows, to see what CLICK's database still lacks. The plan leaves out
+    addresses that the store does not track. It compares only *fields*. Pass the fields that
+    the file has a column for (``CsvDataSource.fields``), so a column that the file lacks
+    leaves that field as it is. A nickname or comment is taken as CLICK stores it, without a
+    space at either end (``trim_entry``). So ``"Jog "`` is staged as ``"Jog"``, and it is
+    done once the database holds ``"Jog"``.
     """
     changes: list[FieldChange] = []
     compared = [field for field in _FIELDS if field in fields]
@@ -129,7 +134,7 @@ def plan_nicknames(
 
 
 def stage_nicknames(store: AddressStore, plan: NicknamePlan, description: str) -> int:
-    """Stage *plan* in *store* as one undoable edit; returns how many fields were set."""
+    """Stage *plan* in *store* as one undoable edit and return how many fields were set."""
     if not plan:
         return 0
     with store.edit_session(description) as session:

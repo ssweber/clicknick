@@ -191,8 +191,8 @@ class ClickWindowDetector:
         """
         Update window and field detection with provided window and field.
 
-        A field whose types follow a list of the dialog (``ByChoice``) reads that list from
-        the window *window_id*.
+        If a field's types follow a list in the dialog (``ByChoice``), this reads that list
+        from the window *window_id*.
         Returns: WindowFieldInfo with validity and allowed address types
         """
         # Early return if no valid window

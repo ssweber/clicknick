@@ -55,7 +55,7 @@ class TestBuildTagAddrKeyMap:
         assert key_to_tag[x1] == "X001"
 
     def test_names_are_the_tags_pyrung_reads_from_the_snapshot(self, tmp_path):
-        """Whatever the installed pyrung does with spaces, the map names a tag as it does."""
+        """The tag map names each tag as the installed pyrung does, whatever it does with spaces."""
         from pyrung.click.tag_map import TagMap
 
         rows = {
@@ -72,7 +72,8 @@ class TestBuildTagAddrKeyMap:
 
         _tag_to_key, key_to_tag = _build_tag_addr_key_map(nickname_csv, rows)
 
-        # An address pyrung gives no tag is named by its address, as the code names it.
+        # If pyrung gives an address no tag, the map names it by its address. The generated code
+        # does the same.
         assert {key: key_to_tag[key] for key in rows} == {
             key: pyrung_names.get(key, row.display_address) for key, row in rows.items()
         }
@@ -94,7 +95,10 @@ class TestBuildTagAddrKeyMap:
         assert key_to_tag[get_addr_key("SC", 2)] == "SC2"
 
     def test_an_unnamed_slot_of_a_block_has_the_name_the_program_gives_it(self, tmp_path):
-        """pyrung names a ``:block`` range's slots after the block; the map follows it."""
+        """pyrung names the slots of a ``:block`` range after the block.
+
+        The tag map uses the same names.
+        """
         rows = {
             get_addr_key("C", 1): AddressRow("C", 1, nickname="Fill_A", comment="<Fill:block>"),
             get_addr_key("C", 4): AddressRow("C", 4, comment="</Fill:block>"),
@@ -315,8 +319,8 @@ class TestAnalysisStatus:
             try:
                 raise error
             except OldCommentFormError as exc:
-                # "context" wraps it with another error as the cause, so only the
-                # context link leads back to pyrung's error.
+                # With "context", the RuntimeError's cause is a different error. Only its context
+                # leads back to pyrung's error.
                 cause = exc if wrapped == "cause" else KeyError("other")
                 raise RuntimeError("project load failed") from cause
 
@@ -353,7 +357,9 @@ class TestAnalysisStatus:
 
     @pytest.mark.parametrize("fails", [False, True])
     def test_a_build_asked_for_since_keeps_it_building(self, monkeypatch, tmp_path, fails):
-        """A save queues a build while one runs: the one running publishes the save before."""
+        """If a save queues a build while another build runs, the running build publishes the
+        earlier save.
+        """
         svc = AnalysisService()
         outcomes = iter([fails, False])
 
@@ -591,7 +597,7 @@ class TestBuildValidation:
     def test_a_rebuild_failing_after_publishing_names_tags_as_the_workspace_does(
         self, monkeypatch, tmp_path
     ):
-        """Nicknames swapped in CLICK: the workspace on disk already uses the new names."""
+        """When nicknames are swapped in CLICK, the workspace on disk already uses the new names."""
         ds1, ds2 = get_addr_key("DS", 1), get_addr_key("DS", 2)
 
         def rows(first: str, second: str) -> tuple[dict[str, int], dict[int, str]]:

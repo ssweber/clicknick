@@ -11,8 +11,8 @@ Display Rules:
    Example: "Mtr1__Debounce" -> Mtr[1] -> 1 -> _ -> Debounce
 
 2. Trailing numbers on segments are detected as array indices, shown with [min-max].
-   An index keeps its digits as written ("Pump01" shows 01, apart from "Pump1") and
-   indices sort by value.
+   An index keeps its digits as written ("Pump01" shows 01, apart from "Pump1").
+   Indices sort by value.
    Single-element arrays (only one number, no siblings) collapse the number into the name.
    Example: "Motor1_Speed", "Motor2_Speed" -> Motor[1-2] -> 1 -> Speed
    Example: "Prod1_Count" (alone) -> Prod1_Count (no brackets)
@@ -84,8 +84,8 @@ class TreeNode:
     "Pump_" and "Pump") are never the same node. For an ordinary name the key is
     the name.
 
-    ``seg_start`` and ``path_end`` are the nickname text before this node's own
-    segment and through it.
+    ``seg_start`` is the nickname text before this node's own segment. ``path_end`` is the
+    nickname text through that segment.
     """
 
     children: dict[str, TreeNode] = field(default_factory=dict)
@@ -132,12 +132,13 @@ class DisplayItem:
     base_text: str = ""  # Text without brackets (e.g., "Motor" from "Motor[1-2]")
     # Other addresses with the same nickname as ``leaf`` (a duplicate during edits)
     also_leaves: list[tuple[str, int]] = field(default_factory=list)
-    # The nickname segment Rename changes: text before it, the segment, and whether
-    # it is an array name (renamed ahead of its digits). Empty text: not renamable.
+    # The nickname segment that Rename changes: the text before it, the segment, and whether
+    # it is an array name (Rename changes it ahead of its digits). Empty text means the item
+    # cannot be renamed.
     rename_prefix: str = ""
     rename_text: str = ""
     rename_is_array: bool = False
-    # Rename changes only this exact nickname (an item with nothing under it)
+    # True if Rename changes only this exact nickname, for an item with nothing under it.
     rename_exact: bool = False
 
     @property
@@ -225,17 +226,17 @@ def _insert_path(
 ) -> None:
     """Insert a nickname's segments into the tree, tracking insertion order.
 
-    A node's key is its segment as spelled: the name, plus a suffix when the
-    separator before it or an underscore after it is not the usual one. The slices
-    of the nickname a node records are cut only when the node is created.
+    A node's key is its segment as spelled. It is the name, plus a suffix when the separator
+    before the name or the underscore after it is not the usual one. The slices of the
+    nickname that a node records are cut only when the node is created.
 
-    A segment sits in the nickname after its separator (zero or one "_"); a "_" gap
-    is the "__" itself.
+    A segment follows its separator in the nickname, which is zero or one "_". A "_" gap is
+    the "__" itself.
     """
     node = root
     ptr = 0  # where the next segment's separator starts
     last = len(segments) - 1
-    prev_gap = True  # nothing before the first segment, or a gap, takes no separator
+    prev_gap = True  # The first segment and a segment after a gap take no separator.
     for i, (name, index) in enumerate(segments):
         sep_start = ptr
         gap = name == "_" and index is None
@@ -254,7 +255,7 @@ def _insert_path(
 
         key = "\x01" + name if name.isdigit() else name
         if name_trailing or (not gap and has_sep == prev_gap):
-            # a separator where none is due, or none where one is, or a trailing "_"
+            # Add a suffix for a separator where none is due, a missing one, or a trailing "_".
             key = f"{key}\x00{int(has_sep)}{name_trailing}"
         prev_was_gap = prev_gap
         prev_gap = gap
@@ -392,7 +393,7 @@ def _extract_leaf_info(
 
 
 def _numeric_children(node: TreeNode) -> list[TreeNode]:
-    """The array index children of a node, in numeric order (ties by digit string)."""
+    """Return the array index children of a node in numeric order, ties by digit string."""
     if not node.is_array:
         return []
     return sorted(
@@ -401,7 +402,7 @@ def _numeric_children(node: TreeNode) -> list[TreeNode]:
 
 
 def _named_children(node: TreeNode) -> list[TreeNode]:
-    """The children that are not array indices, "_" gaps last."""
+    """Return the children that are not array indices, with "_" gaps last."""
     named = [c for c in node.child_nodes() if not c.is_index]
     if not node.has_gap:
         return named
@@ -409,7 +410,7 @@ def _named_children(node: TreeNode) -> list[TreeNode]:
 
 
 def _ordered_children(node: TreeNode) -> list[TreeNode]:
-    """Children in display order: indices by value, "_" gaps last, the rest as inserted."""
+    """Return the children in display order: indices by value, gaps last, the rest as inserted."""
     ordered = node.child_nodes()
     if node.is_array:
         indices = iter(_numeric_children(node))
@@ -446,11 +447,11 @@ def _make_item(
         text: Display text (an array shows its [range])
         node: The node of the item's last nickname segment
         children: Child items
-        array: True for an array name shown with its range: its path has no
-            underscore after it, and Rename changes the name ahead of the digits
+        array: True for an array name shown with its range. Its path has no underscore
+            after it, and Rename changes the name ahead of the digits
     """
-    # An array name shown with its range is a folder: the name's own address (if any)
-    # is a separate item
+    # An array name shown with its range is a folder. The name's own address, if any, is a
+    # separate item.
     leaf, addr_key = (None, None) if array else _extract_leaf_info(node.leaf)
     if array:
         full_path = node.path_end
@@ -471,8 +472,8 @@ def _make_item(
         # A gap is not a name to rename
         rename_text="" if node.is_gap else node.path_end[len(node.seg_start) :],
         rename_is_array=array,
-        # An item with nothing under it renames its own nickname, not those that
-        # continue it (the array of the same name is another item)
+        # An item with nothing under it renames its own nickname, not the nicknames that
+        # continue it. The array of the same name is another item.
         rename_exact=leaf is not None and not children,
     )
 
@@ -563,7 +564,7 @@ def _flatten_child_with_prefix(prefix: str, node: TreeNode) -> list[DisplayItem]
 
     # Collapse single-child chains. Each step adds the nickname's own text from the end
     # of the node before to the end of this one, so every underscore shows as spelled.
-    # (A gap standing at the head of an item shows "_"; with more after it, its "__".)
+    # (A gap at the head of an item shows "_". If more follows it, it shows "__".)
     chained = False
     while not array_chain and len(collapse_node.children) == 1 and not collapse_node.leaves:
         only = collapse_node.child_nodes()[0]
@@ -619,11 +620,12 @@ def _flatten_node_children(node: TreeNode) -> list[DisplayItem]:
 
 
 def outline_filter(path: str, nicknames: Iterable[str]) -> str:
-    """The Address Editor filter text for double-clicking an item with this ``full_path``.
+    """Return the Address Editor filter text for double-clicking an item.
 
-    An item that is a nickname itself and has others under it (``Tank_Pump1`` over
-    ``Tank_Pump1_Run``) shows its own row and its children: ``tree:Tank_Pump1``, the
-    nicknames Rename changes. Any other item is its path as a prefix.
+    The item has this ``full_path``. If the item is a nickname itself and has others under
+    it (``Tank_Pump1`` over ``Tank_Pump1_Run``), the filter shows its own row and its
+    children, as ``tree:Tank_Pump1``. Those are the nicknames that Rename changes. Any other
+    item filters by its path as a prefix.
     """
     base = path[:-1]
     if path.endswith("_") and base in set(nicknames):

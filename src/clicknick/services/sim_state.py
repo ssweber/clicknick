@@ -1,9 +1,9 @@
-"""What the simulator remembers between sessions.
+"""Store what the simulator remembers between sessions.
 
-Switch positions, Momentary/Maintained choices, analog values, forces, bench
-links and whether the RUN hint has been seen. Before a durable workspace is paired the
-file lives in ``%LOCALAPPDATA%\\ClickNick\\simulator\\<PLC name>.toml``; once one
-is paired it moves to ``<workspace>/simulator.toml`` so it travels with the
+It remembers switch positions, Momentary/Maintained choices, analog values, forces, bench
+links, and whether the RUN hint has been seen. Before a durable workspace is paired, the
+file is ``%LOCALAPPDATA%\\ClickNick\\simulator\\<PLC name>.toml``. Once a workspace is
+paired, the file moves to ``<workspace>/simulator.toml`` so it travels with the
 engineering work.
 """
 
@@ -35,10 +35,10 @@ _VERSION = 1
 class BenchLink:
     """A session-only change to the feedback wiring on one input.
 
-    *enable* is the CLICK address that drives the feedback (with an optional
-    *trigger* value); ``None`` cuts the program's own link on that input.
-    *response* holds pyrung's response keys as a comment writes them
-    (``response(on_delay="2s")``). A disabled entry is kept but not applied.
+    *enable* is the CLICK address that drives the feedback, with an optional *trigger*
+    value. ``None`` cuts the program's own link on that input. *response* holds pyrung's
+    response keys as a comment writes them (``response(on_delay="2s")``). A disabled entry
+    is kept but not applied.
     """
 
     enable: str | None
@@ -108,17 +108,20 @@ def _text(value: object) -> str | None:
 
 
 def _key_text(value: object) -> str | None:
-    """A response value as text. A hand-written file may give a number (``ramp_on = 0.8``)."""
+    """Return a response value as text.
+
+    A hand-written file may give a number (``ramp_on = 0.8``).
+    """
     if isinstance(value, int | float) and not isinstance(value, bool):
         return str(value)
     return _text(value)
 
 
 def _old_profile(value: object) -> Response:
-    """The response an older bench file's ``profile`` token held, rewritten by pyrung.
+    """Return the response that an older bench file's ``profile`` token held, rewritten by pyrung.
 
     Every migration runs in order over the tokens, as ``upgrade_comment`` runs them over a
-    comment. Raises ValueError when an old token is left.
+    comment. Raise ValueError if an old token is left.
     """
     text = _text(value)
     if text is None:
@@ -137,9 +140,9 @@ def _old_profile(value: object) -> Response:
 
 
 def _parse_link(value: object) -> BenchLink | None:
-    """The bench link in a file entry, or ``None`` for an entry with no link at all.
+    """Return the bench link in a file entry, or ``None`` if the entry has no link at all.
 
-    Raises ValueError for a link whose response pyrung can't read, so the user is told.
+    Raise ValueError for a link whose response pyrung can't read, so the user is told.
     """
     if not isinstance(value, Mapping):
         return None
@@ -330,8 +333,8 @@ def settle_state_file(
 ) -> StateFile:
     """Pick the state file, moving the app-data copy into a newly paired workspace.
 
-    When a workspace already has its own ``simulator.toml``, that copy wins
-    and the app-data copy is deleted.
+    If the workspace already has its own ``simulator.toml``, that copy wins and the
+    app-data copy is deleted.
     """
     app_path = app_data_state_path(plc_name, root=app_data_root)
     if workspace_dir is None:
@@ -351,7 +354,7 @@ def settle_state_file(
         target.parent.mkdir(parents=True, exist_ok=True)
         app_path.replace(target)
     except OSError:
-        # A copy across drives cannot be renamed; fall back to copy + delete.
+        # A file cannot be renamed across drives, so copy it and delete the original.
         target.write_bytes(app_path.read_bytes())
         app_path.unlink(missing_ok=True)
     return StateFile(target)
@@ -364,11 +367,11 @@ def adopt_snapshot(
     inputs: Iterable[str],
     analog_inputs: Iterable[str],
 ) -> SimulatorState:
-    """Set switches and analog inputs to a PLC data dump's values (the snapshot wins).
+    """Set switches and analog inputs to the values in a PLC data dump (the snapshot wins).
 
-    Momentary inputs keep no position, so they are left alone; forces too. An
-    analog value CLICK cannot show (a DF cell it writes as ``Err-Format``, read
-    as NaN) leaves that input as it was.
+    Momentary inputs keep no position, so they are left alone. Forces are left alone too.
+    If CLICK cannot show an analog value (a DF cell it writes as ``Err-Format``, read as
+    NaN), that input stays as it was.
     """
     switches = dict(state.switches)
     for address in inputs:
@@ -393,10 +396,10 @@ def restore_state(
     analog_inputs: Iterable[str],
     modules: tuple[str, ...],
 ) -> RestoreResult:
-    """Keep only entries whose addresses the current hardware still provides.
+    """Keep only the entries whose addresses the current hardware still provides.
 
-    Forces and bench links may target any CLICK address, so they are kept
-    as long as the address is valid. The module list is updated to *modules*.
+    Forces and bench links may target any CLICK address, so they are kept as long as the
+    address is valid. The module list is updated to *modules*.
     """
     input_set = set(inputs)
     analog_set = set(analog_inputs)

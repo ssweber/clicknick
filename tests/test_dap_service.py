@@ -1,4 +1,4 @@
-"""DapService without a pyrung subprocess: launch and request failures."""
+"""Check how DapService fails to launch and to answer requests without a pyrung subprocess."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from clicknick.services.dap_service import DapRequestError, DapService, DapUnava
 
 
 class _Scripted(DapService):
-    """Answers each request from *answers* (None: no answer in time)."""
+    """Answers each request from *answers*. None means no answer arrived in time."""
 
     def __init__(self, answers, **callbacks) -> None:
         super().__init__(**callbacks)

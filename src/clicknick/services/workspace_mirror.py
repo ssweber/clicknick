@@ -69,8 +69,8 @@ class ProjectWorkspaceConfig:
 class MirrorSyncResult:
     copied_files: int
     mirror_path: Path
-    # The mirror's edited src/plc was kept (and backed up), not replaced: it is
-    # not the clean result of a generation.
+    # The mirror's edited src/plc was kept and backed up, not replaced, because it is not
+    # the clean result of a generation.
     kept_source: bool = False
 
 
@@ -239,7 +239,7 @@ def preferred_project_config(
 class WorkspacePairing:
     """The durable workspace paired with a connected project, as its session holds it."""
 
-    # The workspace builds use; None for a temporary workspace in CLICK's folder
+    # The workspace that builds use. None for a temporary workspace in CLICK's folder.
     config: ProjectWorkspaceConfig | None = None
     # Every known workspace for the project's PLC name
     matches: list[ProjectWorkspaceConfig] = field(default_factory=list)
@@ -248,7 +248,7 @@ class WorkspacePairing:
 
 
 def pair_workspace(plc_name: str | None) -> WorkspacePairing:
-    """Pair the user's preferred workspace for *plc_name* (none without a name)."""
+    """Pair the user's preferred workspace for *plc_name*. Without a name, pair none."""
     if not plc_name:
         return WorkspacePairing()
     matches = find_project_configs(plc_name)
@@ -355,7 +355,7 @@ def _overlay_onto_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
             continue
         copied += _copy_file(path, mirror / relative, overwrite=False)
 
-    # The mirror took the active workspace's last generation, so it is one too.
+    # The mirror took the active workspace's last generation, so record it as one too.
     if not keep_mirror_source and not source_is_modified:
         record_generated_plc_source(mirror)
     return MirrorSyncResult(copied, mirror, kept_source=keep_mirror_source)
@@ -364,14 +364,14 @@ def _overlay_onto_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
 def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     """Overlay the active workspace onto a mirror without deleting target files.
 
-    The one exception is ``csv/legacy_encodings.json``, which goes when the
-    active workspace has none. A mirror whose ``src/plc`` holds work beyond its
-    last generation keeps it: that tree is snapshotted to the mirror's
-    ``backup/src/plc`` (the backup there moves to ``backup/older``) and left
-    in place, and the next build regenerates it. A mirror that took the active
-    workspace's unedited ``src/plc`` is recorded as that generation.
-    When the active workspace's ``src/plc`` holds edits too, nothing changes and
-    ValueError says so: one of the two would be left behind.
+    The one exception is ``csv/legacy_encodings.json``, which is deleted from the mirror
+    if the active workspace has none. A mirror whose ``src/plc`` holds work beyond its
+    last generation keeps that tree. The tree is snapshotted to the mirror's
+    ``backup/src/plc`` (the backup there moves to ``backup/older``) and left in place, and
+    the next build regenerates it. A mirror that took the active workspace's unedited
+    ``src/plc`` is recorded as that generation. If the active workspace's ``src/plc``
+    holds edits too, nothing changes and ValueError says so, because one of the two would
+    be left behind.
     """
     source = _normalized(source)
     mirror = _normalized(mirror)
@@ -380,7 +380,8 @@ def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     if not (source / PLC_PACKAGE_PATH).is_dir():
         raise ValueError(f"active workspace source not found: {source / PLC_PACKAGE_PATH}")
     validate_mirror_destination(source, mirror)
-    # Not while a build publishes the active workspace: the copy would mix two generations.
+    # Do not copy while a build publishes the active workspace. The copy would mix two
+    # generations.
     with workspace_writing(source), workspace_writing(mirror):
         return _overlay_onto_mirror(source, mirror)
 

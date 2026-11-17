@@ -1,6 +1,6 @@
-"""Windows as the desktop shows them to a redraw of CLICK's nicknames.
+"""Describe the windows that CLICK's nickname redraw sees on the desktop.
 
-``services/click_redraw.py`` reads them; ``utils/win32_desktop.py`` makes them.
+``services/click_redraw.py`` reads them. ``utils/win32_desktop.py`` makes them.
 """
 
 from __future__ import annotations

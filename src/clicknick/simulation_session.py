@@ -1,20 +1,18 @@
 """Simulation session: one simulated PLC for the connected CLICK project.
 
-Owned by ConnectionSession. Pure logic (no tkinter): it owns the pyrung DAP
-subprocess (launched with a Modbus server, real-time pacing and STOP mode),
-the Modbus client the Simulator window reads values through, the
-switch/analog/force settings and bench links the user chose, and their
-persistence. The
-Simulator window (with its console) and the Dataview editor observe it and
-call its methods; neither owns the simulation.
+ConnectionSession owns this class. It has no tkinter code. It owns the pyrung DAP subprocess,
+which starts with a Modbus server, real-time pacing and STOP mode. It also owns the Modbus
+client that the Simulator window reads values through, the switch, analog and force settings
+and the bench links that the user chose, and the saving of those choices. The Simulator window
+(with its console) and the Dataview editor observe the session and call its methods. Neither
+of them owns the simulation.
 
-Two channels reach the simulated PLC: values are read over Modbus exactly
-as from real hardware; inputs (switches, analog values), mode, speed,
-stepping, forces and bench links go over DAP. X stays read-only over Modbus, as on a
-real CLICK.
+Two channels reach the simulated PLC. You read values over Modbus, exactly as from real
+hardware. Inputs (switches, analog values), mode, speed, stepping, forces and bench links go
+over DAP. X stays read-only over Modbus, as on a real CLICK.
 
-Everything public runs on the UI thread. Work that blocks runs on worker
-threads, and its results come back through ``scheduler.after(0, ...)``.
+Every public method runs on the UI thread. Work that blocks runs on worker threads, and the
+results come back through ``scheduler.after(0, ...)``.
 """
 
 from __future__ import annotations
@@ -95,9 +93,9 @@ SwitchPosition = Literal["stop", "step", "run"]
 STEP_LABEL = "STEP"
 SWITCH_LABELS: dict[SwitchPosition, str] = {"stop": "STOP", "step": STEP_LABEL, "run": "RUN"}
 
-#: Frame ``source.origin`` values worth naming in the UI: someone other than
-#: this window moved the switch. ``dap`` is ClickNick itself, ``worker`` the
-#: scan loop reporting its own pause, and Modbus writes never change the mode.
+#: The ``source.origin`` values of a frame that the UI names, because something other than
+#: this window moved the switch. ``dap`` is ClickNick itself and ``worker`` is the scan loop
+#: reporting its own pause. Modbus writes never change the mode.
 _ORIGIN_LABELS = {"live": "Console"}
 
 
@@ -130,13 +128,18 @@ MessageLevel = Literal["output", "progress", "error"]
 
 @dataclass(frozen=True)
 class SimEvent:
-    """A change listeners may want to show.
+    """A change that listeners may want to show.
 
-    ``status``: lifecycle; ``frame``: mode/scan/forces/pending writes;
-    ``values``: Modbus values; ``modbus``: server info; ``desired``: switch,
-    analog or force settings; ``layout``: hardware; ``message``: a line for
-    the transcript (``text`` and ``level``); ``echo``: the console command
-    equivalent to something the user just did on the panel (``text``).
+    ``kind`` is one of these:
+
+    - ``status``: the session's lifecycle changed.
+    - ``frame``: the mode, scan, forces or pending writes changed.
+    - ``values``: new Modbus values arrived.
+    - ``modbus``: the server info changed.
+    - ``desired``: the switch, analog or force settings changed.
+    - ``layout``: the hardware layout changed.
+    - ``message``: a line for the transcript, in ``text`` and ``level``.
+    - ``echo``: the console command (in ``text``) that does what the user just did on the panel.
     """
 
     kind: EventKind
@@ -145,18 +148,18 @@ class SimEvent:
 
 
 ChangeCause = Literal["save", "rebuilt", "source", "unconverted"]
-#: How a changed program reaches the simulation, as when writing to a CLICK:
-#: ``run_time_edit`` and ``stop_and_write`` in RUN, ``write`` otherwise, and
-#: ``restart`` (a new process) once a write failed.
+#: How a changed program reaches the simulation, the same as when you write to a CLICK.
+#: In RUN it is ``run_time_edit`` or ``stop_and_write``. Otherwise it is ``write``. After a
+#: write failed it is ``restart``, which starts a new process.
 ProgramAction = Literal["run_time_edit", "stop_and_write", "write", "restart"]
 
 
 @dataclass(frozen=True)
 class ProgramChange:
-    """A program the simulation does not run: CLICK saved one, or the workspace source changed.
+    """A program that the simulation does not run: CLICK saved one, or the workspace source changed.
 
-    Nothing reaches the simulation until the user writes it (*actions*). A
-    save that could not be converted offers nothing to write.
+    Nothing reaches the simulation until the user writes the program (see *actions*). If CLICK
+    saved a program that could not be converted, there is nothing to write.
     """
 
     cause: ChangeCause
@@ -169,11 +172,11 @@ LinkSource = Literal["project", "bench"]
 
 @dataclass(frozen=True)
 class WiredLink:
-    """One feedback link: the program's own (``project``) or a bench change.
+    """One feedback link, either from the program (``project``) or a bench change.
 
-    Addresses are CLICK display addresses. A cut bench change has no enable.
-    ``active`` says whether the simulation runs it right now; a project link
-    stops being active while a bench change replaces or cuts it.
+    Addresses are CLICK display addresses. A bench change that cuts a link has no enable.
+    ``active`` is True while the simulation runs the link. A project link is not active while
+    a bench change replaces or cuts it.
     """
 
     feedback: str
@@ -191,12 +194,12 @@ class WiredLink:
 
     @property
     def response_label(self) -> str:
-        """``on_delay=2s, off_delay=500ms``, for labels."""
+        """Return the response as label text, such as ``on_delay=2s, off_delay=500ms``."""
         return response_label(self.response)
 
     @property
     def kind(self) -> str:
-        """The response's kind (``delay``, ``ramp``...), or ``""`` when it makes none."""
+        """Return the response's kind (``delay``, ``ramp``...), or ``""`` if it has none."""
         kind = response_kind(self.response)
         return "" if kind is None else kind.name
 
@@ -263,7 +266,7 @@ def _default_send_command(session_name: str, command: str) -> tuple[bool, str]:
 
 
 def _command_value(value: PlcValue) -> str:
-    """*value* as the console types it: ``true``, ``false`` or a number."""
+    """Return *value* as you type it in the console: ``true``, ``false`` or a number."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float):
@@ -272,14 +275,17 @@ def _command_value(value: PlcValue) -> str:
 
 
 def _unavailable(exc: BaseException) -> bool:
-    """True when the simulation never answered (stopped, died or hung) rather than refused."""
+    """Return True if the simulation never answered.
+
+    It stopped, died or hung. It did not refuse.
+    """
     from .services.dap_service import DapUnavailableError
 
     return isinstance(exc, DapUnavailableError)
 
 
 def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
-    """Send one bench link to the simulation: a cut, or a link with its response."""
+    """Send one bench link to the simulation, either a cut or a link with its response."""
     if link.cut:
         dap.unlink(feedback)
         return
@@ -288,7 +294,7 @@ def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
 
 
 def _watch_source(project_dir: Path) -> PlcSourceWatch | None:
-    """What *project_dir*'s ``src/plc`` holds now, to tell later whether it changed."""
+    """Return a snapshot of ``src/plc`` in *project_dir*, to tell later if it changed."""
     from .services.project_workspace import PlcSourceWatch
 
     try:
@@ -298,32 +304,32 @@ def _watch_source(project_dir: Path) -> PlcSourceWatch | None:
 
 
 def _link_enable(row: Mapping[str, Any]) -> str | None:
-    """The enable tag of a bench row of pyrung's link listing; None for a cut."""
+    """Return the enable tag of a bench row in pyrung's link listing, or None for a cut."""
     enable = row.get("enable")
     return None if row.get("cut") or enable is None else str(enable)
 
 
 def _bench_link(row: Mapping[str, Any], enable: str | None) -> BenchLink:
-    """A bench row of pyrung's link listing as the user's link, driven from *enable*."""
+    """Return a bench row of pyrung's link listing as the user's link, driven by *enable*."""
     enabled = row.get("enabled", True) is not False
     return BenchLink(enable, row.get("trigger"), response_from_dap(row), enabled)
 
 
 @dataclass(frozen=True)
 class _Listing:
-    """What pyrung had forced and linked around a write, by CLICK address."""
+    """The forces and links that pyrung had around a write, keyed by CLICK address."""
 
     forces: Mapping[str, PlcValue]
     links: Mapping[str, BenchLink]
     bench_wiring: bool
     problems: tuple[str, ...] = ()
-    #: What the write released, renamed or could not keep (``CarryPlan.written``).
+    #: Text saying what the write released, renamed or could not keep (``CarryPlan.written``).
     carried: str = ""
 
 
 @dataclass(frozen=True)
 class _WriteTarget:
-    """The program a write loads: the build it came from and the names it was generated with."""
+    """The program that a write loads, with the build it came from and the names it uses."""
 
     generation: int
     names: tuple[Mapping[str, int], Mapping[int, str]]
@@ -388,30 +394,32 @@ class SimulationSession:
         self._error_detail: str | None = None
         self._dap: Any | None = None
         self._token = 0
-        # The program the simulation runs: the analysis generation it came from, the
-        # CLICK save count then, its tag names, its folder and what its source held.
-        # Set at launch and by a write; pyrung never loads files on its own (autoreload
-        # is off).
+        # The program that the simulation runs. These fields hold the analysis generation it
+        # came from, the CLICK save count at that time, its tag names, its folder and what its
+        # source held. A launch and a write set them. pyrung never loads files on its own,
+        # because autoreload is off.
         self._program_generation = -1
         self._program_saves: int | None = None
         self._program_names: tuple[Mapping[str, int], Mapping[int, str]] | None = None
         self._program_dir: Path | None = None
         self._program_source: PlcSourceWatch | None = None
         self._source_changed = False
-        # The finished build last compared with the program the simulation runs.
+        # The last finished build that was compared with the program the simulation runs.
         self._examined = -1
-        # A write (pyrung reload) asked for and not answered yet, and why the last failed.
+        # True while a write (a pyrung reload) waits for its answer. The next field says why the
+        # last write failed.
         self._writing = False
         self._write_error: str | None = None
         self._shown_change: ProgramChange | None = None
-        # A restart the PLC data file or the Modbus port asked for that waits for the
-        # write in flight to be answered, or for a build to finish. Any launch serves it.
+        # True when the PLC data file or the Modbus port asked for a restart that has to wait.
+        # It waits for the write in flight to be answered, or for a build to finish. Any launch
+        # serves it.
         self._restart_due = False
-        # Console commands in flight (run_console_command): one could land between a
-        # write's listing and its reload. Counted here, so closing the panel that sent
-        # one does not leave the count set.
+        # The number of console commands in flight (see run_console_command). A command could
+        # land between a write's listing and its reload. The session counts them, so closing
+        # the panel that sent one does not leave the count set.
         self._console_commands = 0
-        # The notice that a write or Restart was refused, until one goes through.
+        # The notice that a write or Restart was refused. It stays until one goes through.
         self._refusal: str | None = None
         # A launch whose process died before the session adopted it.
         self._died_token: int | None = None
@@ -447,19 +455,19 @@ class SimulationSession:
         self._pressed: set[str] = set()
         self._speed = 1.0
         self._desired_position: SwitchPosition = "stop"
-        # After a write pyrung never answered, the simulation may be left paused: the
-        # position the user had stays the one a Restart starts in, until the user
+        # If pyrung never answered a write, the simulation may be left paused. The switch
+        # position the user had stays the position that a Restart starts in, until the user
         # moves the switch or a write goes through.
         self._position_held = False
         self._forces_baseline: dict[str, PlcValue] | None = None
         self._analog_queued: set[str] = set()
-        # Links as the simulation reports them (project + bench). Until the
-        # bench links have been re-applied after a launch, a listing only
-        # updates the display and never overwrites what the user chose.
+        # The links (project and bench) as the simulation reports them. After a launch, the
+        # bench links are applied again. Until that has happened, a listing only updates the
+        # display and never overwrites what the user chose.
         self._link_rows: tuple[WiredLink, ...] | None = None
         self._links_revision_seen: int | None = None
         self._links_synced = False
-        # Read the links again on the next frame: the listing went unanswered.
+        # Read the links again on the next frame, because the simulation did not answer the listing.
         self._links_refetch = False
         self._restored_links = 0
 
@@ -504,7 +512,7 @@ class SimulationSession:
                 pass
 
     def _echo_settled(self, address: str) -> None:
-        """Echo an analog value once it stops changing (a dragged slider sends many)."""
+        """Echo an analog value once it stops changing. A dragged slider sends many values."""
         self._cancel(self._analog_echo_ids.pop(address, None))
 
         def echo() -> None:
@@ -516,7 +524,7 @@ class SimulationSession:
         self._analog_echo_ids[address] = self._scheduler.after(ECHO_SETTLE_MS, echo)
 
     def _post(self, callback: Callable[[], None]) -> bool:
-        """Run *callback* on the UI thread (callable from any thread). False if it never will."""
+        """Run *callback* on the UI thread, from any thread. Return False if it never will."""
         if self._closed:
             return False
         try:
@@ -529,7 +537,7 @@ class SimulationSession:
         self, token: int, text: str, on_error: Callable[[str], None] | None
     ) -> None:
         if token != self._token:
-            return  # that simulation is gone; the next one gets the user's settings anyway
+            return  # That simulation is gone. The next one gets the user's settings anyway.
         self._message(text, "error")
         if on_error is not None:
             on_error(text)
@@ -540,10 +548,10 @@ class SimulationSession:
         what: str,
         on_error: Callable[[str], None] | None = None,
     ) -> None:
-        """Run *job* on the ordered action worker; report a failure as a message.
+        """Run *job* on the ordered action worker and report a failure as a message.
 
-        *on_error* undoes the action, so it runs only when the simulation that
-        was asked refused it: not when it stopped, restarted or never answered.
+        *on_error* undoes the action. It runs only if the simulation refused the action. It does
+        not run if the simulation stopped, restarted or never answered.
         """
         token = self._token
 
@@ -584,12 +592,12 @@ class SimulationSession:
 
     @property
     def mode(self) -> str:
-        """``"run"`` or ``"stop"``, as the simulated PLC last reported it."""
+        """Return ``"run"`` or ``"stop"``, as the simulated PLC last reported it."""
         return self._dap.mode if self._dap is not None else "stop"
 
     @property
     def running(self) -> bool:
-        """True while scanning continuously (RUN and not paused)."""
+        """Return True while the PLC scans continuously (in RUN and not paused)."""
         return self._dap is not None and self._dap.running
 
     @property
@@ -602,12 +610,12 @@ class SimulationSession:
 
     @property
     def actual_speed(self) -> float | None:
-        """Measured speed while free-running, when the simulation reports it."""
+        """Return the measured speed while free-running, if the simulation reports it."""
         return self._dap.actual_speed if self._dap is not None else None
 
     @property
     def speed_text(self) -> str:
-        """``"1x"``, ``"Max"``, or ``"1x (actual 0.6x)"`` when it cannot keep up."""
+        """Return ``"1x"`` or ``"Max"``, or ``"1x (actual 0.6x)"`` if the simulation lags."""
         text = format_speed(self._speed)
         actual = self.actual_speed
         if self.running and self._speed > 0 and actual is not None and actual < self._speed * 0.9:
@@ -616,7 +624,7 @@ class SimulationSession:
 
     @property
     def source_text(self) -> str:
-        """Who last moved the mode switch, e.g. ``"Moved to STEP by Console: step 10"``."""
+        """Return who last moved the mode switch, e.g. ``"Moved to STEP by Console: step 10"``."""
         if self._dap is None:
             return ""
         source = self._dap.source
@@ -649,7 +657,7 @@ class SimulationSession:
 
     @property
     def summary_text(self) -> str:
-        """A word or two for the main window's Test legend: ``"on :502"``, ``"off"``..."""
+        """Return a word or two for the main window's Test legend, such as ``"on :502"``."""
         if not self._enabled:
             return "off"
         if self._status is SimStatus.FAILED:
@@ -663,24 +671,24 @@ class SimulationSession:
 
     @property
     def values(self) -> dict[str, PlcValue]:
-        """Latest values read over Modbus, keyed by CLICK address."""
+        """Return the latest values read over Modbus, keyed by CLICK address."""
         return dict(self._values)
 
     @property
     def forces(self) -> dict[str, PlcValue]:
-        """Active forces by CLICK address (kept in step with the simulation)."""
+        """Return the active forces by CLICK address. They stay in step with the simulation."""
         return dict(self._state.forces)
 
     @property
     def pending(self) -> dict[str, PlcValue]:
-        """Writes waiting for the next scan, by CLICK address."""
+        """Return the writes that wait for the next scan, by CLICK address."""
         if self._dap is None:
             return {}
         return {self.to_address(k): v for k, v in self._dap.pending_patches.items()}
 
     @property
     def tag_hints(self) -> dict[str, dict[str, Any]]:
-        """pyrung's per-tag hints (min/max ranges, choices), keyed by CLICK address."""
+        """Return pyrung's per-tag hints (min/max ranges, choices), keyed by CLICK address."""
         if self._dap is None:
             return {}
         return {self.to_address(k): v for k, v in self._dap.tag_hints.items()}
@@ -699,7 +707,7 @@ class SimulationSession:
 
     @property
     def modbus_available(self) -> bool:
-        """True when the simulation's Modbus server is up and accepting clients."""
+        """Return True if the simulation's Modbus server is up and accepting clients."""
         info = self._modbus_info
         return self.is_ready and bool(info.get("running")) and not info.get("error")
 
@@ -730,32 +738,32 @@ class SimulationSession:
 
     @property
     def notice(self) -> str | None:
-        """Something about restored settings the user should know, until dismissed."""
+        """Return a message about restored settings. It stays until the user dismisses it."""
         return self._notice
 
     @property
     def restored_forces(self) -> int:
-        """Forces restored from the last session, until released or dismissed."""
+        """Return how many forces were restored, until released or dismissed."""
         return self._restored_forces if self._state.forces else 0
 
     @property
     def restored_links(self) -> int:
-        """Bench links restored from the last session, until discarded or dismissed."""
+        """Return how many bench links were restored, until discarded or dismissed."""
         return self._restored_links if self._state.links else 0
 
     @property
     def bench_links(self) -> dict[str, BenchLink]:
-        """The bench changes the user chose, by feedback address."""
+        """Return the bench changes that the user chose, by feedback address."""
         return dict(self._state.links)
 
     @property
     def bench_wiring(self) -> bool:
-        """False while every bench change is set aside."""
+        """Return False while every bench change is set aside."""
         return self._state.bench_wiring
 
     @property
     def links(self) -> tuple[WiredLink, ...]:
-        """Every link: as the simulation reports it, or the bench changes alone while it is off."""
+        """Return every link as the simulation reports it, or the bench changes while it is off."""
         if self._link_rows is not None:
             return self._link_rows
         return tuple(
@@ -771,14 +779,14 @@ class SimulationSession:
         )
 
     def driving_link(self, address: str) -> WiredLink | None:
-        """The link driving *address* right now, if any (a cut drives nothing)."""
+        """Return the link that drives *address* right now, or None. A cut drives nothing."""
         for link in self.links:
             if link.feedback == address and link.active and not link.cut:
                 return link
         return None
 
     def project_link(self, address: str) -> WiredLink | None:
-        """The program's own link on *address*, active or not."""
+        """Return the program's own link on *address*, whether or not it is active."""
         for link in self.links:
             if link.feedback == address and link.source == "project":
                 return link
@@ -789,13 +797,13 @@ class SimulationSession:
         return self._plc_data_path
 
     def _tag_maps(self) -> tuple[Mapping[str, int], Mapping[int, str]]:
-        """Tag names of the program the simulation runs.
+        """Return the tag names of the program that the simulation runs.
 
-        The names its workspace was generated with (``project_tag_to_addr_key``),
-        taken when it was launched or written: the process runs that program
-        until either happens again, so frames and commands go by its names even
-        after a CLICK save renamed tags. While nothing runs, the names of the
-        workspace a launch would read.
+        These are the names that its workspace was generated with (``project_tag_to_addr_key``).
+        The session takes them when it launches or writes the program. The process runs that
+        program until the next launch or write, so frames and commands use these names even
+        after a CLICK save renamed tags. While nothing runs, return the names of the workspace
+        that a launch would read.
         """
         if self._program_names is not None:
             return self._program_names
@@ -805,7 +813,7 @@ class SimulationSession:
         return analysis.project_tag_to_addr_key, analysis.project_addr_key_to_tag
 
     def to_tag(self, address: str) -> str:
-        """The running program's tag name for a CLICK *address* (the address if unnamed)."""
+        """Return the running program's tag name for a CLICK *address*, or the address if none."""
         normalized = normalize_address(address)
         if normalized is None:
             return address
@@ -813,11 +821,14 @@ class SimulationSession:
         return tag or normalized
 
     def link_countdown(self, address: str) -> int | None:
-        """Simulated ms before the link driving *address* flips it, while its delay counts."""
+        """Return the simulated ms before the link that drives *address* flips it.
+
+        Return None unless the link's delay is counting.
+        """
         return self._links_pending.get(address) if self._dap is not None else None
 
     def to_address(self, key: str) -> str:
-        """CLICK address for a pyrung tag name or address (unmapped names pass through)."""
+        """Return the CLICK address for a pyrung tag or address. Unmapped names pass through."""
         address = normalize_address(key)
         if address is not None:
             return address
@@ -827,7 +838,10 @@ class SimulationSession:
         return format_address_display(*parse_addr_key(addr_key))
 
     def _addressed(self, values: Mapping[str, Any]) -> dict[str, Any]:
-        """*values* keyed by pyrung tag name, re-keyed by CLICK address; tags without one dropped."""
+        """Return *values* keyed by CLICK address instead of pyrung tag name.
+
+        Skip any tag that has no CLICK address.
+        """
         found: dict[str, Any] = {}
         for key, value in values.items():
             address = self.to_address(key)
@@ -884,10 +898,10 @@ class SimulationSession:
         self._set_notice(f"Loaded PLC data from {path.name}; switches set from snapshot.")
 
     def _follow_program(self) -> bool:
-        """Start a simulation that could not start on a program CLICK saved since. True if it did.
+        """Restart a failed simulation if CLICK saved a program since. Return True if it did.
 
-        A running simulation never changes program by itself: it offers
-        :attr:`program_change` until the user writes the new one.
+        A running simulation never changes program by itself. It offers
+        :attr:`program_change` until the user writes the new program.
         """
         from .services.analysis_service import AnalysisStatus
 
@@ -905,12 +919,15 @@ class SimulationSession:
 
     @property
     def _write_position(self) -> SwitchPosition:
-        """The position a write goes back to: the user's while it is held, else the switch."""
+        """Return the position that a write goes back to.
+
+        While the position is held, that is the user's position. Otherwise it is the switch.
+        """
         return self._desired_position if self._position_held else self.switch_position
 
     def _write_actions(self) -> tuple[ProgramAction, ...]:
         if self._writing or self._console_commands:
-            return ()  # one write at a time, and not under a Console command
+            return ()  # Allow one write at a time, and none while a Console command runs.
         actions: tuple[ProgramAction, ...] = (
             ("run_time_edit", "stop_and_write") if self._write_position == "run" else ("write",)
         )
@@ -920,7 +937,7 @@ class SimulationSession:
         return None if self._get_save_count is None else self._get_save_count()
 
     def _analog_channels(self) -> frozenset[str]:
-        """The DF registers of the configured analog channels: hardware, like X and Y."""
+        """Return the DF registers of the configured analog channels, which are hardware."""
         layout = self._layout
         if layout is None:
             return frozenset()
@@ -928,7 +945,10 @@ class SimulationSession:
         return frozenset(a for kind in kinds for a in layout.addresses(kind))
 
     def _carry_plan(self, analysis: AnalysisService) -> CarryPlan:
-        """What writing *analysis*'s program would do with the forces and links the last frame showed."""
+        """Return what writing the program of *analysis* would do to the forces and links.
+
+        The plan covers the forces and links that the last frame showed.
+        """
         old = self._tag_maps()
         dap = self._dap
         forces = dict(dap.forces) if dap is not None else {}
@@ -941,7 +961,7 @@ class SimulationSession:
         return plan_carry(old, new, forces, links, self._analog_channels())
 
     def _to_compare(self, analysis: AnalysisService) -> bool:
-        """True when the finished build *analysis* is yet to be compared with the program running."""
+        """Return True if build *analysis* is not yet compared with the running program."""
         from .services.analysis_service import AnalysisStatus
 
         return (
@@ -956,7 +976,7 @@ class SimulationSession:
 
     @property
     def program_change(self) -> ProgramChange | None:
-        """A program CLICK saved or the workspace holds that the simulation does not run yet."""
+        """Return the program that CLICK or the workspace holds, if the simulation runs another."""
         from .services.analysis_service import AnalysisStatus
 
         analysis = self._get_analysis()
@@ -989,9 +1009,9 @@ class SimulationSession:
                     "The simulation still runs the previous program.",
                 )
             if analysis.status is not AnalysisStatus.READY:
-                return None  # still building
+                return None  # The build is not finished.
             if self._to_compare(analysis):
-                return None  # _examine_build compares it first
+                return None  # _examine_build compares this build first.
             saves = self._save_count()
             if saves is not None and saves == self._program_saves:
                 return ProgramChange(
@@ -1014,10 +1034,11 @@ class SimulationSession:
         )
 
     def _runs_workspace_program(self, analysis: AnalysisService) -> bool:
-        """True when the workspace holds, for certain, the program the simulation runs.
+        """Return True if the workspace certainly holds the program that the simulation runs.
 
-        Its folder, its tag names, and ``src/plc`` and ``run.py`` as they were read
-        when it was launched or written. A file that cannot be read is no proof.
+        The check compares the folder, the tag names, and ``src/plc`` and ``run.py`` as the
+        session read them when it launched or wrote the program. A file that cannot be read
+        proves nothing, so the answer is then False.
         """
         names = self._program_names
         watch = self._program_source
@@ -1031,11 +1052,11 @@ class SimulationSession:
         )
 
     def _examine_build(self) -> bool:
-        """Take a finished build that holds the program the simulation runs as run.
+        """Accept a finished build that holds the program the simulation runs.
 
-        Another build of the same program (a Sync or Reload from CLICK that leaves
-        it as it was) is then not offered. Each build is compared once; True when
-        one was compared now.
+        After this, the session does not offer another build of the same program, such as a Sync
+        or Reload from CLICK that leaves the program as it was. It compares each build once.
+        Return True if it compared a build now.
         """
         analysis = self._get_analysis()
         if analysis is None or not self._to_compare(analysis):
@@ -1048,7 +1069,7 @@ class SimulationSession:
         return True
 
     def _check_program(self) -> None:
-        """Notice an edit to the workspace source, and tell listeners when the offer changes."""
+        """Check for an edit to the workspace source, and tell listeners when the offer changes."""
         watch = self._program_source
         if watch is not None and self.is_ready and not self._writing:
             self._source_changed = watch.changed()
@@ -1059,10 +1080,10 @@ class SimulationSession:
             self._emit("desired")
 
     def _restart_if_due(self) -> None:
-        """The restart :meth:`_restart_when_free` asked for, unless a write or build still runs.
+        """Run the restart that :meth:`_restart_when_free` asked for, unless a write or build runs.
 
-        A refusal for any other reason drops it; the simulation runs on until the
-        user restarts it.
+        If the restart is refused for any other reason, drop it. The simulation then runs on
+        until the user restarts it.
         """
         from .services.analysis_service import AnalysisStatus
 
@@ -1074,7 +1095,7 @@ class SimulationSession:
             and analysis is not None
             and analysis.status is AnalysisStatus.BUILDING
         ):
-            return  # the watch tick asks again
+            return  # The watch tick asks again.
         self._restart_due = False
         self.restart()
 
@@ -1098,7 +1119,7 @@ class SimulationSession:
                     self._message("PLC data file changed. Reloading...")
                 self._adopt_snapshot(self._plc_data_path)
                 self._restart_due = True
-        if not self._follow_program():  # a launch serves a restart that is due
+        if not self._follow_program():  # A launch serves a restart that is due.
             self._restart_if_due()
         self._check_program()
         self._watch_after_id = self._scheduler.after(WATCH_MS, self._watch_tick)
@@ -1109,14 +1130,14 @@ class SimulationSession:
 
     @property
     def enabled(self) -> bool:
-        """True from :meth:`turn_on` until :meth:`turn_off` (even while starting or failed)."""
+        """Return True from :meth:`turn_on` to :meth:`turn_off`, even while starting or failed."""
         return self._enabled
 
     def turn_on(self) -> None:
         """Start the simulation. It keeps running, with or without windows, until turned off.
 
-        Never called at app launch: a subprocess and a listening Modbus port
-        start only when the user asks for them.
+        The app never calls this at launch. A subprocess and a listening Modbus port start only
+        when the user asks for them.
         """
         if self._closed:
             return
@@ -1154,7 +1175,7 @@ class SimulationSession:
             self._run_background(job, "sim-modbus-stop")
 
     def _stop_dap(self) -> None:
-        """Terminate the simulation and its Modbus client (status unchanged)."""
+        """Terminate the simulation and its Modbus client. Leave the status as it is."""
         self._token += 1
         self._cancel(self._modbus_info_after_id)
         self._modbus_info_after_id = None
@@ -1229,10 +1250,10 @@ class SimulationSession:
 
     @staticmethod
     def _unreadable_reason(csv_dir: Path) -> str | None:
-        """Why a program holding an empty rung for one ClickNick cannot read must not run.
+        """Return why the program must not run if it has an empty rung that ClickNick cannot read.
 
-        The simulation would run without that rung and look fine. A finding with
-        no rung number has no empty rung, since pyrung read that CSV itself.
+        The simulation would run without that rung and look fine. A finding with no rung number
+        does not mean an empty rung, because pyrung read that CSV itself.
         """
         from .ladder.program import describe_legacy_encoding, read_legacy_encodings
 
@@ -1255,11 +1276,11 @@ class SimulationSession:
         )
 
     def _workspace_problem(self, analysis: AnalysisService | None) -> tuple[str, str | None] | None:
-        """Why the workspace's program cannot run now (reason, detail), or None.
+        """Return why the workspace's program cannot run now, as (reason, detail), or None.
 
-        The one check before a launch, a write and a Restart: a conversion that
-        succeeded, a workspace that holds it, a ``run.py``, and no rung ClickNick
-        cannot read. A build under way is the caller's to wait out or refuse.
+        A launch, a write and a Restart all run this check first. It needs a conversion that
+        succeeded, a workspace that holds it, a ``run.py``, and no rung that ClickNick cannot
+        read. If a build is under way, the caller waits for it or refuses.
         """
         from .services.analysis_service import AnalysisStatus
 
@@ -1280,8 +1301,8 @@ class SimulationSession:
                 "Save the project in Click Software, then retry.",
                 None,
             )
-        # A rebuild empties this folder before regenerating it, so the
-        # directory can exist with run.py not yet written.
+        # A rebuild empties this folder before it regenerates it, so the folder can exist
+        # before run.py is written.
         if not (project_dir / "run.py").is_file():
             return (
                 f"the generated project at {project_dir} has no run.py. "
@@ -1292,7 +1313,7 @@ class SimulationSession:
         return None if unreadable is None else (unreadable, None)
 
     def _refuse(self, text: str) -> None:
-        """Say why a write or Restart did not happen; the simulation runs on as it was."""
+        """Say why a write or Restart did not happen. The simulation runs on as it was."""
         self._refusal = text
         self._notice = text
         self._message(text, "error")
@@ -1305,7 +1326,7 @@ class SimulationSession:
         self._refusal = None
 
     def _wait_for_analysis(self) -> None:
-        """Wait for the conversion; every waiting path is bounded here."""
+        """Wait for the conversion. This method bounds every path that waits."""
         if self._waited_ms >= ANALYSIS_TIMEOUT_MS:
             self._fail(
                 f"timed out after {ANALYSIS_TIMEOUT_MS // 1000}s waiting for "
@@ -1346,10 +1367,9 @@ class SimulationSession:
             analysis.status is AnalysisStatus.BUILDING
             or analysis.generation != self._program_generation
         ):
-            # The launch read files on disk while a rebuild rewrote them, which
-            # yields partial imports or a missing run.py. The generation check
-            # catches a rebuild that already finished. Wait and relaunch rather
-            # than reporting the rubble as a real failure.
+            # The launch read files on disk while a rebuild rewrote them, which gives partial
+            # imports or a missing run.py. The generation check catches a rebuild that already
+            # finished. Wait and relaunch instead of reporting that as a real failure.
             self._wait_for_analysis()
             return
         self._status = SimStatus.FAILED
@@ -1365,7 +1385,7 @@ class SimulationSession:
 
     def _drop_failed_forces(self, token: int, failed: list[str]) -> None:
         if token != self._token:
-            return  # refused by a simulation that is gone; the next one tries again
+            return  # That simulation is gone. The next one tries again.
         forces = {a: v for a, v in self._state.forces.items() if a not in failed}
         self._update_state(forces=forces)
         self._message(f"Could not restore forces on {', '.join(failed)}; released them.", "error")
@@ -1406,7 +1426,7 @@ class SimulationSession:
         )
 
     def _on_links(self, token: int, body: Mapping[str, Any], *, sync: bool) -> None:
-        """Show the simulation's links; once synced, follow changes made elsewhere (the Console)."""
+        """Show the simulation's links. Once synced, follow changes made elsewhere (the Console)."""
         if token != self._token or self._dap is None:
             return
         rows = tuple(
@@ -1418,7 +1438,7 @@ class SimulationSession:
             revision = body.get("revision")
             self._links_revision_seen = revision if isinstance(revision, int) else None
         if self._links_synced:
-            # Kept by address; a link on a tag with no CLICK address is not the user's.
+            # Keep links by address. A link on a tag with no CLICK address is not the user's.
             adopted = {
                 row.feedback: BenchLink(row.enable, row.trigger, row.response, row.enabled)
                 for row in rows
@@ -1434,14 +1454,14 @@ class SimulationSession:
 
     def _refetch_links(self, token: int) -> None:
         if token == self._token:
-            self._links_refetch = True  # unanswered: the next frame asks again
+            self._links_refetch = True  # The listing went unanswered, so the next frame asks again.
 
     # ------------------------------------------------------------------
     # Bench links
     # ------------------------------------------------------------------
 
     def _fetch_links(self, dap: Any, token: int, *, sync: bool = False) -> None:
-        """Read the links back, after any actions already queued (call from any thread)."""
+        """Read the links back after any queued actions. Any thread may call this."""
 
         def job() -> None:
             try:
@@ -1457,8 +1477,8 @@ class SimulationSession:
     def _reapply(self, dap: Any) -> None:
         """Bring a fresh simulation back to the switches, values, forces and links the user chose.
 
-        Only after a launch: a write keeps the process and places what pyrung
-        had set itself (:meth:`_write_program`).
+        Call this only after a launch. A write keeps the process and places what pyrung had set
+        itself (:meth:`_write_program`).
         """
         forces = dict(self._state.forces)
         links = dict(self._state.links)
@@ -1467,14 +1487,14 @@ class SimulationSession:
         patches = self._input_patches()
         token = self._token
 
-        # A refusal drops the entry. A simulation that stopped or never answered
-        # refused nothing: the entry stays, and the rest is still sent.
+        # A refusal drops the entry. A simulation that stopped or never answered did not refuse,
+        # so the entry stays and the rest is still sent.
         def job() -> None:
             unanswered: list[str] = []
             problems: list[str] = []
 
             def refusal(what: str, request: Callable[[], object]) -> str | None:
-                """Send *request*; why the simulation refused it, or None. No answer is noted."""
+                """Send *request*. Return why it was refused, or None. Note a missing answer."""
                 try:
                     request()
                 except Exception as exc:
@@ -1564,7 +1584,7 @@ class SimulationSession:
         self._program_source = source
         self._forces_baseline = None
         self._modbus_info = {}
-        # Confirm success in the transcript; a "Retrying..." line should not trail off.
+        # Say in the transcript that it worked, so a "Retrying..." line does not trail off.
         self._message("OK - simulation ready.", "progress")
         self._set_status(SimStatus.READY)
         self._clear_refusal()
@@ -1577,16 +1597,16 @@ class SimulationSession:
             return
         dap = self._dap
         if dap is None:
-            self._died_token = token  # still starting: _on_launched reports it
+            self._died_token = token  # Still starting. _on_launched reports the death.
             return
         self._report_died(getattr(dap, "stderr_text", "") or None)
 
     def _adopt_forces(self, actual: dict[str, PlcValue]) -> None:
         """Follow forces changed elsewhere (the Console, `pyrung live`).
 
-        Compares each frame with the previous one, so a fresh simulation's
-        first frame only sets the baseline and the session's own requests,
-        already reflected in the desired forces, change nothing.
+        Compare each frame with the previous one. The first frame of a fresh simulation only
+        sets the baseline. The session's own requests are already in the desired forces, so
+        they change nothing.
         """
         baseline = self._forces_baseline
         self._forces_baseline = actual
@@ -1613,13 +1633,13 @@ class SimulationSession:
             self._speed = dap.speed
         self._links_pending = {self.to_address(k): ms for k, ms in dap.links_pending.items()}
         if self._writing:
-            # Paused for a write; its answer says when the names change.
+            # The simulation is paused for a write. The answer says when the names change.
             self._emit("frame")
             return
         if self._examine_build():  # before the views read program_change
             self._check_program()
-        # Anyone can drive (the Console, an agent through `pyrung live`), and
-        # the last command wins: mode, pacing and forces follow the frames.
+        # Anyone can drive the simulation, such as the Console or an agent through `pyrung live`.
+        # The last command wins, so mode, pacing and forces follow the frames.
         if not self._position_held:
             self._desired_position = self.switch_position
         self._adopt_forces(self._addressed(dap.forces))
@@ -1636,7 +1656,7 @@ class SimulationSession:
     # ------------------------------------------------------------------
 
     def _on_frame_bg(self, token: int) -> None:
-        # Frames can arrive every scan; collapse them into one UI update.
+        # A frame can arrive every scan. Collapse them into one UI update.
         if self._frame_posted:
             return
         self._frame_posted = True
@@ -1660,22 +1680,22 @@ class SimulationSession:
 
         analysis = self._get_analysis()
         if analysis is not None:
-            # A build rewrites the generated project in place, so while one is
-            # running the folder on disk is rubble regardless of what the previous
-            # result still advertises. Wait it out before touching any of it.
+            # A build rewrites the generated project in place. While one runs, the folder on disk
+            # is partial, whatever the previous result still says. Wait for the build before
+            # touching any of it.
             if analysis.status is AnalysisStatus.BUILDING:
                 self._wait_for_analysis()
                 return
-            # Remembered so a failure can tell "the project was rewritten under the
-            # launch" from "this project genuinely does not run", and so the next
-            # CLICK save (a new generation) is offered.
+            # Remember the generation, so a failure can tell "the project was rewritten under the
+            # launch" from "this project genuinely does not run". It also lets the next CLICK
+            # save (a new generation) be offered.
             self._program_generation = analysis.generation
             self._program_saves = self._save_count()
             if analysis.status is not AnalysisStatus.FAILED and not analysis.is_available:
                 self._wait_for_analysis()
                 return
-        # A cached graph may still serve open editors, but simulation must use
-        # a successful conversion of the current CLICK program.
+        # A cached graph may still serve open editors, but the simulation must use a
+        # successful conversion of the current CLICK program.
         problem = self._workspace_problem(analysis)
         if problem is not None:
             self._fail(*problem)
@@ -1696,7 +1716,7 @@ class SimulationSession:
         speed = self._speed
 
         def launch() -> None:
-            # Read before pyrung imports it: an edit made while it starts still shows.
+            # Read the source before pyrung imports it, so an edit made while it starts still shows.
             source = _watch_source(project_dir)
             dap = self._dap_factory(
                 on_state=lambda state, error: self._on_dap_state_bg(token, state, error),
@@ -1717,7 +1737,7 @@ class SimulationSession:
                 self._post(lambda error=exc: self._on_launch_failed(token, error))
                 return
             if not self._post(lambda: self._on_launched(token, dap, source)):
-                dap.terminate()  # closed while it started: nobody else will stop it
+                dap.terminate()  # The session closed while it started. Nobody else will stop it.
 
         self._run_background(launch, "sim-dap-launch")
 
@@ -1738,10 +1758,9 @@ class SimulationSession:
     def restart(self) -> None:
         """Start over on what the workspace holds now (CLICK's last save and any edits).
 
-        The new process starts from power-on values (or the PLC data file), with
-        the user's mode, switches, forces and bench links, kept by address. A
-        running simulation is never stopped for a workspace that cannot start:
-        Restart then says why and the simulation runs on.
+        The new process starts from power-on values (or the PLC data file). It keeps the user's
+        mode, switches, forces and bench links by address. If the workspace cannot start, the
+        running simulation is not stopped. Restart says why, and the simulation runs on.
         """
         from .services.analysis_service import AnalysisStatus
 
@@ -1766,7 +1785,10 @@ class SimulationSession:
         self.relaunch()
 
     def relaunch(self) -> None:
-        """Launch again if the simulation is on, waiting out a build (the workspace moved)."""
+        """Launch again if the simulation is on, after the workspace moved.
+
+        Wait for a build to finish first.
+        """
         if self._enabled and not self._closed:
             self._waited_ms = 0
             self.start()
@@ -1777,12 +1799,12 @@ class SimulationSession:
 
     @property
     def console_busy(self) -> bool:
-        """A Console command is in flight (:meth:`run_console_command`), from any panel."""
+        """Return True while a Console command is in flight (:meth:`run_console_command`)."""
         return self._console_commands > 0
 
     @property
     def writing(self) -> bool:
-        """True from a write's request until pyrung answers; the Console waits meanwhile."""
+        """Return True from a write's request until pyrung answers. The Console waits meanwhile."""
         return self._writing
 
     def _end_console_command(self, finish: Callable[[], None] | None) -> None:
@@ -1795,10 +1817,9 @@ class SimulationSession:
     def run_console_command(self, run: Callable[[], Any], done: Callable[[Any], None]) -> None:
         """Run a Console command: *run* on a worker thread, then *done* with its result.
 
-        The command is in flight from now until *run* returns, whether or not the
-        panel that sent it is still open, and no write is offered meanwhile.
-        *done* runs on the UI thread, after the count is taken down; it is not
-        called when *run* raises.
+        The command is in flight from now until *run* returns, whether or not the panel that
+        sent it is still open. The session offers no write meanwhile. *done* runs on the UI
+        thread after the count is taken down. If *run* raises, *done* is not called.
         """
         self._console_commands += 1
         if self._console_commands == 1:
@@ -1815,7 +1836,10 @@ class SimulationSession:
         self._run_background(worker, "console-cmd")
 
     def _adopt_listing(self, listing: _Listing) -> None:
-        """What pyrung holds after a write (or held, if it failed), by address: the user's choices."""
+        """Make the user's choices match what pyrung holds after a write, by address.
+
+        After a failed write, use what pyrung held.
+        """
         state = self._state
         if (
             dict(listing.forces) != dict(state.forces)
@@ -1827,7 +1851,7 @@ class SimulationSession:
                 links=dict(listing.links),
                 bench_wiring=listing.bench_wiring,
             )
-        # Frames from here on are compared with it, by address.
+        # Compare later frames with this listing, by address.
         self._forces_baseline = dict(listing.forces)
         if listing.problems:
             self._message(
@@ -1846,12 +1870,12 @@ class SimulationSession:
 
         dap = self._dap
         if token != self._token or dap is None:
-            return  # replaced meanwhile: the new process has its own names
+            return  # The process was replaced meanwhile, and the new one has its own names.
         self._writing = False
         self._write_error = None
         self._position_held = False
         self._clear_refusal()
-        # By address, where the write placed them, before the names switch.
+        # Adopt them by address, where the write placed them, before the names switch.
         self._adopt_listing(listing)
         if summary:
             self._message(summary)
@@ -1861,9 +1885,9 @@ class SimulationSession:
             or analysis.generation != target.generation
             or analysis.status is AnalysisStatus.BUILDING
         ):
-            # A build rewrote the workspace during the reload: which files pyrung
-            # read is unknown, so the names stay and the change is offered again.
-            # No build is taken as run until the next write or launch.
+            # A build rewrote the workspace during the reload, so it is unknown which files
+            # pyrung read. Keep the names and offer the change again. Take no build as run
+            # until the next write or launch.
             self._program_source = None
             self._message(
                 "CLICK's program changed while it was written. Write it again once it "
@@ -1879,8 +1903,8 @@ class SimulationSession:
             self._message("OK - the simulation runs the new program.", "progress")
             if listing.carried:
                 self._set_notice(listing.carried)
-        # Read the links back with the names that now apply (a reload drops a bench
-        # link the program now declares).
+        # Read the links back with the names that now apply. A reload drops a bench link that
+        # the program now declares.
         self._links_synced = False
         self._links_refetch = False
         self._fetch_links(dap, token, sync=True)
@@ -1896,7 +1920,9 @@ class SimulationSession:
         known: bool = True,
         released: tuple[str, ...] = (),
     ) -> None:
-        """A write that failed; not *known*: pyrung never answered, so which program runs is not.
+        """Handle a failed write. If it is not *known*, pyrung never answered.
+
+        Then no one knows which program runs.
 
         *released* names what the reload's plan releases.
         """
@@ -1908,7 +1934,7 @@ class SimulationSession:
             text = f"{text}; which program the simulation runs is unknown, and it may be paused"
             if released:
                 text = f"{text}. If it runs the new program, it released {', '.join(released)}"
-            # Frames may show it paused; Restart starts in the position the user had.
+            # Frames may show it paused. Restart starts in the position that the user had.
             self._position_held = True
         self._write_error = text
         if listing is not None:
@@ -1924,7 +1950,7 @@ class SimulationSession:
         self._restart_if_due()
 
     def _write_refusal(self) -> str | None:
-        """Why the workspace's program cannot be written to the running simulation, or None."""
+        """Return why the workspace's program cannot be written to the simulation, or None."""
         from .services.analysis_service import AnalysisStatus
 
         analysis = self._get_analysis()
@@ -1945,7 +1971,7 @@ class SimulationSession:
         bench_wiring: bool,
         names: tuple[Mapping[str, int], Mapping[int, str]],
     ) -> _Listing:
-        """pyrung's listing by CLICK address, read with the names of the program it runs."""
+        """Return pyrung's listing keyed by CLICK address, with the names of the program it runs."""
         forces: dict[str, PlcValue] = {}
         for name, value in forced.items():
             address = address_of(name, names)
@@ -1961,15 +1987,14 @@ class SimulationSession:
         return _Listing(forces, links, bench_wiring)
 
     def _write_program(self, how: Literal["keep", "stop"], *, echo: bool = True) -> None:
-        """Reload the workspace's program in the running process (no relaunch).
+        """Reload the workspace's program in the running process, without a relaunch.
 
-        One job on the action worker, which the Console waits for: read what
-        pyrung has forced and linked, plan where each entry goes
-        (:func:`plan_carry`), and send the plan with pyrung's planned reload,
-        which pauses a running continue, keeps the mode and places each entry.
-        Then go back to scanning as before. What pyrung reports it placed
-        becomes the user's forces and links. A reload that fails changes
-        nothing in pyrung: the old program runs on, and Restart is offered.
+        This is one job on the action worker, and the Console waits for it. The job reads what
+        pyrung has forced and linked, plans where each entry goes (:func:`plan_carry`), and
+        sends the plan with pyrung's planned reload. That reload pauses a running continue,
+        keeps the mode and places each entry. Then the job goes back to scanning as before.
+        What pyrung reports it placed becomes the user's forces and links. A reload that fails
+        changes nothing in pyrung. The old program runs on, and Restart is offered.
         """
         dap = self._dap
         if not self.is_ready or dap is None:
@@ -2014,7 +2039,7 @@ class SimulationSession:
             unanswered: list[str] = []
 
             def refusal(what: str, request: Callable[[], object]) -> str | None:
-                """Send *request*; why the simulation refused it, or None. No answer is noted."""
+                """Send *request*. Return why it was refused, or None. Note a missing answer."""
                 try:
                     request()
                 except Exception as exc:
@@ -2032,8 +2057,7 @@ class SimulationSession:
                 self._post(lambda: self._on_write_failed(token, text, None))
                 return
 
-            # pyrung's listing, not ClickNick's copy, is what was set (the Console may
-            # have changed it).
+            # Use pyrung's listing, not ClickNick's copy, because the Console may have changed it.
             rows = {
                 str(row.get("feedback", "")): row
                 for row in listed.get("links") or ()
@@ -2053,8 +2077,8 @@ class SimulationSession:
             except Exception as exc:
                 error = str(exc)
                 if _unavailable(exc):
-                    # No answer: which program runs, and so which names apply, is
-                    # unknown. Nothing is sent by name; Restart starts over.
+                    # No answer, so it is unknown which program runs and which names apply.
+                    # Send nothing by name. Restart starts over.
                     released = tuple(
                         [f"the force on {name}" for name, new in plan.forces.items() if new is None]
                         + [
@@ -2074,7 +2098,7 @@ class SimulationSession:
                         )
                     )
                     return
-                # Refused: nothing changed, but a running continue may have paused.
+                # The simulation refused. Nothing changed, but a running continue may have paused.
                 if position == "run":
                     refusal("the switch position", dap.continue_)
                 listing = self._listing_as_set(forced, rows, bench_wiring, old)
@@ -2083,8 +2107,8 @@ class SimulationSession:
 
             reason = None
             if how == "stop":
-                # STOP -> RUN on the new program: retentive values and forces stay
-                # (launched with keepForcesOnRun), the rest is cleared.
+                # STOP -> RUN on the new program keeps retentive values and forces, because the
+                # launch used keepForcesOnRun. It clears the rest.
                 reason = refusal("STOP", partial(dap.set_mode, "stop"))
                 if reason is None:
                     reason = refusal(
@@ -2102,7 +2126,7 @@ class SimulationSession:
 
             carried = [e for e in body.get("carried") or () if isinstance(e, Mapping)]
             names = target.names
-            # What pyrung placed, by CLICK address: the user's forces and links.
+            # Collect what pyrung placed, by CLICK address, as the user's forces and links.
             forces: dict[str, PlcValue] = {}
             links: dict[str, BenchLink] = {}
             for entry in carried:
@@ -2111,10 +2135,10 @@ class SimulationSession:
                     continue  # released or dropped
                 address = address_of(str(to), names)
                 if address is None:
-                    continue  # on no CLICK address: not the user's
+                    continue  # It has no CLICK address, so it is not the user's.
                 kind = entry.get("kind")
                 if kind == "force":
-                    # pyrung's value: a force can change between the listing and the reload.
+                    # Use pyrung's value. A force can change between the listing and the reload.
                     forces[address] = entry["value"] if "value" in entry else forced.get(tag)
                 elif kind in ("link", "cut") and tag in rows:
                     enable = entry.get("enable")
@@ -2147,7 +2171,7 @@ class SimulationSession:
             self._write_program("keep")
 
     def reload(self) -> None:
-        """What a Console ``reload`` does: RUN Time Edit in RUN, Write otherwise."""
+        """Do what a Console ``reload`` does: RUN Time Edit in RUN, Write otherwise."""
         self._write_program("keep", echo=False)
 
     def close(self) -> None:
@@ -2161,8 +2185,8 @@ class SimulationSession:
     def set_plc_data_path(self, path: Path) -> None:
         """Start the simulation from a CLICK data dump, relaunching now and when it changes.
 
-        The dump wins for inputs: switch positions and analog values take its
-        values (forces stay).
+        The dump wins for inputs. Switch positions and analog values take its values. Forces
+        stay.
         """
         self._plc_data_path = path
         self._plc_data_mtime = _mtime(path)
@@ -2267,14 +2291,14 @@ class SimulationSession:
             self._update_poll()
 
     def _write(self, values: dict[str, PlcValue], what: str) -> None:
-        """Patch inputs over DAP (X is read-only over Modbus, as on a real CLICK)."""
+        """Patch inputs over DAP. X is read-only over Modbus, as on a real CLICK."""
         dap = self._dap
         if dap is None:
-            return  # applied when the simulation (re)starts or enters RUN
+            return  # The values are applied when the simulation (re)starts or enters RUN.
         self._submit(lambda: dap.patch(values), what)
 
     def set_modbus_port(self, port: int) -> None:
-        """Move the simulation's Modbus server to *port* (relaunches)."""
+        """Move the simulation's Modbus server to *port*. This relaunches the simulation."""
         if not 1 <= port <= 65535:
             raise ValueError("Port must be between 1 and 65535.")
         if port == self._state.modbus_port:
@@ -2309,7 +2333,7 @@ class SimulationSession:
             self._update_state(momentary=frozenset(current))
 
     def switch_on(self, address: str) -> bool:
-        """Where the user put the switch (not necessarily what the PLC has seen yet)."""
+        """Return True if the user put the switch on. The PLC may not have seen it yet."""
         if address in self._state.momentary:
             return address in self._pressed
         return bool(self._state.switches.get(address, False))
@@ -2346,7 +2370,7 @@ class SimulationSession:
         return self._state.analog.get(address)
 
     def set_analog(self, address: str, value: float) -> None:
-        """Set an analog input's DF value. Rapid changes (a dragged slider) coalesce."""
+        """Set an analog input's DF value. Rapid changes, such as a dragged slider, coalesce."""
         analog = dict(self._state.analog)
         analog[address] = float(value)
         self._update_state(analog=analog)
@@ -2370,7 +2394,7 @@ class SimulationSession:
     def force(
         self, address: str, value: PlcValue, *, on_error: Callable[[str], None] | None = None
     ) -> None:
-        """Override *address* until released; the program cannot change it."""
+        """Override *address* until released. The program cannot change it."""
         previous = self._state.forces.get(address)
         forces = dict(self._state.forces)
         forces[address] = value
@@ -2430,10 +2454,10 @@ class SimulationSession:
         self._update_state(links=links)
         dap = self._dap
         if dap is None:
-            return  # applied when the simulation (re)starts
+            return  # The change is applied when the simulation (re)starts.
 
         def undo(text: str) -> None:
-            # Only this change: links chosen since then stay.
+            # Undo only this change. Links chosen since then stay.
             restored = dict(self._state.links)
             for address in changed:
                 if address in previous:
@@ -2447,7 +2471,7 @@ class SimulationSession:
         self._submit(lambda: job(dap), what, undo)
 
     def _link_command(self, feedback: str, link: BenchLink) -> str:
-        """The console command that makes *link*: ``link X002 Y001 on_delay=2s``."""
+        """Return the console command that makes *link*, such as ``link X002 Y001 on_delay=2s``."""
         from .services.link_annotation import link_text
 
         fb = self.to_tag(feedback)
@@ -2461,7 +2485,7 @@ class SimulationSession:
     def link(
         self, feedback: str, link: BenchLink, *, on_error: Callable[[str], None] | None = None
     ) -> None:
-        """Wire *feedback* on the bench (a cut when ``link.enable`` is None)."""
+        """Wire *feedback* on the bench. If ``link.enable`` is None, cut it."""
         link = replace(link, enabled=True)
         links = dict(self._state.links)
         links[feedback] = link
@@ -2476,7 +2500,7 @@ class SimulationSession:
         self.link(feedback, BenchLink(None), on_error=on_error)
 
     def restore_link(self, feedback: str) -> None:
-        """Drop the bench change on *feedback*: back to what the program declares."""
+        """Drop the bench change on *feedback*, going back to what the program declares."""
         if feedback not in self._state.links:
             return
         links = dict(self._state.links)
@@ -2487,7 +2511,7 @@ class SimulationSession:
         self._echo(f"restore {self.to_tag(feedback)}")
 
     def set_link_enabled(self, feedback: str, enabled: bool) -> None:
-        """Set one bench change aside (or back) without forgetting it."""
+        """Set one bench change aside, or bring it back, without forgetting it."""
         link = self._state.links.get(feedback)
         if link is None or link.enabled == enabled:
             return
@@ -2539,13 +2563,14 @@ class SimulationSession:
 
     @property
     def switch_position(self) -> SwitchPosition:
-        """Where the CPU's mode switch sits, derived from the latest frame.
+        """Return where the CPU's mode switch sits, taken from the latest frame.
 
-        STOP: mode stop. STEP: mode run, not scanning on its own (scans only
-        advance on Step, the Console or an agent). RUN: mode run, free-running.
+        STOP means mode stop. STEP means mode run, not scanning on its own, so scans only
+        advance on Step, the Console or an agent. RUN means mode run, free-running.
         """
         if self._writing:
-            return self._desired_position  # a reload pauses scanning; Stop and Write passes STOP
+            # A reload pauses scanning, and Stop and Write passes through STOP.
+            return self._desired_position
         if self.mode != "run":
             return "stop"
         return "run" if self.running else "step"
@@ -2553,8 +2578,8 @@ class SimulationSession:
     def set_switch_position(self, position: SwitchPosition) -> None:
         """Move the CPU's mode switch.
 
-        Leaving STOP enters RUN mode with the user's switches, analog values
-        and forces in place for scan 1; STEP then waits before that scan.
+        Leaving STOP enters RUN mode with the user's switches, analog values and forces in
+        place for scan 1. STEP then waits before that scan.
         """
         dap = self._dap
         if dap is None:
@@ -2562,7 +2587,7 @@ class SimulationSession:
         current = self.switch_position
         if position == current:
             if self._position_held:
-                # The switch already shows it; the user's choice now is this position.
+                # The switch already shows this position, so it is now the user's choice.
                 self._desired_position = position
                 self._position_held = False
                 self._emit("desired")
@@ -2576,8 +2601,8 @@ class SimulationSession:
             self._echo("mode stop")
             return
         if current == "stop":
-            # Forces are already in place (keepForcesOnRun); the switch and
-            # analog values go with the transition so scan 1 sees them.
+            # Forces are already in place (keepForcesOnRun). The switch and analog values go
+            # with the transition, so scan 1 sees them.
             patches = self._input_patches()
 
             def enter_run() -> None:
@@ -2602,7 +2627,7 @@ class SimulationSession:
             raise RuntimeError(text or command)
 
     def step(self, count: int = 1) -> None:
-        """Advance *count* scans (as fast as possible), then wait."""
+        """Advance *count* scans as fast as possible, then wait."""
         dap = self._dap
         if dap is None:
             return
@@ -2669,9 +2694,9 @@ class SimulationSession:
     def _restore_when_known(self) -> None:
         """Trim the remembered settings to the hardware, once it is fully known.
 
-        Inputs the program uses with no module to provide them (unassigned placeholder cards)
-        are known only from the analysis; until one is available, settings on
-        them would look like settings on missing hardware.
+        Some inputs are used by the program but provided by no module (unassigned placeholder
+        cards). They are known only from the analysis. Until an analysis is available,
+        settings on them would look like settings on missing hardware.
         """
         layout = self._layout
         analysis = self._get_analysis()

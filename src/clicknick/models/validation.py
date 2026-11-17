@@ -8,10 +8,10 @@ TRIMMED_FIELDS = ("nickname", "comment")
 
 
 def trim_entry(field: str, value: str | bool) -> str | bool:
-    """*value* as CLICK stores it in *field*: a nickname or comment loses its edge spaces.
+    """Return *value* as CLICK stores it in *field*.
 
-    ``"Pump "`` is stored as ``"Pump"``. Every other field, and a value that
-    is not text, is returned as it is.
+    A nickname or comment loses the spaces at either end, so ``"Pump "`` is stored as
+    ``"Pump"``. Every other field, and a value that is not text, is returned as it is.
     """
     if field in TRIMMED_FIELDS and isinstance(value, str):
         return value.strip(" ")
@@ -54,8 +54,8 @@ def validate_comment(
 def nickname_duplicate_checker(nicknames: Mapping[int, str]) -> Callable[[str, int], bool]:
     """Build a case-insensitive duplicate check over an addr_key -> nickname mapping.
 
-    For callers without a nickname index (e.g. one-off verification). CLICK
-    treats nicknames as case-insensitive.
+    Use this when you have no nickname index, such as for one-off verification. CLICK treats
+    nicknames as case-insensitive.
     """
     owners: dict[str, set[int]] = {}
     for addr_key, nickname in nicknames.items():

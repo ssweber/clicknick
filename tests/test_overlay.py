@@ -189,8 +189,8 @@ def test_enter_on_a_nickname_still_sends_its_address_and_enter(tk_root, click_ca
 
 
 def test_withdraw_after_a_focus_out_leaves_the_debounce_reset_pending(tk_root):
-    # The monitor withdraws the overlay every 100 ms; the reset must still run,
-    # or the overlay never shows for the same control again.
+    # The monitor withdraws the overlay every 100 ms. The reset must still run.
+    # Otherwise the overlay never shows for the same control again.
     overlay = _overlay_on_address_picker(tk_root)
     real_after = overlay.after
     scheduled = {}

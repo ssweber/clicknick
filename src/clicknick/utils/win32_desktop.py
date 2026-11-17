@@ -1,7 +1,7 @@
-"""The Windows desktop a CLICK nickname redraw drives (``services/click_redraw.py``).
+"""Drive the Windows desktop for a CLICK nickname redraw (``services/click_redraw.py``).
 
-Messages are posted, or sent with SendMessageTimeout, so a hung CLICK cannot hang
-ClickNick. WM_GETTEXT and WM_SETTEXT reach another process's controls because
+The module posts messages, or sends them with SendMessageTimeout, so a hung CLICK cannot
+hang ClickNick. WM_GETTEXT and WM_SETTEXT reach another process's controls because
 Windows copies their text across.
 """
 
@@ -161,4 +161,4 @@ class Win32ClickDesktop:
         try:
             win32gui.SetForegroundWindow(hwnd)
         except win32gui.error:
-            pass  # Windows refused: the window stays where it is
+            pass  # Windows refused, so the window stays where it is

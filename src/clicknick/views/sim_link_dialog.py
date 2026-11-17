@@ -1,11 +1,13 @@
-"""Link dialog: wire a simulator input to the tag that drives it, on the bench.
+"""Ask which tag drives a simulator input, to wire the two together on the bench.
 
-An input (X) gets pyrung's bool kinds of response, and an analog input (DF) its
-analog kinds. Each kind's fields, labels, hints and checks come from pyrung's
-table. A bit enable (Y, C...) is a contact beside the driver: normally open [O] drives the
-link while it is ON, normally closed [/] while it is OFF (``link=~Y001``). A
-word enable (DS...) drives it while it equals a value. The result is a BenchLink; the
-Simulator window hands it to the session.
+An input (X) gets pyrung's bool kinds of response. An analog input (DF) gets its analog
+kinds. Each kind's fields, labels, hints and checks come from pyrung's table.
+
+A bit enable (Y, C...) is a contact beside the driver. Normally open [O] drives the link
+while the bit is ON. Normally closed [/] drives it while the bit is OFF
+(``link=~Y001``). A word enable (DS...) drives the link while it equals a value.
+
+The result is a BenchLink. The Simulator window hands it to the session.
 """
 
 from __future__ import annotations
@@ -35,10 +37,10 @@ _NOTE_ROW = 20
 
 
 def _contact_style(widget: tk.Misc) -> str:
-    """A ttk style for the [O][/] contact: native push buttons, the chosen one pressed in.
+    """Return a ttk style for the [O][/] contact: native push buttons, the chosen one pressed in.
 
-    Under the Windows ``vista`` theme a radio button gets the push-button
-    element, drawn pressed while selected; other themes use ``Toolbutton``.
+    Under the Windows ``vista`` theme, a radio button gets the push-button element, which is
+    drawn pressed while selected. Other themes use ``Toolbutton``.
     """
     style = ttk.Style(widget)
     if style.theme_use() != "vista":
@@ -74,7 +76,7 @@ class LinkDialog(tk.Toplevel):
         return physical_kind(self._kind_var.get())
 
     def _on_kind_changed(self) -> None:
-        """Show the chosen kind's fields. Each key keeps its own value across kinds."""
+        """Show the fields of the chosen kind. Each key keeps its value when you switch kinds."""
         for widget in self._field_widgets:
             widget.destroy()
         self._field_widgets = []
@@ -101,7 +103,7 @@ class LinkDialog(tk.Toplevel):
                 self._first_entry = entry
 
     def _on_enable_changed(self) -> None:
-        """The [O][/] contact beside a bit enable, a value to match below a word."""
+        """Show the [O][/] contact beside a bit enable, or a value to match below a word enable."""
         if bit_enable(self._enable_var.get().strip()):
             self._when_label.grid_remove()
             self._when_word.grid_remove()
@@ -131,7 +133,9 @@ class LinkDialog(tk.Toplevel):
         on_ok: Callable[[BenchLink], None],
         enable: str | None = None,
     ) -> None:
-        """*enable* pre-fills the driver (an output dragged onto the input)."""
+        """Build the dialog for *feedback*. *enable* pre-fills the driver when an output was dragged
+        onto the input.
+        """
         super().__init__(parent)
         self.title(f"Link {feedback}")
         self.transient(parent.winfo_toplevel())
@@ -139,7 +143,7 @@ class LinkDialog(tk.Toplevel):
         self._on_ok = on_ok
         self._kinds = kinds_for("analog" if analog else "bool")
 
-        # The current link's kind starts with its own values, every other kind with
+        # The current link's kind starts with its own values. Every other kind starts with
         # pyrung's suggested ones.
         values = dict(current.response) if current is not None else {}
         current_kind = response_kind(current.response) if current is not None else None
@@ -159,8 +163,8 @@ class LinkDialog(tk.Toplevel):
         self._enable_var = tk.StringVar(value=enable or (current.enable or "" if current else ""))
         trigger = current.trigger if current is not None else None
         self._trigger_var = tk.StringVar(value="" if trigger is None else str(trigger))
-        # A bit enable is a contact: normally open (the default) or normally closed,
-        # which is trigger 0 and drives the link while the bit is OFF.
+        # A bit enable is a contact, normally open (the default) or normally closed.
+        # Normally closed is trigger 0 and drives the link while the bit is OFF.
         self._when_on = tk.BooleanVar(value=trigger != 0)
         self._kind_var = tk.StringVar(value=kind.name)
 
@@ -233,7 +237,7 @@ class LinkDialog(tk.Toplevel):
         self.grab_set()
 
     def build(self) -> BenchLink:
-        """The link the form describes; ValueError explains what is missing."""
+        """Return the link that the form describes. Raise ValueError to say what is missing."""
         enable = normalize_address(self._enable_var.get().strip())
         if enable is None:
             raise ValueError("Enter the CLICK address that drives this input, such as Y001.")
@@ -246,7 +250,7 @@ class LinkDialog(tk.Toplevel):
         for key in kind.keys:
             var = self._key_vars[key.name]
             if key.is_flag:
-                # A required flag (toggle) is the kind itself.
+                # A required flag (toggle) is always True, because it is what defines the kind.
                 if key.required or var.get():
                     values[key.name] = True
                 continue

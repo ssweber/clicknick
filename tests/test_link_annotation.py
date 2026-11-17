@@ -108,7 +108,7 @@ def test_the_workspace_snapshot_names_the_feedbacks_its_program_links(tmp_path):
         AddressRow("X", 1, nickname="Start", comment="[link=Cmd, timed=100ms] Start PB"),
         AddressRow("X", 2, nickname="Begin", comment="Begin PB"),
         AddressRow("X", 3, comment="[link=Cmd, on_delay=2s]"),
-        AddressRow("X", 4, nickname="Door", comment="[link=Cmd]"),  # no response: no link runs
+        AddressRow("X", 4, nickname="Door", comment="[link=Cmd]"),  # no response, so no link runs
     ]
     CsvDataSource(str(tmp_path / "nicknames.csv")).save_changes(rows)
 
@@ -118,7 +118,7 @@ def test_the_workspace_snapshot_names_the_feedbacks_its_program_links(tmp_path):
 
 @pytest.mark.parametrize("nickname", ["Start ", " Start", "  "])
 def test_linked_feedbacks_name_a_tag_as_pyrung_reads_it(tmp_path, nickname):
-    """Whatever the installed pyrung does with spaces, a feedback is named as it does."""
+    """Name a feedback as the installed pyrung names it, whatever pyrung does with spaces."""
     from pyrung.click.tag_map import TagMap
 
     rows = [AddressRow("X", 1, nickname=nickname, comment="[link=Cmd, timed=100ms] Start PB")]
@@ -127,5 +127,5 @@ def test_linked_feedbacks_name_a_tag_as_pyrung_reads_it(tmp_path, nickname):
         entry.logical.name for entry in TagMap.from_nickname_file(tmp_path / "nicknames.csv").tags()
     ]
 
-    # An address pyrung gives no tag is named by its address, as the code names it.
+    # If pyrung gives an address no tag, the code names the feedback by the address.
     assert linked_feedbacks(tmp_path) == set(pyrung_names or ["X001"])

@@ -1,4 +1,4 @@
-"""Address Editor panel and tab strip: hidden columns, read-only cells, Ctrl+W."""
+"""Cover the Address Editor panel and tab strip: hidden columns, read-only cells and Ctrl+W."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def _row_index(panel, memory_type: str, address: int) -> int:
 
 
 def _menu_labels(panel, *, display_col: int, row: int) -> list[str]:
-    """What the right-click menu offers at a displayed column."""
+    """Return what the right-click menu offers at a displayed column."""
     panel._update_context_menu("table", row, panel.sheet.MT.datacn(display_col))
     return list(panel.sheet.MT.extra_table_rc_menu_funcs)
 
@@ -206,7 +206,10 @@ def test_analysis_filters_use_the_current_analysis(tk_root, store) -> None:
     [(COL_NICKNAME, "nickname", "Pump "), (COL_COMMENT, "comment", " Pump")],
 )
 def test_a_cell_typed_with_an_edge_space_shows_the_value_stored(panel, store, col, field, typed):
-    """CLICK keeps no edge space: typing "Pump " over "Pump" changes nothing, and the cell says so."""
+    """Typing "Pump " over "Pump" changes nothing, and the cell says so.
+
+    CLICK keeps no space at either end.
+    """
     _edit(store, "DS", 1, **{field: "Pump"})
     row = _row_index(panel, "DS", 1)
     frames = len(store.undo_stack)

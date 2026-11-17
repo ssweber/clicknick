@@ -76,8 +76,8 @@ def _all_file_stems(project_dir: Path) -> list[str]:
 def _get_before_files(project_dir: Path, *, analog_inputs: frozenset[str]) -> dict[str, str]:
     """Generate the 'before' state by round-tripping ladder CSVs through pyrung.
 
-    *analog_inputs* must be the channels the workspace was generated with, or the
-    regenerated tags differ from the workspace's in their ``external`` flags.
+    Pass the channels that the workspace was generated with as *analog_inputs*. Otherwise
+    the regenerated tags differ from the workspace's in their ``external`` flags.
     """
     from pyrung.click import ladder_to_pyrung_project
 
@@ -225,7 +225,7 @@ def _program_name(project_dir: Path, stem: str) -> str:
 def _describe_change(change: ProgramChange, *, new: bool) -> str:
     """Summarise a program's change: ``R3, R5..7; removes CLICK's R9``.
 
-    A program ClickNick cannot read all of in CLICK is pasted whole, and the summary says so.
+    A program that ClickNick cannot fully read in CLICK is pasted whole, and the summary says so.
     """
     from ..services.rung_diff import format_group, paste_groups
 
@@ -256,7 +256,7 @@ def _describe_change(change: ProgramChange, *, new: bool) -> str:
 def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
     """Compare the exported proposal with CLICK's program and show it in Review Changes.
 
-    Returns the reply and how many rungs the proposal changes.
+    Return the reply and the number of rungs that the proposal changes.
     """
     from ..services.rung_diff import (
         WORKSPACE_SOURCE,
@@ -332,7 +332,7 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
             ctx.show_proposal(proposal_dir, source_dir, None, None, False)
         return "(no changes)", 0
     if change.unreadable:
-        # A program ClickNick cannot read all of in CLICK is pasted whole
+        # A program that ClickNick cannot fully read in CLICK is pasted whole.
         rungs = None
 
     staged_rungs = len(rungs) if rungs else len(change.changed) + len(change.removed)
@@ -359,9 +359,9 @@ def _run_export(project_dir: Path) -> Path:
     """Run ``project_to_csv.py`` to regenerate ``csv_output/``; return that dir.
 
     Used by ``rung apply`` to produce the proposed ladder and nickname CSVs.
-    CSVs left by an earlier export that this one did not write again are
-    removed, so a subroutine deleted from the source does not stay in the
-    proposal. Raises on failure, leaving the earlier export as it was.
+    This removes CSVs that an earlier export left and this one did not write again. A
+    subroutine deleted from the source then does not stay in the proposal. On failure it
+    raises and leaves the earlier export as it was.
     """
     import subprocess
 
@@ -389,7 +389,7 @@ def _run_export(project_dir: Path) -> Path:
             if path.stat().st_mtime_ns == written:
                 path.unlink()
         except OSError:
-            pass  # Already gone, or open elsewhere: it stays in the proposal
+            pass  # Already gone, or open elsewhere. A file open elsewhere stays in the proposal.
     return output_dir
 
 

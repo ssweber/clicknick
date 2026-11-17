@@ -187,7 +187,8 @@ def verify_cdv_files(dataview_folder: Path | None) -> tuple[list[str], int]:
     - If new_value is set, address must be writable
 
     Args:
-        dataview_folder: The connected CLICK window's DataView folder (None checks none)
+        dataview_folder: The connected CLICK window's DataView folder. If it is None, no
+            files are checked.
 
     Returns:
         Tuple of (issues list, files checked count)
@@ -203,7 +204,8 @@ def run_verification(
 
     Args:
         store: The AddressStore containing all addresses
-        dataview_folder: The connected CLICK window's DataView folder (None checks none)
+        dataview_folder: The connected CLICK window's DataView folder. If it is None, no
+            files are checked.
 
     Returns:
         VerificationResult with all findings

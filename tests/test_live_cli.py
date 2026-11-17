@@ -144,7 +144,7 @@ def test_an_unclosed_quote_sends_nothing(monkeypatch, store, capsys):
     assert "No closing quotation" in capsys.readouterr().err
 
 
-# Each example of the module docstring, as typed, and the command it sends.
+# Each example in the module docstring, as the user types it, with the command it sends.
 _EXAMPLES = {
     "ping": "ping",
     "get ExampleTag": "get ExampleTag",

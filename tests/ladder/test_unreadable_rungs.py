@@ -1,6 +1,6 @@
-"""Rungs laddercodec cannot read, such as a compare CLICK's own dialog refuses.
+"""Test rungs that laddercodec cannot read, such as a compare that CLICK's own dialog refuses.
 
-An older laddercodec pasted them into CLICK, and the current one decodes the
+An older laddercodec pasted these rungs into CLICK. The current one decodes the
 cell as ``UnknownCondition``, which has no CSV token.
 """
 
@@ -180,10 +180,10 @@ def test_cli_save_lists_the_rungs_to_paste_again(scr: Path, monkeypatch, capsys)
 
 
 def _refused_payload() -> bytes:
-    """A clipboard rung holding ``DH70 == DS39``, which CLICK's Compare dialog refuses.
+    """Return a clipboard rung that holds ``DH70 == DS39``, which CLICK's Compare dialog refuses.
 
-    laddercodec will not encode it, so this encodes ``DH70 == DH71`` and swaps
-    the operand for one of the same length.
+    laddercodec will not encode that compare. This encodes ``DH70 == DH71`` and
+    replaces the operand with one of the same length.
     """
     data = encode(_rung("C1", CompareContact("==", "DH70", "DH71")))
     old, new = "DH71".encode("utf-16-le"), "DS39".encode("utf-16-le")
@@ -204,7 +204,7 @@ def test_clipboard_rung_laddercodec_cannot_read_is_named_and_nothing_is_written(
 
 
 def test_clipboard_output_laddercodec_cannot_read_is_named_too(tmp_path: Path, monkeypatch) -> None:
-    # laddercodec keeps an output instruction it cannot find the end of whole, name and all
+    # When laddercodec cannot find the end of an output instruction, it keeps the whole thing.
     copy = Rung(
         logical_rows=1,
         conditions=[["-"] * 31],
@@ -256,7 +256,7 @@ def test_a_stand_in_is_an_empty_rung_with_the_note_old_or_new() -> None:
     assert is_stand_in(rung(f"{STAND_IN_COMMENT}\nmore"))
     assert is_stand_in(rung(old))
     assert not is_stand_in(rung("A comment rung"))
-    # The note copied onto a rung that does something is only a comment
+    # A rung that does something is not a stand-in, even when its comment is the note.
     assert not is_stand_in(rung(STAND_IN_COMMENT, Coil(_IT.COIL_OUT, "C1")))
 
 

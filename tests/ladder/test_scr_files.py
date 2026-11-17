@@ -10,7 +10,7 @@ from clicknick.ladder.program import program_save
 
 
 def test_a_mid_save_copy_is_not_a_second_program(tmp_path: Path, monkeypatch) -> None:
-    """CLICK briefly writes ``Scr2.tmp~RF<hex>.TMP``; it must not become a program of its own."""
+    """CLICK briefly writes ``Scr2.tmp~RF<hex>.TMP``. The reader must not treat it as a program."""
     programs = {
         b"main": Program("Main Program", 1, []),
         b"motor": Program("Motor", 2, []),

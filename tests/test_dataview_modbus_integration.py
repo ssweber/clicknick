@@ -64,7 +64,7 @@ class FakeSheet:
         self.cells: dict[tuple[int, int], object] = {}
         self.data: list[list[object]] = []
         self.index_data: list[str] = []
-        # Every column is displayed, so a displayed column is its data column
+        # Every column is displayed, so each displayed column maps to the same data column.
         self.MT = SimpleNamespace(datacn=lambda column: column)
 
     def get_cell_data(self, row, col):

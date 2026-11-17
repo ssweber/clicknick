@@ -269,10 +269,10 @@ class AddressPanel(ttk.Frame):
         self._restore_selection()
 
     def _show_stored(self, data_idx: int, col: int, typed: str, stored: str) -> None:
-        """Put the stored value back in a cell whose text the store keeps as it was.
+        """Put the stored value back in the cell if the store kept the text as it was.
 
-        Typing ``"Pump "`` over ``"Pump"`` changes nothing in the store, which
-        then notifies no one, so the cell is set here to what the row holds.
+        If the user types ``"Pump "`` over ``"Pump"``, nothing changes in the store, so the
+        store notifies no one. This method sets the cell to what the row holds.
         """
         if typed != stored:
             self.sheet.set_cell_data(data_idx, col, stored)
@@ -315,7 +315,7 @@ class AddressPanel(ttk.Frame):
                 if col == self.COL_NICKNAME:
                     new_nickname = new_value if new_value else ""
 
-                    # Skip if no change once stored (without a space at either end)
+                    # Skip if nothing changes once the value is stored without a space at either end
                     if trim_entry("nickname", new_nickname) == address_row.nickname:
                         self._show_stored(data_idx, col, new_nickname, address_row.nickname)
                         continue
@@ -326,7 +326,7 @@ class AddressPanel(ttk.Frame):
                 elif col == self.COL_COMMENT:
                     new_comment = new_value if new_value else ""
 
-                    # Skip if no change once stored (without a space at either end)
+                    # Skip if nothing changes once the value is stored without a space at either end
                     if trim_entry("comment", new_comment) == address_row.comment:
                         self._show_stored(data_idx, col, new_comment, address_row.comment)
                         continue
@@ -750,8 +750,8 @@ class AddressPanel(ttk.Frame):
             parent: Parent widget
             store: AddressStore instance for data management
             section_boundaries: Maps type_key to starting row index for navigation.
-            get_analysis_service: The connection's AnalysisService, for program-analysis
-                filter prefixes (None when there is none).
+            get_analysis_service: A callable that returns the connection's AnalysisService,
+                or None if there is none. It is used for program-analysis filter prefixes.
         """
         super().__init__(parent)
 
@@ -980,7 +980,7 @@ class AddressPanel(ttk.Frame):
                         state="normal" if row.can_edit_initial_value else "readonly",
                         text="",
                     )
-            # Cells the store ignores take no edit at all
+            # Make the cells that the store ignores read-only
             if not row.can_edit_retentive:
                 self.sheet.readonly_cells(data_idx, self.COL_RETENTIVE)
             if not row.can_edit_initial_value:
@@ -1033,8 +1033,8 @@ class AddressPanel(ttk.Frame):
         if not addr_keys:
             return
 
-        # self.rows is the store's unified view list, which the store refreshes
-        # from visible_state before notifying observers.
+        # self.rows is the store's unified view list. The store refreshes it from
+        # visible_state before it notifies observers.
 
         # Convert addr_keys to row indices in this panel
         row_indices = self._keys_to_indices(addr_keys)

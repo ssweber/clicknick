@@ -30,7 +30,7 @@ def value_notes(
     A part is empty when there is nothing to show. BIT rows name their Retentive
     setting ("Retentive" or "Non-retentive") when it differs from the memory type's
     default. Any row shows its initial value ("ON" for a BIT) when it is not
-    retentive and the value is not the default; a retentive row's initial value is
+    retentive and the value is not the default. A retentive row's initial value is
     not used.
     """
     is_bit = data_type_display == "BIT"
@@ -217,11 +217,11 @@ class AddressRow:
 
 
 def with_pair_retentive(row: AddressRow, rows: Mapping[int, AddressRow]) -> AddressRow:
-    """The row as the Address Editor shows its Retentive: a TD/CTD row follows its T/CT row.
+    """Return the row as the Address Editor shows its Retentive.
 
-    Returns *row* itself when it is not a TD/CTD row or its T/CT row is not in *rows*
-    (keyed by addr_key). The tooltip and the Tag Browser read value notes from this
-    row, so they agree with the editor's masked initial value.
+    A TD/CTD row follows its T/CT row. Return *row* itself if it is not a TD/CTD row or its
+    T/CT row is not in *rows* (keyed by addr_key). The tooltip and the Tag Browser read value
+    notes from the returned row, so they agree with the editor's masked initial value.
     """
     pair_type = PAIRED_RETENTIVE_TYPES.get(row.memory_type)
     if pair_type is None:

@@ -52,7 +52,7 @@ class OutlinePanel(ttk.Frame):
 
         self.tree.selection_set(iid)
         self._selected_iid = iid
-        # Only a nickname segment can be renamed: not an SC/SD entry or a "_" node
+        # You can rename only a nickname segment, not an SC/SD entry or a "_" node
         item = self._item_data.get(iid)
         self._context_menu.entryconfigure(
             0, state=tk.NORMAL if item is not None and item.rename_text else tk.DISABLED
@@ -223,9 +223,10 @@ class OutlinePanel(ttk.Frame):
 
     @staticmethod
     def _state_key(item: DisplayItem) -> str:
-        """Key an item's expanded state: its path, or for an SC/SD group its type.
+        """Return the key that records whether an item is expanded.
 
-        A group has no path; the prefix keeps its key from a folder of that name.
+        The key is the item's path. An SC/SD group has no path, so its key is the group's text
+        after a NUL character. The prefix keeps that key from matching a folder of that name.
         """
         return item.full_path or f"\x00{item.text}"
 

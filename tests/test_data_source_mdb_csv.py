@@ -58,7 +58,7 @@ class TestReadMdbCsv:
         assert row.retentive is True
 
     def test_keeps_rows_with_only_an_initial_value_or_retentive(self, tmp_path):
-        """The same rows the database path keeps (AddressRow.has_content)."""
+        """Keep the same rows that the database path keeps (AddressRow.has_content)."""
         csv_path = tmp_path / "Address.csv"
         csv_path.write_text(
             "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment\n"
@@ -76,7 +76,10 @@ class TestReadMdbCsv:
         ]
 
     def test_reads_clicks_address_csv(self, tmp_path):
-        """CLICK writes it as UTF-8 with a BOM and CRLF, Retentive and Use as 0/1."""
+        """Read the Address CSV as CLICK writes it.
+
+        CLICK writes UTF-8 with a BOM and CRLF, and writes Retentive and Use as 0 or 1.
+        """
         csv_path = tmp_path / "Address.csv"
         csv_path.write_bytes(
             (

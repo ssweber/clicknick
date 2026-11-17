@@ -1,7 +1,8 @@
-"""Overlay detection across CLICK versions.
+"""Test overlay detection across CLICK versions.
 
-Before v4 the instruction dialogs are Delphi forms (TfrmContactNO, TEdit1); v4 makes them
-standard dialogs (#32770) told apart by title. The Data View and Address Picker stay Delphi.
+Before v4 the instruction dialogs are Delphi forms (TfrmContactNO, TEdit1). In v4 they are
+standard dialogs (#32770), and the title tells them apart. The Data View and Address Picker
+stay Delphi.
 """
 
 import pytest
@@ -125,10 +126,11 @@ def test_window_key_strips_delphis_t_but_keeps_dialog_titles():
     assert window_key("#32770", "Find and Replace") == "Find"
 
 
-# CLICK v4's Edit and ComboBox windows in the dialogs below, in the order EnumChildWindows
-# lists them: (class, control id). Live probe f1 (BOB job autocomplete-fields, 2026-11-16)
-# listed them, hidden ones included. Receive's and Send's IP address control (5036) holds four
-# Edit windows of its own; they show only for CPU Port1 and the WLAN Port (Modbus TCP).
+# These are CLICK v4's Edit and ComboBox windows in the dialogs below, as (class, control id),
+# in the order that EnumChildWindows lists them. Live probe f1 (BOB job autocomplete-fields,
+# 2026-11-16) listed them, hidden ones included. Receive's and Send's IP address control (5036)
+# holds four Edit windows of its own. They show only for CPU Port1 and the WLAN Port
+# (Modbus TCP).
 LIVE_CONTROLS = {
     "Out": [
         ("Edit", 5002),
@@ -192,10 +194,10 @@ LIVE_CONTROLS = {
 }
 FUNCTION_CODE = 5001  # Receive's and Send's Modbus Function Code list
 
-# The banks the Address Picker leaves open when a field's "..." button opens it
-# ("Address Picker : Pickup Mode" greys the rest): (dialog, field id, Function Code shown)
-# -> banks. Live probes f1 and f2 (BOB job autocomplete-fields, picker_shots/), CLICK v4.00.
-# Out's delay edits are the same for Debounce, Flasher and Timed (Timed opens 5015 and 5018).
+# Each key is (dialog, field id, Function Code shown). Its value is the banks that the Address
+# Picker leaves open when the field's "..." button opens it. "Address Picker : Pickup Mode"
+# greys the rest. Live probes f1 and f2 (BOB job autocomplete-fields, picker_shots/), CLICK v4.00.
+# Out's delay edits are the same for Debounce, Flasher and Timed. Timed opens 5015 and 5018.
 PICKER_BANKS = {
     ("Out", 5002, None): {"Y", "C", "SC"},  # Bit Memory Address1
     ("Out", 5003, None): {"Y", "C", "SC"},  # Bit Memory Address2
@@ -246,8 +248,9 @@ class FakeChildWindows:
 
 
 def live_name(monkeypatch, title, control_id, index=0):
-    """The name ClickNick's overlay gives control *control_id* of the live *title* dialog
-    (the *index*-th window with that id)."""
+    """Return the name that ClickNick's overlay gives control *control_id* of a live dialog.
+
+    The dialog is the live *title* dialog. The control is the *index*-th window with that id."""
     controls = LIVE_CONTROLS[title]
     monkeypatch.setattr(win32_utils, "win32gui", FakeChildWindows(controls))
     hwnd = [100 + n for n, (_, cid) in enumerate(controls) if cid == control_id][index]

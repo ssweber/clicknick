@@ -70,13 +70,13 @@ class DataviewEditorWindow(tk.Toplevel):
                 break
 
     def _on_panel_modified(self, panel: DataviewPanel) -> None:
-        """Retitle the panel's tab, which need not be the current one (a reload from the prompt)."""
+        """Retitle the panel's tab, which need not be the current one (after a reload, say)."""
         self._update_tab_title(panel)
 
     def _iter_open_panels(self) -> list[DataviewPanel]:
         """Return panel widgets currently attached to notebook tabs.
 
-        The tabs are the one record of what is open, untitled dataviews included.
+        The tabs are the only record of what is open, including untitled dataviews.
         """
         panels: list[DataviewPanel] = []
         try:
@@ -89,7 +89,7 @@ class DataviewEditorWindow(tk.Toplevel):
         return panels
 
     def _panel_for_path(self, file_path: Path) -> DataviewPanel | None:
-        """The open tab bound to file_path, if any."""
+        """Return the open tab bound to *file_path*, or None if there is none."""
         return next(
             (panel for panel in self._iter_open_panels() if panel.file_path == file_path), None
         )
@@ -399,13 +399,13 @@ class DataviewEditorWindow(tk.Toplevel):
         )
 
     def _commit_cell_editor(self, panel: DataviewPanel) -> bool:
-        """Commit the text typed in *panel*'s open cell editor; False, said, if it stays open.
+        """Commit the text typed in *panel*'s open cell editor. Return False if it stays open.
 
         tksheet commits nothing while the focus is outside ClickNick, so text typed
         before switching to CLICK is still in the editor.
         """
         mt = panel.sheet.MT
-        # A refused New Value whose cell has not reopened yet is still an open edit
+        # A New Value that was refused, in a cell that has not reopened yet, is still an open edit
         if panel.reopen_rejected_edit():
             return False
         if not mt.text_editor.open:
@@ -427,7 +427,7 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _write_checked(self) -> None:
         panel = self._get_current_panel()
-        # A button click leaves the focus in the cell editor: write the value typed there
+        # A button click leaves the focus in the cell editor, so commit it and write that value
         if panel is None or not self._commit_cell_editor(panel):
             return
         self._write_payload(panel.get_write_rows())
@@ -482,7 +482,7 @@ class DataviewEditorWindow(tk.Toplevel):
             on_force=self._on_panel_force,
         )
         if panel.load_error is not None:
-            # A tab of empty rows bound to the file could be saved over it.
+            # Do not keep a tab here. A tab of empty rows bound to the file could be saved over it.
             panel.destroy()
             messagebox.showerror(
                 "Open DataView",
@@ -529,8 +529,10 @@ class DataviewEditorWindow(tk.Toplevel):
         self.notebook.select(panel)
 
     def _dialog_folder(self) -> Path:
-        """Where Open, Save As and Export start: the DataView folder shown, else the
-        folder last used here, else Documents."""
+        """Return the folder where Open, Save As and Export start.
+
+        Use the DataView folder shown, else the folder last used here, else Documents.
+        """
         folder = self.shared_data.dataview_folder
         if folder is not None and folder.is_dir():
             return folder
@@ -557,8 +559,8 @@ class DataviewEditorWindow(tk.Toplevel):
     def _save_as(self, panel: DataviewPanel) -> bool:
         """Save a dataview into a folder the user picks, named after the dataview.
 
-        Returns False, with the dataview still unsaved, when the user cancels,
-        the file is open in another tab, or the save fails.
+        Return False, with the dataview still unsaved, if the user cancels, the file is
+        open in another tab, or the save fails.
         """
         self.notebook.select(panel)
         initial_dir = self._dialog_folder()
@@ -713,7 +715,8 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _on_close(self) -> None:
         """Handle window close."""
-        # Text still in a cell editor is an edit; a cell that won't commit stops the close.
+        # Commit text still in a cell editor, because it is an edit. A cell that won't commit
+        # stops the close.
         if not self.commit_open_cell_editor():
             return
         if self.has_unsaved_changes():
@@ -907,7 +910,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self._update_modbus_controls()
 
     def _check_simulation(self) -> None:
-        """Attach while a simulation serves Modbus; detach when it stops."""
+        """Attach to the simulation while it serves Modbus, and detach when it stops."""
         sim = self._get_simulation() if self._get_simulation is not None else None
         available = sim is not None and sim.modbus_available
         if self._sim is not None and (not available or sim is not self._sim):
@@ -1101,7 +1104,7 @@ class DataviewEditorWindow(tk.Toplevel):
         return [n for n in candidates if search_upper in n.upper()]
 
     def _address_for_nickname(self, nickname: str) -> str | None:
-        """The address with this nickname, matched without case (an exact match first)."""
+        """Return the address with this nickname, or None. Match exactly first, then ignore case."""
         store = self.shared_data.address_store
         addr_keys = store.get_addr_keys_for_nickname(nickname)
         if not addr_keys:
@@ -1114,8 +1117,8 @@ class DataviewEditorWindow(tk.Toplevel):
     def _on_nickname_selected(self, text: str) -> None:
         """Insert the address the Nickname box names into the current dataview.
 
-        The text is a nickname, or else an address. Anything else is refused
-        and stays in the box.
+        The text must be a nickname or an address. The editor refuses anything else and
+        leaves it in the box.
 
         Args:
             text: The nickname or address from the combobox
@@ -1393,7 +1396,7 @@ class DataviewEditorWindow(tk.Toplevel):
         self._file_paths = files
 
     def refresh_title(self) -> None:
-        """Show the project CLICK has open now; the app calls this when it changes."""
+        """Show the project that CLICK has open now. The app calls this when the project changes."""
         title = "ClickNick Dataview Editor"
         title_suffix = self._get_title_suffix()
         if title_suffix:
@@ -1432,7 +1435,7 @@ class DataviewEditorWindow(tk.Toplevel):
         """Commit the text typed in every tab's open cell editor, so it is an edit like any other.
 
         Closing, saving and the app's project-change question call this first.
-        Returns False, after telling the user, when an editor is still open.
+        Return False, after telling the user, if an editor is still open.
         """
         return all(self._commit_cell_editor(panel) for panel in self._iter_open_panels())
 
@@ -1443,9 +1446,10 @@ class DataviewEditorWindow(tk.Toplevel):
     def save_all(self) -> bool:
         """Save every modified dataview, asking where to save untitled ones.
 
-        Stops at the first one that is not saved (cancelled or failed; a failed
-        save says why) and returns False, so a caller closing the window closes nothing.
-        Text still in a cell editor is saved too; a cell that won't commit saves nothing.
+        Stop at the first dataview that is not saved, because the user cancelled or the
+        save failed (a failed save says why), and return False. A caller that is closing
+        the window then closes nothing. Text still in a cell editor is saved too. A cell
+        that won't commit saves nothing.
         """
         if not self.commit_open_cell_editor():
             return False
