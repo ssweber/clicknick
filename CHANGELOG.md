@@ -29,6 +29,7 @@
 - In a CLICK 4 project whose Project.ini also has an old `[PLCName]` section, ClickNick now reads the PLC name that CLICK 4 shows. It uses the workspace and Simulator settings for that name.
 - ClickNick now loads a nickname CSV that CLICK exported with a Text initial value of a comma or a double quote. It used to lose the value or misread the rows after it. A save now writes such a value so that it reads back as written.
 - When the nicknames.csv in a folder has a bad Address, a wrong Data Type or extra cells, Review Changes now names the line. It used to offer to stage the nicknames. When pyrung cannot convert the folder, the diff now says why instead of showing the rungs without their source.
+- `clicknick-rung` now stops with an error when `--mdb-path` names no file, or when it cannot add the rungs' addresses to that SC_.mdb. It used to copy the rungs anyway, without a word, and add no addresses. Without `--mdb-path`, it now warns when it cannot find the CLICK window's SC_.mdb or add the addresses to it.
 
 ## v0.24.1 - 2026-11-15
 

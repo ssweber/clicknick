@@ -26,6 +26,7 @@ from ..utils.mdb_shared import find_click_database
 from .clipboard import copy_to_clipboard, find_click_hwnd, is_click_v4, read_from_clipboard
 from .program import (
     NeedsClickV4Error,
+    PrepareResult,
     decode_to_csv,
     describe_csv,
     describe_legacy_encoding,
@@ -41,21 +42,42 @@ from .program import (
 
 
 def resolve_mdb_path(mdb_path: str | None = None) -> Path:
-    """Find SC_.mdb from explicit path or auto-detect from running Click."""
+    """Return the SC_.mdb at *mdb_path*, or else the SC_.mdb of the first CLICK window.
+
+    Raise FileNotFoundError if there is no such file. Raise RuntimeError if *mdb_path* is
+    None and no CLICK window is open.
+    """
     if mdb_path:
         resolved = Path(mdb_path)
-        if not resolved.exists():
-            raise FileNotFoundError(f"MDB path not found: {resolved}")
+        if not resolved.is_file():
+            raise FileNotFoundError(
+                f"There is no file at {resolved}. Give --mdb-path the path of the project's SC_.mdb."
+            )
         return resolved
 
     click_hwnd = find_click_hwnd()
     db_path = find_click_database(None, click_hwnd)
     if not db_path:
-        raise FileNotFoundError("Could not locate SC_.mdb. Pass --mdb-path <path-to-SC_.mdb>.")
-    resolved = Path(db_path)
-    if not resolved.exists():
-        raise FileNotFoundError(f"Auto-detected SC_.mdb not found: {resolved}")
-    return resolved
+        raise FileNotFoundError(
+            "Could not find the SC_.mdb of the CLICK window. Give its path with --mdb-path."
+        )
+    return Path(db_path)
+
+
+def _database_for(mdb_path: str | None) -> Path | None:
+    """Return the SC_.mdb to add the rungs' addresses to, or None if there is none.
+
+    If *mdb_path* names no file, raise FileNotFoundError. Without *mdb_path*, look for the
+    SC_.mdb of the first CLICK window. If it has none, print a warning on stderr and return
+    None. The rungs can still be copied, so the command goes on.
+    """
+    try:
+        return resolve_mdb_path(mdb_path)
+    except FileNotFoundError as exc:
+        if mdb_path:
+            raise
+        print(f"  Did not add the rungs' addresses to SC_.mdb. {exc}", file=sys.stderr)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -79,14 +101,24 @@ def print_csv_shape(csv_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _print_mdb_status(result) -> None:
-    """Print MDB provisioning status for a prepared load result."""
-    if result.addresses_inserted:
-        print(
-            f"  MDB: inserted {result.addresses_inserted} address(es) into {result.mdb_path.name}"
-        )
-    elif result.mdb_error:
-        print(f"  MDB: skipped ({result.mdb_error})")
+def _print_mdb_status(result: PrepareResult, database: Path | None, mdb_path: str | None) -> None:
+    """Print how many of the rungs' addresses were added to *database*.
+
+    If adding them failed, raise RuntimeError when --mdb-path (*mdb_path*) named the
+    database, because the command cannot do what was asked. Otherwise print the failure on
+    stderr.
+    """
+    if result.mdb_error is None:
+        if result.addresses_inserted and result.mdb_path is not None:
+            print(
+                f"  MDB: inserted {result.addresses_inserted} address(es)"
+                f" into {result.mdb_path.name}"
+            )
+        return
+    message = f"Could not add the rungs' addresses to {database}: {result.mdb_error}"
+    if mdb_path:
+        raise RuntimeError(message)
+    print(f"  {message}", file=sys.stderr)
 
 
 def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False) -> bytes:
@@ -94,16 +126,12 @@ def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False
     print(f"  {describe_csv(csv_path, best_effort=best_effort)}")
     print_csv_shape(csv_path)
 
-    try:
-        resolved_mdb = resolve_mdb_path(mdb_path)
-    except (FileNotFoundError, RuntimeError):
-        resolved_mdb = None
-
+    database = _database_for(mdb_path)
     result = prepare_csv_load(
-        csv_path, click_v4=is_click_v4(), mdb_path=resolved_mdb, best_effort=best_effort
+        csv_path, click_v4=is_click_v4(), mdb_path=database, best_effort=best_effort
     )
 
-    _print_mdb_status(result)
+    _print_mdb_status(result, database, mdb_path)
     copy_to_clipboard(result.payload)
     print(f"  Copied to clipboard ({len(result.payload):,} bytes)")
     return result.payload
@@ -111,15 +139,11 @@ def _load_csv(csv_path: Path, mdb_path: str | None, *, best_effort: bool = False
 
 def _load_program_csv(csv_path: Path, mdb_path: str | None) -> bytes:
     """Encode a program/subroutine CSV and copy to clipboard. Minimal output."""
-    try:
-        resolved_mdb = resolve_mdb_path(mdb_path)
-    except (FileNotFoundError, RuntimeError):
-        resolved_mdb = None
-
-    result = prepare_csv_load(csv_path, click_v4=is_click_v4(), mdb_path=resolved_mdb)
+    database = _database_for(mdb_path)
+    result = prepare_csv_load(csv_path, click_v4=is_click_v4(), mdb_path=database)
 
     print(f"  {result.rung_count} rung{'s' if result.rung_count != 1 else ''}")
-    _print_mdb_status(result)
+    _print_mdb_status(result, database, mdb_path)
     copy_to_clipboard(result.payload)
     print(f"  Copied to clipboard ({len(result.payload):,} bytes)")
     return result.payload
@@ -129,19 +153,20 @@ def _load_bin(bin_path: Path, mdb_path: str | None) -> bytes:
     """Check the CLICK version and provision MDB addresses from a decoded .bin, then copy raw bytes."""
     data = bin_path.read_bytes()
 
+    database = _database_for(mdb_path)
     try:
-        resolved_mdb = resolve_mdb_path(mdb_path)
-    except (FileNotFoundError, RuntimeError):
-        resolved_mdb = None
-
-    try:
-        result = prepare_bin_load(data, click_v4=is_click_v4(), mdb_path=resolved_mdb)
+        result = prepare_bin_load(data, click_v4=is_click_v4(), mdb_path=database)
     except NeedsClickV4Error:
         raise
     except ValueError as exc:
+        if mdb_path:
+            raise RuntimeError(
+                f"Could not add the addresses in {bin_path.name} to {database}."
+                f" The file could not be decoded: {exc}"
+            ) from exc
         print(f"  Could not decode .bin to check it or provision the MDB: {exc}")
     else:
-        _print_mdb_status(result)
+        _print_mdb_status(result, database, mdb_path)
 
     copy_to_clipboard(data)
     print(f"Copied {bin_path.name} to clipboard ({len(data):,} bytes)")
@@ -260,8 +285,8 @@ def _run_guided(
         except RuntimeError as exc:
             loaded = False
             while not loaded:
-                print(f"  Clipboard error: {exc}")
-                print("  Open Click and press Enter to retry, or [s]kip / [q]uit")
+                print(f"  {exc}")
+                print("  Press Enter to try again, or [s]kip / [q]uit")
                 choice = input("  > ").strip().lower()
                 if choice == "q":
                     print()
@@ -460,6 +485,14 @@ def main() -> None:
     if not args.command:
         parser.print_help()
         sys.exit(1)
+
+    if args.mdb_path:
+        # Refuse a wrong --mdb-path before anything is copied or written.
+        try:
+            resolve_mdb_path(args.mdb_path)
+        except FileNotFoundError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
 
     if args.command == "guided":
         folder = Path(args.folder)

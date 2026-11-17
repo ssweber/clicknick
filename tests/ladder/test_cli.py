@@ -216,6 +216,169 @@ def test_load_of_a_csv_without_rungs_says_so(
 
 
 # ---------------------------------------------------------------------------
+# Adding the rungs' addresses to SC_.mdb
+# ---------------------------------------------------------------------------
+
+
+class TestDatabaseErrors:
+    """Errors about SC_.mdb go to stderr. Under --mdb-path they also stop the command."""
+
+    @pytest.fixture
+    def rung_csv(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        path = tmp_path / "rung.csv"
+        write_csv(path, [_rung(Coil(_IT.COIL_OUT, "Y001"))])
+        monkeypatch.setattr("clicknick.ladder.cli.is_click_v4", lambda *_a: True)
+        monkeypatch.setattr("clicknick.ladder.cli.find_click_hwnd", lambda: 0x1234)
+        return path
+
+    @pytest.fixture
+    def copied(self, monkeypatch: pytest.MonkeyPatch) -> list[bytes]:
+        copied: list[bytes] = []
+        monkeypatch.setattr(
+            "clicknick.ladder.cli.copy_to_clipboard", lambda data, *_a: copied.append(data)
+        )
+        return copied
+
+    def _fail_to_add(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _ensure(_db: str, _addresses: list[str]) -> dict[str, int]:
+            raise RuntimeError("the database is locked")
+
+        monkeypatch.setattr("clicknick.ladder.program.ensure_addresses_exist", _ensure)
+
+    def test_a_wrong_mdb_path_stops_the_command(
+        self,
+        tmp_path: Path,
+        rung_csv: Path,
+        copied: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ):
+        missing = tmp_path / "missing" / "SC_.mdb"
+        monkeypatch.setattr(
+            "sys.argv", ["clicknick-rung", "--mdb-path", str(missing), "load", str(rung_csv)]
+        )
+
+        with pytest.raises(SystemExit, match="1"):
+            main()
+
+        assert copied == []
+        assert capsys.readouterr().err == (
+            f"Error: There is no file at {missing}."
+            " Give --mdb-path the path of the project's SC_.mdb.\n"
+        )
+
+    def test_a_failure_to_add_to_the_mdb_path_stops_the_command(
+        self,
+        tmp_path: Path,
+        rung_csv: Path,
+        copied: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ):
+        database = tmp_path / "SC_.mdb"
+        database.write_bytes(b"")
+        self._fail_to_add(monkeypatch)
+        monkeypatch.setattr(
+            "sys.argv", ["clicknick-rung", "--mdb-path", str(database), "load", str(rung_csv)]
+        )
+
+        with pytest.raises(SystemExit, match="1"):
+            main()
+
+        assert copied == []
+        assert capsys.readouterr().err == (
+            f"Error: Could not add the rungs' addresses to {database}: the database is locked\n"
+        )
+
+    def test_an_undecodable_bin_stops_the_command_under_mdb_path(
+        self,
+        tmp_path: Path,
+        rung_csv: Path,
+        copied: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ):
+        database = tmp_path / "SC_.mdb"
+        database.write_bytes(b"")
+        src = tmp_path / "rung.bin"
+        src.write_bytes(b"\xaa")
+
+        def _raise_decode_error(_data: bytes, **_kw) -> PrepareResult:
+            raise ValueError("bad binary")
+
+        monkeypatch.setattr("clicknick.ladder.cli.prepare_bin_load", _raise_decode_error)
+        monkeypatch.setattr(
+            "sys.argv", ["clicknick-rung", "--mdb-path", str(database), "load", str(src)]
+        )
+
+        with pytest.raises(SystemExit, match="1"):
+            main()
+
+        assert copied == []
+        assert capsys.readouterr().err == (
+            f"Error: Could not add the addresses in rung.bin to {database}."
+            " The file could not be decoded: bad binary\n"
+        )
+
+    def test_a_click_window_without_sc_mdb_is_reported(
+        self,
+        rung_csv: Path,
+        copied: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ):
+        monkeypatch.setattr("clicknick.ladder.cli.find_click_database", lambda *_a: None)
+        monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(rung_csv)])
+
+        main()
+
+        assert len(copied) == 1
+        assert capsys.readouterr().err == (
+            "  Did not add the rungs' addresses to SC_.mdb. Could not find the SC_.mdb of the"
+            " CLICK window. Give its path with --mdb-path.\n"
+        )
+
+    def test_a_failure_to_add_to_the_click_windows_mdb_is_reported(
+        self,
+        tmp_path: Path,
+        rung_csv: Path,
+        copied: list[bytes],
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture,
+    ):
+        database = tmp_path / "SC_.mdb"
+        database.write_bytes(b"")
+        monkeypatch.setattr("clicknick.ladder.cli.find_click_database", lambda *_a: str(database))
+        self._fail_to_add(monkeypatch)
+        monkeypatch.setattr("sys.argv", ["clicknick-rung", "load", str(rung_csv)])
+
+        main()
+
+        assert len(copied) == 1
+        assert capsys.readouterr().err == (
+            f"  Could not add the rungs' addresses to {database}: the database is locked\n"
+        )
+
+    def test_guided_reports_a_wrong_mdb_path_once(
+        self,
+        tmp_path: Path,
+        rung_csv: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        guided: list[tuple] = []
+        monkeypatch.setattr("clicknick.ladder.cli._run_guided", lambda *a, **_k: guided.append(a))
+        monkeypatch.setattr(
+            "sys.argv",
+            ["clicknick-rung", "--mdb-path", str(tmp_path / "none.mdb"), "guided", str(tmp_path)],
+        )
+
+        with pytest.raises(SystemExit, match="1"):
+            main()
+
+        assert guided == []
+
+
+# ---------------------------------------------------------------------------
 # _collapse_cols
 # ---------------------------------------------------------------------------
 
