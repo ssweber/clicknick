@@ -1,19 +1,23 @@
 """Make CLICK redraw its nicknames from SC_.mdb (issue #36).
 
-CLICK's ladder paints nicknames from a table TagDB.dll keeps in memory, so after a
-Sync writes SC_.mdb it shows the old names, and no window message reloads that table.
-File > Import > Nickname does (live runs on CLICK v4.00, 2026-11-17): imported in
-Merge (Project priority), the dialog's default, a CSV holding only the header line
-answers "Completed!", leaves SC_.mdb as it was and redraws every nickname from it.
-CLICK then counts the project as changed, as after an edit in its Address Picker.
+CLICK's ladder paints nicknames from a table that TagDB.dll keeps in memory. After a
+Sync writes SC_.mdb, CLICK still shows the old names, and no window message reloads that
+table.
+
+File > Import > Nickname does reload it (live runs on CLICK v4.00, 2026-11-17). Import a
+CSV that holds only the header line, in Merge (Project priority), which is the dialog's
+default. CLICK answers "Completed!", leaves SC_.mdb as it was and redraws every nickname
+from it. CLICK then counts the project as changed, as it does after an edit in its
+Address Picker.
 
 ``redraw_nicknames`` drives that import on the connected CLICK window through a
-``ClickDesktop`` (``utils/win32_desktop.py`` on Windows; tests use a fake). It starts
-only while CLICK shows its main window alone, presses only the import mode's radio
-button, Open and the "Completed!" box's button, and leaves any other window to the
-user. Windows' own strings ("Open", "OK", "Cancel") differ by language, so the file
-dialog and its buttons are told by structure and control ids, and only CLICK's own
-strings are read as text. It blocks for seconds: run it off the Tk thread.
+``ClickDesktop`` (``utils/win32_desktop.py`` on Windows, a fake in tests). It starts only
+while CLICK shows its main window alone. It presses only the import mode's radio button,
+Open and the button of the "Completed!" box, and it leaves any other window to the user.
+
+Windows' own strings ("Open", "OK", "Cancel") differ by language. So it tells the file
+dialog and its buttons apart by structure and control ids, and it reads only CLICK's own
+strings as text. It blocks for seconds, so run it off the Tk thread.
 """
 
 from __future__ import annotations
@@ -35,12 +39,12 @@ logger = logging.getLogger(__name__)
 
 # File > Import > Nickname: the same WM_COMMAND id in CLICK 2.60, 3.43, 3.71, 3.92 and 4.00
 IMPORT_NICKNAME = 32900
-# CLICK's nickname CSV header, byte for byte: a file of this line alone imports no row
+# CLICK's nickname CSV header, byte for byte. A file of this line alone imports no row.
 HEADER = b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
 PROJECT_PRIORITY = "Merge (Project priority)"
 IMPORT_MODES = frozenset({PROJECT_PRIORITY, "Merge (File priority)", "Delete Existing"})
 COMPLETED = "Completed!"
-# The progress window is titled by its Delphi form's name at first, then by the mode
+# The progress window is titled by its Delphi form's name at first, and then by the mode.
 PROGRESS_TITLES = frozenset({"frmProgress", "Import - Project priority"})
 DIALOG_CLASS = "#32770"
 TOOLTIP_CLASS = "tooltips_class32"
@@ -53,12 +57,12 @@ BM_CHECKED = 1
 # Seconds. Every wait is bounded, so a CLICK that does not answer ends the redraw.
 IDLE_TIMEOUT = 1.0
 OPEN_TIMEOUT = 10.0
-# A dialog of CLICK's owned by its main window that does not show the import modes
-# is taken for the import's Open dialog still being built for this long
+# A dialog that CLICK's main window owns and that does not show the import modes yet is
+# taken for the import's Open dialog, still being built, for this many seconds
 DIALOG_GRACE = 1.0
 FILL_TIMEOUT = 5.0
-# A file dialog still opening can empty its File name edit after it was set
-# (devtools/click_runner.py, fill_path): the path must read back for this long
+# A file dialog that is still opening can empty its File name edit after it was set
+# (devtools/click_runner.py, fill_path). The path must read back for this many seconds.
 FILL_SETTLE = 1.0
 ANSWER_TIMEOUT = 20.0
 CLOSE_TIMEOUT = 10.0
@@ -66,18 +70,18 @@ POLL = 0.1
 
 
 class ClickDesktop(Protocol):
-    """The Win32 calls a redraw makes. Every message is posted or sent with a timeout."""
+    """The Win32 calls that a redraw makes. Every message is posted or sent with a timeout."""
 
     def windows(self, pid: int) -> list[Window]:
-        """The visible top-level windows of process *pid*."""
+        """Return the visible top-level windows of process *pid*."""
         ...
 
     def controls(self, hwnd: int) -> list[Control]:
-        """The child windows of *hwnd*, at any depth."""
+        """Return the child windows of *hwnd*, at any depth."""
         ...
 
     def idle(self, hwnd: int, timeout: float) -> bool:
-        """Whether *hwnd*'s thread answers a message within *timeout* seconds."""
+        """Return True if *hwnd*'s thread answers a message within *timeout* seconds."""
         ...
 
     def post_command(self, hwnd: int, command_id: int) -> None:
@@ -89,27 +93,27 @@ class ClickDesktop(Protocol):
         ...
 
     def button_checked(self, hwnd: int) -> int | None:
-        """BM_GETCHECK of *hwnd*; None if it did not answer."""
+        """Send BM_GETCHECK to *hwnd* and return the answer, or None if it did not answer."""
         ...
 
     def read_text(self, hwnd: int) -> str | None:
-        """WM_GETTEXT of *hwnd*; None if it did not answer."""
+        """Send WM_GETTEXT to *hwnd* and return the text, or None if it did not answer."""
         ...
 
     def set_text(self, hwnd: int, text: str) -> bool:
-        """WM_SETTEXT *text* into *hwnd*; False if it did not answer."""
+        """Send WM_SETTEXT with *text* to *hwnd*. Return False if it did not answer."""
         ...
 
     def foreground(self) -> int:
-        """The foreground window, 0 for none."""
+        """Return the foreground window, or 0 if there is none."""
         ...
 
     def window_pid(self, hwnd: int) -> int:
-        """The process that owns *hwnd*, 0 if it is gone."""
+        """Return the process that owns *hwnd*, or 0 if the window is gone."""
         ...
 
     def last_active_popup(self, hwnd: int) -> int:
-        """GetLastActivePopup of *hwnd*: its owned window that was active last, else *hwnd*."""
+        """Call GetLastActivePopup on *hwnd*: its owned window that was active last, else *hwnd*."""
         ...
 
     def set_foreground(self, hwnd: int) -> None:
@@ -132,7 +136,7 @@ class RedrawResult:
 
 
 class _Stop(Exception):  # noqa: N818 - control flow, not an error
-    """Ends the redraw with *result*."""
+    """Raised to end the redraw with *result*."""
 
     def __init__(self, result: RedrawResult) -> None:
         super().__init__(result.detail)
@@ -144,12 +148,12 @@ def _failed(detail: str) -> _Stop:
 
 
 def _describe(window: Window) -> str:
-    """How a status line names *window*: its title, else its class."""
+    """Return how a status line names *window*: its title, else its class."""
     return f'"{window.title}"' if window.title else window.cls
 
 
 def _others(windows: list[Window], main: int) -> list[Window]:
-    """*windows* but the main window and tooltips."""
+    """Return *windows* without the main window and tooltips."""
     return [w for w in windows if w.hwnd != main and w.cls != TOOLTIP_CLASS]
 
 
@@ -157,7 +161,8 @@ def _shows_import_modes(controls: list[Control]) -> bool:
     return {c.text for c in controls if c.cls == "TRadioButton"} == IMPORT_MODES
 
 
-# CSVs a redraw could not remove (CLICK still had one open): removed by the next redraw
+# CSVs that a redraw could not remove because CLICK still had one open.
+# The next redraw removes them.
 _leftovers: set[Path] = set()
 _leftovers_lock = threading.Lock()
 
@@ -189,16 +194,21 @@ def redraw_nicknames(
 ) -> RedrawResult:
     """Make CLICK's window *main* (process *pid*) redraw every nickname from SC_.mdb.
 
-    Imports a header-only CSV by File > Import > Nickname in Merge (Project priority).
-    BUSY, with nothing sent, when CLICK's main window is disabled, does not answer or
-    shows another window. FAILED when the import shows anything other than the
-    windows it is known to show, or does not answer in time: the import's Open dialog
-    is then cancelled if it is the one window open, and anything else is left to the
-    user. The CSV is written into *temp_dir* (the temp folder by default) and removed
-    afterwards, or by the next redraw when CLICK still holds it. When one of
-    *own_pid*'s windows (this process by default) had the foreground and CLICK has it
-    at the end, it goes back to that window's last active popup (a message box
-    ClickNick showed meanwhile keeps it).
+    Import a header-only CSV with File > Import > Nickname in Merge (Project priority).
+
+    Return BUSY, with nothing sent, if CLICK's main window is disabled, does not answer or
+    shows another window.
+
+    Return FAILED if the import shows a window that it is not known to show, or does not
+    answer in time. If the import's Open dialog is then the only window open, cancel it.
+    Leave any other window to the user.
+
+    Write the CSV into *temp_dir* (the temp folder by default) and remove it afterwards. If
+    CLICK still holds it, the next redraw removes it.
+
+    If one of *own_pid*'s windows (this process by default) had the foreground at the start,
+    and CLICK has it at the end, return the foreground to that window's last active popup.
+    A message box that ClickNick showed in the meantime gets the foreground.
     """
     own = os.getpid() if own_pid is None else own_pid
     foreground = desktop.foreground()
@@ -248,7 +258,7 @@ def _redraw(
 
 
 class _Import:
-    """One File > Import > Nickname of a header-only CSV."""
+    """Run one File > Import > Nickname of a header-only CSV."""
 
     def __init__(
         self,
@@ -300,7 +310,7 @@ class _Import:
                 FILL_TIMEOUT,
             )
         self._fill(file_name)
-        # Checked last thing before Open, as the user could click another mode meanwhile
+        # Check last, right before Open, because the user could click another mode meanwhile
         if self.desktop.read_text(file_name.hwnd) != str(self.path):
             raise _failed("CLICK's Open dialog lost the file name")
         if self.desktop.button_checked(mode.hwnd) != BM_CHECKED:
@@ -334,11 +344,11 @@ class _Import:
         return RedrawResult(RedrawOutcome.REFRESHED)
 
     def _kind(self, window: Window) -> str | None:
-        """Which of the import's windows *window* is, or None.
+        """Return which of the import's windows *window* is, or None if it is none of them.
 
-        "dialog" is the import's Open dialog: a dialog owned by CLICK's main window
-        that shows the three import modes. "opening" is a dialog owned by the main
-        window, seen for less than DIALOG_GRACE, before the Open dialog was found.
+        "dialog" is the import's Open dialog: a dialog that CLICK's main window owns and
+        that shows the three import modes. "opening" is a dialog that the main window owns,
+        seen for less than DIALOG_GRACE, before the Open dialog was found.
         """
         if window.owner != self.main:
             return None
@@ -360,7 +370,7 @@ class _Import:
         return None
 
     def _open_controls(self, controls: list[Control]) -> tuple[Control, Control, Control]:
-        """The Open dialog's Merge (Project priority) radio button, File name edit and Open."""
+        """Return the Open dialog's Merge (Project priority) radio, File name edit and Open button."""
         radios = {c.text: c for c in controls if c.cls == "TRadioButton"}
         boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == FILE_NAME_ID}
         file_name = next(
@@ -384,7 +394,7 @@ class _Import:
         return radios[PROJECT_PRIORITY], file_name, open_button
 
     def _fill(self, edit: Control) -> None:
-        """Set the File name box to the CSV's path, and wait until it keeps it for FILL_SETTLE."""
+        """Set the File name box to the CSV's path. Wait until it has kept it for FILL_SETTLE."""
         text = str(self.path)
         held: list[float | None] = [None]
 
@@ -401,7 +411,10 @@ class _Import:
         self._wait("the File name box to keep the path", {"dialog"}, holds, FILL_TIMEOUT)
 
     def _answer(self, found: list[Window]) -> tuple[Window, bool] | None:
-        """CLICK's answer once it shows enabled: (the window, whether it is the error list)."""
+        """Return CLICK's answer window and whether it is the error list, once it is enabled.
+
+        Return None before that.
+        """
         done = [w for w in found if self._kind(w) == "done"]
         errors = [w for w in found if self._kind(w) == "errors"]
         if done and errors:
@@ -419,11 +432,11 @@ class _Import:
         until: Callable[[list[Window]], T | None | bool],
         timeout: float,
     ) -> T:
-        """Poll CLICK's windows until *until* (given the windows but the main window and
-        tooltips) returns something other than None or False.
+        """Poll CLICK's windows until *until* returns something other than None or False.
 
-        A window that is none of the *expected* kinds (``_kind``), CLICK's main window
-        closing, or *timeout* seconds passing ends the redraw as FAILED.
+        *until* is given the windows except the main window and tooltips. The redraw ends as
+        FAILED if a window of none of the *expected* kinds (``_kind``) appears, if CLICK's
+        main window closes, or if *timeout* seconds pass.
         """
         deadline = self.clock() + timeout
         while True:
@@ -443,8 +456,10 @@ class _Import:
             self.sleep(POLL)
 
     def _cancel_lone_dialog(self) -> None:
-        """Press Cancel in the import's Open dialog when it is the one window CLICK shows
-        besides its main window, and still shows the import modes."""
+        """Press Cancel in the import's Open dialog if it is the only window besides the main one.
+
+        The dialog must also still show the import modes.
+        """
         if self.dialog is None:
             return
         try:
