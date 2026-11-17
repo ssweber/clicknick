@@ -155,8 +155,9 @@ def check_click_version(rungs: list[Rung], *, click_v4: bool, first_rung: int = 
     if len(lines) > _V4_ONLY_LISTED:
         lines[_V4_ONLY_LISTED:] = [f"  ...and {len(lines) - _V4_ONLY_LISTED} more"]
     raise NeedsClickV4Error(
-        "These rungs need CLICK v4. The CLICK window is an older version "
-        "and would silently change them on paste:\n" + "\n".join(lines)
+        "These rungs need CLICK v4. The CLICK window runs an older version, and it would "
+        "change them on paste without a warning. Paste them into CLICK v4 instead:\n"
+        + "\n".join(lines)
     )
 
 
@@ -658,7 +659,7 @@ def program_save(
     so every other rung keeps CLICK's number. So is a CSV laddercodec cannot read back.
 
     Raises FileNotFoundError if no Scr*.tmp files found.
-    Raises ValueError if no main program (prog_idx=1) found.
+    Raises ValueError if none of them holds the main program (prog_idx 1).
     """
     programs_found = scr_files(scr_folder)
     if not programs_found:
@@ -689,7 +690,7 @@ def program_save(
     sub_progs = [item for item in decoded if item[0].prog_idx > 1]
 
     if not main_progs:
-        raise ValueError("No main program (prog_idx=1) found")
+        raise ValueError(f"None of the Scr*.tmp files in {scr_folder} holds the main program.")
 
     main_prog, main_legacy = main_progs[0]
     main_csv = dest / "main.csv"

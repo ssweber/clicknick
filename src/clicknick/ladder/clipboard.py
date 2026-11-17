@@ -56,7 +56,9 @@ def find_click_hwnd() -> int:
 
     results = find_click_hwnds()
     if not results:
-        raise RuntimeError("Click Programming Software not found. Is it running?")
+        raise RuntimeError(
+            "Could not find a CLICK Programming Software window. Start CLICK and try again."
+        )
     return results[0]
 
 
@@ -86,10 +88,13 @@ def _open_clipboard_with_retry(owner_hwnd: int | None = None) -> None:
         time.sleep(_CLIPBOARD_OPEN_DELAY_S)
     if owner_hwnd:
         raise RuntimeError(
-            f"OpenClipboard failed for HWND 0x{owner_hwnd:08X} "
-            f"after {_CLIPBOARD_OPEN_RETRIES} attempts"
+            f"Could not open the clipboard for window 0x{owner_hwnd:08X} after "
+            f"{_CLIPBOARD_OPEN_RETRIES} attempts. Another program may hold it open. Try again."
         )
-    raise RuntimeError(f"OpenClipboard failed after {_CLIPBOARD_OPEN_RETRIES} attempts")
+    raise RuntimeError(
+        f"Could not open the clipboard after {_CLIPBOARD_OPEN_RETRIES} attempts. "
+        "Another program may hold it open. Try again."
+    )
 
 
 def clear_clipboard(owner_hwnd: int | None = None) -> None:
@@ -97,9 +102,16 @@ def clear_clipboard(owner_hwnd: int | None = None) -> None:
     _open_clipboard_with_retry(owner_hwnd)
     try:
         if not _user32.EmptyClipboard():
-            raise RuntimeError("EmptyClipboard failed")
+            raise RuntimeError(
+                "Could not empty the clipboard. The Windows call EmptyClipboard failed."
+            )
     finally:
         _user32.CloseClipboard()
+
+
+def _copy_failed(call: str) -> str:
+    """Return the error text for a copy to the clipboard in which the Windows *call* failed."""
+    return f"Could not copy the rungs to the clipboard. The Windows call {call} failed."
 
 
 def copy_to_clipboard(data: bytes, owner_hwnd: int | None = None) -> None:
@@ -116,23 +128,23 @@ def copy_to_clipboard(data: bytes, owner_hwnd: int | None = None) -> None:
     _open_clipboard_with_retry(hwnd)
     try:
         if not _user32.EmptyClipboard():
-            raise RuntimeError("EmptyClipboard failed")
+            raise RuntimeError(_copy_failed("EmptyClipboard"))
 
         hmem = _kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
         if not hmem:
-            raise RuntimeError("GlobalAlloc failed")
+            raise RuntimeError(_copy_failed("GlobalAlloc"))
 
         ptr = _kernel32.GlobalLock(hmem)
         if not ptr:
             _kernel32.GlobalFree(hmem)
-            raise RuntimeError("GlobalLock failed")
+            raise RuntimeError(_copy_failed("GlobalLock"))
 
         ctypes.memmove(ptr, data, len(data))
         _kernel32.GlobalUnlock(hmem)
 
         if not _user32.SetClipboardData(CLICK_CLIPBOARD_FORMAT, hmem):
             _kernel32.GlobalFree(hmem)
-            raise RuntimeError("SetClipboardData failed")
+            raise RuntimeError(_copy_failed("SetClipboardData"))
     finally:
         _user32.CloseClipboard()
 
@@ -149,6 +161,8 @@ def read_from_clipboard() -> bytes:
         raw = win32clipboard.GetClipboardData(CLICK_CLIPBOARD_FORMAT)
         return bytes(raw) if not isinstance(raw, bytes) else raw
     except TypeError:
-        raise RuntimeError("No Click rung data on clipboard.") from None
+        raise RuntimeError(
+            "The clipboard holds no CLICK rungs. Copy the rungs in CLICK first."
+        ) from None
     finally:
         win32clipboard.CloseClipboard()

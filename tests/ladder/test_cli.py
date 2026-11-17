@@ -825,7 +825,9 @@ class TestMainArgparse:
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
         with pytest.raises(SystemExit, match="1"):
             main()
-        assert capsys.readouterr().err == "Error: No Click rung data on clipboard.\n"
+        assert capsys.readouterr().err == (
+            "Error: The clipboard holds no CLICK rungs. Copy the rungs in CLICK first.\n"
+        )
         assert not out.exists()
 
     def test_load_bin_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -905,10 +907,14 @@ class TestMainArgparse:
 
         _load_bin(src, None)
 
-        out = capsys.readouterr().out
+        captured = capsys.readouterr()
         assert copied == [b"\xaa"]
-        assert "Could not decode .bin to check it or provision the MDB: bad binary" in out
-        assert "Copied rung.bin to clipboard (1 bytes)" in out
+        assert captured.err == (
+            "  Could not decode rung.bin: bad binary\n"
+            "  clicknick-rung copies it as it is. It did not check the CLICK version"
+            " or add the file's addresses to SC_.mdb.\n"
+        )
+        assert "Copied rung.bin to clipboard (1 bytes)" in captured.out
 
     def test_load_csv_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         csv_file = tmp_path / "rung.csv"
@@ -927,8 +933,9 @@ class TestMainArgparse:
     def test_load_clipboard_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
     ):
+        golden = Path(__file__).resolve().parents[1] / "fixtures" / "ladder_captures" / "golden"
         src = tmp_path / "rung.bin"
-        src.write_bytes(b"\xaa")
+        src.write_bytes((golden / "instr-6row-multi-output.bin").read_bytes())
 
         monkeypatch.setattr("clicknick.ladder.cli.resolve_mdb_path", lambda _mdb_path: None)
         monkeypatch.setattr("clicknick.ladder.cli.is_click_v4", lambda: True)
@@ -938,7 +945,8 @@ class TestMainArgparse:
         with pytest.raises(SystemExit, match="1"):
             main()
         assert capsys.readouterr().err == (
-            "Error: Click Programming Software not found. Is it running?\n"
+            "Error: Could not find a CLICK Programming Software window."
+            " Start CLICK and try again.\n"
         )
 
     def test_guided_list(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
