@@ -1241,8 +1241,8 @@ class ClickNickApp:
         if build_error is not None:
             messagebox.showerror(
                 "Export Workspace",
-                "The workspace could not be built from CLICK's last save, so there is "
-                "nothing current to export.\n\n" + build_error,
+                "Could not build the workspace from CLICK's last save. There is no current "
+                "workspace to export.\n\n" + build_error,
                 parent=self.root,
             )
             return

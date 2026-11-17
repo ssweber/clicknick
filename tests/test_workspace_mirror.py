@@ -365,7 +365,10 @@ def test_setup_refuses_an_earlier_saves_workspace_after_a_failed_build(
     showerror = _choose_existing_workspace(monkeypatch, temporary, durable, _failed_build())
 
     message = showerror.call_args.args[1]
-    assert "could not be built from CLICK's last save" in message
+    assert message.startswith(
+        "Could not build the workspace from CLICK's last save. ClickNick will not copy "
+        "the workspace of an earlier save into the new folder."
+    )
     assert "ValueError: bad rung" in message
     assert not durable.exists()
 
