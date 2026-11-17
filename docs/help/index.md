@@ -35,7 +35,7 @@ The rules:
 - Before you choose, the Simulator lists the forces it will release and the links that moved with a nickname. Afterwards it tells you what it kept, and why it did not keep anything else.
 - **Restart** on the Simulator's toolbar starts over from what the workspace holds now (CLICK's last save and any edits). It starts from power-on values or your [PLC data file](#plc-data-file), in the same mode, and keeps your switches, forces and bench links. The Simulator also offers Restart when loading the new program fails.
 - In the Console, `reload` loads the new program the same way.
-- The simulation keeps running after you close the Simulator, so a Data View or HMI can stay connected. To stop it, click **Stop** beside the Test heading in the main window. That heading also shows whether the simulation is running (**Test - Sim on :502**). If another program already uses Modbus port 502, the Simulator offers **Change port...**.
+- The simulation keeps running after you close the Simulator, so the Data View Editor or an HMI can stay connected. To stop it, click **Stop** beside the Test heading in the main window. That heading also shows whether the simulation is running (**Test - Sim on :502**). If another program already uses Modbus port 502, the Simulator offers **Change port...**.
 
 Each thing you do on the panel appears in the Console as a green `#` line with the matching command, such as `# force Motor_Run false`. This teaches you the Console's commands as you use the panel.
 
@@ -58,7 +58,7 @@ On the real machine, an output often comes back as an input. A valve coil drives
 
 To make one, drag from an output's label to an input, or from an input to an output. You can also right-click the input and choose **Link to the tag that drives it...**. The input then shows a chip with its driver in place of a switch, and the chip counts down while the delay runs. The **Wiring** menu lists the links. You can turn them off or discard them there.
 
-If a tag's comment declares a link, the Simulator shows it as a program link with a blue chip. A bench link has a purple chip. Right-click an input that has a program link to change the link on the bench, or to cut it and simulate a failed sensor. **Save link to project** on a bench link writes the link into the input's comment, so it becomes part of the program. Sync in the Address Editor. After the next build, the Simulator drops the bench copy.
+If a tag's comment declares a link, the Simulator shows it as a program link with a blue chip. A bench link has a purple chip. Right-click an input that has a program link to change the link on the bench, or to cut it and simulate a failed sensor. **Save link to project** on a bench link writes the link into the input's comment, so it becomes part of the program. Sync in the Address Editor. When the Simulator loads the program from that Sync, the program declares the link, and the Simulator drops the bench copy.
 
 ### PLC data file
 

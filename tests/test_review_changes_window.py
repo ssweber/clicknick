@@ -527,6 +527,23 @@ def test_copy_pops_up_from_100_rungs(monkeypatch, rungs: int, warned: bool) -> N
     assert window._copied is True
 
 
+def test_a_failed_clipboard_copy_shows_the_clipboard_error_alone(monkeypatch) -> None:
+    result = SimpleNamespace(payload=b"", rung_count=1, addresses_inserted=0, mdb_error=None)
+
+    def _fail(*_a, **_k):
+        raise RuntimeError(failed)
+
+    failed = "Could not copy the rungs to the clipboard. The Windows call GlobalAlloc failed."
+    monkeypatch.setattr(f"{MODULE}.prepare_rungs_load", lambda *_a, **_k: result)
+    monkeypatch.setattr(f"{MODULE}.copy_to_clipboard", _fail)
+    monkeypatch.setattr(f"{MODULE}.is_click_v4", lambda _hwnd: True)
+    window = _bare_window(["main.csv"])
+
+    assert window._copy_rungs(0, None) is False
+
+    assert _status(window) == failed
+
+
 def test_changed_program_is_stepped_through_by_runs_of_differing_rungs(monkeypatch, copies) -> None:
     window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
     assert window._current_idx == MAIN
@@ -537,7 +554,7 @@ def test_changed_program_is_stepped_through_by_runs_of_differing_rungs(monkeypat
     assert copies == [(RUNGS[:1], 1)]
     assert _action(window) == "Next →"
     assert "r1 of main.csv copied" in _status(window)
-    assert "To copy it again, click its row" in _status(window)
+    assert 'To copy it again, click its row, then click "Copy"' in _status(window)
 
     window._on_action()  # Next: the row's second run
     assert window._done == set()
@@ -563,7 +580,7 @@ def test_whole_program_switch_copies_the_program_in_one_step(monkeypatch, copies
 
     _switch_copy(window, whole=True)
     assert _action(window) == "Copy"
-    assert "the whole program, 4 rungs, replaces what CLICK has" in _status(window)
+    assert "the whole program replaces what CLICK has. The program has 4 rungs" in _status(window)
     clear_first = "select all of its rungs (Shift+Up/Down) and delete them, then paste"
     assert clear_first in _status(window)
 
@@ -1281,7 +1298,7 @@ def test_another_plcs_window_says_what_click_keeps_when_done(monkeypatch) -> Non
 
     window._all_done()
 
-    assert "1 program(s) in CLICK that are not in this folder are kept" in _status(window)
+    assert "CLICK keeps 1 program that this folder does not have" in _status(window)
     assert "Every change has been made in CLICK" not in _status(window)  # Nothing deleted
 
 
@@ -1697,7 +1714,7 @@ def test_unticking_a_difference_skips_it_and_renumbers_the_steps(monkeypatch, co
     window._on_take()  # Untick: skip r1
 
     assert window._take_var.get() is False
-    assert _detail(window) == "Skipped: not added"
+    assert _detail(window) == "Skipped: the new rungs are not added"
     assert window._click_label("main.csv") == "3 rungs changed, 1 skipped"
     assert _action(window) == "Copy r3..4"
     assert "step 1 of 1: r3..4 is new" in _status(window)
@@ -1771,7 +1788,10 @@ def test_whole_program_copies_the_program_as_chosen(monkeypatch, copies) -> None
     window._toggle("main.csv", 0)  # Skip r1: CLICK has no rung there
 
     assert _action(window) == "Copy, 1 skipped"
-    whole = "the whole program as you chose it, 3 rungs, with 1 skipped difference"
+    whole = (
+        "the whole program replaces what CLICK has. The program has 3 rungs. The copy leaves "
+        "the 1 skipped difference as CLICK has it"
+    )
     assert whole in _status(window)
 
     window._on_action()
@@ -1807,6 +1827,24 @@ def test_skipping_what_is_left_after_a_paste_finishes_the_program(monkeypatch, c
     assert "What is left of main.csv is skipped" in _status(window)
     window._on_action()
     assert window._done == {"main.csv"}
+
+
+def test_a_skipped_difference_of_a_done_program_says_the_program_is_done(
+    monkeypatch, copies
+) -> None:
+    window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
+    window._on_action()  # Copy r1
+    window._on_action()  # Next
+    window._toggle("main.csv", 1)  # Skip r3..4
+    window._on_action()  # Next: main.csv is done
+    assert window._done == {"main.csv"}
+
+    window._toggle("main.csv", 1)  # Try to take r3..4 again
+
+    assert window._skipped_in("main.csv") == 1
+    assert _status(window) == (
+        "main.csv is marked done, so you can no longer take or skip its differences"
+    )
 
 
 def _three_changed(monkeypatch):
@@ -1896,7 +1934,8 @@ def test_window_closes_once_click_holds_everything_not_skipped(monkeypatch, copi
     _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=after, note=""))
 
     window._on_pasted.assert_called_once_with(
-        "CLICK saved everything taken from Review Changes; 1 skipped difference left as CLICK has it"
+        "CLICK saved everything that you took in Review Changes. "
+        "1 skipped difference stays as CLICK has it"
     )
     window.destroy.assert_called_once_with()
 
@@ -1916,7 +1955,7 @@ def test_skipped_workspace_edits_are_warned_of(monkeypatch, tmp_path: Path) -> N
     assert "stay only in backup/src/plc" in notice
     assert "For older backups, run clicknick-cli restore list." in notice
     assert window._pasted_message().endswith(
-        "(skipped edits are in backup/src/plc; clicknick-cli restore list for older ones)"
+        ". Skipped edits are in backup/src/plc. For older backups, run clicknick-cli restore list"
     )
 
 
@@ -1953,7 +1992,7 @@ def test_rung_clicknick_cannot_read_is_red_and_the_program_pasted_whole(
     assert window._needs_paste("main.csv")
     assert _action(window) == "Copy"
     assert _status(window).splitlines() == [
-        "main.csv: the whole program, 4 rungs, replaces what CLICK has.",
+        "main.csv: the whole program replaces what CLICK has. The program has 4 rungs.",
         f'Click "Copy". {_WHOLE}',
         "CLICK's copy of rung 3 cannot be read. Paste the whole program again.",
         f"  rung 3, Compare: {_REFUSED}",
@@ -2024,7 +2063,9 @@ def test_click_copy_no_read_accepts_is_deleted_whole_before_the_paste(monkeypatc
     window = _on_main(monkeypatch, change)
 
     status = _status(window)
-    assert status.startswith("main.csv: the whole program, 4 rungs, replaces what CLICK has.")
+    assert status.startswith(
+        "main.csv: the whole program replaces what CLICK has. The program has 4 rungs."
+    )
     assert "select all of its rungs (Shift+Up/Down) and delete them, then paste" in status
     assert _action(window) == "Copy"
 
@@ -2095,7 +2136,7 @@ def test_edits_around_a_stand_in_cannot_delete_clicks_rung(monkeypatch, copies) 
     window._on_action()
 
     assert copies == []
-    assert _status(window) == f"Error loading main.csv: {refusal}"
+    assert _status(window) == f"Could not copy main.csv: {refusal}"
 
 
 def test_a_program_differing_only_by_its_stand_in_is_red_and_refused(monkeypatch) -> None:
@@ -2289,7 +2330,7 @@ def test_a_new_export_that_changes_a_pasted_rung_copies_the_program_whole(
     assert _action(window) == "Copy"
     status = _status(window)
     assert "select all of its rungs (Shift+Up/Down) and delete them, then paste" in status
-    assert "so its changed rungs cannot be numbered and it is copied whole" in status
+    assert "cannot number the changed rungs, so it copies main.csv whole" in status
     window._on_action()
     assert copies[-1] == (tuple(edited), 1)
     window._on_action()  # Next
@@ -2593,7 +2634,7 @@ def test_whole_program_steps_through_a_program_whose_skipped_rung_has_an_old_enc
     _switch_copy(window, whole=True)
 
     assert _action(window) == "Copy r3"
-    assert "Stepped through, not copied whole" in _status(window)
+    assert "steps through this program and does not copy it whole" in _status(window)
     assert "CLICK's rung 1" in _status(window)
     window._on_action()
     assert copies == [(RUNGS[2:3], 3)]
@@ -2615,7 +2656,7 @@ def test_a_whole_copy_of_no_rungs_says_to_delete_them_in_click(monkeypatch, copi
     _switch_copy(window, whole=True)
 
     assert _action(window) == "Next →"
-    assert 'In CLICK, delete all its rungs, then click "Next"' in _status(window)
+    assert 'In CLICK, delete all the rungs of the program, then click "Next"' in _status(window)
     window._on_action()  # Next
 
     assert copies == []
@@ -2641,7 +2682,7 @@ def test_a_program_pasted_into_whose_new_export_has_no_rungs_says_to_delete_them
     _export(window, [])
 
     assert _action(window) == "Next →"
-    assert 'In CLICK, delete all its rungs, then click "Next"' in _status(window)
+    assert 'In CLICK, delete all the rungs of the program, then click "Next"' in _status(window)
     window._on_action()
     assert window._done == {"main.csv"}
 

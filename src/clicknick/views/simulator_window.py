@@ -87,6 +87,13 @@ MIN_CONSOLE_H = 70
 #: Characters of the PLC data file's name shown on its toolbar button.
 PLC_DATA_NAME_MAX = 24
 TICK_MS = 500
+#: When a saved bench link stops applying. When the user writes a new program, pyrung drops
+#: a bench link that the program declares with the same wiring. See
+#: ``SimulationSession._on_written``.
+_PROGRAM_LINK_REPLACES_BENCH = (
+    "After you Sync and the simulation loads the new program, "
+    "the program's link replaces the bench link."
+)
 
 _FONT = ("Segoe UI", 9)
 _FONT_BOLD = ("Segoe UI", 9, "bold")
@@ -395,10 +402,11 @@ class SimulatorWindow(tk.Toplevel):
         driver = f"{enable} {nickname}" if nickname else enable
         when = when_text(link.enable, link.trigger)
         kind = "Program link" if link.source == "project" else "Bench link"
-        text = f"{kind}: driven by {driver}{when} ({link.response_label})."
+        response = f" ({link.response_label})" if link.response_label else ""
+        text = f"{kind}: driven by {driver}{when}{response}."
         bench = sim.bench_links.get(address)
         if link.source == "bench" and bench is not None and self._saved_to_project(address, bench):
-            text += "\nSaved to the project. The program takes it over after the next Sync."
+            text += f"\nSaved to the project. {_PROGRAM_LINK_REPLACES_BENCH}"
         return f"{text}\nRight-click for options."
 
     def _enables(self) -> list[str]:
@@ -622,7 +630,7 @@ class SimulatorWindow(tk.Toplevel):
             session.set_field(addr_key, "comment", comment)
         self._note = (
             f"Saved the link on {address} to the project. Sync to write it to CLICK. "
-            "After the next build, the program declares it and the bench copy is dropped."
+            f"{_PROGRAM_LINK_REPLACES_BENCH}"
         )
         self._refresh_banners()
 
@@ -654,7 +662,7 @@ class SimulatorWindow(tk.Toplevel):
             menu.add_command(
                 label="Remove bench link"
                 if project is None
-                else "Remove bench link (back to the program's)",
+                else "Remove bench link and use the program's link",
                 command=lambda: sim.restore_link(address),
             )
             return
@@ -1165,7 +1173,7 @@ class SimulatorWindow(tk.Toplevel):
         if card.installed:
             subtitle = self._card_subtitle(card.model, counts)
         else:
-            subtitle = "Used, no module configured"
+            subtitle = "Used I/O with no module"
         self._draw_card_frame(
             x, y, self._module_height(card), title, subtitle, dashed=not card.installed
         )
@@ -1450,7 +1458,7 @@ class SimulatorWindow(tk.Toplevel):
         bench = len(sim.bench_links)
         wiring = f"Wiring ({bench} bench)" if bench else "Wiring"
         if not sim.bench_wiring and bench:
-            wiring += " off"
+            wiring = f"Wiring ({bench} bench, not applied)"
         self._wiring_btn.configure(text=wiring)
         self._refresh_banners()
 
@@ -1742,7 +1750,11 @@ class SimulatorWindow(tk.Toplevel):
         )
         run_for = ttk.Button(self._step_bar, text="Run for", command=self._run_for)
         run_for.pack(side=tk.LEFT)
-        bind_tooltip(run_for, "Scan for a stretch of simulated time (500ms, 2 s) or N scans.")
+        bind_tooltip(
+            run_for,
+            "Scan for the simulated time or the number of scans in the box, such as 500ms, "
+            "2 s or 10.",
+        )
 
         # Shown only in RUN, because the speed setting applies only while scans run freely.
         self._run_bar = ttk.Frame(bar)
@@ -1780,17 +1792,18 @@ class SimulatorWindow(tk.Toplevel):
             "or from the PLC data file. It keeps the same mode, your switches,\n"
             "forces and bench links.",
         )
-        ttk.Button(bar, text="Dataview", command=self._open_dataview).pack(
-            side=tk.RIGHT, padx=(0, 4)
-        )
+        dataview_btn = ttk.Button(bar, text="Data View", command=self._open_dataview)
+        dataview_btn.pack(side=tk.RIGHT, padx=(0, 4))
+        bind_tooltip(dataview_btn, "Open the Data View Editor")
         # The button names the loaded PLC data file. The panel and the console both start from
         # that file's values.
         self._plc_data_btn = ttk.Button(bar, text="PLC Data...", command=self._browse_plc_data)
         self._plc_data_btn.pack(side=tk.RIGHT, padx=(0, 4))
         bind_tooltip(
             self._plc_data_btn,
-            "Start from the PLC's live values. Use a CSV saved in CLICK with\n"
-            "PLC > Read Data from PLC... > All > Save (not the nickname CSV).\n"
+            "Start from values read from a real PLC. In CLICK, use\n"
+            "PLC > Read Data from PLC... > All > Save to save them as a CSV.\n"
+            "The nickname CSV does not work here.\n"
             "Switches and analog values are set from the file. The simulation\n"
             "starts over whenever the file changes, from the workspace as it\n"
             "is now (CLICK's last save and any edits).",
@@ -1810,15 +1823,21 @@ class SimulatorWindow(tk.Toplevel):
         self._wiring_btn.pack(side=tk.RIGHT, padx=(0, 4))
         bind_tooltip(
             self._wiring_btn,
-            "Feedback links: which output drives which input, from the program\n"
-            "and from the bench. Right-click an input to link, cut or save one.",
+            "Lists the feedback links, in which an output drives an input.\n"
+            "Program links come from the project. A bench link is wiring that you\n"
+            "add here and that the program does not declare. ClickNick saves it and,\n"
+            "while Apply bench links is on, applies it each time the simulation starts.\n"
+            "It stays until you remove it, or until you save it to the project, Sync,\n"
+            "and the simulation loads the new program. Right-click an input to link,\n"
+            "cut or save one.",
         )
         modbus = ttk.Label(bar, textvariable=self._modbus_var, foreground=P.MUTED)
         modbus.pack(side=tk.RIGHT, padx=(0, 12))
         bind_tooltip(
             modbus,
             "The simulated PLC's Modbus TCP server. Point an HMI or other Modbus "
-            "client here. The count excludes this window's own connection.",
+            "client at this address. The client count leaves out this window's own "
+            "connection.",
         )
 
         self._banner = ttk.Frame(self)

@@ -434,7 +434,8 @@ class DataviewEditorWindow(tk.Toplevel):
         if mt.text_editor.open:
             messagebox.showwarning(
                 "Cell Being Edited",
-                "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                "A cell is still being edited. Press Enter to keep the edit or Esc to "
+                "cancel it, then try again.",
                 parent=self,
             )
             return False
@@ -500,7 +501,7 @@ class DataviewEditorWindow(tk.Toplevel):
             # Do not keep a tab here. A tab of empty rows bound to the file could be saved over it.
             panel.destroy()
             messagebox.showerror(
-                "Open DataView",
+                "Open Data View",
                 f"Could not read '{file_path.name}': {panel.load_error}",
                 parent=self,
             )
@@ -561,9 +562,9 @@ class DataviewEditorWindow(tk.Toplevel):
 
         file_path = filedialog.askopenfilename(
             parent=self,
-            title="Open DataView",
+            title="Open Data View",
             initialdir=initial_dir,
-            filetypes=[("DataView files", "*.cdv"), ("All files", "*.*")],
+            filetypes=[("Data View files", "*.cdv"), ("All files", "*.*")],
         )
 
         if file_path:
@@ -593,7 +594,7 @@ class DataviewEditorWindow(tk.Toplevel):
         other = self._panel_for_path(new_path)
         if other is not None and other is not panel:
             messagebox.showerror(
-                "Save DataView",
+                "Save Data View",
                 f"'{new_path.name}' is open in another tab. Close that tab first.",
                 parent=self,
             )
@@ -646,7 +647,7 @@ class DataviewEditorWindow(tk.Toplevel):
 
         folder_path = filedialog.askdirectory(
             parent=self,
-            title="Select Folder to Export DataView",
+            title="Select Folder to Export Data View",
             initialdir=initial_dir,
         )
 
@@ -665,7 +666,7 @@ class DataviewEditorWindow(tk.Toplevel):
         other = self._panel_for_path(export_path)
         if other is not None:
             messagebox.showerror(
-                "Export DataView",
+                "Export Data View",
                 f"'{export_path.name}' is open in another tab. Close that tab first.",
                 parent=self,
             )
@@ -945,7 +946,7 @@ class DataviewEditorWindow(tk.Toplevel):
         menubar.add_cascade(label="File", menu=file_menu)
 
         file_menu.add_command(
-            label="New Dataview", command=self._new_dataview, accelerator="Ctrl+N"
+            label="New Data View", command=self._new_dataview, accelerator="Ctrl+N"
         )
         file_menu.add_command(label="Open...", command=self._open_file, accelerator="Ctrl+O")
         file_menu.add_separator()
@@ -1159,7 +1160,7 @@ class DataviewEditorWindow(tk.Toplevel):
         sidebar = ttk.Frame(self.paned)
         self.paned.add(sidebar, weight=0)
 
-        ttk.Label(sidebar, text="Project DataViews", font=("TkDefaultFont", 10, "bold")).pack(
+        ttk.Label(sidebar, text="Project Data Views", font=("TkDefaultFont", 10, "bold")).pack(
             pady=(5, 2), padx=5, anchor=tk.W
         )
 
@@ -1292,11 +1293,12 @@ class DataviewEditorWindow(tk.Toplevel):
             return
 
         popup_text = (
-            "Dataview Editor\n\n"
-            "This tool edits .cdv files in CLICK's temporary project folder.\n"
-            "Changes are temporary until you save in CLICK Software.\n\n"
-            "Note: New Dataviews created here must be imported manually in CLICK.\n"
-            "Tip: Close CLICK without saving to undo all changes."
+            "Data View Editor\n\n"
+            "While ClickNick is connected to CLICK, this editor changes the .cdv files in "
+            "CLICK's temporary copy of the project.\n"
+            "CLICK keeps your changes only when you save the project in CLICK. "
+            "To undo every change, close CLICK without saving.\n\n"
+            "To use a Data View that you create here, import it in CLICK."
         )
 
         messagebox.showinfo("First-Time Tips", popup_text, parent=self)
@@ -1396,7 +1398,7 @@ class DataviewEditorWindow(tk.Toplevel):
         The title also says when the editor is attached to the simulator. The app calls this
         when the project changes.
         """
-        title = "ClickNick Dataview Editor"
+        title = "ClickNick Data View Editor"
         title_suffix = self._get_title_suffix()
         if title_suffix:
             title += f" - {title_suffix}"

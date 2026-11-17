@@ -143,7 +143,9 @@ class AboutDialog:
         copy_btn = ttk.Button(main_frame, text="Copy System Info", command=copy_system_info)
         copy_btn.pack(pady=(0, 15))
 
-        connection_status = tk.StringVar(value="Test reads the address table without changing it.")
+        connection_status = tk.StringVar(
+            value="Test Connection reads the address table and changes nothing."
+        )
 
         def test_connection():
             if get_database_backend() == "none":
@@ -245,9 +247,9 @@ class OdbcWarningDialog:
         self.window.transient(self.parent)
 
         message = (
-            "The selected database connection is unavailable.\n\n"
-            "You can load nicknames from a CSV file.\n\n"
-            "Use Help > About ClickNick > Test Connection for details."
+            "ClickNick cannot read the CLICK project's database.\n\n"
+            "To load nicknames from a CSV file, use File > Load Nicknames from CSV.\n\n"
+            "To see why, use Help > About ClickNick > Test Connection."
         )
 
         # Center the window
@@ -326,8 +328,8 @@ class CsvFallbackDialog:
             except Exception as e:
                 # Show error message
                 tk.messagebox.showerror(
-                    "Error",
-                    f"Failed to convert and save file:\n{e}",
+                    "Save Address CSV Copy",
+                    f"Could not save the copy to {dest_path}:\n{e}",
                     parent=self.window,
                 )
 
@@ -365,8 +367,9 @@ class CsvFallbackDialog:
 
         # Explanation
         intro_text = (
-            "A project CSV file was found, but it cannot be used directly.\n"
-            "You must save a copy to continue."
+            "CLICK wrote an address CSV file when it opened this project. ClickNick can load "
+            "the nicknames from a copy of that file.\n\n"
+            "To load them, save a copy. To go on without nicknames, click Cancel."
         )
         ttk.Label(main_frame, text=intro_text, wraplength=400, justify=tk.LEFT).pack(pady=(0, 15))
 
@@ -374,9 +377,8 @@ class CsvFallbackDialog:
         warnings_frame = ttk.LabelFrame(main_frame, text="Important", padding="10")
 
         warnings = [
-            "• This file is generated when CLICK opens a project",
-            "• Does NOT update with changes made in CLICK after load",
-            "• Will be DELETED when CLICK closes",
+            "• The file does not change when you change the project in CLICK.",
+            "• CLICK deletes the file when it closes.",
         ]
         for warning in warnings:
             ttk.Label(warnings_frame, text=warning, wraplength=380, justify=tk.LEFT).pack(
@@ -388,9 +390,7 @@ class CsvFallbackDialog:
         # Buttons frame
         button_frame = ttk.Frame(main_frame)
 
-        save_btn = ttk.Button(
-            button_frame, text="Save Copy && Continue", command=self._on_save_copy
-        )
+        save_btn = ttk.Button(button_frame, text="Save Copy and Load", command=self._on_save_copy)
         save_btn.pack(side=tk.LEFT, padx=(0, 10))
 
         cancel_btn = ttk.Button(button_frame, text="Cancel", command=self._on_cancel)

@@ -34,7 +34,8 @@ class CheckSelectionWindow:
         save_note = (
             "Changes are saved in this workspace's pyproject.toml."
             if selection.workspace is not None
-            else "Changes become your defaults for all programs without a workspace."
+            else "This project has no workspace. Your choices become the defaults for all "
+            "programs without a workspace."
         )
         ttk.Label(main, text=save_note, wraplength=730).pack(anchor=tk.W, pady=(4, 10))
         buttons = ttk.Frame(main)
@@ -98,7 +99,11 @@ class CheckSelectionWindow:
                 )
                 selection.save(updated)
             except (OSError, ValueError) as exc:
-                messagebox.showerror("Check Settings", str(exc), parent=self.window)
+                messagebox.showerror(
+                    "Choose Checks",
+                    f"Could not save your choice of checks.\n\n{exc}",
+                    parent=self.window,
+                )
                 return
             self.window.destroy()
             on_saved()

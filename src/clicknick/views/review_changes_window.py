@@ -134,8 +134,9 @@ _WATCH_INTERVAL_MS = 1000
 
 _FIRST_TIME_TIPS = (
     "Review Changes\n\n"
-    "Each step copies rungs to the clipboard. It copies a whole program, or only the rungs "
-    "that differ when CLICK already has the program (the Copy switch chooses). The pane "
+    "Each step copies rungs to the clipboard. If CLICK does not have the program yet, the "
+    "step copies the whole program. If CLICK has it, the Copy buttons at the bottom choose "
+    "between Changed rungs and Whole program. The pane "
     "under the list shows the difference. Work down each program in order. A step's rung "
     "numbers are the ones CLICK shows once the steps before it are done. "
     "Paste into CLICK with Ctrl+V. Then wait until the rungs appear before you do anything "
@@ -304,11 +305,17 @@ def _differences_of(change: ProgramChange) -> list[Opcode]:
     return [opcode for opcode in change.opcodes if opcode[0] != "equal"]
 
 
+def _whole_replaces(rung_count: int) -> str:
+    """Say that a whole paste replaces CLICK's copy, and how many rungs the program has."""
+    rungs = "rung" if rung_count == 1 else "rungs"
+    return f"the whole program replaces what CLICK has. The program has {rung_count} {rungs}"
+
+
 def _what_skipping_keeps(opcode: Opcode) -> str:
     """Say what a skipped difference leaves in CLICK."""
     _tag, i1, i2, _j1, _j2 = opcode
     if i1 == i2:
-        return "Skipped: not added"
+        return "Skipped: the new rungs are not added"
     return f"Skipped: CLICK keeps its {_rungs_in_click(range(i1 + 1, i2 + 1))}"
 
 
@@ -862,10 +869,11 @@ class ReviewChangesWindow(tk.Toplevel):
             return ""
         which = f"rung {kept[0]}" if len(kept) == 1 else f"rungs {_listed_rungs(kept)}"
         return (
-            f"CLICK holds rungs of {name} that you pasted before this folder was read again. "
-            f"CLICK has not saved them. A whole paste would put back CLICK's {which} from "
-            "ClickNick's reading of its old encoding, which you chose to keep. Save in CLICK "
-            "first, then step through the changed rungs, or take that difference."
+            f"CLICK holds rungs of {name} that you pasted before ClickNick read this folder "
+            f"again. CLICK has not saved them. A whole paste would replace CLICK's {which} with "
+            f"ClickNick's reading of the old encoding. You skipped {which} to keep CLICK's own "
+            f"copy. Save in CLICK first, then step through the changed rungs. Or take the "
+            f"skipped {which}."
         )
 
     def _program_steps(
@@ -966,7 +974,7 @@ class ReviewChangesWindow(tk.Toplevel):
             )
         # A copy ClickNick cannot read may hold rungs even when none could be counted
         if not (change.before or change.unreadable) or name in self._missing_in_click:
-            return "Paste into CLICK (Ctrl+V on ladder screen)"
+            return "In CLICK, paste into the program's ladder (Ctrl+V)"
         return clear_first
 
     def _click_label(self, name: str) -> str:
@@ -1360,7 +1368,7 @@ class ReviewChangesWindow(tk.Toplevel):
         """Return what to do with a program that CLICK has and the folder lacks."""
         if self._kept(name):
             return (
-                f"{name} is kept. CLICK keeps the program.\n"
+                f"{name} is not in this folder. CLICK keeps the program.\n"
                 f'Click "Next" to go on, or tick {_DELETE_IN_CLICK} to delete it there'
             )
         stem = Path(name).stem
@@ -1378,8 +1386,9 @@ class ReviewChangesWindow(tk.Toplevel):
             return ""
         which = f"rung {kept[0]}" if len(kept) == 1 else f"rungs {_listed_rungs(kept)}"
         return (
-            f"\nStepped through, not copied whole. A whole paste would put back CLICK's {which} "
-            "from ClickNick's reading of its old encoding, which you chose to keep"
+            "\nClickNick steps through this program and does not copy it whole. A whole "
+            f"paste would replace CLICK's {which} with ClickNick's reading of the old encoding. "
+            f"You skipped {which} to keep CLICK's own copy"
         )
 
     def _step_prompt(self, idx: int) -> str:
@@ -1453,10 +1462,13 @@ class ReviewChangesWindow(tk.Toplevel):
         if self._empty_whole(name, step):
             if self._can_add_subroutine(idx):
                 return (
-                    f"{name} has no rungs.\n"
+                    f"{name} has no rungs in this folder.\n"
                     'Click "New Subroutine" to create it in CLICK, then click "Next"'
                 )
-            return f'{name} has no rungs.\nIn CLICK, delete all its rungs, then click "Next"'
+            return (
+                f"{name} has no rungs in this folder.\n"
+                'In CLICK, delete all the rungs of the program, then click "Next"'
+            )
         if self._can_add_subroutine(idx):
             where = (
                 "is not in CLICK's last save" if self._click_compared else "may not be in CLICK yet"
@@ -1480,12 +1492,12 @@ class ReviewChangesWindow(tk.Toplevel):
                 )
                 kept = "difference" if skipped == 1 else "differences"
                 whole = (
-                    f"the whole program as you chose it, {count} rungs, with {skipped} skipped "
-                    f"{kept} left as CLICK has them, replaces what CLICK has"
+                    f"{_whole_replaces(count)}. The copy leaves the {skipped} skipped {kept} "
+                    f"as CLICK has {'it' if skipped == 1 else 'them'}"
                 )
                 button = f"Copy, {skipped} skipped"
             else:
-                whole = f"the whole program, {rung_count} rungs, replaces what CLICK has"
+                whole = _whole_replaces(rung_count)
                 button = "Copy"
             prompt = f'{name}: {whole}.\nClick "{button}". {self._whole_placement(name)}'
             if steps := self._copied_whole_for_steps(name):
@@ -1499,9 +1511,10 @@ class ReviewChangesWindow(tk.Toplevel):
                 prompt += f"\n{refusal}"
             elif name in self._unplaced:
                 prompt += (
-                    "\nCLICK holds rungs of it that you pasted before this folder was read "
-                    "again. CLICK has not saved them, so its changed rungs cannot be numbered "
-                    "and it is copied whole. To step through them instead, save in CLICK first"
+                    f"\nYou pasted rungs of {name} into CLICK before ClickNick read this folder "
+                    "again, and CLICK has not saved them. ClickNick cannot number the changed "
+                    f"rungs, so it copies {name} whole. To step through the changed rungs "
+                    "instead, save in CLICK first"
                 )
             return prompt
         return f'Click "Copy" to copy {name} to the clipboard. {self._whole_placement(name)}'
@@ -1608,9 +1621,12 @@ class ReviewChangesWindow(tk.Toplevel):
             msg = "All CSVs have been pasted!"
         kept = sum(1 for name in self._only_in_click if self._kept(name))
         if kept:
-            msg += f"\n{kept} program(s) in CLICK that are not in this folder are kept"
+            programs = "program" if kept == 1 else "programs"
+            msg += f"\nCLICK keeps {kept} {programs} that this folder does not have"
         if left_out := self._left_out_names():
-            msg += f"\n{len(left_out)} CSV(s) could not be read and are left out"
+            files = "CSV file" if len(left_out) == 1 else "CSV files"
+            verb = "is" if len(left_out) == 1 else "are"
+            msg += f"\n{len(left_out)} {files} could not be read and {verb} left out"
         self._status_var.set(msg)
         self._update_action_btn()
 
@@ -1708,8 +1724,9 @@ class ReviewChangesWindow(tk.Toplevel):
                 )
             else:
                 lines.append(
-                    "CLICK was saved before all of this was pasted, so the workspace is back to "
-                    f"CLICK's version. This window still holds the proposal exported at "
+                    "ClickNick rebuilt the workspace from CLICK's last save, and that save "
+                    "does not hold every change from this window. This window still holds the "
+                    "proposal exported at "
                     f"{self._read_at} and can keep pasting it.\n"
                     "The edited source is kept in backup/src/plc. For older backups, run "
                     "clicknick-cli restore list. To work on it again, run clicknick-cli "
@@ -1736,8 +1753,10 @@ class ReviewChangesWindow(tk.Toplevel):
             return
         self._view_name, self._view_block = name, block
         if self._locked(name, block):
-            if self._pasted_already(name, block) or name in self._done:
+            if self._pasted_already(name, block):
                 why = "That difference is already pasted into CLICK, so you can no longer skip it"
+            elif name in self._done:
+                why = f"{name} is marked done, so you can no longer take or skip its differences"
             else:
                 why = (
                     f"A step of {name} is under way in CLICK. Finish it and click "
@@ -1870,10 +1889,11 @@ class ReviewChangesWindow(tk.Toplevel):
             )
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
         except RuntimeError as exc:
-            self._status_var.set(f"Clipboard error: {exc}\nIs CLICK running?")
+            # Only ladder/clipboard.py raises RuntimeError here, and its errors name what failed
+            self._status_var.set(str(exc))
             return False
         except Exception as exc:
-            self._status_var.set(f"Error loading {name}: {exc}")
+            self._status_var.set(f"Could not copy {name}: {exc}")
             return False
 
         self._copied = True
@@ -1881,11 +1901,13 @@ class ReviewChangesWindow(tk.Toplevel):
         rung_word = "rung" if result.rung_count == 1 else "rungs"
         msg = f"{what} copied to clipboard ({result.rung_count} {rung_word})"
         if result.addresses_inserted:
-            msg += f"\nMDB: inserted {result.addresses_inserted} address(es)"
+            count = result.addresses_inserted
+            addresses = "address" if count == 1 else "addresses"
+            msg += f"\nAdded {count} missing {addresses} to CLICK's database"
         elif result.mdb_error:
-            msg += f"\nMDB: {result.mdb_error}"
+            msg += f"\nCould not add the rungs' addresses to CLICK's database: {result.mdb_error}"
         where = _where_to_paste(step) if step is not None else self._whole_placement(name)
-        msg += f'\n{where}, then click "Next". To copy it again, click its row'
+        msg += f'\n{where}, then click "Next". To copy it again, click its row, then click "Copy"'
         self._status_var.set(msg)
         self._update_action_btn()
         if result.rung_count >= _SLOW_PASTE_RUNGS:
@@ -1913,7 +1935,10 @@ class ReviewChangesWindow(tk.Toplevel):
                 'Click OK there, then "Copy" here and paste into the new subroutine'
             )
         else:
-            msg = f'CLICK\'s {_NEW_SUB_TITLE} window has no name box. Type "{sub_name}" there'
+            msg = (
+                f"ClickNick could not type the name into CLICK's {_NEW_SUB_TITLE} window. "
+                f'Type "{sub_name}" there yourself'
+            )
         self._finish_add_subroutine(msg)
 
     def _wait_for_new_subroutine(self, pid: str, sub_name: str, remaining_ms: int) -> None:
@@ -2021,22 +2046,20 @@ class ReviewChangesWindow(tk.Toplevel):
         """Return what the window did, for when a CLICK save holds all of it and it closes."""
         skipped = self._skipped_count()
         if not skipped:
-            message = "CLICK saved everything from Review Changes"
+            sentences = ["CLICK saved everything from Review Changes"]
         else:
-            message = (
-                f"CLICK saved everything taken from Review Changes; {skipped} skipped "
-                f"difference{'s' if skipped != 1 else ''} left as CLICK has "
-                f"{'it' if skipped == 1 else 'them'}"
-            )
+            stays = "difference stays" if skipped == 1 else "differences stay"
+            sentences = [
+                "CLICK saved everything that you took in Review Changes",
+                f"{skipped} skipped {stays} as CLICK has {'it' if skipped == 1 else 'them'}",
+            ]
             if self._source_dir is not None:
-                message += (
-                    " (skipped edits are in backup/src/plc; clicknick-cli restore list for "
-                    "older ones)"
-                )
+                sentences.append("Skipped edits are in backup/src/plc")
+                sentences.append("For older backups, run clicknick-cli restore list")
         if left_out := self._left_out_names():
             verb = "was" if len(left_out) == 1 else "were"
-            message += f"; {', '.join(left_out)} could not be read and {verb} left out"
-        return message
+            sentences.append(f"{', '.join(left_out)} could not be read and {verb} left out")
+        return ". ".join(sentences)
 
     def _close_if_settled(self, was_pending: bool) -> bool:
         """Close the window once CLICK holds the last of what was left to do.
@@ -2258,7 +2281,8 @@ class ReviewChangesWindow(tk.Toplevel):
         if not self._done and not self._unsaved_pastes():
             return ""
         question = (
-            f"Clear progress for {len(self._done)} completed CSV(s)?"
+            f"Clear progress for {len(self._done)} completed "
+            f"{'program' if len(self._done) == 1 else 'programs'}?"
             if self._done
             else "Clear progress?"
         )

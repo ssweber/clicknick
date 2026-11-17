@@ -8,6 +8,10 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- The Address Editor no longer has **File > Refresh**. It only discarded your unsaved edits. It did not read CLICK's database or the CSV file again. To discard your edits, use **File > Discard Changes**.
+
 ### Changed
 
 - The tag annotation dialog and `clicknick-cli tag set-flag` no longer have a `lock` flag.
@@ -16,6 +20,8 @@
 - ClickNick no longer accepts an address with a stray `u`, such as `DS1u`, or with a digit character other than 0-9. It used to read these as `DS1`. CLICK rejects them too.
 - ClickNick no longer loads a nickname CSV that has the wrong Data Type for an address, or a row with more cells than the header. `TXT` now counts as a wrong Data Type, because CLICK writes `TEXT`. The error message gives the line number.
 - The Workspace setup window now closes when you close the CLICK window it belongs to. It already closed when that CLICK window opened another project.
+- A Sync or Save in the Address Editor no longer shows a box when it succeeds. The editor's status line says how many rows it wrote, such as "Synced 3 rows".
+- The Dataview Editor is now called the **Data View Editor**, and every title, menu and message writes **Data View** the way CLICK does.
 - About 90 messages, tooltips and help texts are reworded in shorter sentences. They say the same things as before. If a script of yours matches on ClickNick's message text, check it.
 
 ### Fixed
@@ -31,6 +37,16 @@
 - When the nicknames.csv in a folder has a bad Address, a wrong Data Type or extra cells, Review Changes now names the line. It used to offer to stage the nicknames. When pyrung cannot convert the folder, the diff now says why instead of showing the rungs without their source.
 - `clicknick-rung` now refuses a `--mdb-path` that names no file, before `load`, `guided` or `program load` copies anything. 0.24.1 ignored the option without a word and added none of the rungs' addresses. When the addresses cannot be added to the SC_.mdb that `--mdb-path` names, `load` now stops with an error. 0.24.1 printed the failure and copied the rungs anyway. In `guided` and `program load`, a skip or a quit after that error now counts as an error, and the run exits 1. Without `--mdb-path`, `clicknick-rung` now also warns when the CLICK window has no SC_.mdb. Its messages about SC_.mdb now go to stderr. `guided` now says that it compares the rung you copy back with the .bin file saved before. It used to say that the bytes differ from the encoder's, but it never compared them with the encoder's output.
 - `clicknick-cli` now tells you to Save the unsaved edits when a CSV file is loaded, and to Sync them when CLICK's database is loaded. It used to say Sync in both cases. This holds for `prompt-save`, for the replies of `tag apply`, `tag repair-system-nicknames` and `tag upgrade-project`, and for the status line. When a row has an error, `prompt-save` now says that nothing is written while any row has one. It used to blame the unsaved edits, even when the errors were in rows that you had not changed. `list` no longer says that a workspace is building when there is none. When a build fails, `ping` and the commands that need the workspace now give the reason. `tag set-range` now names a value that is not a number.
+- When ClickNick cannot read CLICK's database and offers a copy of CLICK's address CSV file, the dialog no longer says that you must save a copy to continue. **Cancel** goes on without nicknames.
+- In Review Changes, when you try to take a skipped difference of a program that is marked done, the status line no longer says that the difference is already pasted into CLICK. It says that the program is marked done.
+- The tooltip of a linked input in the Simulator no longer ends with empty brackets when the link has no delay or response. After **Save link to project**, the tooltip and the note now say the same thing: the program's link replaces the bench link when the simulation loads the program from your next Sync.
+- The tooltip of **start** in the Add Block dialog no longer says that the start is 0-based. pyrung starts a block at 1, or at 0 when the block's first address is numbered 0, and the tooltip now says so.
+- In the Address Editor, Replace All no longer adds "No matches found" after it has said that the search text is not a valid regular expression.
+- The Address Editor's footer now counts the errors only in the rows that the filter shows, the same as its other counts. The status bar below it counts the changed rows and the errors in all rows.
+- Review Changes no longer says that CLICK's New Subroutine window has no name box when ClickNick only failed to type the name into it.
+- When the workspace's CSVs are gone, the notice in Review Changes no longer says that CLICK was saved. It says that ClickNick rebuilt the workspace from CLICK's last save, and that the save does not hold every change from the window. The notice also shows after **Reload from CLICK**.
+- The Address Editor's export option is now called **Export all rows**. It said "entire database", but it exports the rows that the editor holds, which can come from a CSV file and include unsaved edits.
+- The tooltip of the Simulator's **Wiring** button now says what a bench link is: wiring that you add in the Simulator and that the program does not declare. ClickNick saves it and, while **Apply bench links** is on, applies it each time the simulation starts.
 
 ## v0.24.1 - 2026-11-15
 

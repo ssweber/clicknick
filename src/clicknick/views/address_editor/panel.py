@@ -693,7 +693,7 @@ class AddressPanel(ttk.Frame):
         footer = ttk.Frame(self)
         footer.pack(fill=tk.X, padx=5, pady=(2, 5))
 
-        self.status_label = ttk.Label(footer, text="Rows: 0 | Errors: 0 | Modified: 0")
+        self.status_label = ttk.Label(footer, text="Rows shown: 0 | Changed: 0 | Errors: 0")
         self.status_label.pack(side=tk.LEFT)
 
     def __init__(
@@ -734,15 +734,13 @@ class AddressPanel(ttk.Frame):
         self._create_widgets()
 
     def _update_status(self) -> None:
-        """Update the status label with current counts."""
-        total_visible = len(self._displayed_rows)
-        error_count = self.get_error_count()
-        modified_count = sum(
-            1 for idx in self._displayed_rows if self._store.is_dirty(self.rows[idx].addr_key)
-        )
+        """Count the rows that the filter shows, and those of them that changed or have errors."""
+        shown = [self.rows[idx] for idx in self._displayed_rows]
+        changed = sum(1 for row in shown if self._store.is_dirty(row.addr_key))
+        errors = sum(1 for row in shown if row.has_reportable_error)
 
         self.status_label.config(
-            text=f"Rows: {total_visible} | Errors: {error_count} | Modified: {modified_count}"
+            text=f"Rows shown: {len(shown)} | Changed: {changed} | Errors: {errors}"
         )
 
     def _refresh_display(self, modified_rows: set[int] | None = None) -> None:
@@ -997,10 +995,6 @@ class AddressPanel(ttk.Frame):
     def has_errors(self) -> bool:
         """Check if any rows have validation errors."""
         return any(row.has_reportable_error for row in self.rows)
-
-    def get_error_count(self) -> int:
-        """Get count of rows with validation errors."""
-        return sum(1 for row in self.rows if row.has_reportable_error)
 
     def _highlight_row(self, data_idx: int, duration_ms: int = 1500) -> None:
         """Temporarily highlight a row to draw user attention.

@@ -52,20 +52,37 @@ def test_sync_button_says_whether_it_closes(close_after_sync: bool, label: str) 
 @pytest.mark.parametrize("close_after_sync", [False, True])
 def test_sync_and_close_closes_after_a_successful_sync(close_after_sync: bool) -> None:
     window = _editor(close_after_sync=close_after_sync)
+    import clicknick.views.address_editor.window as module
 
     window._save_all()
 
     window._on_synced.assert_called_once_with({1})
     assert window.close_without_prompt.called is close_after_sync
+    # The status line says what was written. No box asks the user to click OK.
+    window.status_var.set.assert_called_once_with("Synced 1 row")
+    module.messagebox.showinfo.assert_not_called()
 
 
 def test_a_failed_sync_leaves_the_window_open() -> None:
     window = _editor(close_after_sync=True)
     window._store.save_all_changes.side_effect = OSError("database locked")
+    import clicknick.views.address_editor.window as module
 
     window._save_all()
 
     window.close_without_prompt.assert_not_called()
+    module.messagebox.showerror.assert_called_once()
+
+
+def test_a_sync_with_nothing_to_write_still_says_so_in_a_box() -> None:
+    window = _editor(close_after_sync=False)
+    window._store.has_unsaved_changes.return_value = False
+    import clicknick.views.address_editor.window as module
+
+    window._save_all()
+
+    module.messagebox.showinfo.assert_called_once_with("Sync", "No changes to sync.", parent=window)
+    window._store.save_all_changes.assert_not_called()
 
 
 class _ClickDatabase:
@@ -104,7 +121,7 @@ def test_sync_counts_only_the_rows_it_wrote() -> None:
     window._save_all()
 
     window._on_synced.assert_called_once_with({c2})
-    window.status_var.set.assert_called_once_with("Synced 1 changes")
+    window.status_var.set.assert_called_once_with("Synced 1 row")
 
 
 def test_a_sync_click_already_holds_says_so() -> None:
@@ -122,7 +139,8 @@ def test_a_sync_click_already_holds_says_so() -> None:
     window._save_all()
 
     window._on_synced.assert_called_once_with(set())
-    module.messagebox.showinfo.assert_called_once_with(
-        "Sync", "CLICK already has these changes. There is nothing to write.", parent=window
+    module.messagebox.showinfo.assert_not_called()
+    window.status_var.set.assert_called_once_with(
+        "CLICK already has these changes. Nothing was written."
     )
     assert not store.has_unsaved_changes()

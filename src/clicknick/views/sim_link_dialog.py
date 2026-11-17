@@ -183,8 +183,8 @@ class LinkDialog(tk.Toplevel):
         self._when_bit = ttk.Frame(body)
         contact_style = _contact_style(self)
         for text, value, tip in (
-            ("O", True, "Normally open: drives this input while the output is ON"),
-            ("/", False, "Normally closed: drives this input while the output is OFF"),
+            ("O", True, "Normally open: drives this input while the Driven by bit is ON"),
+            ("/", False, "Normally closed: drives this input while the Driven by bit is OFF"),
         ):
             contact = ttk.Radiobutton(
                 self._when_bit, text=text, value=value, variable=self._when_on,
@@ -195,9 +195,11 @@ class LinkDialog(tk.Toplevel):
         self._when_label = ttk.Label(body, text="When it equals")
         self._when_word = ttk.Frame(body)
         ttk.Entry(self._when_word, textvariable=self._trigger_var, width=10).pack(side=tk.LEFT)
-        ttk.Label(self._when_word, text="(blank: whenever it is not 0)", foreground="gray").pack(
-            side=tk.LEFT, padx=(8, 0)
-        )
+        ttk.Label(
+            self._when_word,
+            text="Leave blank to drive this input whenever the word is not 0",
+            foreground="gray",
+        ).pack(side=tk.LEFT, padx=(8, 0))
         self._enable_var.trace_add("write", lambda *_a: self._on_enable_changed())
         self._on_enable_changed()
 
@@ -217,7 +219,11 @@ class LinkDialog(tk.Toplevel):
         self._first_entry: ttk.Entry | None = None
         ttk.Label(
             body,
-            text="This changes the simulation only. Save it to the project from the right-click menu.",
+            text=(
+                "While Apply bench links is on in the Wiring menu, ClickNick applies this link "
+                "each time the simulation starts. To keep it in the "
+                "project, right-click the input in the Simulator and choose Save link to project."
+            ),
             foreground="gray",
             wraplength=280,
         ).grid(row=_NOTE_ROW, column=0, columnspan=3, sticky="w", pady=(8, 0))

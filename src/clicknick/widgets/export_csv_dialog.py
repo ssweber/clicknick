@@ -58,7 +58,7 @@ class ExportCsvDialog(tk.Toplevel):
 
         ttk.Radiobutton(
             mode_frame,
-            text="Export all rows (entire database)",
+            text="Export all rows",
             variable=self.export_mode_var,
             value="all",
         ).pack(anchor=tk.W, pady=2)

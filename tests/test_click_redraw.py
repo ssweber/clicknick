@@ -276,7 +276,7 @@ def test_click_is_made_active_before_the_import_when_clicknick_is_active(tmp_pat
 
 def test_the_foreground_goes_back_to_clicknicks_last_active_popup(tmp_path) -> None:
     click = FakeClick()
-    click.popups[OWN_WINDOW] = OWN_POPUP  # "Successfully synced" showed meanwhile
+    click.popups[OWN_WINDOW] = OWN_POPUP  # a ClickNick message box showed meanwhile
 
     _redraw(click, tmp_path)
 

@@ -222,3 +222,20 @@ def test_a_cell_typed_with_an_edge_space_shows_the_value_stored(panel, store, co
     assert panel.sheet.get_cell_data(row, col) == "Pump"
     assert getattr(store.visible_state[get_addr_key("DS", 1)], field) == "Pump"
     assert len(store.undo_stack) == frames
+
+
+def test_the_footer_counts_only_the_rows_that_the_filter_shows() -> None:
+    rows = [
+        SimpleNamespace(addr_key=1, has_reportable_error=True),
+        SimpleNamespace(addr_key=2, has_reportable_error=False),
+        SimpleNamespace(addr_key=3, has_reportable_error=True),  # hidden by the filter
+    ]
+    panel = AddressPanel.__new__(AddressPanel)
+    panel.rows = rows
+    panel._displayed_rows = [0, 1]
+    panel._store = SimpleNamespace(is_dirty=lambda key: key in {2, 3})
+    panel.status_label = Mock()
+
+    panel._update_status()
+
+    panel.status_label.config.assert_called_once_with(text="Rows shown: 2 | Changed: 1 | Errors: 1")

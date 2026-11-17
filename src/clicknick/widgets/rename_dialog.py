@@ -12,13 +12,15 @@ class RenameDialog(tk.Toplevel):
         new_name = self.name_var.get().strip()
 
         if not new_name:
-            messagebox.showerror("Error", "Please enter a new name.", parent=self)
+            messagebox.showerror("Rename", "Enter a new name.", parent=self)
             return
 
         # Don't allow single underscore as a name (reserved for double-underscore nodes)
         if new_name == "_":
             messagebox.showerror(
-                "Error", "Single underscore is reserved for internal use.", parent=self
+                "Rename",
+                'A name cannot be a single underscore "_". Enter another name.',
+                parent=self,
             )
             return
 

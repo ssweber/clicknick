@@ -249,8 +249,9 @@ class DataviewPanel(ttk.Frame):
         if total_count > MAX_DATAVIEW_ROWS:
             overflow_count = total_count - MAX_DATAVIEW_ROWS
             self.status_label.config(
-                text=f"Addresses: {filled_count}/{total_count} "
-                f"({overflow_count} overflow, not saved){dirty_text}"
+                text=f"Addresses: {filled_count}/{total_count}{dirty_text}. Save keeps only "
+                f"the first {MAX_DATAVIEW_ROWS} rows. The {overflow_count} grey rows are not "
+                "saved."
             )
         else:
             self.status_label.config(
@@ -570,7 +571,8 @@ class DataviewPanel(ttk.Frame):
         shown = rejected[:_MAX_REJECTIONS_SHOWN]
         if len(rejected) > len(shown):
             shown.append(f"and {len(rejected) - len(shown)} more")
-        messagebox.showwarning("Invalid New Value", "\n".join(shown), parent=self)
+        intro = "These cells kept their old value, because the pasted value is not valid:"
+        messagebox.showwarning("Invalid New Value", "\n".join([intro, *shown]), parent=self)
 
     def _on_paste_start(self, _event) -> None:
         """Warn about the previous paste's rejected cells before this paste adds its own."""
@@ -755,7 +757,9 @@ class DataviewPanel(ttk.Frame):
         except Exception as e:
             # Stay bound to the path, but never save the empty rows over the file.
             self.load_error = str(e)
-            self.status_label.config(text=f"Error loading: {e}")
+            self.status_label.config(
+                text=f"Could not read {self.file_path.name}: {e}. Save will not write over it."
+            )
             return
         self.load_error = None
         self._write_checks = [False] * len(self.rows)
@@ -943,7 +947,9 @@ class DataviewPanel(ttk.Frame):
         try:
             self._file = DataViewFile.load(self.file_path)
         except Exception as e:
-            self.status_label.config(text=f"Error reloading: {e}")
+            self.status_label.config(
+                text=f"Could not reload {self.file_path.name}: {e}. The rows have not changed."
+            )
             return
         self.load_error = None
         if [(r.address, r.data_type, r.new_value) for r in before.rows] != self._row_values():
@@ -967,7 +973,7 @@ class DataviewPanel(ttk.Frame):
                 "File Changed",
                 f"'{path.name}' was changed by another program, such as CLICK, "
                 "after ClickNick read the rows you are saving.\n\n"
-                "Yes: save this dataview over it.\n"
+                "Yes: save this Data View over it.\n"
                 "No: reload it (Ctrl+Z brings your edits back).\n"
                 "Cancel: do neither.",
                 parent=self,
@@ -987,8 +993,9 @@ class DataviewPanel(ttk.Frame):
         """Write the rows to path. On failure, say why and change nothing."""
         if self.load_error is not None and path == self.file_path:
             self._show_save_error(
-                f"Could not read '{path.name}' when it was opened ({self.load_error}), "
-                "so it is not saved over."
+                f"Could not read '{path.name}' when it was opened: {self.load_error}. "
+                "ClickNick will not save over it. To keep these rows, use File > Export to "
+                "save them to another file."
             )
             return False
         if (
@@ -1050,7 +1057,7 @@ class DataviewPanel(ttk.Frame):
             DataViewFile(rows=self.rows, header=self._file.header).save(path)
             return True
         except Exception as e:
-            self.status_label.config(text=f"Error exporting: {e}")
+            self.status_label.config(text=f"Could not export to {path.name}: {e}")
             return False
 
     def _schedule_file_check(self) -> None:
@@ -1084,11 +1091,10 @@ class DataviewPanel(ttk.Frame):
         If you decline, nothing changes here. The rows still come from the older version, so
         Save asks before it writes over the new one.
         """
-        message = (
-            f"'{self.name}' has been modified by another program.\n\nDo you want to reload it?"
-        )
+        message = f"'{self.name}' has been modified by another program."
         if self._is_dirty:
-            message += " It replaces your unsaved edits. Ctrl+Z brings them back."
+            message += " Reloading replaces your unsaved edits. Ctrl+Z brings them back."
+        message += "\n\nReload it?"
         self._reload_prompt_shown = True
         try:
             reload = messagebox.askyesno("Reload", message, parent=self)

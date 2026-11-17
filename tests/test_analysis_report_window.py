@@ -153,7 +153,7 @@ def test_rerun_updates_existing_window_and_keyboard_unfolds(report_window):
 def test_failed_refresh_retains_previous_results(report_window):
     window = report_window(rerun=lambda: None)
     window._finish_run_checks()
-    assert "previous results" in window._source.cget("text")
+    assert "These are the results of the last run." in window._source.cget("text")
     assert "Mode cannot satisfy both conditions." in window._text.get("1.0", "end")
 
 
@@ -174,10 +174,16 @@ def test_future_registry_rules_and_severities_render_and_remember(report_window,
     assert _is_hidden(window, "FUTURE_RULE")
 
 
+def test_a_full_run_with_a_finding_does_not_count_checks_not_run(report_window):
+    window = report_window(_data())
+    assert window._summary_line.endswith(" checks passed")
+    assert "not run" not in window._summary_line
+
+
 def test_report_separates_passed_and_not_run_and_copies_both(report_window):
     data = AnalysisReportData(checked_rules=frozenset({"RUNG_CONTRADICTION"}))
     window = report_window(data)
-    assert "1 selected checks passed" in window._summary_line
+    assert "The 1 selected check passed" in window._summary_line
     assert "not run" in window._summary_line
     assert _is_hidden(window, "__not_run__")
     window._copy_report()

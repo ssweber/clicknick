@@ -205,7 +205,10 @@ class AnnotationDialog(tk.Toplevel):
             row, text="readonly", variable=self._readonly_var, command=self._on_flag_changed
         )
         self._readonly_cb.pack(side=tk.LEFT, padx=(0, 10))
-        _bind_tooltip(self._readonly_cb, "Set via initial value, never written by the ladder")
+        _bind_tooltip(
+            self._readonly_cb,
+            "The tag keeps its initial value. No instruction in the program writes it.",
+        )
 
         self._external_cb = ttk.Checkbutton(
             row, text="external", variable=self._external_var, command=self._on_flag_changed
@@ -442,9 +445,9 @@ class AnnotationDialog(tk.Toplevel):
         link_hint.pack(side=tk.LEFT)
         _bind_tooltip(
             link_hint,
-            "Tag or CLICK address that drives this feedback signal,\n"
-            "with an optional :value trigger.\n"
-            "~ in front of a bit drives it while the bit is OFF",
+            "The tag or CLICK address that drives this feedback.\n"
+            "Add :value to drive it only while the tag equals that value.\n"
+            "Put ~ in front of a bit to drive the feedback while the bit is OFF.",
         )
 
         self._on_kind_changed()
@@ -479,8 +482,8 @@ class AnnotationDialog(tk.Toplevel):
         if len(full_comment) > COMMENT_MAX_LENGTH:
             proceed = messagebox.askyesno(
                 "Comment Too Long",
-                f"The comment is {len(full_comment)} characters "
-                f"(limit: {COMMENT_MAX_LENGTH}).\n\nSave anyway?",
+                f"The comment is {len(full_comment)} characters. "
+                f"CLICK allows {COMMENT_MAX_LENGTH}.\n\nSave it anyway?",
                 parent=self,
             )
             if not proceed:

@@ -328,3 +328,77 @@ def test_double_clicking_a_nickname_with_children_shows_it_and_them_only(store) 
 
     assert vars_["text"] == "tree:Tank_Pump1"
     assert [rows[i].nickname for i in shown[-1]] == ["Tank_Pump1", "Tank_Pump1_Run"]
+
+
+class _Menu:
+    """Record the entries that the window adds to a menu. A separator is None."""
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        self.labels: list[str | None] = []
+
+    def add_command(self, *, label: str, **_kwargs) -> None:
+        self.labels.append(label)
+
+    def add_cascade(self, *, label: str, menu: _Menu) -> None:
+        self.labels.append(label)
+        self.cascades = {**getattr(self, "cascades", {}), label: menu}
+
+    def add_checkbutton(self, *, label: str, **_kwargs) -> None:
+        self.labels.append(label)
+
+    def add_separator(self) -> None:
+        self.labels.append(None)
+
+    def index(self, what: str) -> int:
+        assert what == "end"
+        return len(self.labels) - 1
+
+
+def test_the_file_menu_has_no_refresh_and_relabels_save_all(monkeypatch) -> None:
+    # Refresh discarded the edits and reloaded nothing. Discard Changes does the same.
+    monkeypatch.setattr(f"{MODULE}.tk", SimpleNamespace(Menu=_Menu, BooleanVar=Mock()))
+    window = AddressEditorWindow.__new__(AddressEditorWindow)
+    window.config = Mock()
+
+    window._create_menu()
+
+    labels = window._file_menu.labels
+    assert "Refresh" not in labels
+    assert labels[window._save_menu_index] == "Save All"
+    assert "Discard Changes" in labels
+
+
+def test_replace_all_with_a_bad_pattern_shows_only_the_error(tk_root, monkeypatch) -> None:
+    from clicknick.views.address_editor import sheet as sheet_module
+
+    dialogs = Mock()
+    monkeypatch.setattr(sheet_module, "messagebox", dialogs)
+    sheet = sheet_module.AddressEditorSheet(tk_root)
+    sheet.set_sheet_data([["", "Tank_1", ""]])
+    sheet.MT.find_window = SimpleNamespace(
+        get=lambda: "Tank(1",
+        window=SimpleNamespace(get_replace=lambda: "Vat", find_in_selection=False),
+    )
+
+    sheet._regex_replace_all()
+
+    dialogs.showerror.assert_called_once()
+    assert "not a valid regular expression" in dialogs.showerror.call_args.args[1]
+    dialogs.showinfo.assert_not_called()  # It used to add "No matches found."
+
+
+@pytest.mark.parametrize(("is_database", "shown"), [(True, True), (False, False)])
+def test_the_first_run_tips_wait_for_clicks_database(
+    monkeypatch, tmp_path, is_database: bool, shown: bool
+) -> None:
+    """The tips are about CLICK's database, so nicknames from a CSV file do not use them up."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    window = AddressEditorWindow.__new__(AddressEditorWindow)
+    window._store = SimpleNamespace(is_database=is_database)
+
+    window._show_address_editor_popup()
+
+    from clicknick.views.address_editor import window as window_module
+
+    assert window_module.messagebox.showinfo.called is shown
+    assert (tmp_path / "ClickNick" / "address_editor_popup_seen").exists() is shown
