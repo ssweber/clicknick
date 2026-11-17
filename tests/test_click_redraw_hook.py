@@ -431,7 +431,7 @@ def test_a_redraw_that_ends_on_another_window_shows_nothing(desktop, monkeypatch
     app._connection.redraw_nicknames(after_sync=True)
     app._connection.redraw_nicknames(after_sync=False)  # This request is in the same session.
     app._session = ConnectionSession(ClickConnection("333", 444, "Other.ckp"))
-    running.pop()()  # CLICK's window closed, so the redraw ends with another window connected.
+    running.pop()()  # CLICK's window closed, and the redraw ends while another window is connected.
     app.root.run(100)
 
     app._update_status.assert_not_called()
