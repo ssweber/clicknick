@@ -263,15 +263,15 @@ def test_a_declared_link_that_could_not_move_is_said_with_pyrungs_reason(reason,
         # Start moves from X001 to X002, which has its own cut. Start's link wins.
         ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
          {"Start": "Motor", "X002": None}, ("Start", LinkTarget("Start", "Motor")), "X002",
-         "the cut on X002 is removed, because the link on Start moved onto the same address"),
+         "the cut on X002 is removed, because the link on Start moved onto X002"),
         # The same on internal bits. Run moves from C1 to C2, and C2 has a link from C5.
         ({"C1": "Run", "C5": "Aux"}, {"C2": "Run", "C5": "Aux"},
          {"Run": "Aux", "C2": "Aux"}, ("Run", LinkTarget("Run", "Aux")), "C2",
-         "the link on C2 is removed, because the link on Run moved onto the same address"),
+         "the link on C2 is removed, because the link on Run moved onto C2"),
         # With the entries listed the other way round, the followed link still wins.
         ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
          {"X002": None, "Start": "Motor"}, ("Start", LinkTarget("Start", "Motor")), "X002",
-         "the cut on X002 is removed, because the link on Start moved onto the same address"),
+         "the cut on X002 is removed, because the link on Start moved onto X002"),
     ],
 )  # fmt: skip
 def test_two_links_on_one_new_feedback_keep_the_one_that_followed_its_name(

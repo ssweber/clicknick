@@ -312,7 +312,7 @@ def plan_carry(
             carried_links[feedback] = None
             text = (
                 f"the {_kind(links[feedback])} on {feedback} is removed, because the link on "
-                f"{winner} moved onto the same address"
+                f"{winner} moved onto {feedback}"
             )
             moved.append(CarryNote("link", feedback, "moved", text))
             continue
