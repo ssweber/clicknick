@@ -5055,7 +5055,7 @@ def test_read_data_sets_the_path_again_when_the_save_dialog_empties_it(tmp_path,
     assert (tmp_path / "out" / "plcdata.csv").is_file()
     assert not fake.last_folder.exists()
     log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
-    assert "the File name edit reads ''. Setting the path again." in log
+    assert "the File name edit reads ''; setting the path again" in log
     assert not (tmp_path / "out" / "record").exists()
 
 

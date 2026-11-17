@@ -948,7 +948,7 @@ certutil -hashfile dist\\{esc(rep.wheel_name or "clicknick-*.whl")} SHA256
 uv run python devtools/trust_report.py                 # regenerate this page into dist/trust/</pre>
 <p>To check the copy you installed, run <code>uv tool dir</code> to find the install folder. The wheel's files are
 unpacked there. <code>pip download clicknick=={esc(rep.version)} --no-deps</code> fetches the exact wheel
-from PyPI, so that you can hash it. To install this exact version instead of the latest, run
+from PyPI, so that you can hash it. To install this exact version rather than the latest:
 <code>uv tool install clicknick=={esc(rep.version)}</code>.</p>
 </main></body></html>
 """

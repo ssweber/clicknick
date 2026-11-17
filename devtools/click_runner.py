@@ -3625,7 +3625,7 @@ class Run:
             now = self.desktop.read_text(edit.hwnd)
             if now != text:
                 if held[0] is not None:
-                    self.log(f"the File name edit reads {now!r}. Setting the path again.")
+                    self.log(f"the File name edit reads {now!r}; setting the path again")
                 held[0] = None
                 self.desktop.set_text(edit.hwnd, text)
                 return False
