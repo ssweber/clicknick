@@ -1366,3 +1366,30 @@ def test_project_change_counts_text_still_in_a_dataview_cell(monkeypatch, commit
     ((_, title, message),) = prompts
     assert title == "Project Changed"
     assert "unsaved Data View changes" in message
+
+
+@pytest.mark.parametrize(
+    ("build", "reason"),
+    [
+        ("failed", "Could not build the workspace: bad rung"),
+        ("failed without a reason", "Could not build the workspace."),
+        ("building", "ClickNick is still building the workspace. Try again when it finishes."),
+    ],
+)
+def test_check_settings_names_the_state_of_the_build(monkeypatch, build, reason):
+    """With the database loaded, Check Settings says what happened to the workspace build."""
+    from clicknick.services.analysis_service import AnalysisService
+
+    app, _prompts = _app(monkeypatch)
+    shown = []
+    monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *args, **kwargs: shown.append(args))
+    session = app._session
+    session.has_database = True
+    session.analysis = AnalysisService()
+    serves = session.analysis.mark_building()
+    if build != "building":
+        session.analysis.mark_failed("bad rung" if build == "failed" else "", serves=serves)
+
+    app._choose_program_checks(app.root, MagicMock())
+
+    assert shown == [("Check Settings", f"Check Settings needs the workspace.\n\n{reason}")]

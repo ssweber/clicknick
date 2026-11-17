@@ -7,11 +7,7 @@ from tkinter import PhotoImage, filedialog, font, messagebox, ttk
 from typing import TYPE_CHECKING, Any, overload
 
 from .config import AppSettings
-from .connection_controller import (
-    REDRAW_COMMAND,
-    REDRAW_ON_SYNC,
-    ConnectionController,
-)
+from .connection_controller import REDRAW_COMMAND, REDRAW_ON_SYNC, ConnectionController
 from .connection_session import ClickConnection, SavedProgram, no_database_reason
 from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
@@ -140,7 +136,9 @@ class ClickNickApp:
         analysis = session.analysis
         status = analysis.status if analysis is not None else None
         if status is AnalysisStatus.FAILED:
-            return f"Could not build the workspace: {analysis.error}"
+            if analysis.error:
+                return f"Could not build the workspace: {analysis.error}"
+            return "Could not build the workspace."
         if status is AnalysisStatus.BUILDING:
             return "ClickNick is still building the workspace. Try again when it finishes."
         return (
