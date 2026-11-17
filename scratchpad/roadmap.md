@@ -20,7 +20,7 @@ How to use it:
 ## Order
 
 1. Housekeeping (nothing)
-2. ssort out, tests into CI (nothing)
+2. ssort out, tests into CI (done)
 3. The bob plugin (done)
 4. CLICK runner (built: `devtools/click_runner.py`; early jobs run 2026-11-16, open questions left), and the user checks it or a mock can automate (nothing)
 5. ConnectionSession owns the window and project (done)
@@ -52,14 +52,11 @@ their sibling release is out.
   `publish.yml` starts it with the release's tag. The scripts that the build runs (`.github/scripts/`) come
   from that tag, so a fix to them reaches the site with the next release.
 
-## 2. ssort out, tests into CI (nothing)
+## 2. ssort out, tests into CI (done)
 
-- Make one small commit, with no reorder pass. Drop ssort from `devtools/lint.py`, the dev dependencies and
-  `[tool.ssort]` in `pyproject.toml`, the version line in `.github/workflows/ci.yml` and the `make lint` line
-  in `AGENTS.md`. Reorder a file only when it becomes a problem or when you are rewriting it anyway.
-- CI already runs on `windows-latest` (Python 3.11 to 3.13), but it only lints. Add `make test` (the 1,941
-  tests take about 2 minutes). CI installs the pinned PyPI releases, not the sibling checkouts. On the first
-  run, watch the tests that start pyrung's DAP subprocess or bind Modbus port 502.
+Both landed in v0.24.1 (#95). ssort is gone from `devtools/lint.py`, `pyproject.toml`, `ci.yml`
+and `AGENTS.md`. CI runs the tests on `windows-latest` with Python 3.13 and 3.14. Reorder a file
+only when it becomes a problem or when you are rewriting it anyway.
 
 ## 3. The bob plugin (done)
 
@@ -263,7 +260,8 @@ laddercodec's `preflight.json` (92 cases, stopped after 40 and resumed) and `ris
 - Receive's Starting Master Address, with Function Code 01: CLICK accepted Y001 and C1, and refused X001, T1,
   CT1, SC1 and DS1 (OBJ-004). With 03 (slave address 400001), it accepted DS1, DD1, DH1, DF1, TXT1 and YD0, and
   refused TD1, SD1, XD0, CTD1 and C1 (OBJ-004). It refuses a 984 slave address outside the function's range
-  first (OBJ-010). A Receive's answer holds every open field as OK found it. For Number of Master Addresses
+  first (OBJ-010). The answer to each Receive case records the text of every open field just
+  before OK was pressed. For Number of Master Addresses
   into TXT1, CLICK refused 1 (OBJ-010, range 2 to 250) and 3 (OBJ-029, even only), and accepted 2 and 4. Left
   unset, the field held 2 at OK (the dialog opens with 1) and CLICK accepted it. Into DS1, CLICK accepts 1 and
   2.
