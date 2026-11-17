@@ -67,7 +67,7 @@ class ConnectionHost(Protocol):
     _data: DataSession | None
     nickname_manager: NicknameManager
     detector: ClickWindowDetector
-    # The ClickPLC Windows section
+    # The CLICK Windows section
     instances_combobox: ttk.Combobox
     selected_instance_var: tk.StringVar
     start_button: ttk.Button

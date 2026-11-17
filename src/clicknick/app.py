@@ -485,7 +485,7 @@ class ClickNickApp:
         return Path(db_path) if db_path else None
 
     def _start_analysis_build(self) -> None:
-        """Build program analysis in background if connected to a Click project."""
+        """Build the workspace in the background if a CLICK window is connected."""
         if self._session is None:
             return
         self._session.start_analysis(self.root)
