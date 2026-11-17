@@ -1,10 +1,10 @@
-"""Upgrade Project rewrites old annotation forms in nickname comments and stages them.
+"""Rewrite old annotation forms in nickname comments and stage the rewrites (Upgrade Project).
 
 pyrung reads only the current annotation form and refuses an old one, such as
 ``profile=pulse:on_dwell=8ms|off_dwell=8ms``. pyrung's numbered migrations rewrite it
-(``flasher_on=8ms, flasher_off=8ms``). This stages every rewrite in one edit session, so
-the user reviews them on the Changed tab and Syncs. ClickNick keeps no knowledge of the
-old forms itself.
+(``flasher_on=8ms, flasher_off=8ms``). This module stages every rewrite in one edit
+session, so the user reviews them on the Changed tab and Syncs. ClickNick itself has no
+knowledge of the old forms.
 """
 
 from __future__ import annotations
@@ -22,10 +22,11 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommentUpgrade:
-    """One comment with an old annotation form.
+    """Describe one comment with an old annotation form.
 
     ``replacement`` is the upgraded comment. ``problem`` says why pyrung still refuses it,
-    such as an old token no migration reads. Such a comment is left for the user to fix.
+    for example an old token that no migration reads. ClickNick leaves such a comment for
+    the user to fix.
     """
 
     addr_key: int
@@ -36,12 +37,12 @@ class CommentUpgrade:
 
     @property
     def staged(self) -> bool:
-        """True when Upgrade Project writes the replacement into the store."""
+        """Return True if Upgrade Project writes the replacement into the store."""
         return not self.problem and self.replacement != self.current
 
 
 def _problem(replacement: str) -> str:
-    """Why pyrung refuses *replacement*, or ``""`` when it reads it."""
+    """Return why pyrung refuses *replacement*, or ``""`` if it reads it."""
     tokens = old_form_tokens(replacement)
     if tokens:
         return f"no upgrade reads {', '.join(tokens)}"
@@ -53,11 +54,12 @@ def _problem(replacement: str) -> str:
 
 
 def find_comment_upgrades(store: AddressStore) -> tuple[CommentUpgrade, ...]:
-    """Every comment that holds an old annotation form, without changing the store."""
+    """Return every comment that holds an old annotation form. Do not change the store."""
     found: list[CommentUpgrade] = []
     for addr_key, row in store.visible_state.items():
         comment = row.comment
-        # Most comments carry no metadata group, and pyrung's check needs one.
+        # Skip comments that have no "[" metadata group. Most have none, and pyrung's check
+        # needs one.
         if "[" not in comment or not comment_needs_upgrade(comment):
             continue
         replacement = upgrade_comment(comment)
@@ -74,9 +76,10 @@ def find_comment_upgrades(store: AddressStore) -> tuple[CommentUpgrade, ...]:
 
 
 def stage_comment_upgrades(store: AddressStore) -> tuple[CommentUpgrade, ...]:
-    """Stage every rewrite through one edit session, and return every comment found.
+    """Stage every rewrite in one edit session, and return every comment found.
 
-    A comment pyrung would still refuse is returned with its problem but not staged.
+    A comment that pyrung would still refuse is returned with its problem but is not
+    staged.
     """
     upgrades = find_comment_upgrades(store)
     changed = [upgrade for upgrade in upgrades if upgrade.staged]

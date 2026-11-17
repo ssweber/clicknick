@@ -1,10 +1,10 @@
-"""The simulator's hardware panel: the user's CLICK modules and their I/O terminals.
+"""Describe the simulator's hardware panel: the user's CLICK modules and their I/O terminals.
 
-Pure data. ``read_panel_layout`` reads CLICK's Project.ini through pyclickplc's
-``read_io_layout``; ``build_panel_layout`` turns that module list (or any
-objects of the same shape) into cards of terminals, and lists the X/Y
-addresses the program uses that no installed module provides, each as a
-placeholder card at the position its address belongs to.
+This module holds data only. ``read_panel_layout`` reads CLICK's Project.ini through
+pyclickplc's ``read_io_layout``. ``build_panel_layout`` turns that module list (or any
+objects of the same shape) into cards of terminals. It also finds the X/Y addresses that
+the program uses and no installed module provides. It adds each one as a placeholder card
+at the position its address belongs to.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class _Module(Protocol):
 
 
 class ModuleIOLike(Protocol):
-    """The shape of ``pyclickplc.ModuleIO``."""
+    """Describe the shape of ``pyclickplc.ModuleIO`` that this module needs."""
 
     @property
     def location(self) -> str: ...
@@ -46,7 +46,7 @@ class ModuleIOLike(Protocol):
 
 @dataclass(frozen=True)
 class Terminal:
-    """One I/O point on a card. Analog channels with no DF assigned have no address."""
+    """Describe one I/O point on a card. An analog channel with no DF assigned has no address."""
 
     kind: TerminalKind
     channel: int
@@ -55,11 +55,11 @@ class Terminal:
 
 @dataclass(frozen=True)
 class Card:
-    """One module in physical order.
+    """Describe one module, in physical order.
 
-    A card with ``installed`` False is a placeholder: the program uses X/Y
-    addresses of this position that no module in Project.ini provides. It has
-    no model and is not part of ``PanelLayout.modules``.
+    A card with ``installed`` False is a placeholder. The program uses X/Y addresses of
+    this position that no module in Project.ini provides. The placeholder has no model
+    and is not part of ``PanelLayout.modules``.
     """
 
     location: Location
@@ -88,11 +88,11 @@ class Card:
 
 @dataclass(frozen=True)
 class PanelLayout:
-    """Everything the Simulator window draws.
+    """Describe everything the Simulator window draws.
 
-    ``cards`` holds the installed modules and, in their physical place, the
-    placeholders for used X/Y addresses no module provides; a placeholder
-    still gets a switch or LED so the program can be driven.
+    ``cards`` holds the installed modules. It also holds a placeholder, in the physical
+    place, for the used X/Y addresses that no module provides. A placeholder still gets
+    a switch or LED so that the program can be driven.
     """
 
     cards: tuple[Card, ...] = ()
@@ -103,11 +103,11 @@ class PanelLayout:
 
     @property
     def modules(self) -> tuple[str, ...]:
-        """Stable description of the installed hardware, e.g. ``"expansion1:C0-16ND3"``."""
+        """Return a stable description of the installed hardware, e.g. ``"expansion1:C0-16ND3"``."""
         return tuple(f"{card.key}:{card.model}" for card in self.cards if card.installed)
 
     def addresses(self, kind: TerminalKind) -> tuple[str, ...]:
-        """Every address of *kind* on the panel, placeholders included."""
+        """Return every address of *kind* on the panel, placeholders included."""
         found = [
             t.address
             for card in self.cards
@@ -118,7 +118,7 @@ class PanelLayout:
 
     @property
     def poll_addresses(self) -> tuple[str, ...]:
-        """Every address whose value the panel shows."""
+        """Return every address whose value the panel shows."""
         kinds: tuple[TerminalKind, ...] = ("input", "output", "analog_in", "analog_out")
         return tuple(dict.fromkeys(a for kind in kinds for a in self.addresses(kind)))
 
@@ -130,13 +130,13 @@ def address_sort_key(address: str) -> tuple[str, int]:
         return (address, 0)
 
 
-#: CLICK's generated module status bits (_IO1_Module_Error, _IO1_CH1_Burnout, ...) sit in
-#: X addresses but are not terminals, so they never count as used I/O.
+#: CLICK generates module status bits (_IO1_Module_Error, _IO1_CH1_Burnout, ...) in X
+#: addresses. They are not terminals, so they never count as used I/O.
 MODULE_STATUS_PREFIX = "_IO"
 
 
 def io_addresses(addr_keys: Iterable[int]) -> set[str]:
-    """X and Y display addresses among *addr_keys*."""
+    """Return the X and Y display addresses among *addr_keys*."""
     found: set[str] = set()
     for addr_key in addr_keys:
         try:
@@ -168,7 +168,10 @@ def _card(module_io: ModuleIOLike) -> Card:
 
 
 def _position(address: str) -> tuple[Location, int]:
-    """Where an X/Y address sits: the CPU (1-20), option slot 1 (21-99) or expansion n (n01-n99)."""
+    """Return where an X/Y address sits.
+
+    The CPU holds 1-20, option slot 1 holds 21-99, and expansion n holds n01-n99.
+    """
     index = parse_address(address)[1]
     if index >= 100:
         return "expansion", index // 100
@@ -176,8 +179,11 @@ def _position(address: str) -> tuple[Location, int]:
 
 
 def _rank(location: Location, position: int, installed: bool = True) -> tuple[int, int]:
-    """Sort key in rack order. A placeholder for the CPU's addresses goes after the
-    option slots, so it does not split the CPU housing."""
+    """Return the sort key for rack order.
+
+    A placeholder for the CPU's addresses goes after the option slots, so that it does
+    not split the CPU housing.
+    """
     if location == "cpu" and not installed:
         return (1, 100)
     return ({"cpu": 0, "slot": 1, "expansion": 2}[location], position)
@@ -197,9 +203,9 @@ def _placeholder(location: Location, position: int, addresses: Sequence[str]) ->
 
 
 def build_panel_layout(modules: Iterable[ModuleIOLike], used_io: Iterable[str] = ()) -> PanelLayout:
-    """Cards for *modules* (in the order given), plus a placeholder card at each position
-    holding the used I/O no card provides.
+    """Return cards for *modules*, in the order given, plus placeholder cards.
 
+    A placeholder card goes at each position that has used I/O which no card provides.
     A position with both X and Y left over gets one placeholder (an assumed combo
     module). Addresses past the points of a real module at their position go on a
     placeholder right after that module.
@@ -226,7 +232,7 @@ def build_panel_layout(modules: Iterable[ModuleIOLike], used_io: Iterable[str] =
 def read_panel_layout(project_ini: Path, used_io: Iterable[str] = ()) -> PanelLayout:
     """Read CLICK's hardware configuration from Project.ini.
 
-    Raises OSError if the file cannot be read and ValueError if it is malformed.
+    Raise OSError if the file cannot be read and ValueError if it is malformed.
     """
     from pyclickplc import read_io_layout
 

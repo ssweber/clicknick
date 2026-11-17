@@ -141,8 +141,8 @@ class LiveServer:
     def _show_save_prompt(self, title: str, message: str) -> None:
         """Show the save reminder after the drain returns, one at a time.
 
-        The dialog is modal: shown inside the drain it would hold every queued
-        command, and the CLI waiting on this one, until the user closes it.
+        The dialog is modal. If it were shown inside the drain, it would hold every
+        queued command, and the CLI waiting on this one, until the user closes it.
         """
         if self._save_prompt_shown:
             return
@@ -167,8 +167,9 @@ class LiveServer:
         project_saved = None if mdb_path is None else bool(scr_files(mdb_path.parent))
         resolve_tag = None
         if analysis is not None and analysis.project_tag_to_addr_key:
-            # The workspace's names: a build that fails after publishing it keeps
-            # the previous build's analysis, with the previous build's names.
+            # Resolve tag names against the workspace's names. A build that fails after
+            # publishing the workspace keeps the previous build's analysis, and that
+            # analysis has the previous build's names.
             resolve_tag = analysis.project_tag_to_addr_key.get
 
         show_address_editor = self._open_editor

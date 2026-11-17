@@ -688,7 +688,7 @@ class ComboboxEventHandler:
             self.combobox.finalize_entry()
             return
         elif event.keysym == "Escape":
-            # Cancel: close without sending anything to CLICK
+            # Esc cancels: close the window and send nothing to CLICK.
             if self.combobox.cancel_callback:
                 self.combobox.cancel_callback()
             else:
@@ -857,7 +857,7 @@ class NicknameCombobox(ttk.Combobox):
         self.item_navigation_callback = callback
 
     def set_cancel_callback(self, callback: Callable[[], None]) -> None:
-        """Set the callback for Esc; without one, Esc withdraws the master window."""
+        """Set the callback that Esc calls. Without one, Esc withdraws the master window."""
         self.cancel_callback = callback
 
     def set_selection_callback(self, callback: Callable[[str], None]) -> None:

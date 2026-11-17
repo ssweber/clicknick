@@ -1,4 +1,4 @@
-"""Model behind the Dataview Editor: CDV file discovery and nickname lookup."""
+"""Provide the model behind the Dataview Editor: CDV file discovery and nickname lookup."""
 
 from __future__ import annotations
 
@@ -21,13 +21,13 @@ if TYPE_CHECKING:
 
 
 class SharedDataviewData:
-    """Model behind the Dataview Editor.
+    """Provide the model behind the Dataview Editor.
 
-    - Looks up nicknames and comments live from the AddressStore
-    - Finds CDV files in the DataView folder ``get_folder`` gives now
+    - Look up nicknames and comments live from the AddressStore
+    - Find CDV files in the DataView folder that ``get_folder`` returns now
 
-    Window lifecycle belongs to DataSession; the editor window observes the
-    store directly for nickname refreshes.
+    DataSession owns the window lifecycle. The editor window observes the store
+    directly for nickname refreshes.
     """
 
     def __init__(
@@ -50,7 +50,7 @@ class SharedDataviewData:
 
     @property
     def dataview_folder(self) -> Path | None:
-        """The DataView folder to show now, or None."""
+        """Return the DataView folder to show now, or None."""
         return self._get_folder()
 
     @property
