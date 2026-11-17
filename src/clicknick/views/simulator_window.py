@@ -1825,10 +1825,11 @@ class SimulatorWindow(tk.Toplevel):
             self._wiring_btn,
             "Lists the feedback links, in which an output drives an input.\n"
             "Program links come from the project. A bench link is wiring that you\n"
-            "add here and that the program does not declare. ClickNick saves it and\n"
-            "applies it each time the simulation starts. It stays until you remove it,\n"
-            "or until you save it to the project, Sync, and the simulation loads the\n"
-            "new program. Right-click an input to link, cut or save one.",
+            "add here and that the program does not declare. ClickNick saves it and,\n"
+            "while Apply bench links is on, applies it each time the simulation starts.\n"
+            "It stays until you remove it, or until you save it to the project, Sync,\n"
+            "and the simulation loads the new program. Right-click an input to link,\n"
+            "cut or save one.",
         )
         modbus = ttk.Label(bar, textvariable=self._modbus_var, foreground=P.MUTED)
         modbus.pack(side=tk.RIGHT, padx=(0, 12))

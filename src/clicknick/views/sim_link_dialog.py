@@ -220,7 +220,8 @@ class LinkDialog(tk.Toplevel):
         ttk.Label(
             body,
             text=(
-                "ClickNick applies this link each time the simulation starts. To keep it in the "
+                "While Apply bench links is on in the Wiring menu, ClickNick applies this link "
+                "each time the simulation starts. To keep it in the "
                 "project, right-click the input in the Simulator and choose Save link to project."
             ),
             foreground="gray",
