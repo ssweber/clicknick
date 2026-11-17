@@ -300,6 +300,8 @@ def test_project_change_can_keep_unsaved_database_edits_for_the_new_project(monk
     ((_, title, message),) = prompts
     assert title == "Project Changed"
     assert "Keep them as unsaved changes for Renamed.ckp?" in message
+    assert "Sync writes the address changes to Renamed.ckp." in message
+    assert "Data View" not in message
     assert app._data.store is store
     assert not editor.closed
     # The store's file monitor keeps running. It reads the saved data under the kept edits
@@ -368,7 +370,7 @@ def test_project_change_asks_one_question_about_dataview_edits(monkeypatch, keep
 
     (question, *notices) = prompts
     assert question[:2] == ("askyesno", "Project Changed")
-    assert "Dataview" in question[2]
+    assert "Data View changes" in question[2]
     assert not dataview.saved
     if keep:
         assert notices == []
@@ -910,7 +912,7 @@ def test_no_csv_chosen_says_nothing_is_loaded_without_saying_stopped(monkeypatch
     app._connection._connect_csv_fallback("Main.ckp", 222)
 
     app._update_status.assert_called_once_with(
-        "No nicknames loaded - use File → Load Nicknames...", "error"
+        "No nicknames loaded. Use File > Load Nicknames from CSV", "error"
     )
     assert app._connection.monitoring is True
 
@@ -978,7 +980,7 @@ def test_project_change_over_csv_data_says_only_the_simulator_closes(monkeypatch
     app._connection._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
 
     assert notices == [
-        ("Project Changed", "The Click project was changed. The Simulator will now close.")
+        ("Project Changed", "The CLICK window now shows Main2.ckp. The Simulator will now close.")
     ]
     assert not editor.closed
 
@@ -1183,7 +1185,7 @@ def test_project_change_asks_about_dataview_edits_over_csv_data(monkeypatch, kee
 
     ((_, title, message),) = prompts
     assert title == "Project Changed"
-    assert "unsaved Dataview changes made in Main.ckp" in message
+    assert "unsaved Data View changes made in Main.ckp" in message
     assert "address changes" not in message  # CSV edits belong to the CSV file, not to the project.
     assert not dataview.saved
     assert app._data.store is store
@@ -1255,4 +1257,4 @@ def test_project_change_counts_text_still_in_a_dataview_cell(monkeypatch, commit
 
     ((_, title, message),) = prompts
     assert title == "Project Changed"
-    assert "unsaved Dataview changes" in message
+    assert "unsaved Data View changes" in message
