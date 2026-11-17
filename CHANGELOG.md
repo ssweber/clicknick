@@ -10,6 +10,7 @@
 
 ### Breaking changes
 
+- The messages of ClickNick, `clicknick-cli` and `clicknick-rung` now say what failed and what to do. Many tooltips and help texts are reworded too. If a script of yours matches on ClickNick's message text or on a `clicknick-cli` reply, check it.
 - The Address Editor no longer has **File > Refresh**. It only discarded your unsaved edits. It did not read CLICK's database or the CSV file again. To discard your edits, use **File > Discard Changes**.
 
 ### Changed
@@ -22,7 +23,6 @@
 - The Workspace setup window now closes when you close the CLICK window it belongs to. It already closed when that CLICK window opened another project.
 - A Sync or Save in the Address Editor no longer shows a box when it succeeds. The editor's status line says how many rows it wrote, such as "Synced 3 rows".
 - The Dataview Editor is now called the **Data View Editor**, and every title, menu and message writes **Data View** the way CLICK does.
-- The messages, tooltips and help texts of ClickNick, `clicknick-cli` and `clicknick-rung` say what failed and what to do. If a script of yours matches on ClickNick's message text, check it.
 - The Tag Browser now shows a bit's Retentive setting after a comma, as in `BIT, Retentive`. It used to show `BIT = Retentive`, which read as the bit's value. An initial value still follows `=`, as in `BIT = ON, Non-retentive`.
 
 ### Fixed
@@ -48,8 +48,7 @@
 - When the workspace's CSVs are gone, the notice in Review Changes no longer says that CLICK was saved. It says that ClickNick rebuilt the workspace from CLICK's last save, and that the save does not hold every change from the window. The notice also shows after **Reload from CLICK**.
 - The Address Editor's export option is now called **Export all rows**. It said "entire database", but it exports the rows that the editor holds, which can come from a CSV file and include unsaved edits.
 - The tooltip of the Simulator's **Wiring** button now says what a bench link is: wiring that you add in the Simulator and that the program does not declare. ClickNick saves it and, while **Apply bench links** is on, applies it each time the simulation starts.
-- Commands no longer tell you to connect to a CLICK window when one is already connected. This applies to the Workspace menu, the Simulator, **Tools > Address Editor**, **Data View Editor**, **Check Program** and **Repairs**, and to **Choose Checks**. While ClickNick reads CLICK's database, they ask you to try again when it has finished. If ClickNick did not load the database, they tell you to select the window in the CLICK Windows list. With `--db-backend none` (CSV mode), they say that database access is off. Where the nicknames are enough, they also offer **File > Load Nicknames from CSV**. A command that needs the workspace also says whether its build failed, is still running or has not started. If you cancel the Name PLC prompt in Workspace setup, ClickNick no longer shows a message.
-- `clicknick-cli` no longer tells you to connect to a CLICK project when a CLICK window is already connected. A command that needs the addresses or the workspace now gives the same reason as ClickNick's windows. It says that ClickNick is still reading CLICK's database, that database access is off, or that you need to select the window in the CLICK Windows list to load the database. A command that needs the workspace also says whether its build failed, is still running or has not started.
+- Commands no longer tell you to connect to a CLICK window when one is already connected. This applies to the Workspace menu, the Simulator, **Tools > Address Editor**, **Data View Editor**, **Check Program** and **Repairs**, to **Choose Checks**, and to the `clicknick-cli` commands that need the addresses or the workspace. While ClickNick reads CLICK's database, they ask you to try again when it has finished. If ClickNick did not load the database, they tell you to select the window in the CLICK Windows list. With `--db-backend none` (CSV mode), they say that database access is off. Where the nicknames are enough, they also offer **File > Load Nicknames from CSV**. A command that needs the workspace also says whether its build failed, is still running or has not started. If you cancel the Name PLC prompt in Workspace setup, ClickNick no longer shows a message.
 - **Tools > Repairs > Clean MDB** and **Verify MDB & CDV** now work only on CLICK's database. When the nicknames come from a CSV file, they tell you to load the database from the CLICK window. Clean MDB used to report an error loading the CSV file as an MDB, and Verify counted the CSV rows as database addresses.
 - When ClickNick cannot build the workspace, the Workspace group now says **Could not build the workspace**, and **Help > About CLICK Project** shows the reason. It used to say "Analysis failed" or "Build failed", and the choice depended only on whether an older workspace folder existed.
 - If the Simulator writes a program but cannot put the switch position back, its message now starts "The program was written". It used to say "Restoring simulator settings failed", although no saved settings were being restored.
