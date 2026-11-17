@@ -224,7 +224,11 @@ class _InlineThread:
 
 
 def test_queued_build_reads_as_preparing_before_its_thread_runs(tmp_path, monkeypatch) -> None:
-    """A refresh in that gap used to stop the polling, leaving the window out of date."""
+    """A queued build reads as PREPARING, not as the old failure, before its thread starts.
+
+    A refresh that saw the old failure in that time would stop polling, and the window would
+    go out of date.
+    """
     from clicknick.services.analysis_service import AnalysisService
 
     class _NotStarted(_InlineThread):
@@ -453,7 +457,7 @@ def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> 
     _settle(session.scr_watcher)
     assert session.saved_program().save_count == 1
 
-    # It is the same whatever the build is doing.
+    # The save count does not change when a build starts or fails.
     serves = session.analysis.mark_building()
     assert session.saved_program().save_count == 1
     session.analysis.mark_failed("pyrung cannot convert this rung", serves=serves)
@@ -538,7 +542,11 @@ def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
 def test_a_save_during_a_build_reads_as_building_until_its_own_build(
     tmp_path, monkeypatch, first_fails
 ) -> None:
-    """The build of the files before the save publishes first. Its csv/ is not that save's."""
+    """If CLICK saves during a build, the workspace reads as building until the save's own build.
+
+    The earlier build finishes first, whether it succeeds or fails. Its csv/ was built from the
+    files before the save, so no reader may use it as the saved program.
+    """
     from clicknick.services.analysis_service import AnalysisService
 
     _saved_click_project(tmp_path, monkeypatch)
@@ -597,7 +605,8 @@ def test_a_save_during_a_build_reads_as_building_until_its_own_build(
     assert pre_save.save_count == 1
     assert pre_save.building is True
     assert pre_save.csv_dir is None
-    # Every reader of the analysis agrees: the workspace is not the save's yet.
+    # The workspace status and the commands that read the workspace, such as ``rung apply``,
+    # also wait for the save's own build.
     assert pre_save_state is WorkspaceState.PREPARING
     assert "try again when it finishes" in pre_save_workspace
     assert saved.save_count == 1
@@ -610,7 +619,11 @@ def test_a_save_during_a_build_reads_as_building_until_its_own_build(
 def test_a_save_that_cannot_be_read_during_a_build_reads_as_building_until_it_finishes(
     tmp_path, monkeypatch
 ) -> None:
-    """The CLI's readers of the workspace are refused while the build still publishes it."""
+    """If CLICK saves during a build and no database is found, the workspace stays building.
+
+    Until the build finishes, the analysis reads as BUILDING, and the commands that read the
+    workspace refuse it. Then the analysis fails because it found no database.
+    """
     from clicknick.services.analysis_service import AnalysisService
 
     _saved_click_project(tmp_path, monkeypatch)
@@ -641,7 +654,7 @@ def test_a_save_that_cannot_be_read_during_a_build_reads_as_building_until_it_fi
     session._start_analysis_thread(tmp_path, tmp_path / "SC_.mdb", on_complete=finished)
     assert running.wait(timeout=10)
 
-    # CLICK saves while it runs, and the save's database is not found.
+    # CLICK saves while the build runs, and ClickNick cannot find the database for that save.
     monkeypatch.setattr("clicknick.utils.mdb_shared.find_click_database", lambda **_kwargs: None)
     session._on_scr_changed()
     try:
@@ -692,7 +705,8 @@ def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(
     assert failed.csv_dir is None
     assert "main window" in failed.note
 
-    # Failing after the workspace was published still compares with this save.
+    # If the build fails after it generated the workspace, Review Changes still compares
+    # with this save.
     monkeypatch.setattr("clicknick.services.analysis_service._build_graph", publishes(True))
     with pytest.raises(ValueError):
         session.analysis.build(tmp_path, None, persist_dir=project)
@@ -769,7 +783,7 @@ def test_review_changes_shows_each_folder_in_one_window(monkeypatch, tmp_path: P
     app._review_changes_windows = {}
     folder, source = tmp_path / "csv_output", tmp_path / "src" / "plc"
 
-    # Nothing to paste and no window showing the folder: none is opened
+    # With nothing to paste and no window showing the folder, no window opens.
     app._show_review_changes(folder, source, None, None, False)
     assert opened == []
 
@@ -779,14 +793,15 @@ def test_review_changes_shows_each_folder_in_one_window(monkeypatch, tmp_path: P
     assert opened[0].opened_with["select"] == ("main.csv", [3])
 
     assert opened[0].opened_with["source"] == ProposalSource(WORKSPACE_SOURCE)
-    # Exported again: the same window reads the folder again
+    # When the folder is exported again, the window that shows it reads it again.
     app._show_review_changes(folder, source, None, None, True)
     assert len(opened) == 1
     opened[0].reload.assert_called_once_with(
         ProposalSource(WORKSPACE_SOURCE), source_dir=source, refresh_source=None, select=None
     )
 
-    # A closed window is forgotten; another folder gets its own
+    # A closed window is forgotten, so its folder gets a new window. Another folder gets its
+    # own window.
     opened[0].winfo_exists.return_value = False
     app._show_review_changes(folder)
     app._show_review_changes(tmp_path / "other")
@@ -807,7 +822,8 @@ def test_successful_main_window_reload_clears_changed_rung_count() -> None:
 
     app._session.record_rung_stage.assert_called_once_with(0)
     app._update_status.assert_called_once_with("Workspace reloaded from CLICK", "connected")
-    # The discarded edits are no longer offered for pasting. An unrelated folder stays.
+    # The window that offered the discarded edits for pasting closes. A window on an
+    # unrelated folder stays open.
     proposal.destroy.assert_called_once_with()
     folder.destroy.assert_not_called()
 
@@ -836,7 +852,10 @@ def test_main_window_reload_ignores_completion_from_replaced_session(monkeypatch
 
 
 def test_analysis_builds_run_one_at_a_time_and_coalesce(tmp_path) -> None:
-    """Requests made during a build collapse into one follow-up of the latest inputs."""
+    """While a build runs, later requests wait, and only the latest of them builds next.
+
+    Every caller still gets a result.
+    """
     import threading
 
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), has_database=True)
