@@ -131,14 +131,14 @@ _WATCH_INTERVAL_MS = 1000
 
 _FIRST_TIME_TIPS = (
     "Review Changes\n\n"
-    "Each step copies rungs to the clipboard: a whole program, or just the rungs that "
-    "differ when CLICK already has it (the Copy switch chooses). The pane under the list "
-    "shows the difference. Work down each program in order: a step's rung numbers are "
-    "the ones CLICK shows once the steps before it are done. "
-    "Paste into CLICK with Ctrl+V, then wait until the rungs appear before doing anything "
-    "else: a big paste can take a while, and CLICK may look frozen until it finishes.\n\n"
+    "Each step copies rungs to the clipboard. It copies a whole program, or only the rungs "
+    "that differ when CLICK already has the program (the Copy switch chooses). The pane "
+    "under the list shows the difference. Work down each program in order. A step's rung "
+    "numbers are the ones CLICK shows once the steps before it are done. "
+    "Paste into CLICK with Ctrl+V. Then wait until the rungs appear before you do anything "
+    "else. A big paste can take a while, and CLICK may look frozen until it finishes.\n\n"
     "To leave a difference out, untick Take this difference above the pane, or click its "
-    "+/- gutter: CLICK keeps what it has there. Alt+Down and Alt+Up (or F7 and Shift+F7) "
+    "+/- gutter. CLICK keeps what it has there. Alt+Down and Alt+Up (or F7 and Shift+F7) "
     "go through every difference, program by program.\n\n"
     "Subroutines come before main. Create each one in CLICK (New Subroutine does this "
     "for you), then paste into it."
@@ -840,10 +840,10 @@ class ReviewChangesWindow(tk.Toplevel):
             return ""
         which = f"rung {kept[0]}" if len(kept) == 1 else f"rungs {_listed_rungs(kept)}"
         return (
-            f"CLICK holds rungs of {name} pasted before this folder was read again, not "
-            f"saved yet, and a whole paste would put back CLICK's {which} from ClickNick's "
-            "reading of its old encoding, which you chose to keep. Save in CLICK first, "
-            "then step through the changed rungs, or take that difference."
+            f"CLICK holds rungs of {name} that you pasted before this folder was read again. "
+            f"CLICK has not saved them. A whole paste would put back CLICK's {which} from "
+            "ClickNick's reading of its old encoding, which you chose to keep. Save in CLICK "
+            "first, then step through the changed rungs, or take that difference."
         )
 
     def _program_steps(
@@ -1020,7 +1020,7 @@ class ReviewChangesWindow(tk.Toplevel):
             if program is not None and program.error:
                 return (
                     f"{name} could not be read: {program.error}\n"
-                    "It is left out: CLICK keeps what it has of it.",
+                    "It is left out. CLICK keeps what it has of it.",
                     RenderedDiff(),
                 )
             change = self._changes.get(name)
@@ -1040,20 +1040,21 @@ class ReviewChangesWindow(tk.Toplevel):
         instead = ""
         if name in self._only_in_click:
             instead = (
-                "This folder does not have the program; CLICK keeps it as it is."
+                "This folder does not have the program. CLICK keeps it as it is."
                 if self._kept(name)
-                else "This folder does not have the program; it is to be deleted in CLICK."
+                else "This folder does not have the program. The step is to delete it in CLICK."
             )
         notes = [_legacy_note(change, instead=instead)]
         if after.error and not after.text(name) and name not in self._only_in_click:
             # For example, pyrung may refuse a nicknames.csv. The error names the line.
             notes.append(
                 f"pyrung could not convert the rungs from {self._source.label}, so they are "
-                f"listed by their instructions: {after.error}"
+                f"listed by their instructions. The error was: {after.error}"
             )
         elif not before.text(name) and not after.text(name):
             notes.append(
-                "pyrung could not show this program as text; each rung is listed by its instructions."
+                "pyrung could not show this program as text. "
+                "Each rung is listed by its instructions."
             )
         note = "\n".join(line for line in notes if line)
         if change is not self._expanded_change:
@@ -1326,7 +1327,7 @@ class ReviewChangesWindow(tk.Toplevel):
         """Return what to do with a program that CLICK has and the folder lacks."""
         if self._kept(name):
             return (
-                f"{name} is kept: CLICK keeps the program.\n"
+                f"{name} is kept. CLICK keeps the program.\n"
                 f'Click "Next" to go on, or tick {_DELETE_IN_CLICK} to delete it there'
             )
         stem = Path(name).stem
@@ -1344,7 +1345,7 @@ class ReviewChangesWindow(tk.Toplevel):
             return ""
         which = f"rung {kept[0]}" if len(kept) == 1 else f"rungs {_listed_rungs(kept)}"
         return (
-            f"\nStepped through, not copied whole: a whole paste would put back CLICK's {which} "
+            f"\nStepped through, not copied whole. A whole paste would put back CLICK's {which} "
             "from ClickNick's reading of its old encoding, which you chose to keep"
         )
 
@@ -1354,7 +1355,7 @@ class ReviewChangesWindow(tk.Toplevel):
         if self._is_nickname_step(idx):
             if self._nicknames_skipped:
                 return (
-                    "The nicknames are skipped: CLICK keeps its own.\n"
+                    "The nicknames are skipped. CLICK keeps its own.\n"
                     'Click "Next" to go on, or tick Take these nicknames to stage them'
                 )
             return self._nicknames_prompt()
@@ -1363,7 +1364,7 @@ class ReviewChangesWindow(tk.Toplevel):
         if self._rest_skipped(name):
             which = "Every difference" if self._all_skipped(name) else "What is left"
             return (
-                f"{which} of {name} is skipped: CLICK keeps what it has.\n"
+                f"{which} of {name} is skipped. CLICK keeps what it has.\n"
                 'Click "Next" to go on, or tick Take this difference to paste one'
             )
         step = self._current_step()
@@ -1407,7 +1408,7 @@ class ReviewChangesWindow(tk.Toplevel):
         if self._matches_click(name):
             if self._empty_whole(name, step):
                 return (
-                    f"{name} already matches CLICK's last save: neither has rungs.\n"
+                    f"{name} already matches CLICK's last save. Neither has rungs.\n"
                     'Click "Next" to go on'
                 )
             return (
@@ -1463,9 +1464,9 @@ class ReviewChangesWindow(tk.Toplevel):
                 prompt += f"\n{refusal}"
             elif name in self._unplaced:
                 prompt += (
-                    "\nCLICK holds rungs of it pasted before this folder was read again, not "
-                    "saved yet, so its changed rungs cannot be numbered: it is copied whole. "
-                    "To step through them instead, save in CLICK first"
+                    "\nCLICK holds rungs of it that you pasted before this folder was read "
+                    "again. CLICK has not saved them, so its changed rungs cannot be numbered "
+                    "and it is copied whole. To step through them instead, save in CLICK first"
                 )
             return prompt
         return f'Click "Copy" to copy {name} to the clipboard. {self._whole_placement(name)}'
@@ -1647,8 +1648,8 @@ class ReviewChangesWindow(tk.Toplevel):
         what = "difference is an edit" if skipped == 1 else "differences are edits"
         return (
             f"{skipped} skipped {what} in the workspace source. When CLICK saves, the "
-            "workspace goes back to CLICK's version and skipped edits are kept only in "
-            "backup/src/plc (clicknick-cli restore list for older ones)."
+            "workspace goes back to CLICK's version. Skipped edits then stay only in "
+            "backup/src/plc. For older backups, run clicknick-cli restore list."
         )
 
     def _update_notice(self) -> None:
@@ -1673,16 +1674,16 @@ class ReviewChangesWindow(tk.Toplevel):
                     "CLICK was saved before all of this was pasted, so the workspace is back to "
                     f"CLICK's version. This window still holds the proposal exported at "
                     f"{self._read_at} and can keep pasting it.\n"
-                    "The edited source is kept in backup/src/plc (clicknick-cli restore list "
-                    "for older ones): run clicknick-cli restore, then Review Changes, to work "
-                    "on it again."
+                    "The edited source is kept in backup/src/plc. For older backups, run "
+                    "clicknick-cli restore list. To work on it again, run clicknick-cli "
+                    "restore, then Review Changes."
                 )
         elif skipped := self._skipped_edits_line():
             lines.append(skipped)
         if left_out := self._left_out_names():
             verb = "is" if len(left_out) == 1 else "are"
             lines.append(
-                f"{', '.join(left_out)} could not be read and {verb} left out: CLICK keeps "
+                f"{', '.join(left_out)} could not be read and {verb} left out. CLICK keeps "
                 "what it has. Fix the CSV and open the folder again to paste it."
             )
         if not lines:
@@ -1699,7 +1700,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self._view_name, self._view_block = name, block
         if self._locked(name, block):
             if self._pasted_already(name, block) or name in self._done:
-                why = "That difference is pasted into CLICK already; it can no longer be skipped"
+                why = "That difference is already pasted into CLICK, so you can no longer skip it"
             else:
                 why = (
                     f"A step of {name} is under way in CLICK. Finish it and click "
@@ -1832,7 +1833,7 @@ class ReviewChangesWindow(tk.Toplevel):
             )
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
         except RuntimeError as exc:
-            self._status_var.set(f"Clipboard error: {exc}\nIs Click running?")
+            self._status_var.set(f"Clipboard error: {exc}\nIs CLICK running?")
             return False
         except Exception as exc:
             self._status_var.set(f"Error loading {name}: {exc}")
@@ -1875,7 +1876,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 'Click OK there, then "Copy" here and paste into the new subroutine'
             )
         else:
-            msg = f'CLICK\'s {_NEW_SUB_TITLE} window has no name box; type "{sub_name}" there'
+            msg = f'CLICK\'s {_NEW_SUB_TITLE} window has no name box. Type "{sub_name}" there'
         self._finish_add_subroutine(msg)
 
     def _wait_for_new_subroutine(self, pid: str, sub_name: str, remaining_ms: int) -> None:
@@ -1902,7 +1903,7 @@ class ReviewChangesWindow(tk.Toplevel):
             return
         # Ctrl+U goes to the window in front, so check that CLICK is in front
         if WIN32.get_foreground_pid() != pid:
-            self._finish_add_subroutine("Could not bring CLICK to the front; try again")
+            self._finish_add_subroutine("Could not bring CLICK to the front. Try again")
             return
         WIN32.send_ctrl_key("U")
         self._wait_for_new_subroutine(pid, sub_name, _DIALOG_TIMEOUT_MS)
@@ -2223,8 +2224,8 @@ class ReviewChangesWindow(tk.Toplevel):
         if self._unsaved_pastes():
             question += (
                 "\n\nCLICK holds rungs pasted from this window that it has not saved. "
-                "Restart numbers the steps from CLICK's last save as if they were not there: "
-                "undo those pastes in CLICK first, or save in CLICK instead."
+                "Restart numbers the steps from CLICK's last save, as if those pastes were "
+                "not there. Undo the pastes in CLICK first, or save in CLICK instead."
             )
         return question
 

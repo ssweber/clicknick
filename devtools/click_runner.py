@@ -1908,8 +1908,8 @@ class Run:
             elif time.monotonic() - since[0] > self.s.timeout:
                 raise Aborted(
                     f"CLICK answers again, but after {self.s.timeout:g} s its status bar does "
-                    f"not show the {rungs} rung(s) pasted: {' | '.join(now.panes)} "
-                    f"(before: {' | '.join(before.panes)})"
+                    f"not show the {rungs} rung(s) pasted. It shows {' | '.join(now.panes)}. "
+                    f"Before the paste it showed {' | '.join(before.panes)}."
                 )
             return None
 
@@ -2004,7 +2004,8 @@ class Run:
             if _end_rung(baseline["text"]) != 1:
                 raise Aborted(
                     "the empty main program's Syntax Check does not name rung 1 for its missing "
-                    f"END (C0201), so a placed instruction cannot be told: {baseline['text']!r}"
+                    "END (C0201). The runner cannot tell whether an instruction was placed. "
+                    f"The check reads {baseline['text']!r}."
                 )
         with self.step("try"):
             tried = 0
@@ -2653,8 +2654,8 @@ class Run:
         cleared = self.check_syntax()
         if _unnamed(cleared) != _unnamed(baseline):
             raise Aborted(
-                f"after {what}, Delete did not leave the main program empty: its Syntax "
-                f"Check reads {cleared['text']!r}, the empty program's {baseline['text']!r}"
+                f"after {what}, Delete did not leave the main program empty. Its Syntax "
+                f"Check reads {cleared['text']!r}. The empty program's reads {baseline['text']!r}."
             )
 
     def read_field(self, what: str, title: str, name: str, control: Control) -> str:
@@ -2782,13 +2783,13 @@ class Run:
             entry["outcome"] = "other"
             raise Aborted(
                 f"{what}: CLICK closed the dialog, but its Syntax Check names rung {rung} for "
-                "the missing END, not rung 2: no instruction was placed in rung 1"
+                "the missing END, not rung 2. No instruction was placed in rung 1."
             )
         if self.s.wire and lines:
             entry["outcome"] = "other"
             raise Aborted(
                 f"{what}: CLICK closed the dialog, but the wired rung's Syntax Check names "
-                f"what the empty program's does not: {lines!r}"
+                f"more than the empty program's does: {lines!r}"
             )
         entry["outcome"] = "accepted"
         self.log(f"{what}: accepted")
@@ -3484,7 +3485,8 @@ class Run:
             if stale:
                 raise Aborted(
                     f"{', '.join(name for name, _, _ in stale)} in CLICK's temp folder "
-                    "predates the paste and the save left it as it was (from another run?)"
+                    "predates the paste, and the save did not change it. It may be left over "
+                    "from another run."
                 )
             self.result["files"]["ckp"] = ckp
         with self.step("copy"):
@@ -3948,7 +3950,7 @@ def _positive(text: str) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="click_runner.py",
-        description="Drive CLICK v4 unattended (see this file's docstring).",
+        description="Drive CLICK v4 without a person at the keyboard. See this file's docstring.",
     )
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--out", type=Path, required=True, help="a folder that is new or empty")
@@ -3961,7 +3963,7 @@ def _parser() -> argparse.ArgumentParser:
     common.add_argument(
         "--user-type",
         default=None,
-        help="Login User Type when CLICK leaves it empty "
+        help="Login User Type to enter when CLICK leaves it empty "
         f"(default: CLICK_RUNNER_USER_TYPE, else {DEFAULT_USER_TYPE!r})",
     )
     common.add_argument(
@@ -3974,14 +3976,14 @@ def _parser() -> argparse.ArgumentParser:
         "--paste-timeout",
         type=float,
         default=DEFAULT_PASTE_TIMEOUT,
-        help="the most seconds CLICK may stay busy pasting, checking, saving or closing "
+        help="the longest CLICK may stay busy pasting, checking, saving or closing, in seconds "
         f"(default {DEFAULT_PASTE_TIMEOUT:g})",
     )
     common.add_argument(
         "--plc",
         default=None,
         metavar="NAME",
-        help="the name of the PLC the status bar must show once connected (default: any)",
+        help="the PLC name that the status bar must show once connected (default: any)",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     paste = commands.add_parser(
@@ -4004,23 +4006,23 @@ def _parser() -> argparse.ArgumentParser:
     tries.add_argument(
         "--wire",
         action="store_true",
-        help=f"place each case in a rung of its own: behind a contact {WIRE_CONTACT} (an output "
-        f"instruction) or driving a coil {WIRE_COIL} (a contact); with --keep, copy each "
-        "accepted rung to the clipboard too",
+        help="place each case in a rung of its own. An output instruction goes behind a "
+        f"contact {WIRE_CONTACT}. A contact drives a coil {WIRE_COIL}. With --keep, also copy "
+        "each accepted rung to the clipboard",
     )
     tries.add_argument(
         "--resume",
         type=Path,
         default=None,
         metavar="PREV_DIR",
-        help="carry the answers of the run in PREV_DIR and try only the cases it left",
+        help="reuse the answers from the run in PREV_DIR and try only the cases it left",
     )
     tries.add_argument(
         "--stop-after",
         type=_positive,
         default=None,
         metavar="N",
-        help="stop cleanly once N cases were tried in this run",
+        help="stop cleanly after N cases have been tried in this run",
     )
     tries.add_argument("--record", action="store_true", help="also dump every window at each step")
     imports = commands.add_parser(
@@ -4053,9 +4055,9 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         dest="keys",
         metavar="KEY",
-        help=f"a key to send to the grid (or its editor): {', '.join(_VIRTUAL_KEYS)}, "
+        help=f"a key to send to the grid or its editor: {', '.join(_VIRTUAL_KEYS)}, "
         "chars:TEXT (WM_CHAR), text:TEXT (WM_SETTEXT) or find:TEXT (the Find box, then "
-        "Find); repeat for more",
+        "Find). Repeat the option to send more keys",
     )
     pickers.add_argument("--ok", action="store_true", help="close the Address Picker by OK")
     reopens = commands.add_parser(
@@ -4068,7 +4070,7 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         metavar="LINES",
         help="ASCII lines to add to the end of the project's Project.ini before the second "
-        r"save, separated by \n (a backslash, then n) or by line breaks",
+        r"save. Separate them with \n (a backslash, then n) or with line breaks",
     )
     reopens.add_argument(
         "--record", action="store_true", help="also dump every window at each step"

@@ -895,7 +895,9 @@ class SimulationSession:
             self._state, snapshot, inputs=inputs, analog_inputs=analog_inputs
         )
         self._schedule_save()
-        self._set_notice(f"Loaded PLC data from {path.name}; switches set from snapshot.")
+        self._set_notice(
+            f"Loaded PLC data from {path.name}. The switches are set from the snapshot."
+        )
 
     def _follow_program(self) -> bool:
         """Restart a failed simulation if CLICK saved a program since. Return True if it did.
@@ -986,9 +988,9 @@ class SimulationSession:
         if not new_build and not self._source_changed:
             return None
         tail = (
-            f" Writing it failed: {self._write_error}. Restart runs what the workspace holds "
-            "now (CLICK's last save and any edits) in a new simulation, from power-on values "
-            "(or the PLC data file)."
+            f" Could not write the program: {self._write_error}. Restart starts a new "
+            "simulation from the workspace as it is now (CLICK's last save and any edits), "
+            "from power-on values or the PLC data file."
             if self._write_error
             else ""
         )
@@ -997,8 +999,8 @@ class SimulationSession:
             tail = f" {carry}{tail}"  # listed before the user writes
         if self._console_commands and not self._writing:
             tail += (
-                " A Console command is still running; the program can be written once it ends "
-                "(type stop to cancel it)."
+                " A Console command is still running. You can write the program once it ends. "
+                "Type stop to cancel it."
             )
         if new_build:
             if analysis.status is AnalysisStatus.FAILED:
@@ -1388,7 +1390,9 @@ class SimulationSession:
             return  # That simulation is gone. The next one tries again.
         forces = {a: v for a, v in self._state.forces.items() if a not in failed}
         self._update_state(forces=forces)
-        self._message(f"Could not restore forces on {', '.join(failed)}; released them.", "error")
+        self._message(
+            f"Could not restore forces on {', '.join(failed)}. They were released.", "error"
+        )
 
     def _input_patches(self) -> dict[str, PlcValue]:
         patches: dict[str, PlcValue] = {}
@@ -1931,7 +1935,7 @@ class SimulationSession:
             return
         self._writing = False
         if not known:
-            text = f"{text}; which program the simulation runs is unknown, and it may be paused"
+            text = f"{text}. Which program the simulation runs is unknown, and it may be paused"
             if released:
                 text = f"{text}. If it runs the new program, it released {', '.join(released)}"
             # Frames may show it paused. Restart starts in the position that the user had.
@@ -2723,7 +2727,7 @@ class SimulationSession:
         used = self._used_io()
         if path is None or key[0] is None:
             layout = build_panel_layout((), used)
-            error = "CLICK's Project.ini was not found; save the project in CLICK."
+            error = "CLICK's Project.ini was not found. Save the project in CLICK."
         else:
             try:
                 layout = self._layout_reader(path, used)

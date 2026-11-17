@@ -123,6 +123,6 @@ def test_a_sync_click_already_holds_says_so() -> None:
 
     window._on_synced.assert_called_once_with(set())
     module.messagebox.showinfo.assert_called_once_with(
-        "Sync", "CLICK already had these changes; nothing to write.", parent=window
+        "Sync", "CLICK already has these changes. There is nothing to write.", parent=window
     )
     assert not store.has_unsaved_changes()

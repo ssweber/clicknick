@@ -155,8 +155,8 @@ def check_click_version(rungs: list[Rung], *, click_v4: bool, first_rung: int = 
     if len(lines) > _V4_ONLY_LISTED:
         lines[_V4_ONLY_LISTED:] = [f"  ...and {len(lines) - _V4_ONLY_LISTED} more"]
     raise NeedsClickV4Error(
-        "These rungs need CLICK v4, but the CLICK window is an older version, "
-        "which would silently change them on paste:\n" + "\n".join(lines)
+        "These rungs need CLICK v4. The CLICK window is an older version "
+        "and would silently change them on paste:\n" + "\n".join(lines)
     )
 
 

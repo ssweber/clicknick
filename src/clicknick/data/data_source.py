@@ -166,7 +166,7 @@ def _write_file(path: Path, data: str) -> None:
         if _is_read_only(path):
             raise PermissionError(f"{path.name} is read-only.") from exc
         raise PermissionError(
-            f"{path.name} is open in another program (Excel?); close it and save again."
+            f"{path.name} is open in another program (Excel?). Close it and save again."
         ) from exc
 
 

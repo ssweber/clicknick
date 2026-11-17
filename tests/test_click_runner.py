@@ -3006,7 +3006,7 @@ def test_a_box_that_closes_the_dialog_with_nothing_placed_stops_the_run(tmp_path
     fake = FakeClick(tmp_path, judge=judge, places=False)
     out = tmp_path / "out"
     code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES[:1]})
-    assert_aborted(fake, out, code, result, "no instruction was placed in rung 1")
+    assert_aborted(fake, out, code, result, "No instruction was placed in rung 1")
     (case,) = result["cases"]
     assert (case["outcome"], case["code"]) == ("other", "OBJ-099")
 
@@ -3654,7 +3654,7 @@ def test_wire_stops_on_a_rung_that_does_not_check_clean(tmp_path, setup):
     fake = FakeClick(tmp_path, syntax_lines={"Search": "Main Program : Rung 1 : warning W0301: x."})
     out = tmp_path / "out"
     code, result = run_try(fake, tmp_path, exe, {"cases": [SEARCH]}, "--wire")
-    assert_aborted(fake, out, code, result, "the wired rung's Syntax Check names what")
+    assert_aborted(fake, out, code, result, "the wired rung's Syntax Check names more than")
     (case,) = result["cases"]
     assert case["outcome"] == "other"
     assert case["syntax_check"]["lines"] == ["Main Program : Rung 1 : warning W0301: x."]

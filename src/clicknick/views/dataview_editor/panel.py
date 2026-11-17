@@ -966,7 +966,7 @@ class DataviewPanel(ttk.Frame):
             answer = messagebox.askyesnocancel(
                 "File Changed",
                 f"'{path.name}' was changed by another program, such as CLICK, "
-                "after the rows you are saving were read from it.\n\n"
+                "after ClickNick read the rows you are saving.\n\n"
                 "Yes: save this dataview over it.\n"
                 "No: reload it (Ctrl+Z brings your edits back).\n"
                 "Cancel: do neither.",
@@ -1088,7 +1088,7 @@ class DataviewPanel(ttk.Frame):
             f"'{self.name}' has been modified by another program.\n\nDo you want to reload it?"
         )
         if self._is_dirty:
-            message += " It replaces your unsaved edits; Ctrl+Z brings them back."
+            message += " It replaces your unsaved edits. Ctrl+Z brings them back."
         self._reload_prompt_shown = True
         try:
             reload = messagebox.askyesno("Reload", message, parent=self)

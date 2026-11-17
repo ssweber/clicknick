@@ -223,8 +223,8 @@ def test_a_busy_click_after_sync_says_the_names_are_synced_and_how_to_redraw(des
     message, style = _status(app)
     assert style == "error"
     assert message == (
-        '⚠ Synced into CLICK\'s database, but CLICK was busy (CLICK shows "Out"): '
-        "Tools > Redraw Nicknames in CLICK shows them"
+        '⚠ Synced into CLICK\'s database, but CLICK was busy (CLICK shows "Out"). '
+        "Use Tools > Redraw Nicknames in CLICK to show them"
     )
 
 
@@ -249,7 +249,7 @@ def test_the_menu_command_on_a_busy_click_says_to_close_its_dialog(desktop) -> N
     app.root.run(100)
 
     assert _status(app) == (
-        "⚠ CLICK is busy (CLICK's window is disabled): close its dialog and try again",
+        "⚠ CLICK is busy (CLICK's window is disabled). Close its dialog and try again",
         "error",
     )
 

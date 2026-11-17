@@ -287,7 +287,7 @@ class ConnectionSession:
                         # read is reported when the checks run (Check Program).
                         traceback.print_exc()
             if not published:
-                error = "The project changed while converting; conversion was discarded."
+                error = "The project changed while converting. The conversion was discarded."
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
@@ -459,7 +459,7 @@ class ConnectionSession:
             return SavedProgram(self, generation, saves, csv_dir=csv_dir, note="")
         if status is AnalysisStatus.FAILED:
             return SavedProgram(
-                self, generation, saves, note="Could not read CLICK's program; see the main window"
+                self, generation, saves, note="Could not read CLICK's program. See the main window."
             )
         return SavedProgram(self, generation, saves, note=reading)
 

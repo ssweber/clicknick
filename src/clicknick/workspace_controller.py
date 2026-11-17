@@ -174,7 +174,7 @@ class WorkspaceController:
         if status.changed_rungs:
             app._update_status(f"Reviewing {status.label}", "connected")
         else:
-            app._update_status("Workspace clean; no changed rungs to review", "connected")
+            app._update_status("Workspace clean. No changed rungs to review", "connected")
 
     def _reload_finished(self, success: bool, error: str | None) -> None:
         """Report completion of an explicit CLICK-to-workspace reload."""
@@ -209,8 +209,8 @@ class WorkspaceController:
         confirmed = messagebox.askokcancel(
             "Reload from CLICK",
             "Reload the workspace from the saved CLICK project?\n\n"
-            "This replaces the active generated source. Modified workspace source "
-            "will be preserved in the recovery snapshot.",
+            "This replaces the active generated source. Your changes to the workspace "
+            "source are kept in the recovery snapshot.",
             parent=app.root,
         )
         if not confirmed:

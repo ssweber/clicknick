@@ -505,12 +505,12 @@ def _restore(project_dir: Path, older: str | None) -> PlcRestore:
     if older is None:
         chosen = plc_backup_dir(project_dir)
         if not chosen.is_dir():
-            raise ValueError("no source backup found; run 'clicknick-cli backup' first")
+            raise ValueError("no source backup found. Run 'clicknick-cli backup' first")
     else:
         names = older_plc_backups(project_dir)
         if older not in names:
             listed = ", ".join(names) if names else "none"
-            raise ValueError(f"no older backup named {older!r}; older backups: {listed}")
+            raise ValueError(f"no older backup named {older!r}. Older backups: {listed}")
         chosen = older_plc_backups_dir(project_dir) / older / PLC_PACKAGE_PATH
     destination = plc_source_dir(project_dir)
     with tempfile.TemporaryDirectory(

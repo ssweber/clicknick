@@ -362,9 +362,10 @@ class ImportCsvDialog(tk.Toplevel):
             "  Nickname:   Overwrite = Replace existing | Merge = Only if empty\n"
             "  Comment:    Overwrite | Append | Block Tag = Update tag only\n"
             "  First Scan: Initial Value + Retentive, imported together.\n"
-            "              Retentive addresses power up with their retained value, so an\n"
-            "              initial value only applies when Retentive is off - importing one\n"
-            "              without the other silently changes first-scan behavior.\n"
+            "              Retentive addresses power up with their retained value.\n"
+            "              An initial value applies only when Retentive is off.\n"
+            "              Importing one without the other silently changes\n"
+            "              first-scan behavior.\n"
             "              Overwrite = Take both from CSV | Merge = Only if both are default"
         )
         help_label = ttk.Label(

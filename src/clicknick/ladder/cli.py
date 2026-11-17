@@ -449,7 +449,10 @@ def main() -> None:
     save.add_argument(
         "file",
         metavar="FILE",
-        help="Output path: .bin for binary, .csv for decoded CSV, anything else saves both FILE.bin and FILE.csv",
+        help=(
+            "Output path. A .bin path saves the binary and a .csv path saves the decoded CSV. "
+            "Any other path saves both FILE.bin and FILE.csv."
+        ),
     )
 
     args = parser.parse_args()

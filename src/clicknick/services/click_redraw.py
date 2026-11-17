@@ -252,7 +252,7 @@ def _redraw(
         return _Import(desktop, pid, main, path, clock, sleep).run()
     finally:
         if not _remove(path):
-            logger.warning("Could not remove %s yet; the next redraw tries again", path)
+            logger.warning("Could not remove %s yet. The next redraw will try again.", path)
             with _leftovers_lock:
                 _leftovers.add(path)
 
