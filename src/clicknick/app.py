@@ -526,9 +526,10 @@ class ClickNickApp:
         return simulation
 
     def _toggle_simulation(self) -> None:
-        """Start or stop the simulation from the Test group's Start/Stop button.
+        """Start or stop the simulation when the user clicks Start/Stop in the Test group.
 
-        Only this button and teardown stop the simulation.
+        Only this button and closing the connection (``ConnectionController.close_session``)
+        stop the simulation. Closing a window does not.
         """
         session = self._session
         simulation = session.simulation if session is not None else None
@@ -1756,7 +1757,7 @@ class ClickNickApp:
         return True
 
     def _show_main_window(self) -> None:
-        """Reveal the fully initialized root at one stable initial size."""
+        """Show the main window at the size that its widgets ask for. Later calls do nothing."""
         if self._main_window_shown:
             return
         self.root.update_idletasks()
@@ -1767,13 +1768,20 @@ class ClickNickApp:
         self._main_window_shown = True
 
     def _report_legacy_encodings(self) -> None:
-        """Say once which rungs CLICK holds in an old encoding or ClickNick cannot read.
+        """Tell the user which rungs in CLICK's last save they must paste again.
 
-        A rung in an old encoding reads the same as the workspace rung, so no other check
-        shows that CLICK runs it differently. This message says so, and Review Changes pastes
-        the rung again. The workspace holds an
-        empty rung for each rung it cannot read, so the user must supply those from their
-        own copy. The same goes for a program whose CSV laddercodec cannot read.
+        The message lists three kinds of finding:
+
+        - A rung that ClickNick cannot read. The workspace holds an empty rung in its place.
+          The user must paste the rung from their own copy of the program.
+        - A program whose CSV laddercodec cannot read. The user must paste it from their own
+          copy.
+        - A rung that an older ClickNick pasted in an old encoding. It reads the same as the
+          workspace rung, so no other check shows that CLICK runs it differently. The
+          message offers Review Changes, which pastes the rung again.
+
+        ``ConnectionSession.legacy_encodings_to_report`` returns nothing unless a finding is
+        new. So the message shows once for each set of findings.
         """
         from .ladder.program import describe_legacy_encoding
 

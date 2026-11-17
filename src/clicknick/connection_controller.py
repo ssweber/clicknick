@@ -6,11 +6,17 @@ controller also follows a project change, notices the window closing, shows the
 autocomplete popup while monitoring is on, and has the window redraw its nicknames
 (``redraw_nicknames``).
 
-The state it changes stays on the app. The session is in ``ClickNickApp._session`` and the
-data is in ``ClickNickApp._data`` (through ``_open_data`` and ``_close_data``). The
-controller itself keeps only these: the window list, the user's monitoring choice, the
-Monitoring status still due after a load (``_status_after_id``), whether the ODBC warning
-has shown, whether a redraw is running, and a redraw that was requested while it runs.
+The controller changes the session and the data only through the app. The session lives in
+``ClickNickApp._session``. The data lives in ``ClickNickApp._data``, and the controller
+changes it through ``_open_data`` and ``_close_data``. The controller keeps only this state
+of its own:
+
+- the CLICK windows that the combobox lists (``click_instances``);
+- whether the user turned autocomplete popups on (``monitoring``);
+- the Monitoring status line that is due a second after a load (``_status_after_id``);
+- whether the ODBC warning has shown;
+- whether a nickname redraw is running, and the request made while it runs
+  (``_redraw_pending``).
 """
 
 from __future__ import annotations
