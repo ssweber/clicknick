@@ -210,18 +210,27 @@ def _cmd_set_choices(ctx: DispatchContext, parts: list[str]) -> str:
     )
 
 
+_SET_RANGE_USAGE = "usage: tag set-range <identifier> <min> <max>"
+
+
+def _number(text: str) -> int | float:
+    """Return *text* as an int, or else as a float. Raise ValueError with the usage if neither."""
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return float(text)
+    except ValueError:
+        raise ValueError(f"{text!r} is not a number\n{_SET_RANGE_USAGE}") from None
+
+
 def _cmd_set_range(ctx: DispatchContext, parts: list[str]) -> str:
     if len(parts) < 3:
-        raise ValueError("usage: tag set-range <identifier> <min> <max>")
+        raise ValueError(_SET_RANGE_USAGE)
     identifier = parts[0]
-    try:
-        min_val: int | float = int(parts[1])
-    except ValueError:
-        min_val = float(parts[1])
-    try:
-        max_val: int | float = int(parts[2])
-    except ValueError:
-        max_val = float(parts[2])
+    min_val = _number(parts[1])
+    max_val = _number(parts[2])
     addr_key, block_tag, meta, free_text = _get_meta(ctx, identifier)
     meta = replace(meta, min=min_val, max=max_val, choices=None)
     return _apply_meta(
