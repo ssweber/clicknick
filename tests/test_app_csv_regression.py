@@ -27,14 +27,14 @@ class FakeVar:
 
 
 class FakeCsvDataSource:
-    """Minimal CSV data source stand-in for load_csv tests."""
+    """Stand in for the CSV data source in load_csv tests."""
 
     def __init__(self, csv_path: str):
         self.csv_path = csv_path
 
 
 class FakeAddressStore:
-    """Minimal AddressStore stand-in for load_csv tests."""
+    """Stand in for AddressStore in load_csv tests."""
 
     def __init__(self, data_source=None, *, is_database: bool = False, unsaved: bool = False):
         self.data_source = data_source
@@ -65,7 +65,7 @@ _MY_PROJECT = ClickConnection("111", 222, "MyProject.ckp")
 
 
 def _session(click: ClickConnection = _MY_PROJECT):
-    """A session on *click* whose close() is recorded."""
+    """Return a session on *click* that records its close() call."""
     session = ConnectionSession(click)
     session.close = MagicMock(wraps=session.close)
     return session
@@ -103,7 +103,7 @@ def test_load_csv_with_stale_connection_skips_monitoring_and_clears_connection(m
 
     assert result is True
     assert app._connection._on_data_ready.call_count == 0
-    # The window is gone: its session closes with everything it runs
+    # The window is gone, so its session closes, and so does everything the session runs.
     session.close.assert_called_once()
     assert app._session is None
     assert app.selected_instance_var.get() == ""
@@ -203,7 +203,7 @@ def test_project_change_loads_new_database_off_the_ui_thread(monkeypatch):
     app = _make_app_stub()
     app._data = DataSession(FakeAddressStore(is_database=True))
     app.instances_combobox = {}
-    # CLICK's folder is not read
+    # Stub the pairing lookup so that the test does not read CLICK's folder.
     monkeypatch.setattr(ConnectionSession, "load_workspace_pairing", lambda _self: None)
     app._connection._load_instance_database = MagicMock()
     app.nickname_manager.has_database_backend = lambda: True

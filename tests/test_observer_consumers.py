@@ -112,7 +112,7 @@ def test_shared_dataview_lookup_reads_the_store_live() -> None:
 
 
 class _SortSettings:
-    """Minimal settings stub for NicknameManager filtering."""
+    """Stand in for the settings that NicknameManager filters by."""
 
     search_mode = "none"
     exclude_sc_sd = False
