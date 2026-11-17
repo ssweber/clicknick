@@ -45,7 +45,7 @@ def test_channel_inputs_reach_analysis_and_generated_workspace(tmp_path, monkeyp
         encoding="utf-8",
     )
     graph, _program, project, _tag_maps = _build_graph(tmp_path, None, tmp_path / "workspace")
-    assert read == [tmp_path]  # One reading for the analysis and the workspace
+    assert read == [tmp_path]  # The analysis and the workspace read the project once between them
     assert graph.tags["DF1"].external
     assert not graph.tags["DF10"].external
     namespace = {}
@@ -53,7 +53,7 @@ def test_channel_inputs_reach_analysis_and_generated_workspace(tmp_path, monkeyp
     assert namespace["df"][1].external
     assert not namespace["df"][5].external
     assert not namespace["df"][10].external
-    # Recorded with the generation, for regenerating its code later
+    # The generation records the analog inputs, so its code can be regenerated later.
     assert read_analog_inputs(project / "csv") == {"DF1"}
 
 

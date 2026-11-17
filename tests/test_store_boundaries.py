@@ -1,9 +1,9 @@
-"""Architecture rules, checked by reading the source.
+"""Check the architecture rules by reading the source.
 
 1. AddressStore is the only writer of its state layers. Everything else edits
    through ``store.edit_session()`` and reads ``visible_state``.
 2. Nothing outside the store touches its private ``_current_session``.
-3. ``services/``, ``data/`` and the simulation session are pure Python: no tkinter.
+3. ``services/``, ``data/`` and the simulation session are pure Python and import no tkinter.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[1] / "src" / "clicknick"
 STORE = SRC / "data" / "address_store.py"
 
-# State the store derives or owns; outside code may read but never write these.
+# The store derives or owns this state. Outside code may read it but never write it.
 STORE_LAYERS = {"base_state", "user_overrides", "visible_state", "block_colors", "row_order"}
 MUTATING_METHODS = {
     "append",
@@ -89,7 +89,7 @@ def test_only_the_store_uses_its_current_session() -> None:
     assert violations == [], "Use the session yielded by edit_session():\n" + "\n".join(violations)
 
 
-# Session objects views observe; they schedule through a Tk root but never import tkinter.
+# Session objects that views observe. They schedule through a Tk root, never import tkinter.
 PURE_MODULES = ("simulation_session.py",)
 
 

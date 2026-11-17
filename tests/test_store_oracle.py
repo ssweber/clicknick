@@ -1,13 +1,12 @@
-"""Oracle test: the store's kept derived state must equal a full rebuild.
+"""Test that the store's kept derived state equals a full rebuild.
 
 AddressStore keeps visible rows, validation, dirty markers, the nickname index,
-the loaded-with-error mask and block colors up to date incrementally. Random
-sequences of edits, undo, redo, discard, Sync and external CLICK writes run
-against a store; after every step a second store is rebuilt from the same
-inputs (database rows and the user's overrides) and every derived fact is
-compared. Each edit is also checked against the cascade rules: what the caller
-set holds, and other rows change only in their block tag, only when an edited
-row's block tag changed.
+the loaded-with-error mask and block colors up to date incrementally. The test runs
+random sequences of edits, undo, redo, discard, Sync and external CLICK writes against
+a store. After every step it rebuilds a second store from the same inputs (database
+rows and the user's overrides) and compares every derived fact. It also checks each
+edit against the cascade rules. The rows the caller set hold what was set. Other rows
+change only in their block tag, and only when the block tag of an edited row changed.
 """
 
 from __future__ import annotations
@@ -43,9 +42,10 @@ VALIDATION_FIELDS = (
     "loaded_with_error",
 )
 
-# Small pools so duplicates (including case-only ones), block tags and pair tags collide often.
-# Values with a space at either end are stored trimmed when set, and trimmed by a staged edit
-# when CLICK's database holds them.
+# The pools are small, so duplicates collide often. That includes case-only duplicates,
+# block tags and pair tags.
+# A value with a space at either end is stored trimmed when set. If CLICK's database holds
+# such a value, a staged edit trims it.
 KEYS = (
     [get_addr_key("C", n) for n in range(1, 9)]
     + [get_addr_key("DS", n) for n in (1, 2)]
@@ -98,7 +98,7 @@ def _row(addr_key: int, **fields) -> AddressRow:
 
 
 class Source:
-    """Data source whose rows the test (as CLICK) and Sync both write."""
+    """Data source that both the test (acting as CLICK) and Sync write rows to."""
 
     supports_used_field = True
     file_path = "oracle.mdb"
@@ -130,12 +130,11 @@ def _differs(row: AddressRow, base: AddressRow, name: str) -> bool:
 
 
 def _rebuild(store: AddressStore, source: Source) -> AddressStore:
-    """A store derived from scratch from the same inputs."""
+    """Return a store derived from scratch from the same inputs."""
     fresh = AddressStore(Source(dict(source.rows)))
     fresh.load_initial_data()
-    # Input is what the user intends: the fields they set and the values. Which
-    # of those still differ from the database is derived, here independently
-    # of the store's own helpers.
+    # Input is what the user intends: the fields they set and the values. This code derives
+    # which of those still differ from the database, without the store's own helpers.
     overrides = {}
     for key, values in store.user_overrides.items():
         base = fresh.base_state[key]
@@ -201,8 +200,9 @@ def _assert_cascade_rules(
     caller_set: dict[tuple[int, str], object],
     step: str,
 ) -> None:
-    """Rows the caller set hold what was set, as stored (trim_entry); other rows change
-    only as cascades may."""
+    """Check that the rows the caller set hold what was set, as stored (trim_entry).
+
+    Other rows change only as cascades may."""
     for (key, name), value in caller_set.items():
         assert not _differs(
             replace(before[key], **{name: trim_entry(name, value)}), store.visible_state[key], name
@@ -245,8 +245,10 @@ def _assert_cascade_rules(
 
 
 def _tied_keys(store: AddressStore, key: int) -> list[int]:
-    """Rows a cascade from *key* may write: its T/TD (CT/CTD) pair and rows of
-    its memory type holding a tag of the same block (its open/close match among them)."""
+    """Return the rows a cascade from *key* may write.
+
+    These are its T/TD (CT/CTD) pair and the rows of its memory type that hold a tag of
+    the same block. Its open/close match is among them."""
     row = store.visible_state[key]
     tied = []
     if row.memory_type in INTERLEAVED_PAIRS:
@@ -300,7 +302,7 @@ def _random_edit(rng: random.Random, store: AddressStore) -> str:
 
 def _fix_errors(store: AddressStore) -> str | None:
     """Put each row in error back as the database has it, or empty it if the
-    database's row is in error too, as a user does before Sync. Returns the step."""
+    database's row is in error too. A user does this before Sync. Return the step."""
     fixed: set[int] = set()
     for _ in range(3):
         in_error = [key for key in KEYS if store.visible_state[key].has_reportable_error]
@@ -325,8 +327,10 @@ def _fix_errors(store: AddressStore) -> str | None:
 def _random_click_change(
     rng: random.Random, store: AddressStore, source: Source, *, beside_edits: bool = False
 ) -> tuple[int, str, str]:
-    """CLICK writes one field. *beside_edits*: mostly a field the user did not set
-    on a row they edited, which Sync must not put back."""
+    """Make CLICK write one field.
+
+    With *beside_edits*, the field is mostly one that the user did not set on a row they
+    edited. Sync must not put that field back."""
     beside = [
         (key, name)
         for key, values in store.user_overrides.items()
@@ -364,9 +368,10 @@ def _random_click_change(
 
 
 def _save(store: AddressStore) -> bool:
-    """Sync; True if it wrote. Every caller is refused while there are validation errors.
+    """Run Sync and return True if it wrote.
 
-    Sync reads the database first, so whether it has errors is known only after.
+    Every caller is refused while there are validation errors. Sync reads the database
+    first, so whether it has errors is known only after that read.
     """
     had_edits = store.has_unsaved_changes()
     try:
@@ -433,8 +438,8 @@ def test_incremental_state_matches_full_rebuild(seed: int) -> None:
             user_has_field = name in store.user_overrides.get(key, {})
             wrote = _save(store)
             if not user_has_field:
-                # A Sync that writes reads the database first, which stages the trim of
-                # a value with an edge space, and writes that too.
+                # A Sync that writes reads the database first. That read stages the trim of a
+                # value with an edge space, and Sync writes the trim too.
                 written = trim_entry(name, value) if wrote else value
                 assert getattr(source.rows[key], name) == written, (key, name, "overwritten")
             store._on_database_update()  # the next poll

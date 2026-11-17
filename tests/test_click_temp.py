@@ -1,4 +1,4 @@
-"""The CLICK temp folder: one root, from Windows, for every caller."""
+"""Every caller gets the CLICK temp folder root from Windows."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def _click_folder(root: Path, hwnd: int = HWND) -> Path:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="GetTempPathW is Windows only")
 def test_the_folder_follows_the_windows_temp_path_not_the_user_name(monkeypatch, tmp_path):
-    """A renamed account, a domain profile or a redirected TEMP: SC_.mdb is under %TMP%."""
+    """SC_.mdb is under %TMP% for a renamed account, a domain profile or a redirected TEMP."""
     redirected = tmp_path / "jsmith.CORP" / "Temp"
     redirected.mkdir(parents=True)
     monkeypatch.setenv("TMP", str(redirected))
@@ -74,7 +74,7 @@ def _short_path(path: Path) -> str:
 
 @pytest.mark.skipif(sys.platform != "win32", reason="8.3 names are Windows only")
 def test_a_short_temp_path_is_given_in_its_long_form(monkeypatch, tmp_path):
-    """A file dialog returns long paths: the DataView folder must compare equal to them."""
+    """A file dialog returns long paths. The DataView folder must compare equal to them."""
     from clicknick.data.cdv_file import click_dataview_folder
     from clicknick.utils import click_temp
 

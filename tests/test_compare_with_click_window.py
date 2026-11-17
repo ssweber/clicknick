@@ -1,4 +1,4 @@
-"""Comparing with another CLICK window: a copy of its last save, shown in Review Changes."""
+"""Compare with another CLICK window: copy its last save and show the copy in Review Changes."""
 
 from __future__ import annotations
 
@@ -36,7 +36,10 @@ def _rung(coil: str) -> Rung:
 
 @pytest.fixture
 def click_dir(tmp_path: Path, monkeypatch) -> Path:
-    """Another CLICK window's temp folder: main and the subroutine "Motor", and its database."""
+    """Create the temp folder of another CLICK window.
+
+    It holds main, the subroutine "Motor" and its database.
+    """
     folder = tmp_path / "CLICK (000A1B2C)"
     folder.mkdir()
     programs = {
@@ -130,7 +133,7 @@ def test_a_copy_that_cannot_be_swapped_in_leaves_the_last_one_whole(
     replace = Path.replace
 
     def _held_open(self: Path, target):
-        if self.name == "copy" and self.parent != tmp_path:  # The new copy, into place
+        if self.name == "copy" and self.parent != tmp_path:  # Moving the new copy into place fails
             raise PermissionError("[WinError 32] in use")
         return replace(self, target)
 
@@ -147,7 +150,7 @@ def test_stale_snapshots_are_removed_except_those_kept(monkeypatch, tmp_path: Pa
     for hwnd in (1, 2, 3):
         (snapshot_dir(hwnd) / "csv").mkdir(parents=True)
     compare = snapshot_dir(1).parent
-    (compare / ".CLICK (00000003)-k2j8").mkdir()  # Left by a copy cut short
+    (compare / ".CLICK (00000003)-k2j8").mkdir()  # A copy cut short leaves such a folder
     (compare / "notes").mkdir()
 
     removed = remove_stale_snapshots([1], [snapshot_dir(2)])
@@ -162,7 +165,8 @@ def test_stale_snapshots_are_removed_except_those_kept(monkeypatch, tmp_path: Pa
 
 def test_a_copy_holding_a_shown_folder_is_kept(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    shown = snapshot_dir(3) / "subroutines"  # Compare with > Folder on part of a copy
+    # The user shows part of a copy through Compare with > Folder
+    shown = snapshot_dir(3) / "subroutines"
     shown.mkdir(parents=True)
 
     assert remove_stale_snapshots([], [shown]) == []
@@ -176,7 +180,10 @@ def test_no_compare_folder_removes_nothing(monkeypatch, tmp_path: Path) -> None:
 
 
 def _app(windows: dict[int, str] | None = None) -> ClickNickApp:
-    """An app connected to the CLICK window 1; *windows* are the open ones, hwnd -> file."""
+    """Return an app connected to CLICK window 1.
+
+    *windows* maps hwnd to file for the open windows.
+    """
     windows = {1: "Line1.ckp", 2: "Line2.ckp"} if windows is None else windows
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
@@ -248,9 +255,9 @@ def test_comparing_with_a_click_window_shows_its_copy_as_another_plc(
         False,
         False,
     )
-    call.kwargs["refresh_source"]()  # Refresh: copied again, and shown again
+    call.kwargs["refresh_source"]()  # Refresh copies the window again and shows the copy again
     assert len(copies) == 2
-    app.root.configure.assert_called_with(cursor="")  # Not left busy
+    app.root.configure.assert_called_with(cursor="")  # The cursor is not left busy
 
 
 def test_refresh_refuses_a_click_window_that_has_another_project_open(monkeypatch) -> None:
@@ -265,7 +272,7 @@ def test_refresh_refuses_a_click_window_that_has_another_project_open(monkeypatc
     windows[2] = "Unrelated.ckp"
     refresh()
 
-    assert len(copies) == 1  # Not copied over with another project
+    assert len(copies) == 1  # Refresh does not copy a window that has another project open
     assert "has another project open now" in showerror.call_args.args[1]
 
 
@@ -303,7 +310,7 @@ def test_refreshing_the_window_list_removes_copies_of_closed_windows(
     for hwnd in (1, 2, 3, 4, 5):
         (snapshot_dir(hwnd) / "csv").mkdir(parents=True)
     compare = snapshot_dir(1).parent
-    (compare / ".CLICK (00000003)-k2j8").mkdir()  # Left by a copy cut short
+    (compare / ".CLICK (00000003)-k2j8").mkdir()  # A copy cut short leaves such a folder
     (compare / "notes.txt").write_text("mine", encoding="utf-8")
     app = _app()  # Windows 1 and 2 are open
     app._connection = ConnectionController(app)
