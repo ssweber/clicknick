@@ -64,21 +64,21 @@ COL_CLICK = 3
 COL_DESC = 4
 _NUM_COLS = 5
 
-# Past this, CLICK's editor can sit frozen for a long time on the paste.
+# A paste of this many rungs or more can leave CLICK's editor frozen for a long time.
 _SLOW_PASTE_RUNGS = 100
 
-# From this many steps in one program, clearing it and pasting it whole is likely less work.
-# So a program CLICK has is copied whole from this many steps, unless its paste
-# would be slow (_SLOW_PASTE_RUNGS): see _copied_whole_for_steps.
+# When a program that CLICK has needs this many steps or more, clearing it and pasting it
+# whole is likely less work. ClickNick then copies it whole, unless that paste would be slow
+# (_SLOW_PASTE_RUNGS). See _copied_whole_for_steps.
 _MANY_STEPS = 6
 
 # Icons
-_ICON_DONE = "✓"  # ✓
-_ICON_CURRENT = "▶"  # ▶
-_ICON_PENDING = "○"  # ○
+_ICON_DONE = "✓"
+_ICON_CURRENT = "▶"
+_ICON_PENDING = "○"
 # A program whose difference has not been shown yet
 _ICON_UNREVIEWED = "●"
-# Every difference skipped: CLICK keeps what it has
+# Every difference of the program is skipped, so CLICK keeps what it has
 _ICON_SKIPPED = "–"
 
 _ICON_MATCHES = "="
@@ -87,7 +87,8 @@ _ICON_ONLY_IN_CLICK = "!"
 # "vs CLICK" column
 _CLICK_NEW = "New"
 _CLICK_MATCHES = "Up to date"
-# CLICK holds pastes of it this comparison cannot place (_unplaced)
+# CLICK holds pastes of the program that ClickNick cannot match to this comparison
+# (_unplaced)
 _CLICK_UNSAVED = "Pasted, not saved"
 _CLICK_ONLY = "Only in CLICK"
 _DESC_ONLY_IN_CLICK = "Not in this folder: delete it in CLICK, or keep it"
@@ -106,19 +107,21 @@ _LEGACY_LISTED = 5
 # The "vs CLICK" column's word for a legacy encoding (False) and for a rung it cannot read (True)
 _LEGACY_LABELS = {False: "old encoding", True: "unreadable"}
 
-# Diff pane text (GitHub Desktop's light theme); see the tags in _build_ui
+# Colours of the diff pane's text, from GitHub Desktop's light theme. _create_widgets
+# configures the colours of the diff's tags.
 _DIFF_TEXT = "#24292e"
 _DIFF_MUTED = "#586069"
 _MARGIN = 5  # Pixels left of the +/- gutter, where the current difference's bar goes
 _DIFF_LINE_TAGS = {"+": "added", "-": "removed"}
 
-# The Copy switch: what a step copies for a program CLICK already has
+# The Copy switch chooses what a step copies for a program that CLICK already has
 _COPY_CHANGED = "Changed rungs"
 _COPY_WHOLE = "Whole program"
-# The button that steps through a program copied whole for its many steps
+# The button that steps through a program that is copied whole because it has many steps
 _STEP_THROUGH = "Step Through"
 
-# The row of a folder's nicknames.csv, staged in the Address Editor and Synced there
+# A folder's nicknames.csv gets its own row. ClickNick stages the nicknames in the Address
+# Editor, and the user Syncs them from there.
 _NICKNAMES_NAME = "nicknames.csv"
 _DESC_NICKNAMES = "Nicknames, staged in the Address Editor for you to Sync"
 _STAGE = "Stage nicknames"
@@ -207,7 +210,10 @@ def _fault(found: Sequence[LegacyEncoding]) -> str:
 
 
 def _finding(item: LegacyEncoding) -> str:
-    """Return ``Math H70000: it is stored as ...``, or the detail alone with no instruction."""
+    """Return the finding as ``Math H70000: it is stored as ...``.
+
+    If the item names no instruction and no token, return its detail alone.
+    """
     what = " ".join(part for part in (item.instruction, item.token) if part)
     return f"{what}: {item.detail}" if what else item.detail
 
@@ -253,7 +259,8 @@ def _empty_refusal(name: str, change: ProgramChange) -> str:
     """Return why the program may not be copied yet, or an empty string.
 
     ClickNick pastes a program whole when it cannot read all of CLICK's copy. An empty
-    rung in the folder may stand in for CLICK's rung, so that paste would empty it.
+    rung in the folder may stand in for one of CLICK's rungs. The whole paste would then
+    leave that rung empty in CLICK.
     """
     empty = change.empty_rungs
     if not change.unreadable or not empty:
@@ -275,7 +282,11 @@ def _empty_refusal(name: str, change: ProgramChange) -> str:
 
 
 def _change_label(change: ProgramChange) -> str:
-    """Say how much of a program CLICK already has differs, for the "vs CLICK" column."""
+    """Return the "vs CLICK" label for a program that CLICK already has.
+
+    The label counts the changed and removed rungs. It also says if some of CLICK's rungs
+    have an old encoding or cannot be read.
+    """
     changed, removed = len(change.changed), len(change.removed)
     if changed and removed:
         label = f"{changed} changed, {removed} removed"
@@ -322,7 +333,7 @@ class ProposalSource:
     nicknames and those deletions start out skipped. Differences always start out taken.
     """
 
-    label: str  # "from <label>" in the title; the diff's +++ header
+    label: str  # Shown as "from <label>" in the title, and in the diff's +++ header
     takes_nicknames: bool = True
     deletes_only_in_click: bool = True
 
@@ -381,7 +392,9 @@ class ReviewChangesWindow(tk.Toplevel):
     # ------------------------------------------------------------------
 
     def _scan_folder(self) -> None:
-        """Read the folder's CSVs. The window compares and copies them as read here.
+        """Read the folder's CSVs. The window compares and copies the programs as read here.
+
+        Later changes to the files do not reach the window until the next read.
 
         If the folder has since been emptied, keep what was read. A CLICK save
         regenerates the workspace and removes its ``csv_output/``.
@@ -427,14 +440,15 @@ class ReviewChangesWindow(tk.Toplevel):
         old_skipped: frozenset[DifferenceKey],
         change: ProgramChange,
     ) -> None:
-        """Place what was pasted of the program in a new comparison against the same save.
+        """Carry what was pasted of the program into a new comparison against the same save.
 
-        The folder was read again (exported again, say) before CLICK saved, so CLICK
-        still holds the pasted rungs. They are placed if three things hold. The new
-        comparison has the same differences pasted. Those differences leave the same rungs
-        in CLICK. A step that was begun is still the next step, in the same place. Otherwise
-        the program's steps cannot be numbered from what CLICK holds. ClickNick then copies
-        the program whole until CLICK saves (_unplaced).
+        The folder has been read again, for example after another export, and CLICK has
+        not saved since the pastes. CLICK still holds the pasted rungs. ClickNick matches
+        them to the new comparison only if three things hold. The new comparison has the
+        same differences pasted. Those differences leave the same rungs in CLICK. A step
+        that was begun is still the next step, in the same place. Otherwise ClickNick cannot
+        number the program's steps from what CLICK holds. It adds the program to _unplaced
+        and copies the program whole until CLICK saves.
         """
         pasted = self._pasted.pop(name, frozenset())
         partial = self._partial.pop(name, 0)
@@ -469,8 +483,9 @@ class ReviewChangesWindow(tk.Toplevel):
     def _choosable(self, name: str | None) -> ProgramChange | None:
         """Return the folder program's change if it has differences to take or skip.
 
-        A program that ClickNick cannot read all of in CLICK has none to skip.
-        ClickNick pastes it whole, and a skip would keep CLICK's empty rung.
+        Return None for a program that ClickNick cannot read all of in CLICK. ClickNick
+        pastes that program whole. A skip would keep the empty rung that ClickNick reads in
+        place of the CLICK rung that it cannot read.
         """
         if name is None or name in self._only_in_click:
             return None
@@ -551,11 +566,12 @@ class ReviewChangesWindow(tk.Toplevel):
                 self._basis[name] = change
 
     def _note_saves(self, program: SavedProgram) -> None:
-        """Forget what was pasted once CLICK saves, and check what was done at the next comparison.
+        """Forget what was pasted once CLICK saves, and recheck the programs marked done.
 
-        Only CLICK's saves count (save_count). The workspace is also rebuilt after a Sync
-        or a Reload, and a build may fail while CLICK still holds the pastes. Ignore a
-        reading that has no session, because nothing is connected.
+        The recheck happens at the next comparison. Only a change in CLICK's save_count
+        counts as a save. The workspace is also rebuilt after a Sync or a Reload, but that
+        build may fail while CLICK still holds the pastes. Ignore *program* if it has no
+        session, because then nothing is connected.
         """
         if program.session is None:
             return
@@ -570,7 +586,7 @@ class ReviewChangesWindow(tk.Toplevel):
         """Compare the folder with the program now in CLICK and rebuild the rows.
 
         Programs that CLICK has and the folder lacks are listed after the folder's own
-        items. They are for information only, because pasting cannot remove them.
+        items. Pasting cannot remove them. The user deletes each one in CLICK, or keeps it.
         """
         program = self._saved_program = self._get_saved_program()
         self._note_saves(program)
@@ -623,7 +639,7 @@ class ReviewChangesWindow(tk.Toplevel):
             return False
         name = self._items[idx][0]
         if not name.startswith(_SUBROUTINE_PREFIX) or name in self._unplaced:
-            return False  # Pasted into already
+            return False  # CLICK holds pastes into it, so it exists
         return name in self._missing_in_click or not self._click_compared
 
     def _is_nickname_step(self, idx: int | None) -> bool:
@@ -784,11 +800,16 @@ class ReviewChangesWindow(tk.Toplevel):
     def _copied_whole_for_steps(self, name: str) -> int:
         """Return how many steps the program would take, if that count is why it is copied whole.
 
-        Return zero if the program keeps its steps. Also return zero if "Whole program" is
-        on, because every program is then copied whole anyway. A program keeps its steps in
-        four cases: one step is done, the user asked to step through it, its paste would be
-        slow, or CLICK holds some of its rungs in an old encoding. In the last case a whole
-        paste would re-paste the rungs of skipped differences from ClickNick's reading of them.
+        A program that CLICK has is copied whole when it needs _MANY_STEPS steps or more.
+        Return zero in every other case. These are the main ones:
+
+        - "Whole program" is on, so every program is copied whole anyway.
+        - CLICK lacks the program, or holds pastes of it that ClickNick cannot match to
+          this comparison (_unplaced). The program is copied whole for that reason.
+        - The program keeps its steps. That happens when a step is done, the user asked to
+          step through it, its paste would be slow, or CLICK holds some of its rungs in an
+          old encoding. In the last case a whole paste would re-paste the rungs of skipped
+          differences from ClickNick's reading of them.
         """
         if self._copy_whole_var.get() or name in self._step_through or name in self._unplaced:
             return 0
@@ -798,7 +819,8 @@ class ReviewChangesWindow(tk.Toplevel):
         if self._pasted.get(name) or self._partial.get(name):
             return 0
         program = self._programs.get(name)
-        # Measure the program as it would be pasted: skipped differences keep CLICK's rungs
+        # Measure the program as it would be pasted, with CLICK's rungs where a difference
+        # is skipped
         if program is None or program.rungs is None:
             return 0
         if len(self._whole_program(name, program.rungs)) >= _SLOW_PASTE_RUNGS:
@@ -807,10 +829,10 @@ class ReviewChangesWindow(tk.Toplevel):
         return count if count >= _MANY_STEPS else 0
 
     def _skipped_legacy(self, name: str) -> list[int]:
-        """Return CLICK's rungs in a legacy encoding that a skipped difference keeps.
+        """Return the numbers of CLICK's legacy-encoded rungs that a skipped difference keeps.
 
-        A whole paste would put them back from ClickNick's reading of them, so under
-        "Whole program" ClickNick steps through such a program.
+        ClickNick steps through such a program even under "Whole program". A whole paste
+        would write these rungs back from ClickNick's reading of them.
         """
         change = self._choosable(name)
         if change is None or not change.legacy:
@@ -831,9 +853,9 @@ class ReviewChangesWindow(tk.Toplevel):
     def _whole_refusal(self, name: str) -> str:
         """Return why the program may not be copied whole now, or an empty string.
 
-        ClickNick copies the program whole while CLICK holds pastes that this comparison
-        cannot place (_unplaced). It refuses when a skipped difference keeps rungs that
-        CLICK holds in a legacy encoding.
+        ClickNick copies the program whole while CLICK holds pastes of it that ClickNick
+        cannot match to this comparison (_unplaced). It refuses when a skipped difference
+        keeps rungs that CLICK holds in a legacy encoding.
         """
         kept = self._skipped_legacy(name) if name in self._unplaced else []
         if not kept:
@@ -850,7 +872,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self, name: str, *, pasted: frozenset[DifferenceKey] = frozenset()
     ) -> list[PasteStep]:
         if name in self._unplaced:
-            return []  # Steps cannot be numbered from what CLICK holds: copy the whole program
+            return []  # Steps cannot be numbered from what CLICK holds, so copy it whole
         if self._copy_whole_var.get() and not self._skipped_legacy(name):
             return []
         if self._copied_whole_for_steps(name):
@@ -867,9 +889,14 @@ class ReviewChangesWindow(tk.Toplevel):
     def _steps(self, name: str) -> list[PasteStep]:
         """Return what is left to do in CLICK for a program CLICK has, one difference at a time.
 
-        Return an empty list when the whole program is pasted instead. That happens when
-        the Copy switch says so, CLICK lacks the program, ClickNick does not know what
-        CLICK has, or nothing differs.
+        Return an empty list when nothing differs, or when the whole program is pasted
+        instead. The whole program is pasted in these cases:
+
+        - The Copy switch says so.
+        - The program has many steps (_copied_whole_for_steps).
+        - CLICK holds pastes of it that ClickNick cannot match to this comparison.
+        - CLICK lacks the program.
+        - ClickNick does not know what CLICK has, or cannot read all of CLICK's copy.
         """
         return self._program_steps(name, pasted=self._pasted.get(name, frozenset()))
 
@@ -1232,7 +1259,12 @@ class ReviewChangesWindow(tk.Toplevel):
             self._sheet.dehighlight_cells(row=idx, column=col)
 
     def _pending_icon(self, name: str) -> str:
-        """Return the icon for a program still to paste, hollow once its difference was shown."""
+        """Return the icon for a program still to paste.
+
+        The icon is a filled dot until the program's difference has been shown, and a
+        hollow one after that. A program with no differences to take or skip always gets
+        the hollow one.
+        """
         if self._choosable(name) is not None and name not in self._viewed:
             return _ICON_UNREVIEWED
         return _ICON_PENDING
@@ -1278,7 +1310,7 @@ class ReviewChangesWindow(tk.Toplevel):
 
     @staticmethod
     def _nothing_to_copy(step: PasteStep | None) -> bool:
-        """Return whether the step is done in CLICK alone: rungs to delete and none to paste."""
+        """Return whether the step only deletes rungs, so the user does it in CLICK alone."""
         return step is not None and not step.rungs
 
     def _empty_whole(self, name: str, step: PasteStep | None) -> bool:
@@ -1381,7 +1413,8 @@ class ReviewChangesWindow(tk.Toplevel):
                 old = _rungs_in_click(step.delete)
                 legacy = self._legacy_line(name, step)
                 # After a paste of fresh copies of old-encoded rungs, the rungs left to delete
-                # are CLICK's old copies. The program still has those rungs.
+                # are CLICK's old copies. The program still has those rungs, so the prompt
+                # must not say that they are gone from it.
                 after_paste = bool(legacy) and partial > 0
                 if after_paste:
                     what = (
@@ -1541,9 +1574,10 @@ class ReviewChangesWindow(tk.Toplevel):
         self._sheet.see(idx, COL_FILE, keep_xscroll=True)
 
     def _select_row(self, idx: int, *, block: int | None = None) -> None:
-        """Make the row the current one, and show difference *block* or the one of its step.
+        """Make the row the current one, and show its difference *block*.
 
-        The program's steps continue from where they stopped.
+        If *block* is None, show the difference of the row's current step. The program's
+        steps continue from where they stopped.
         """
         if idx < 0 or idx >= len(self._items):
             return
@@ -1613,7 +1647,8 @@ class ReviewChangesWindow(tk.Toplevel):
                 self._advance_to_next()
                 return
             if self._nickname_plans is not None and self._nickname_plans[0]:
-                # Discarded or undone in the Address Editor: there is staging to do again
+                # The user discarded or undid the staging in the Address Editor, so there is
+                # staging to do again
                 self._copied = False
             if not self._copied:
                 self._status_var.set(self._step_prompt(idx))
@@ -1735,7 +1770,7 @@ class ReviewChangesWindow(tk.Toplevel):
         name, block = differences[position]
         idx = next(index for index, (item, *_) in enumerate(self._items) if item == name)
         if name in self._done or idx == self._current_idx:
-            # Not a step any more, or already the current row: only the view moves
+            # The row is done or is already the current row, so only the view moves
             self._view_name, self._view_block = name, block
             self._show_diff()
         else:
@@ -1808,7 +1843,7 @@ class ReviewChangesWindow(tk.Toplevel):
             if group is None:
                 rungs = self._whole_program(name, program.rungs)
             else:
-                # A step's rung numbers are the folder's
+                # A step's rung numbers count the folder's rungs, not CLICK's
                 rungs = [
                     program.rungs[number - 1]
                     for number in group
@@ -1924,7 +1959,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self._adding_subroutine = True
         self._update_action_btn()
         dialog = WIN32.find_process_window(pid, _NEW_SUB_TITLE)
-        if dialog:  # Already open: just fill it in
+        if dialog:  # The dialog is already open, so only fill it in
             WIN32.activate(dialog)
             self._fill_new_subroutine(dialog, sub_name)
             return
@@ -1947,7 +1982,7 @@ class ReviewChangesWindow(tk.Toplevel):
         """Read the folder, compare it with CLICK, and begin at *select* or the first step.
 
         If *keep_done* is set, programs marked done stay done when the folder still has
-        the same rungs for them, and what was pasted is placed in the new comparison
+        the same rungs for them, and what was pasted is carried into the new comparison
         (_carry_pasted). Otherwise both are forgotten. Skipped differences stay skipped
         either way.
         """
@@ -2029,7 +2064,7 @@ class ReviewChangesWindow(tk.Toplevel):
         if program.session is not None:
             self._project_session = program.session
         if new_project:
-            # What was pasted, and what was chosen, was about the other project.
+            # The pastes and the choices belong to the other project, so forget them.
             self._done.clear()
             self._forget_choices()
             self._viewed.clear()
@@ -2045,10 +2080,11 @@ class ReviewChangesWindow(tk.Toplevel):
 
         old_steps = self._current_steps()
         current = self._items[self._current_idx][0] if self._current_idx is not None else None
-        # Pending means ClickNick knew of something left to do. An unread program does not count.
+        # was_pending is True only if ClickNick had compared with CLICK and something was left
+        # to do. If ClickNick could not read CLICK's program, nothing counts as pending.
         was_pending = self._click_compared and not self._settled()
         self._compare_with_click()
-        # The rows only in CLICK may have changed: find the current row again by name
+        # The rows only in CLICK may have changed, so find the current row again by its name
         self._current_idx = next(
             (idx for idx, (name, *_) in enumerate(self._items) if name == current), None
         )
@@ -2058,12 +2094,13 @@ class ReviewChangesWindow(tk.Toplevel):
         steps = self._current_steps()
         row = self._items[self._current_idx][0] if self._current_idx is not None else None
         if steps != old_steps and (steps or (row is not None and self._needs_paste(row))):
-            # The steps changed. Either CLICK took some of the row's rungs, so step through
-            # what is left, or the row is now copied whole, so what was copied is out of
-            # date. A row that CLICK now holds in full stays as it is until "Next".
+            # The steps changed, so what was copied is out of date. Either CLICK's save holds
+            # some of the row's rungs and the steps cover what is left, or the row is now
+            # copied whole. If CLICK's save holds all of the row, the row stays as it is
+            # until "Next".
             self._copied = False
         if self._copied:
-            return  # Mid-paste: the row stays current until "Next"
+            return  # The user is mid-paste, so the row stays current until "Next"
         idx = self._current_idx
         if idx is None or not self._needs_paste(self._items[idx][0]):
             self._advance_to_first_pending()
@@ -2073,7 +2110,7 @@ class ReviewChangesWindow(tk.Toplevel):
     def _watch_saved_program(self) -> None:
         if not self.winfo_exists():
             return
-        # Staged, Synced or discarded in the Address Editor
+        # Pick up nicknames that the user staged, Synced or discarded in the Address Editor
         was_pending = self._click_compared and not self._settled()
         if self._refresh_nicknames():
             if self._close_if_settled(was_pending):
@@ -2096,7 +2133,7 @@ class ReviewChangesWindow(tk.Toplevel):
         if 0 <= row < len(self._items):
             name = self._items[row][0]
             if name in self._done or self._left_out(name):
-                # Not a step, but its difference can still be read
+                # The row is not a step any more, but the user can still read its difference
                 self._view_name, self._view_block = name, 0
                 self._show_diff()
             else:
@@ -2119,10 +2156,11 @@ class ReviewChangesWindow(tk.Toplevel):
         self._partial.pop(name, None)
 
     def _record_whole_paste(self, name: str) -> None:
-        """Record that CLICK holds the program as copied whole, with each difference not skipped.
+        """Record that CLICK holds the whole program as copied.
 
-        If the comparison does not read all of CLICK's copy, it cannot number steps from
-        what CLICK holds, so the program goes into _unplaced.
+        Every difference that is not skipped then counts as pasted. If there is no
+        comparison for the program, or ClickNick cannot read all of CLICK's copy, the steps
+        cannot be numbered from what CLICK holds. The program then goes into _unplaced.
         """
         change = self._changes.get(name)
         self._partial.pop(name, None)
@@ -2142,7 +2180,8 @@ class ReviewChangesWindow(tk.Toplevel):
         name = self._items[idx][0]
         step = self._current_step()
         if self._rest_skipped(name):
-            # "Next": CLICK keeps what it has, and a program that was partly pasted is done
+            # The button says "Next". CLICK keeps what it has, and a program that was partly
+            # pasted is marked done.
             if self._pasted.get(name):
                 self._done.add(name)
             self._advance_to_next()
@@ -2153,14 +2192,14 @@ class ReviewChangesWindow(tk.Toplevel):
             and not self._empty_whole(name, step)
             and name not in self._only_in_click
         ):
-            # "Copy" or "Stage nicknames": perform the action
+            # The button says "Copy" or "Stage nicknames"
             self._perform_action(idx)
             return
         if step is not None:
             self._finish_step(name, step)
             next_step = self._current_step()
             if next_step is not None:
-                # "Next": go to the row's next step
+                # The button says "Next". Go to the row's next step.
                 self._copied = False
                 self._view_name, self._view_block = name, next_step.block
                 self._update_action_btn()
@@ -2176,7 +2215,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self._advance_to_next()
 
     def _on_copy_mode(self) -> None:
-        """Handle the Copy switch: remember it, and show the current row's step under it.
+        """Save the Copy switch's setting, and show the current row's step under that setting.
 
         What was pasted stays pasted, because the steps are numbered from what CLICK holds.
         """
@@ -2239,7 +2278,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self._start()
 
     def _on_refresh_source(self) -> None:
-        """Take the folder again from where it was copied. The window then reloads on it."""
+        """Copy the folder again from where it came from. The window then reloads on it."""
         if self._refresh_source is not None:
             self._refresh_source()
 
@@ -2257,7 +2296,7 @@ class ReviewChangesWindow(tk.Toplevel):
         # Says where the proposal comes from (_show_source)
         self._title_lbl = ttk.Label(header, font=("TkDefaultFont", 10, "bold"))
         self._title_lbl.pack(side=tk.LEFT)
-        # Shown when the folder is a copy that can be taken again (_show_source)
+        # _show_source shows this button when the folder is a copy that can be made again
         self._refresh_btn = ttk.Button(header, command=self._on_refresh_source)
         self._progress_lbl = ttk.Label(header, text="")
         self._progress_lbl.pack(side=tk.RIGHT)
@@ -2282,8 +2321,8 @@ class ReviewChangesWindow(tk.Toplevel):
         self._compare_lbl.pack(side=tk.LEFT, padx=(10, 0))
 
         self._show_nicks_var = tk.BooleanVar(value=True)
-        # The Copy switch: off steps through the rungs that differ, on copies whole
-        # programs. It opens as the user last left it.
+        # The Copy switch. When it is off, the steps go through the rungs that differ. When
+        # it is on, a step copies a whole program. It opens as the user last left it.
         self._copy_whole_var = tk.BooleanVar(value=_read_copy_whole())
         ttk.Checkbutton(
             opts,
@@ -2291,9 +2330,9 @@ class ReviewChangesWindow(tk.Toplevel):
             variable=self._show_nicks_var,
         ).pack(side=tk.RIGHT)
 
-        # Buttons and status are packed against the bottom *before* the panes:
-        # the sheet and the diff ask for more height than the window has, and
-        # pack starves whatever is packed last. Bottom-up order.
+        # Pack the buttons and the status against the bottom *before* the panes. The sheet
+        # and the diff ask for more height than the window has, and pack gives too little
+        # room to whatever it packs last. These widgets are packed from the bottom up.
         btn_frame = ttk.Frame(main)
         btn_frame.pack(side=tk.BOTTOM, fill=tk.X)
 
@@ -2421,9 +2460,10 @@ class ReviewChangesWindow(tk.Toplevel):
             "file_header", foreground=_DIFF_MUTED, font=("Consolas", 10, "bold")
         )
         self._text.tag_configure("note", foreground=_DIFF_MUTED, font=("TkDefaultFont", 9))
-        # A skipped difference: configured last, so it draws over the line colours
+        # The tag of a skipped difference is configured last, so it draws over the line colours
         self._text.tag_configure("skipped", background="#f6f8fa", foreground="#959da5")
-        # A column left of the +/- gutter, filled down the current difference
+        # The margin is a column left of the +/- gutter. The "current" tag colours it along
+        # the lines of the current difference.
         self._text.tag_configure("margin", lmargin1=_MARGIN, lmargin2=_MARGIN)
         self._text.tag_configure(
             "current", lmargin1=_MARGIN, lmargin2=_MARGIN, lmargincolor="#0969da"
@@ -2439,7 +2479,7 @@ class ReviewChangesWindow(tk.Toplevel):
             side=tk.LEFT
         )
 
-        # What a step copies for a program CLICK already has (_steps)
+        # The Copy switch chooses what a step copies for a program that CLICK already has
         ttk.Label(btn_frame, text="Copy:").pack(side=tk.LEFT, padx=(15, 0))
         for label, whole in ((_COPY_CHANGED, False), (_COPY_WHOLE, True)):
             ttk.Radiobutton(
@@ -2465,7 +2505,8 @@ class ReviewChangesWindow(tk.Toplevel):
         )
         self._add_sub_btn.pack(side=tk.RIGHT, padx=(0, 5))
 
-        # Shown only on a program copied whole for its many steps (_update_action_btn)
+        # _update_action_btn shows this button only for a program that is copied whole
+        # because it has many steps
         self._step_through_btn = ttk.Button(
             btn_frame, text=_STEP_THROUGH, command=self._on_step_through
         )
@@ -2500,8 +2541,9 @@ class ReviewChangesWindow(tk.Toplevel):
         *source* says where the folder's proposal comes from, which decides what starts
         out taken. *source_dir* is the workspace ``src/plc`` that the folder was just
         exported from. The diff then shows that source as written, and the Address
-        Editor handles the nicknames. *refresh_source* takes the folder again from where
-        it was copied (another CLICK window's last save). The window shows it as a button.
+        Editor handles the nicknames. *refresh_source* copies the folder again from where
+        it came from, such as another CLICK window's last save. The window shows a button
+        that calls it.
         *select* starts on one program, and may name rungs of it to paste. The
         differences that hold those rungs are taken and the others are skipped.
         *on_pasted* is called with a status message when a CLICK save holds everything
@@ -2523,7 +2565,8 @@ class ReviewChangesWindow(tk.Toplevel):
         self._refresh_source = refresh_source
         self._get_mdb_path = get_mdb_path
         self._get_click_hwnd = get_click_hwnd
-        # The program now in CLICK as CSVs: the generated workspace's csv/ folder
+        # Returns CLICK's last save of the program as CSVs, in the generated workspace's
+        # csv/ folder
         self._get_saved_program = get_saved_program
         self._on_pasted = on_pasted
         self._get_project_store = get_project_store
@@ -2539,8 +2582,8 @@ class ReviewChangesWindow(tk.Toplevel):
         self._done: set[str] = set()
         self._current_idx: int | None = None
         self._copied: bool = False
-        # Program name -> the rungs asked for by number: once compared, the
-        # differences holding them are taken and the others skipped
+        # Program name -> the rung numbers asked for. After the comparison, the differences
+        # that hold those rungs are taken and the others are skipped.
         self._selection: dict[str, list[int]] = {}
         # These are per program and for this window only. Skipped differences stay as CLICK
         # has them. Pasted ones are in CLICK but not saved yet. *partial* counts the steps
@@ -2548,12 +2591,15 @@ class ReviewChangesWindow(tk.Toplevel):
         self._skipped: dict[str, frozenset[DifferenceKey]] = {}
         self._pasted: dict[str, frozenset[DifferenceKey]] = {}
         self._partial: dict[str, int] = {}
-        # Programs that CLICK holds unsaved pastes of and that a new reading of the folder
-        # changed. ClickNick copies them whole until CLICK saves (_carry_pasted).
+        # Programs that CLICK holds unsaved pastes of, where ClickNick cannot match the pastes
+        # to the current comparison. This happens when a new reading of the folder changed
+        # the program (_carry_pasted), or when ClickNick cannot read all of CLICK's copy
+        # (_record_whole_paste). ClickNick copies these programs whole until CLICK saves.
         self._unplaced: set[str] = set()
         # Programs to step through even though they have many steps (_copied_whole_for_steps)
         self._step_through: set[str] = set()
-        # Programs only in CLICK to keep there; the others are deleted in CLICK
+        # Programs only in CLICK whose keep-or-delete choice is the opposite of the source's
+        # default (ProposalSource.deletes_only_in_click, see _kept)
         self._flipped_in_click: set[str] = set()
         # The comparison that the skips and pastes were made on, to carry them over
         self._basis: dict[str, ProgramChange] = {}
@@ -2564,15 +2610,19 @@ class ReviewChangesWindow(tk.Toplevel):
         # unreadable), whether they are skipped, and how they differ (_refresh_nicknames)
         self._nickname_rows: dict[int, AddressRow] | None = None
         self._nickname_error = ""
-        # The fields nicknames.csv has a column for: staging leaves the others as they are
+        # The fields that nicknames.csv has a column for. Staging leaves the other fields as
+        # they are.
         self._nickname_fields: frozenset[str] = frozenset()
         self._nicknames_skipped = not self._source.takes_nicknames
         self._nickname_plans: tuple[NicknamePlan, NicknamePlan] | None = None
-        # name -> how it differs from CLICK; absent when unknown (no workspace, unreadable)
+        # Program name -> how the program differs from CLICK. A name is missing when
+        # ClickNick does not know, for example with no workspace or an unreadable CSV.
         self._changes: dict[str, ProgramChange] = {}
-        # Programs CLICK has that the folder lacks, as all rungs removed
+        # Programs that CLICK has and the folder lacks. Each change shows all of the
+        # program's rungs as removed.
         self._only_in_click: dict[str, ProgramChange] = {}
-        # Folder items CLICK's last save lacks: subroutines to create first
+        # Folder items that CLICK's last save lacks. A subroutine among them must be created
+        # in CLICK first.
         self._missing_in_click: frozenset[str] = frozenset()
         self._click_compared = False
         self._adding_subroutine = False
@@ -2591,15 +2641,18 @@ class ReviewChangesWindow(tk.Toplevel):
         self._before_sources: BundleSources | None = None
         self._after_sources: BundleSources | None = None
         self._saved_program = SavedProgram()
-        # CLICK's saves as last seen (SavedProgram.save_count); a new count means CLICK saved
+        # CLICK's save count as last seen (SavedProgram.save_count). A different count means
+        # that CLICK saved.
         self._save_count: int | None = None
-        # CLICK saved since programs were marked done: check them on the next comparison
+        # True when CLICK has saved since programs were marked done. The next comparison
+        # checks them.
         self._done_unchecked = False
 
         self._create_widgets()
         self._show_source()
         self.reload(source, source_dir=source_dir, refresh_source=refresh_source, select=select)
-        # The session of the project being pasted into; survives a brief disconnect
+        # The session of the project being pasted into. It is kept through a brief
+        # disconnect.
         self._project_session = self._saved_program.session
         self.after(_WATCH_INTERVAL_MS, self._watch_saved_program)
         self.after_idle(self._show_first_time_tips)
@@ -2615,12 +2668,12 @@ class ReviewChangesWindow(tk.Toplevel):
         """Read the folder again after it was exported, opened or copied again.
 
         The arguments are the same as for the constructor. Programs already marked done
-        stay done unless their rungs changed. What was pasted stays pasted where the new
-        reading leaves it in place. Skipped differences stay skipped. Rungs asked for by
-        number replace the program's choices. If the source is a different one (the
-        workspace's export, or the folder itself), the nicknames and the programs only in
-        CLICK start over from the new source's defaults. Skips and what was pasted stay,
-        because they are about what CLICK holds.
+        stay done unless their rungs changed. What was pasted stays pasted if ClickNick can
+        match it to the new reading (_carry_pasted). Skipped differences stay skipped.
+        Rungs asked for by number replace the program's choices. If the source is a
+        different one (the workspace's export, or the folder itself), the nicknames and the
+        programs only in CLICK start over from the new source's defaults. Skips and what
+        was pasted stay, because they are about what CLICK holds.
         """
         self._source_dir = source_dir
         if refresh_source is not self._refresh_source:
