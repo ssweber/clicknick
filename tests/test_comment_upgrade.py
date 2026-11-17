@@ -99,7 +99,7 @@ def test_a_form_no_migration_reads_is_reported_not_staged():
     store = _store({("DF", 2): STUCK})
     (upgrade,) = stage_comment_upgrades(store)
     assert not upgrade.staged
-    assert upgrade.problem == "ClickNick cannot convert the old setting profile=approach:toward=180"
+    assert upgrade.problem == "the old setting profile=approach:toward=180 has no upgrade"
     assert not store.has_unsaved_changes()
 
 
@@ -125,7 +125,7 @@ def test_cli_upgrade_project_stages_and_opens_changed():
         "OK: 1 comment upgrade staged",
         f"X001: {ENCODER!r} -> '[link=Run, flasher_on=8ms, flasher_off=8ms] Encoder'",
         "DF2: ClickNick cannot upgrade this comment."
-        " Fix it by hand: ClickNick cannot convert the old setting profile=approach:toward=180",
+        " Fix it by hand: the old setting profile=approach:toward=180 has no upgrade",
         "Review them in the Address Editor under Changed, then Sync them.",
     ]
     assert opened == ["changed"]
@@ -177,7 +177,7 @@ def test_the_repairs_entry_lists_comments_to_fix_by_hand(monkeypatch):
     app = _app(_store({("DF", 2): STUCK}))
     app._upgrade_project()
     assert warnings and warnings[0].endswith(
-        "DF2: ClickNick cannot convert the old setting profile=approach:toward=180"
+        "DF2: the old setting profile=approach:toward=180 has no upgrade"
     )
     app._open_address_editor.assert_not_called()
     assert app._update_status.call_args.args[0] == "No comment upgrade staged"

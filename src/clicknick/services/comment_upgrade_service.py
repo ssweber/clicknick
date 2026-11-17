@@ -45,8 +45,9 @@ def _problem(replacement: str) -> str:
     """Return why pyrung refuses *replacement*, or ``""`` if it reads it."""
     tokens = old_form_tokens(replacement)
     if tokens:
-        noun = "setting" if len(tokens) == 1 else "settings"
-        return f"ClickNick cannot convert the old {noun} {', '.join(tokens)}"
+        if len(tokens) == 1:
+            return f"the old setting {tokens[0]} has no upgrade"
+        return f"the old settings {', '.join(tokens)} have no upgrade"
     try:
         AnnotationService.decompose_comment(replacement)
     except ValueError as exc:
