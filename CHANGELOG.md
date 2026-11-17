@@ -1,9 +1,8 @@
 # Changelog
 
-<!-- Style guide: one sentence per entry. Describe the user-visible effect, not the
-     implementation. Group related fixes/features into a single entry when they share
-     a theme. Breaking changes and migration steps can be longer — users need the
-     specifics. Detail belongs in commit messages and PR descriptions, not here.
+<!-- Style guide: Entries follow the CHANGELOG rule in the bob plugin's `writing` skill:
+     say what changed for the user and what they must do, in two or three short
+     sentences. Breaking changes may be longer.
 
      Review and condense before release — entries accumulate during development and
      should be edited into shape before moving from Unreleased to a version heading. -->
@@ -13,24 +12,23 @@
 ### Changed
 
 - The tag annotation dialog and `clicknick-live tag set-flag` no longer have a `lock` flag.
-- ClickNick now requires Python 3.13 or 3.14 (pywin32 has no 3.15 build yet); `uv tool install clicknick` fetches one if needed.
-- A nickname or address comment is kept without a space at either end, as CLICK keeps it: one typed, pasted or imported loses the space, and one loaded with it is trimmed as an unsaved edit, **Trim spaces**, that Sync writes and Undo takes back (the space then shows as an error, and Sync refuses it).
-- A project or CSV that holds such a space therefore opens with the **Trim spaces** edit unsaved, so closing ClickNick asks whether to save it and another project in the same CLICK window asks whether to keep it; **Discard** stages it again.
-- An address with a stray `u` (`DS1u`) or a digit that is not 0-9 is no longer read as `DS1`; it is refused, as CLICK refuses it.
-- A nickname CSV whose Data Type is not CLICK's type for the address (or is `TXT`), or whose row has more cells than the header has columns, no longer loads, and the message names the line: pyrung refuses the same file.
-- The Workspace setup window closes when the CLICK window it was opened for closes, as it already did when that window opened another project.
+- ClickNick now requires Python 3.13 or 3.14. If you install with `uv tool install clicknick`, uv downloads a suitable Python for you. Python 3.15 is not supported yet because pywin32 has no build for it.
+- ClickNick now trims spaces from the start and end of nicknames and comments, the same as CLICK. If your project already has some, it opens with an unsaved **Trim spaces** edit. Sync to write it to CLICK.
+- ClickNick no longer accepts an address with a stray `u`, such as `DS1u`, or with a digit character other than 0-9. It used to read these as `DS1`. CLICK rejects them too.
+- ClickNick no longer loads a nickname CSV that has the wrong Data Type for an address, or a row with more cells than the header. `TXT` now counts as a wrong Data Type, because CLICK writes `TEXT`. The error message gives the line number.
+- The Workspace setup window now closes when you close the CLICK window it belongs to. It already closed when that CLICK window opened another project.
 
 ### Fixed
 
-- After a Sync, CLICK's ladder shows the new nicknames: ClickNick has CLICK import a nickname file holding only the header line (File > Import > Nickname, so nothing is imported), after which CLICK counts the project as changed; when CLICK has a dialog open, ClickNick says so, and **Tools > Redraw Nicknames in CLICK** does it once the dialog is closed.
-- In CLICK 4's Receive and Send, autocomplete pops up in the Starting Master Address, status flags and Exception Response (on a Modbus TCP port it popped up in the IP address instead), and the master address offers only the memory types the Function Code shown takes (in CLICK 2 and 3, those any Function Code takes).
-- Autocomplete offers DS and TD nicknames in Out's Delay Setting, and no longer offers X, T or CT in Out, Set and Reset, which CLICK refuses there.
-- The Simulator starts from a PLC data file with a DF value CLICK shows as `Err-Format`; an analog input on that DF keeps the value it had.
-- The Simulator loads a text value of a space from a PLC data file as a space (it loaded `$20`).
-- `clicknick-cli` and the Simulator know an address with no nickname inside a `:block` range by the name the program gives it, such as `Fill3` (`clicknick-cli` still takes its address too).
-- In a CLICK 4 project whose Project.ini also has an old `[PLCName]` section, ClickNick reads the PLC name CLICK 4 shows, and uses that name's workspace and Simulator settings.
-- A nickname CSV that CLICK exported with a Text initial value of a comma or a double quote loads as CLICK wrote it (the value was lost, or the rows after it were misread), and a save writes such a value quoted, so it reads back as written.
-- Review Changes on a folder whose nicknames.csv has a bad Address, a wrong Data Type or extra cells says which line on the nicknames row instead of offering to stage the nicknames, and whenever pyrung cannot convert the folder the diff says why instead of showing the rungs without their source.
+- After a Sync, CLICK's ladder now shows the new nicknames. If a CLICK dialog is in the way, close it and choose **Tools > Redraw Nicknames in CLICK**.
+- In CLICK 4's Receive and Send, autocomplete now appears in Starting Master Address, the status flags and Exception Response. On a Modbus TCP port it used to appear in the IP address field. Starting Master Address now offers only the memory types that the selected Function Code accepts.
+- Autocomplete now offers DS and TD nicknames in Out's Delay Setting. It no longer offers X, T or CT in Out, Set and Reset, because CLICK refuses them there.
+- The Simulator now starts from a PLC data file that has a DF value CLICK shows as `Err-Format`.
+- The Simulator now loads a text value of a space from a PLC data file as a space. It used to load `$20`.
+- `clicknick-cli` and the Simulator now use the name the program gives to an address that has no nickname inside a `:block` range, such as `Fill3`.
+- In a CLICK 4 project whose Project.ini also has an old `[PLCName]` section, ClickNick now reads the PLC name that CLICK 4 shows. It uses the workspace and Simulator settings for that name.
+- ClickNick now loads a nickname CSV that CLICK exported with a Text initial value of a comma or a double quote. It used to lose the value or misread the rows after it. A save now writes such a value so that it reads back as written.
+- When the nicknames.csv in a folder has a bad Address, a wrong Data Type or extra cells, Review Changes now names the line. It used to offer to stage the nicknames. When pyrung cannot convert the folder, the diff now says why instead of showing the rungs without their source.
 
 ## v0.24.1 - 2026-11-15
 
