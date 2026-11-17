@@ -28,7 +28,7 @@ class Overlay(tk.Toplevel):
             if self.target_window_class == "frmTagDB":
                 WIN32.send_key("{Enter}")
         except Exception as e:
-            print(f"Error inserting text: {e}")
+            print(f"Could not put the text into the CLICK field: {e}")
 
     def _provide_filtered_data(self, search_text: str) -> tuple[list[str], bool]:
         """
@@ -129,7 +129,7 @@ class Overlay(tk.Toplevel):
             )
 
         except Exception as e:
-            print(f"Focus out error: {e}")
+            print(f"Could not hide the nickname box after it lost focus: {e}")
 
     def _setup_bindings(self):
         # Setup focus bindings
@@ -180,7 +180,7 @@ class Overlay(tk.Toplevel):
             # Get window position
             window_pos = WIN32.get_pos(self.target_window_id)
             if not window_pos:
-                print("Could not determine window position")
+                print("Could not read the position of the CLICK window")
                 return None
 
             # Parse positions
@@ -189,7 +189,7 @@ class Overlay(tk.Toplevel):
             # Get control position
             control_pos = WIN32.get_control_pos(self.target_window_id, self.target_edit_control)
             if not control_pos:
-                print("Could not determine control position")
+                print("Could not read the position of the CLICK field")
                 return None
 
             # Parse control position
@@ -207,7 +207,7 @@ class Overlay(tk.Toplevel):
             return (screen_x, screen_y, ctrl_width, ctrl_height)
 
         except Exception as e:
-            print(f"Error getting control position: {e}")
+            print(f"Could not read the position of the CLICK field: {e}")
             return None
 
     def is_active(self):
@@ -275,7 +275,7 @@ class Overlay(tk.Toplevel):
             return True
 
         except Exception as e:
-            print(f"Error positioning combobox: {e}")
+            print(f"Could not place the nickname box over the CLICK field: {e}")
             self.withdraw()
             return False
 
