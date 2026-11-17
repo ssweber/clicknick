@@ -438,13 +438,14 @@ class AddressEditorWindow(tk.Toplevel):
             if self._on_synced is not None:
                 self._on_synced(synced_keys)
 
+            # The status line says what was written. A Sync that succeeds shows no box.
             if count:
-                self.status_var.set(f"{action_verb.capitalize()} {count} changes")
-                message = f"Successfully {action_verb} {count} changes."
+                rows = "row" if count == 1 else "rows"
+                self.status_var.set(f"{action_verb.capitalize()} {count} {rows}")
+            elif self._is_using_mdb():
+                self.status_var.set("CLICK already has these changes. Nothing was written.")
             else:
-                self.status_var.set("Nothing to write")
-                message = "CLICK already has these changes. There is nothing to write."
-            messagebox.showinfo(save_label, message, parent=self)
+                self.status_var.set("The file already has these changes. Nothing was written.")
             if self._close_after_sync:
                 self.close_without_prompt()
 

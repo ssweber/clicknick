@@ -17,6 +17,7 @@
 - ClickNick no longer loads a nickname CSV that has the wrong Data Type for an address, or a row with more cells than the header. `TXT` now counts as a wrong Data Type, because CLICK writes `TEXT`. The error message gives the line number.
 - The Workspace setup window now closes when you close the CLICK window it belongs to. It already closed when that CLICK window opened another project.
 - The Address Editor no longer has **File > Refresh**. It only discarded your unsaved edits. It did not read CLICK's database or the CSV file again. To discard your edits, use **File > Discard Changes**.
+- A Sync or Save in the Address Editor no longer shows a box when it succeeds. The editor's status line says how many rows it wrote, such as "Synced 3 rows".
 - The Dataview Editor is now called the **Data View Editor**, and every title, menu and message writes **Data View** the way CLICK does.
 - About 90 messages, tooltips and help texts are reworded in shorter sentences. They say the same things as before. If a script of yours matches on ClickNick's message text, check it.
 
