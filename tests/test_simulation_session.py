@@ -579,7 +579,7 @@ def test_launch_failure_during_rebuild_waits(ready):
     def rebuild_under_the_launch() -> None:
         ready.analysis._generation = 6  # a rebuild ran under the launch...
         ready.analysis._status = AnalysisStatus.READY  # ...and already finished
-        raise RuntimeError("DAP launch failed: No module named 'subroutines'")
+        raise RuntimeError("pyrung could not load the program: No module named 'subroutines'")
 
     ready.launch_hook = rebuild_under_the_launch
     ready.open()
@@ -589,7 +589,9 @@ def test_launch_failure_during_rebuild_waits(ready):
 
 
 def test_launch_failure_without_rebuild_is_reported(ready):
-    ready.next_launch_error = RuntimeError("DAP launch failed: something genuinely broken")
+    ready.next_launch_error = RuntimeError(
+        "pyrung could not load the program: something genuinely broken"
+    )
     ready.open()
     assert ready.sim.status is SimStatus.FAILED
     assert not ready.sim.is_waiting
@@ -1689,7 +1691,7 @@ def test_internal_forces_whose_name_moves_are_listed_before_the_write_and_releas
 
     change = ready.sim.program_change
     notice = "1 force: Speed (now on DS5, was DS1). Kept under new names: Mode -> Auto (C1)."
-    assert f"Writing releases {notice}" in change.text, "listed before the user writes"
+    assert f"Writing the program releases {notice}" in change.text, "listed before the user writes"
     mark = len(ready.dap.calls)
 
     ready.sim.write_program()
@@ -2641,7 +2643,9 @@ def test_a_link_that_lands_where_a_followed_name_went_is_dropped(ready):
     ready.dap.links_revision += 1
     _frame(ready)
     _rebuild(ready, {"X001": "Begin", "X002": "Start"})
-    assert "The cut on X002 is dropped for the link on Start." in ready.sim.program_change.text
+    assert (
+        "The cut on X002 is removed, because the link on Start moved onto the same address."
+    ) in ready.sim.program_change.text
     mark = len(ready.dap.calls)
 
     ready.sim.write_program()
@@ -2652,7 +2656,7 @@ def test_a_link_that_lands_where_a_followed_name_went_is_dropped(ready):
     assert ready.dap.bench == {"Start": {"enable": "Motor", "enabled": True, "trigger": None,
                                          "response": {}}}  # fmt: skip
     assert ready.sim.bench_links == {"X002": BenchLink("Y001")}
-    assert "The cut on X002 is dropped" in (ready.sim.notice or "")
+    assert "The cut on X002 is removed" in (ready.sim.notice or "")
 
 
 def test_a_write_pyrung_never_answers_sends_nothing_by_name(ready):
@@ -3058,8 +3062,10 @@ def test_a_pyrung_without_the_planned_reload_refuses_the_write_and_nothing_chang
     assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
     assert ready.sim.to_tag("X001") == "Start", "the old program runs on"
     change = ready.sim.program_change
-    assert "pyrung 0.16.0 or later" in change.text
-    assert "or later can). The simulation still runs the previous one." in ready.messages("error")
+    assert "older than 0.16.0" in change.text
+    assert (
+        "Use Restart to run the new program. The simulation still runs the previous one."
+    ) in ready.messages("error")
     assert change.actions == ("run_time_edit", "stop_and_write", "restart")
 
 

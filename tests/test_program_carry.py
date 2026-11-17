@@ -162,14 +162,14 @@ def test_the_notice_lists_releases_renames_then_moves():
         {"X002": "Start", "X003": "Motor"},
     )
     assert plan.notice == (
-        "Writing releases 2 forces: Mode (now on C2, was C1), Speed (now on DS5, was DS1). "
+        "Writing the program releases 2 forces: Mode (now on C2, was C1), Speed (now on DS5, was DS1). "
         "Kept under new names: Start -> Begin (X001), "
         "the link on X002 now comes from Begin (was Start). "
         "The link on X003 now follows Motor on Y005 (was Y001)."
     )
     assert CarryPlan().notice == ""
     one = plan_carry(OLD, _maps({"DS5": "Speed"}), {"Speed": 4}, {})
-    assert one.notice == "Writing releases 1 force: Speed (now on DS5, was DS1)."
+    assert one.notice == "Writing the program releases 1 force: Speed (now on DS5, was DS1)."
 
 
 def _report(plan: CarryPlan, **drops: tuple[str, str]) -> list[dict]:
@@ -263,15 +263,15 @@ def test_a_declared_link_that_could_not_move_is_said_with_pyrungs_reason(reason,
         # Start moves from X001 to X002, which has its own cut. Start's link wins.
         ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
          {"Start": "Motor", "X002": None}, ("Start", LinkTarget("Start", "Motor")), "X002",
-         "the cut on X002 is dropped for the link on Start"),
+         "the cut on X002 is removed, because the link on Start moved onto the same address"),
         # The same on internal bits. Run moves from C1 to C2, and C2 has a link from C5.
         ({"C1": "Run", "C5": "Aux"}, {"C2": "Run", "C5": "Aux"},
          {"Run": "Aux", "C2": "Aux"}, ("Run", LinkTarget("Run", "Aux")), "C2",
-         "the link on C2 is dropped for the link on Run"),
+         "the link on C2 is removed, because the link on Run moved onto the same address"),
         # With the entries listed the other way round, the followed link still wins.
         ({"X001": "Start", "Y001": "Motor"}, {"X002": "Start", "Y001": "Motor"},
          {"X002": None, "Start": "Motor"}, ("Start", LinkTarget("Start", "Motor")), "X002",
-         "the cut on X002 is dropped for the link on Start"),
+         "the cut on X002 is removed, because the link on Start moved onto the same address"),
     ],
 )  # fmt: skip
 def test_two_links_on_one_new_feedback_keep_the_one_that_followed_its_name(

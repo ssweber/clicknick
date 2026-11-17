@@ -291,10 +291,10 @@ class DapService:
     ) -> dict[str, Any]:
         """Send a request and return its body, raising DapRequestError on failure."""
         if self._proc is None:
-            raise DapUnavailableError(f"{command}: simulation is not running")
+            raise DapUnavailableError("the simulation is not running")
         resp = self._send_and_wait(command, arguments, timeout)
         if resp is None:
-            raise DapUnavailableError(f"{command}: no response from simulation")
+            raise DapUnavailableError("the simulation did not answer")
         if not resp.get("success"):
             raise DapRequestError(resp.get("message") or f"{command} failed")
         return resp.get("body") or {}
@@ -555,9 +555,8 @@ class DapService:
         if resp is None or not resp.get("success"):
             stderr = self._drain_stderr()
             self._kill()
-            raise RuntimeError(
-                f"DAP initialize failed\n{stderr}" if stderr else "DAP initialize failed"
-            )
+            failed = "the simulation process did not start"
+            raise RuntimeError(f"{failed}\n{stderr}" if stderr else failed)
 
         launch_args: dict[str, object] = {
             "program": str(run_py),
@@ -579,7 +578,7 @@ class DapService:
             stderr = self._drain_stderr()
             self._kill()
             detail = f"{error_msg}\n{stderr}" if stderr else error_msg
-            raise RuntimeError(f"DAP launch failed: {detail}")
+            raise RuntimeError(f"pyrung could not load the program: {detail}")
 
         # The adapter always answers configurationDone. If no answer comes, the adapter died
         # or hung after launch.
@@ -587,11 +586,8 @@ class DapService:
         if resp is None or not resp.get("success"):
             stderr = self._drain_stderr()
             self._kill()
-            raise RuntimeError(
-                f"DAP configurationDone failed\n{stderr}"
-                if stderr
-                else "DAP configurationDone failed"
-            )
+            failed = "the simulation stopped answering after it loaded the program"
+            raise RuntimeError(f"{failed}\n{stderr}" if stderr else failed)
 
     def terminate(self) -> None:
         """Shut down the DAP subprocess."""
@@ -754,8 +750,8 @@ class DapService:
         except DapRequestError as exc:
             if str(exc).startswith("Unsupported command"):
                 raise DapRequestError(
-                    "the installed pyrung cannot write a program into a running simulation "
-                    "(pyrung 0.16.0 or later can)"
+                    "the installed pyrung is older than 0.16.0 and cannot write a program "
+                    "into a running simulation. Use Restart to run the new program"
                 ) from exc
             raise
 
