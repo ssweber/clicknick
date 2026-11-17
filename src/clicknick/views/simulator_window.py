@@ -381,8 +381,8 @@ class SimulatorWindow(tk.Toplevel):
             bench = sim.bench_links.get(address)
             if bench is not None and bench.cut:
                 return (
-                    "The program's link is cut on the bench, as if the sensor failed; "
-                    "the switch drives this input. Right-click to restore it."
+                    "The program's link is cut on the bench, as if the sensor failed. "
+                    "The switch drives this input. Right-click to restore it."
                 )
             return ""
         enable = link.enable or ""
@@ -393,7 +393,7 @@ class SimulatorWindow(tk.Toplevel):
         text = f"{kind}: driven by {driver}{when} ({link.response_label})."
         bench = sim.bench_links.get(address)
         if link.source == "bench" and bench is not None and self._saved_to_project(address, bench):
-            text += "\nSaved to the project; the program takes it over after the next Sync."
+            text += "\nSaved to the project. The program takes it over after the next Sync."
         return f"{text}\nRight-click for options."
 
     def _enables(self) -> list[str]:
@@ -520,7 +520,7 @@ class SimulatorWindow(tk.Toplevel):
         if not sim.enabled:
             messages.append(
                 (
-                    "Simulation is off. Start it to run the program; your switches, "
+                    "Simulation is off. Start it to run the program. Your switches, "
                     "values and forces are kept.",
                     [("Start", sim.turn_on)],
                 )
@@ -535,7 +535,7 @@ class SimulatorWindow(tk.Toplevel):
             messages.append(
                 (
                     f"The Modbus server could not start on port {info.get('port')}: "
-                    f"{info['error']}. Switches and values still work; other "
+                    f"{info['error']}. Switches and values still work. Other "
                     "Modbus clients cannot connect.",
                     [("Change port...", self._change_port)],
                 )
@@ -604,7 +604,7 @@ class SimulatorWindow(tk.Toplevel):
         row = store.visible_state.get(addr_key)
         if row is None or not row.nickname:
             self._show_action_error(
-                f"Give {address} a nickname first: the program reads links only from named tags."
+                f"Give {address} a nickname first. The program reads links only from named tags."
             )
             return
         enable_name = self._names(link.enable)[0] or link.enable
@@ -616,8 +616,8 @@ class SimulatorWindow(tk.Toplevel):
         with store.edit_session(f"Save link on {address}") as session:
             session.set_field(addr_key, "comment", comment)
         self._note = (
-            f"Saved the link on {address} to the project. Sync to write it to CLICK; "
-            "after the next build the program declares it and the bench copy is dropped."
+            f"Saved the link on {address} to the project. Sync to write it to CLICK. "
+            "After the next build, the program declares it and the bench copy is dropped."
         )
         self._refresh_banners()
 
@@ -1751,10 +1751,10 @@ class SimulatorWindow(tk.Toplevel):
         self._restart_btn.pack(side=tk.RIGHT, padx=(0, 4))
         bind_tooltip(
             self._restart_btn,
-            "Start over: a new simulation of what the workspace holds now\n"
-            "(CLICK's last save and any edits), from power-on values (or the\n"
-            "PLC data file), back in the same mode with your switches, forces\n"
-            "and bench links.",
+            "Start a new simulation from the workspace as it is now\n"
+            "(CLICK's last save and any edits). It starts from power-on values,\n"
+            "or from the PLC data file. It keeps the same mode, your switches,\n"
+            "forces and bench links.",
         )
         ttk.Button(bar, text="Dataview", command=self._open_dataview).pack(
             side=tk.RIGHT, padx=(0, 4)
@@ -1764,11 +1764,11 @@ class SimulatorWindow(tk.Toplevel):
         self._plc_data_btn.pack(side=tk.RIGHT, padx=(0, 4))
         bind_tooltip(
             self._plc_data_btn,
-            "Start from the PLC's live values: a CSV saved in CLICK with\n"
+            "Start from the PLC's live values. Use a CSV saved in CLICK with\n"
             "PLC > Read Data from PLC... > All > Save (not the nickname CSV).\n"
-            "Switches and analog values take the file's values, and the\n"
-            "simulation starts over whenever the file changes, on what the\n"
-            "workspace holds now (CLICK's last save and any edits).",
+            "Switches and analog values are set from the file. The simulation\n"
+            "starts over whenever the file changes, from the workspace as it\n"
+            "is now (CLICK's last save and any edits).",
         )
         self._forces_btn = ttk.Menubutton(bar, text="Forces")
         self._forces_menu = tk.Menu(
@@ -1793,7 +1793,7 @@ class SimulatorWindow(tk.Toplevel):
         bind_tooltip(
             modbus,
             "The simulated PLC's Modbus TCP server. Point an HMI or other Modbus "
-            "client here; the count excludes this window's own connection.",
+            "client here. The count excludes this window's own connection.",
         )
 
         self._banner = ttk.Frame(self)

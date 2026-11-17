@@ -48,7 +48,7 @@ _HELP_TEXT = (
     "Check Program\n\n"
     "Checks start with a core set focused on likely bugs. Additional checks "
     "are available under Choose Checks, and your selection is remembered.\n\n"
-    "Collapsing a check hides its details; it still runs.\n\n"
+    "Collapsing a check hides its details. It still runs.\n\n"
     "Checks read the last saved ladder. Save in CLICK before running them."
 )
 
@@ -181,7 +181,7 @@ class AnalysisReportWindow:
         self._preference_status.configure(
             text=""
             if saved
-            else "Could not save view preferences; remembered for this window only."
+            else "Could not save view preferences. They are remembered for this window only."
         )
         return "break"
 

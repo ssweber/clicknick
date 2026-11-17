@@ -72,7 +72,7 @@ def test_first_time_help_is_remembered_and_help_button_reopens_it(report_window,
     assert messages[0][0] == "First-Time Tips"
     assert "core set" in messages[0][1]
     assert "Choose Checks" in messages[0][1]
-    assert "it still runs" in messages[0][1]
+    assert "It still runs" in messages[0][1]
     assert "Save in CLICK" in messages[0][1]
     window.window.destroy()
     reopened = report_window()
