@@ -42,24 +42,25 @@ def _get_csv_stem(project_dir: Path, stem: str) -> str:
 
 def _get_project_dir(ctx: DispatchContext) -> Path:
     """Get the active project workspace, or raise."""
+    from ..connection_session import no_workspace_reason
+
     analysis = ctx.analysis
-    if analysis is None:
-        raise ValueError(
-            "There is no workspace. Connect to a CLICK project, and wait until ClickNick has"
-            " read CLICK's database."
-        )
-    project_dir = analysis.project_dir
+    project_dir = analysis.project_dir if analysis is not None else None
     status = getattr(getattr(analysis, "status", None), "value", None)
     if status == "building":
         raise WorkspaceBusyError(project_dir or "the workspace")
     if project_dir is None or not project_dir.is_dir():
-        error = getattr(analysis, "error", None)
-        if status == "failed" and error:
-            raise ValueError(f"Could not build the workspace: {error}")
-        raise ValueError(
-            "There is no workspace yet. Save the project in CLICK, or use"
-            " Workspace > Reload from CLICK."
-        )
+        if status == "failed":
+            error = getattr(analysis, "error", None)
+            if error:
+                raise ValueError(f"Could not build the workspace: {error}")
+            raise ValueError("Could not build the workspace.")
+        if project_dir is not None:
+            # A build finished, and then the folder was deleted or moved.
+            raise ValueError(
+                f"The workspace folder {project_dir} is gone. Use Workspace > Reload from CLICK."
+            )
+        raise ValueError(f"There is no workspace. {no_workspace_reason(ctx.get_session())}")
     return project_dir
 
 

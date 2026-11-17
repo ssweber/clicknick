@@ -66,6 +66,30 @@ def no_database_reason(session: ConnectionSession | None, *, nicknames_needed: b
     )
 
 
+def no_workspace_reason(session: ConnectionSession | None) -> str:
+    """Say why *session* has no workspace that a command can use, and what to do.
+
+    *session* is the connected window's session, or None when no window is connected. The
+    text is one or more sentences, for a message box or a reply to ``clicknick-cli``.
+    """
+    from .services.analysis_service import AnalysisStatus
+
+    if session is None or not session.has_database:
+        return f"{no_database_reason(session)}."
+    analysis = session.analysis
+    status = analysis.status if analysis is not None else None
+    if status is AnalysisStatus.FAILED:
+        if analysis.error:
+            return f"Could not build the workspace: {analysis.error}"
+        return "Could not build the workspace."
+    if status is AnalysisStatus.BUILDING:
+        return "ClickNick is still building the workspace. Try again when it finishes."
+    return (
+        "ClickNick has not started building the workspace. Save the project in CLICK, "
+        "then try again."
+    )
+
+
 # The reason a session builds nothing before ClickNick has read CLICK's database (has_database)
 NO_DATABASE = (
     "ClickNick has not read this project's database, SC_.mdb, so it cannot build the "

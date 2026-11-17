@@ -37,9 +37,15 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ..connection_session import ConnectionSession
     from ..data.address_store import AddressStore
 
 _EDITABLE_FIELDS = ("nickname", "comment", "initial_value", "retentive")
+
+
+def _no_session() -> None:
+    """Return None. A context with no CLICK window connected has no session."""
+    return None
 
 
 @dataclass
@@ -49,6 +55,8 @@ class DispatchContext:
     store: AddressStore | None = None
     resolve_tag: Callable[[str], int | None] | None = None
     analysis: Any | None = None  # AnalysisService (avoid import for lightweight CLI)
+    # Returns the connected window's session, or None when no window is connected
+    get_session: Callable[[], ConnectionSession | None] = _no_session
     annotation: AnnotationService = field(default_factory=AnnotationService)
     # Opens Review Changes. The arguments are the bundle folder, the workspace source
     # folder, the program to select, its rungs to paste, and whether to open a window
@@ -436,6 +444,22 @@ def _format_help() -> str:
     return _HELP_TEXT.format(physical_options=cli_usage())
 
 
+def _no_addresses_reason(ctx: DispatchContext) -> str:
+    """Say why ClickNick has no addresses loaded, and what to do.
+
+    With a CLICK window connected, the text says why ClickNick has not loaded CLICK's database for
+    that window.
+    """
+    from ..connection_session import no_database_reason
+
+    session = ctx.get_session()
+    if session is None:
+        advice = "Connect to a CLICK window, or use File > Load Nicknames from CSV"
+    else:
+        advice = no_database_reason(session, nicknames_needed=True)
+    return f"ClickNick has no addresses loaded. {advice}."
+
+
 def dispatch(ctx: DispatchContext, command: str) -> str:
     """Execute one *command* against *ctx*; return human-readable text.
 
@@ -499,10 +523,7 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         return f"prompted: {_rows(count)} with unsaved edits"
 
     if ctx.store is None:
-        raise ValueError(
-            "ClickNick has no addresses loaded. Connect to a CLICK project, or load a CSV file"
-            " with File > Load Nicknames from CSV."
-        )
+        raise ValueError(_no_addresses_reason(ctx))
 
     if verb == "get":
         if len(parts) != 2:

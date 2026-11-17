@@ -44,9 +44,17 @@ and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`).
   only when no window is connected. Otherwise it says that ClickNick is still reading the database
   (`reading_database`), that database access is off (`CLICKNICK_DB_BACKEND=none`), or to select the window
   again to load the database. In the last two cases, a command that needs only nicknames (`nicknames_needed`)
-  also offers File > Load Nicknames from CSV. The status line (`_report_no_project_session`), the commands that
-  need the nicknames (`_report_no_data`) and the commands that need the workspace (`_no_workspace_reason`) all
-  use it.
+  also offers File > Load Nicknames from CSV. The status line (`_report_no_project_session`) and the commands
+  that need the nicknames (`_report_no_data`) use it.
+- `no_workspace_reason` says why a command that needs the workspace cannot run. Without the database, it
+  returns the text of `no_database_reason`. Otherwise it says that the build failed, is running, or has not
+  started. The app's commands use it.
+- `clicknick-cli` gives the same reasons as the app, except while a build runs. Then it raises
+  `WorkspaceBusyError`, the error that the workspace lock also raises. The live server reads the session through
+  a getter (`get_session` on `DispatchContext`). A command that needs the addresses uses `no_database_reason`. A
+  command that needs the workspace reports a failed build itself. It also reports a workspace folder that is gone
+  after a finished build, and tells the user to use Workspace > Reload from CLICK. The app does not check for
+  that folder. In every other case without a workspace, the command uses `no_workspace_reason`.
 - ClickNick drops a database load if its session closed, or if a CSV load or another connect cancelled it. It
   does this also when that happens during the prompt to save the data that the load replaces.
 - While a CLICK window is connected, its session's watch (`_monitor_task`) checks every 100 ms whether the window

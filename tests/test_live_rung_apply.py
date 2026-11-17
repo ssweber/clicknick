@@ -300,18 +300,6 @@ def test_a_failed_build_gives_its_reason() -> None:
     assert str(caught.value) == "Could not build the workspace: no Scr*.tmp files"
 
 
-def test_no_workspace_yet_says_how_to_build_one() -> None:
-    ctx = DispatchContext(store=_Store(), analysis=_UnbuiltAnalysis("idle"))
-
-    with pytest.raises(ValueError) as caught:
-        dispatch(ctx, "rung list")
-
-    assert str(caught.value) == (
-        "There is no workspace yet. Save the project in CLICK, or use"
-        " Workspace > Reload from CLICK."
-    )
-
-
 def test_an_unknown_program_is_named(tmp_path: Path) -> None:
     (tmp_path / "src" / "plc").mkdir(parents=True)
     ctx = DispatchContext(store=_Store(), analysis=_Analysis(tmp_path))

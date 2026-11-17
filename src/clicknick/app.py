@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING, Any, overload
 
 from .config import AppSettings
 from .connection_controller import REDRAW_COMMAND, REDRAW_ON_SYNC, ConnectionController
-from .connection_session import ClickConnection, SavedProgram, no_database_reason
+from .connection_session import (
+    ClickConnection,
+    SavedProgram,
+    no_database_reason,
+    no_workspace_reason,
+)
 from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
 from .detection.window_detector import ClickWindowDetector
@@ -127,29 +132,6 @@ class ClickNickApp:
             self._update_status(_NO_NICKNAMES, "error")
         else:
             self._report_no_project_session(nicknames_needed=True)
-
-    def _no_workspace_reason(self) -> str:
-        """Say why the connected project has no workspace that a command can use, and what to do.
-
-        The text is one or more sentences, for a message box.
-        """
-        from .services.analysis_service import AnalysisStatus
-
-        session = self._project_session()
-        if session is None:
-            return f"{no_database_reason(self._session)}."
-        analysis = session.analysis
-        status = analysis.status if analysis is not None else None
-        if status is AnalysisStatus.FAILED:
-            if analysis.error:
-                return f"Could not build the workspace: {analysis.error}"
-            return "Could not build the workspace."
-        if status is AnalysisStatus.BUILDING:
-            return "ClickNick is still building the workspace. Try again when it finishes."
-        return (
-            "ClickNick has not started building the workspace. Save the project in CLICK, "
-            "then try again."
-        )
 
     @staticmethod
     def _format_workspace_time(value) -> str:
@@ -565,7 +547,7 @@ class ClickNickApp:
             if analysis.status is AnalysisStatus.FAILED:
                 messagebox.showerror(
                     title,
-                    f"{purpose} needs the workspace.\n\n{self._no_workspace_reason()}",
+                    f"{purpose} needs the workspace.\n\n{no_workspace_reason(self._session)}",
                     parent=self.root,
                 )
                 return None
@@ -845,7 +827,7 @@ class ClickNickApp:
             show = messagebox.showerror if failed else messagebox.showinfo
             show(
                 "Check Program",
-                f"Check Program needs the workspace.\n\n{self._no_workspace_reason()}",
+                f"Check Program needs the workspace.\n\n{no_workspace_reason(self._session)}",
                 parent=self.root,
             )
             return
@@ -882,7 +864,7 @@ class ClickNickApp:
         if selection is None:
             messagebox.showinfo(
                 "Choose Checks",
-                f"Choose Checks needs the workspace.\n\n{self._no_workspace_reason()}",
+                f"Choose Checks needs the workspace.\n\n{no_workspace_reason(self._session)}",
                 parent=parent,
             )
             return
@@ -1243,7 +1225,7 @@ class ClickNickApp:
         if analysis is None:
             messagebox.showinfo(
                 "Export Workspace",
-                f"There is no workspace to export.\n\n{self._no_workspace_reason()}",
+                f"There is no workspace to export.\n\n{no_workspace_reason(self._session)}",
                 parent=self.root,
             )
             return
@@ -1737,6 +1719,7 @@ class ClickNickApp:
             self._live_session_dir,
             lambda: self._click.project_name if self._click else None,
             lambda: self._session.analysis if self._session else None,
+            get_session=lambda: self._session,
             get_workspace_dir=self._workspace.source_dir,
             show_proposal=self._show_review_changes,
             get_mdb_path=self._live_mdb_path,
