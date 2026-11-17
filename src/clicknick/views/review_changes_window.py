@@ -1890,7 +1890,7 @@ class ReviewChangesWindow(tk.Toplevel):
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
         except RuntimeError as exc:
             # Only ladder/clipboard.py raises RuntimeError here, and its errors name what failed
-            self._status_var.set(f"{exc}\nTo try again, click its row")
+            self._status_var.set(str(exc))
             return False
         except Exception as exc:
             self._status_var.set(f"Could not copy {name}: {exc}")
@@ -1907,7 +1907,7 @@ class ReviewChangesWindow(tk.Toplevel):
         elif result.mdb_error:
             msg += f"\nCould not add the rungs' addresses to CLICK's database: {result.mdb_error}"
         where = _where_to_paste(step) if step is not None else self._whole_placement(name)
-        msg += f'\n{where}, then click "Next". To copy it again, click its row'
+        msg += f'\n{where}, then click "Next". To copy it again, click its row, then click "Copy"'
         self._status_var.set(msg)
         self._update_action_btn()
         if result.rung_count >= _SLOW_PASTE_RUNGS:

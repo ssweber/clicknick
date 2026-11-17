@@ -151,10 +151,9 @@ class AnalysisReportWindow:
 
         checked = len(failing) + len(passing)
         not_run = len(self._not_run)
-        counts = (
-            f"{len(passing)} of {checked} {_checks(checked)} passed. "
-            f"{not_run} {_were(not_run)} not run"
-        )
+        counts = f"{len(passing)} of {checked} {_checks(checked)} passed"
+        if not_run:
+            counts += f". {not_run} {_were(not_run)} not run"
         ttk.Label(bar, text=counts, font=("Segoe UI", 9), foreground=_MUTED).pack(side=tk.RIGHT)
         self._summary_line = f"{', '.join(chips)} - {counts}"
 

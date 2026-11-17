@@ -359,9 +359,11 @@ class ImportCsvDialog(tk.Toplevel):
 
         # Column options help text (below table)
         help_text = (
-            "Nickname: Overwrite replaces the nickname. An empty CSV nickname leaves it as it is.\n"
+            "Nickname: Overwrite replaces the nickname. An empty CSV nickname leaves the current "
+            "nickname as it is.\n"
             "    Merge sets the nickname only where the address has none.\n"
-            "Comment: Overwrite replaces the comment. An empty CSV comment clears it.\n"
+            "Comment: Overwrite replaces the comment. An empty CSV comment clears the current "
+            "comment.\n"
             "    Append adds the CSV comment after the current one.\n"
             "    Block Tag copies only the block tag, such as <Motor>, and keeps the rest of "
             "the comment.\n"

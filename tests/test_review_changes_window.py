@@ -527,7 +527,7 @@ def test_copy_pops_up_from_100_rungs(monkeypatch, rungs: int, warned: bool) -> N
     assert window._copied is True
 
 
-def test_a_failed_clipboard_copy_says_what_failed_and_how_to_try_again(monkeypatch) -> None:
+def test_a_failed_clipboard_copy_shows_the_clipboard_error_alone(monkeypatch) -> None:
     result = SimpleNamespace(payload=b"", rung_count=1, addresses_inserted=0, mdb_error=None)
 
     def _fail(*_a, **_k):
@@ -541,7 +541,7 @@ def test_a_failed_clipboard_copy_says_what_failed_and_how_to_try_again(monkeypat
 
     assert window._copy_rungs(0, None) is False
 
-    assert _status(window) == f"{failed}\nTo try again, click its row"
+    assert _status(window) == failed
 
 
 def test_changed_program_is_stepped_through_by_runs_of_differing_rungs(monkeypatch, copies) -> None:
@@ -554,7 +554,7 @@ def test_changed_program_is_stepped_through_by_runs_of_differing_rungs(monkeypat
     assert copies == [(RUNGS[:1], 1)]
     assert _action(window) == "Next →"
     assert "r1 of main.csv copied" in _status(window)
-    assert "To copy it again, click its row" in _status(window)
+    assert 'To copy it again, click its row, then click "Copy"' in _status(window)
 
     window._on_action()  # Next: the row's second run
     assert window._done == set()

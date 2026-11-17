@@ -174,6 +174,12 @@ def test_future_registry_rules_and_severities_render_and_remember(report_window,
     assert _is_hidden(window, "FUTURE_RULE")
 
 
+def test_a_full_run_with_a_finding_does_not_count_checks_not_run(report_window):
+    window = report_window(_data())
+    assert window._summary_line.endswith(" checks passed")
+    assert "not run" not in window._summary_line
+
+
 def test_report_separates_passed_and_not_run_and_copies_both(report_window):
     data = AnalysisReportData(checked_rules=frozenset({"RUNG_CONTRADICTION"}))
     window = report_window(data)
