@@ -459,7 +459,7 @@ class ConnectionController:
             f"The CLICK window now shows {new_filename}. You have unsaved "
             f"{' and '.join(unsaved)} made in {old_filename}.\n\n"
             f"Keep them as unsaved changes for {new_filename}? Choose Yes after a Save As in "
-            f"CLICK: {saves} to {new_filename}.\n\n"
+            f"CLICK. {saves} to {new_filename}.\n\n"
             "No discards them and saves nothing.",
             icon=messagebox.WARNING,
             parent=self._app.root,
@@ -704,11 +704,11 @@ class ConnectionController:
         if after_sync:
             what = "CLICK was busy" if busy else "CLICK did not redraw them"
             message = (
-                f"⚠ Synced into CLICK's database, but {what} ({result.detail}): "
-                f"Tools > {REDRAW_COMMAND} shows them"
+                f"⚠ Synced into CLICK's database, but {what} ({result.detail}). "
+                f"Use Tools > {REDRAW_COMMAND} to show them"
             )
         elif busy:
-            message = f"⚠ CLICK is busy ({result.detail}): close its dialog and try again"
+            message = f"⚠ CLICK is busy ({result.detail}). Close its dialog and try again"
         else:
             message = f"⚠ CLICK did not redraw its nicknames ({result.detail})"
         app._update_status(message, "error")

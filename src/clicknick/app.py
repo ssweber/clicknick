@@ -714,7 +714,7 @@ class ClickNickApp:
 
         self._open_address_editor("changed")
         self._update_status(
-            f"Staged {len(repairs)} system nickname repair(s); review Changed, then Sync",
+            f"Staged {len(repairs)} system nickname repair(s). Review Changed, then Sync.",
             "connected",
         )
 
@@ -1801,7 +1801,7 @@ class ClickNickApp:
             )
         if legacy:
             parts.append(
-                "CLICK holds these rungs in an old encoding, which an older ClickNick pasted. "
+                "An older ClickNick pasted these rungs into CLICK in an old encoding. "
                 "CLICK runs them differently from how they read:\n\n"
                 + _listed(legacy)
                 + "\n\nPaste them into CLICK again. Review Changes lists them in red."
@@ -1888,7 +1888,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--db-backend",
         choices=("auto", "odbc", "jet", "none"),
-        help="Database backend: auto prefers ODBC; odbc or jet forces that backend. "
+        help="Database backend. auto prefers ODBC. odbc or jet forces that backend. "
         "none forces CSV mode. Defaults to CLICKNICK_DB_BACKEND or auto.",
     )
     args = parser.parse_args(argv)

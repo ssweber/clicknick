@@ -127,7 +127,7 @@ def read_analog_inputs(csv_dir: Path) -> frozenset[str]:
         inputs = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         raise ValueError(
-            "the workspace has no record of its analog inputs; reload the workspace from CLICK"
+            "the workspace has no record of its analog inputs. Reload the workspace from CLICK"
         ) from None
     if not isinstance(inputs, list) or not all(isinstance(item, str) for item in inputs):
         raise ValueError(f"{path} does not hold a list of addresses")
@@ -622,7 +622,7 @@ class AnalysisService:
                 or self.project_dir.resolve() != source
             ):
                 raise RuntimeError(
-                    "Click project changed during export; try again after conversion finishes"
+                    "Click project changed during export. Try again after conversion finishes"
                 )
 
             file_count = sum(path.is_file() for path in staged.rglob("*"))
