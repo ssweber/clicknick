@@ -20,7 +20,7 @@
 
 ### Fixed
 
-- After a Sync, CLICK's ladder now shows the new nicknames. CLICK then counts the project as changed and asks you to save it when you close it. If a CLICK dialog is in the way, close it and choose **Tools > Redraw Nicknames in CLICK**.
+- After a Sync, CLICK's ladder now shows the new nicknames. While CLICK reads them again, ClickNick shows "Redrawing nicknames in CLICK…" over CLICK's window. CLICK then counts the project as changed and asks you to save it when you close it. If a CLICK dialog is in the way, close it and choose **Tools > Redraw Nicknames in CLICK**. If you want CLICK to redraw only when you choose that, turn off **Tools > Redraw Ladder on Sync**.
 - In CLICK 4's Receive and Send, autocomplete now appears in Starting Master Address, the status flags and Exception Response. On a Modbus TCP port it used to appear in the IP address field. Starting Master Address now offers only the memory types that the selected Function Code accepts. In CLICK 2 and 3, the local address field of Receive and Send now offers the memory types that any of its Function Codes accepts.
 - In CLICK 4, autocomplete now offers DS and TD nicknames in Out's Delay Setting. In every version, it no longer offers X, T or CT in Out, Set and Reset, because CLICK rejects them there.
 - The Simulator now starts from a PLC data file that has a DF value CLICK shows as `Err-Format`. An analog input on that DF keeps the value it had.

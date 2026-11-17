@@ -15,6 +15,7 @@ has shown, whether a redraw is running, and a redraw that was requested while it
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from dataclasses import replace
 from tkinter import messagebox
@@ -32,19 +33,26 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from tkinter import ttk
 
+    from .config import AppSettings
     from .connection_session import ConnectionSession
     from .data.nickname_manager import NicknameManager
     from .data_session import DataSession
     from .services.click_redraw import RedrawResult
+    from .views.redraw_splash import RedrawSplash
+
+logger = logging.getLogger(__name__)
 
 # The Tools menu command that redraws CLICK's nicknames
 REDRAW_COMMAND = "Redraw Nicknames in CLICK"
+# The Tools menu setting that redraws them after each Sync
+REDRAW_ON_SYNC = "Redraw Ladder on Sync"
 
 
 class ConnectionHost(Protocol):
     """The part of the app (``ClickNickApp``) that ConnectionController uses."""
 
     root: tk.Tk
+    settings: AppSettings
     # The connected session and the loaded data live only here. Assigning either one
     # refreshes the main window.
     _session: ConnectionSession | None
@@ -617,18 +625,41 @@ class ConnectionController:
 
     # -- Redrawing CLICK's nicknames -------------------------------------------
 
+    def after_sync(self) -> None:
+        """Make CLICK redraw the nicknames that a Sync just wrote into its database.
+
+        If the user turned Tools > Redraw Ladder on Sync off, redraw nothing. The status
+        line then says how to show the new names.
+        """
+        if self._app.settings.redraw_on_sync:
+            self.redraw_nicknames(after_sync=True)
+            return
+        self._app._update_status(
+            f"✓ Synced into CLICK's database. Use Tools > {REDRAW_COMMAND} "
+            "to show the new names in CLICK's ladder",
+            "connected",
+        )
+
     def redraw_nicknames(self, *, after_sync: bool) -> None:
         """Make the connected CLICK window redraw its nicknames from SC_.mdb.
 
-        Run ``services.click_redraw.redraw_nicknames`` off the Tk thread and show its
-        result in the status line. Pass *after_sync* when a Sync has just written
-        nicknames. A skipped or failed redraw then says that the nicknames are in CLICK's
-        database and how to redraw them. A request made while a redraw runs waits and runs
-        when the running one ends, because the running one may have read SC_.mdb before the
-        Sync wrote it. If a redraw ends after another CLICK window, or none, is connected,
-        it shows nothing, and a request made for the earlier window does not run. If a new
-        session starts on the same window after a project change, the redraw still shows its
-        result, and a pending request still runs.
+        Run ``services.click_redraw.redraw_nicknames`` on a thread of its own and show the
+        result in the status line. While the redraw runs, a notice (``RedrawSplash``) shows
+        over CLICK's window. The notice goes before the status line shows the result. So it
+        never hides a dialog that the redraw leaves to the user.
+
+        Pass *after_sync* when a Sync has just written nicknames. If the redraw is skipped
+        or fails, the status line then says that the nicknames are in CLICK's database and
+        how to redraw them.
+
+        If you call this while a redraw runs, the request runs after that redraw ends. That
+        redraw may have read SC_.mdb before the Sync wrote it. Several requests made
+        meanwhile run once.
+
+        If another CLICK window, or none, is connected when a redraw ends, the status line
+        shows nothing, and the waiting request does not run. A project change opens a new
+        session on the same window. The redraw then still shows its result, and the waiting
+        request still runs.
         """
         session = self._app._session
         if session is None:
@@ -670,6 +701,7 @@ class ConnectionController:
             except queue.Empty:
                 self._app.root.after(100, finish)
                 return
+            self._close_splash(splash)
             self._redraw_running = False
             current = self._app._session
             if current is not None and current.click.hwnd == click.hwnd:
@@ -678,8 +710,32 @@ class ConnectionController:
             if pending is not None and current is not None and current.click.hwnd == pending[0]:
                 self._start_redraw(current, pending[1])
 
-        self._run_off_tk(work)
+        splash = self._show_splash(click.hwnd)
+        try:
+            self._run_off_tk(work)
+        except BaseException:
+            self._close_splash(splash)
+            self._redraw_running = False
+            raise
         self._app.root.after(100, finish)
+
+    def _show_splash(self, click_hwnd: int) -> RedrawSplash | None:
+        """Show the notice over the CLICK window *click_hwnd*, or return None if it fails.
+
+        The redraw runs without the notice when it cannot be shown.
+        """
+        from .views.redraw_splash import RedrawSplash
+
+        try:
+            return RedrawSplash(self._app.root, click_hwnd)
+        except Exception:
+            logger.exception("Could not show the redraw notice")
+            return None
+
+    @staticmethod
+    def _close_splash(splash: RedrawSplash | None) -> None:
+        if splash is not None:
+            splash.close()
 
     @staticmethod
     def _run_off_tk(work: Callable[[], None]) -> None:

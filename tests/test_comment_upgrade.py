@@ -202,16 +202,23 @@ def tk_root():
 
 def test_opening_the_repairs_menu_refreshes_the_upgrade_entry(tk_root):
     from clicknick.app import ClickNickApp
+    from clicknick.config import AppSettings
     from clicknick.workspace_controller import WorkspaceController
 
     app = ClickNickApp.__new__(ClickNickApp)
     app.root = tk_root
+    app.settings = AppSettings()
     app._workspace = WorkspaceController(SimpleNamespace(_session=None))
     app._refresh_upgrade_entry = MagicMock()
     app._create_menu_bar()
     menubar = tk_root.nametowidget(tk_root.cget("menu"))
     try:
         assert app.repairs_menu.entrycget(1, "label") == "Upgrade Project"
+        # Redraw Ladder on Sync follows Redraw Nicknames in CLICK, checked by default.
+        setting = app._tools_redraw_index + 1
+        assert app.tools_menu.type(setting) == "checkbutton"
+        assert app.tools_menu.entrycget(setting, "label") == "Redraw Ladder on Sync"
+        assert app.settings.redraw_on_sync
         tk_root.tk.eval(app.repairs_menu.cget("postcommand"))
         app._refresh_upgrade_entry.assert_called_once_with()
         # Each entry that the workspace controller tracks is one it added, with the same label.

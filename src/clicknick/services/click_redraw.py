@@ -15,6 +15,12 @@ Address Picker.
 while CLICK shows its main window alone. It presses only the import mode's radio button,
 Open and the button of the "Completed!" box, and it leaves any other window to the user.
 
+CLICK's import makes the active window the owner of its Open dialog. When another program
+is active, the dialog has no owner (live run on CLICK v4.00, 2026-11-17). So when
+ClickNick is active, the redraw makes CLICK active first. It also tells the import's
+windows apart by class and title, never by owner. Before the command, CLICK showed its main
+window alone. So any window that CLICK shows afterwards comes from the import.
+
 Windows' own strings ("Open", "OK", "Cancel") differ by language. So it tells the file
 dialog and its buttons apart by structure and control ids, and it reads only CLICK's own
 strings as text. It blocks for seconds, so run it off the Tk thread.
@@ -56,10 +62,11 @@ BM_CHECKED = 1
 
 # Seconds. Every wait is bounded, so a CLICK that does not answer ends the redraw.
 IDLE_TIMEOUT = 1.0
+# How long a window may take to become the foreground window after set_foreground
+ACTIVATE_TIMEOUT = 1.0
+# A dialog that does not show the import modes yet may be the import's Open dialog, still
+# being built, until this many seconds after the command
 OPEN_TIMEOUT = 10.0
-# A dialog that CLICK's main window owns and that does not show the import modes yet is
-# taken for the import's Open dialog, still being built, for this many seconds
-DIALOG_GRACE = 1.0
 FILL_TIMEOUT = 5.0
 # A file dialog that is still opening can empty its File name edit after it was set
 # (devtools/click_runner.py, fill_path). The path must read back for this many seconds.
@@ -206,28 +213,31 @@ def redraw_nicknames(
     Write the CSV into *temp_dir* (the temp folder by default) and remove it afterwards. If
     CLICK still holds it, the next redraw removes it.
 
-    If one of *own_pid*'s windows (this process by default) had the foreground at the start,
-    and CLICK has it at the end, return the foreground to that window's last active popup.
-    A message box that ClickNick showed in the meantime gets the foreground.
+    If one of *own_pid*'s windows (this process by default) has the foreground at the start,
+    give the foreground to CLICK's main window before the import. Windows lets only the
+    foreground process do that. If CLICK has the foreground at the end, return it to that
+    window's last active popup. A message box that ClickNick showed in the meantime gets the
+    foreground.
     """
     own = os.getpid() if own_pid is None else own_pid
     foreground = desktop.foreground()
     ours = foreground if foreground and desktop.window_pid(foreground) == own else 0
     _remove_leftovers()
     try:
-        return _redraw(desktop, pid, main, clock, sleep, temp_dir)
+        return _redraw(desktop, pid, main, bool(ours), clock, sleep, temp_dir)
     finally:
         now = desktop.foreground()
         if ours and now and desktop.window_pid(now) == pid:
             target = desktop.last_active_popup(ours) or ours
             if desktop.window_pid(target) == own:
-                desktop.set_foreground(target)
+                _activate(desktop, target, clock, sleep)
 
 
 def _redraw(
     desktop: ClickDesktop,
     pid: int,
     main: int,
+    activate: bool,
     clock: Callable[[], float],
     sleep: Callable[[float], None],
     temp_dir: Path | None,
@@ -243,6 +253,8 @@ def _redraw(
         return RedrawResult(RedrawOutcome.BUSY, "CLICK's window is disabled")
     if not desktop.idle(main, IDLE_TIMEOUT):
         return RedrawResult(RedrawOutcome.BUSY, "CLICK does not answer")
+    if activate:
+        _activate(desktop, main, clock, sleep)
 
     handle, name = tempfile.mkstemp(prefix="clicknick-redraw-", suffix=".csv", dir=temp_dir)
     path = Path(name)
@@ -255,6 +267,28 @@ def _redraw(
             logger.warning("Could not remove %s yet. The next redraw will try again.", path)
             with _leftovers_lock:
                 _leftovers.add(path)
+
+
+def _activate(
+    desktop: ClickDesktop,
+    hwnd: int,
+    clock: Callable[[], float],
+    sleep: Callable[[float], None],
+) -> None:
+    """Give the foreground to *hwnd* and wait until it has it.
+
+    If Windows refuses, return after ACTIVATE_TIMEOUT. The redraw goes on anyway.
+    Windows switches the foreground some time after the call returns. A window that
+    ClickNick closes before the switch can hand the foreground back to CLICK. So the
+    redraw ends only after the switch.
+    """
+    desktop.set_foreground(hwnd)
+    deadline = clock() + ACTIVATE_TIMEOUT
+    while desktop.foreground() != hwnd:
+        if clock() >= deadline:
+            logger.info("Window %#x did not become the foreground window", hwnd)
+            return
+        sleep(POLL)
 
 
 class _Import:
@@ -277,8 +311,6 @@ class _Import:
         self.sleep = sleep
         # The import's Open dialog, once a dialog showed the import modes
         self.dialog: int | None = None
-        # When each dialog not yet told apart was first seen (DIALOG_GRACE)
-        self._first_seen: dict[int, float] = {}
 
     def run(self) -> RedrawResult:
         try:
@@ -346,12 +378,13 @@ class _Import:
     def _kind(self, window: Window) -> str | None:
         """Return which of the import's windows *window* is, or None if it is none of them.
 
-        "dialog" is the import's Open dialog: a dialog that CLICK's main window owns and
-        that shows the three import modes. "opening" is a dialog that the main window owns,
-        seen for less than DIALOG_GRACE, before the Open dialog was found.
+        The window's owner does not count. CLICK's main window owns the import's windows
+        only when CLICK was active at the command.
+
+        "dialog" is the import's Open dialog: the first dialog that shows the three import
+        modes. "opening" is any other dialog that appears before the Open dialog is found.
+        It may be the Open dialog still being built.
         """
-        if window.owner != self.main:
-            return None
         if window.hwnd == self.dialog:
             return "dialog"
         if window.cls == "TfrmProgress" and window.title in PROGRESS_TITLES:
@@ -364,9 +397,7 @@ class _Import:
             if _shows_import_modes(self.desktop.controls(window.hwnd)):
                 self.dialog = window.hwnd
                 return "dialog"
-            first = self._first_seen.setdefault(window.hwnd, self.clock())
-            if self.clock() - first < DIALOG_GRACE:
-                return "opening"
+            return "opening"
         return None
 
     def _open_controls(self, controls: list[Control]) -> tuple[Control, Control, Control]:
@@ -436,7 +467,8 @@ class _Import:
 
         *until* is given the windows except the main window and tooltips. The redraw ends as
         FAILED if a window of none of the *expected* kinds (``_kind``) appears, if CLICK's
-        main window closes, or if *timeout* seconds pass.
+        main window closes, or if *timeout* seconds pass. If a dialog that never showed the
+        import modes is still open at the time-out, the failure names that dialog.
         """
         deadline = self.clock() + timeout
         while True:
@@ -452,6 +484,9 @@ class _Import:
             if value is not None and value is not False:
                 return value  # pyright: ignore[reportReturnType]
             if self.clock() >= deadline:
+                opening = [w for w in found if self._kind(w) == "opening"]
+                if opening:
+                    raise _failed(f"CLICK showed {', '.join(_describe(w) for w in opening)}")
                 raise _failed(f"timed out after {timeout:g} s waiting for {what}")
             self.sleep(POLL)
 

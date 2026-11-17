@@ -7,7 +7,7 @@ from tkinter import PhotoImage, filedialog, font, messagebox, ttk
 from typing import TYPE_CHECKING, Any, overload
 
 from .config import AppSettings
-from .connection_controller import REDRAW_COMMAND, ConnectionController
+from .connection_controller import REDRAW_COMMAND, REDRAW_ON_SYNC, ConnectionController
 from .connection_session import ClickConnection, SavedProgram
 from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
@@ -651,9 +651,11 @@ class ClickNickApp:
 
         Every Sync goes through ``AddressStore.save_all_changes``, which calls this. That
         covers the Address Editor's Sync and Sync and Close, and Yes to a save prompt.
+        If the user turned Tools > Redraw Ladder on Sync off, ``ConnectionController.after_sync``
+        redraws nothing.
         """
         if self._click is not None:
-            self._connection.redraw_nicknames(after_sync=True)
+            self._connection.after_sync()
 
     def _open_address_editor(
         self, initial_filter: str | None = None, *, close_after_sync: bool = False
@@ -1484,6 +1486,7 @@ class ClickNickApp:
         )
         self.tools_menu = tools_menu
         self._tools_redraw_index = tools_menu.index(tk.END)
+        tools_menu.add_checkbutton(label=REDRAW_ON_SYNC, variable=self.settings.redraw_on_sync_var)
         repairs_menu = tk.Menu(tools_menu, tearoff=0, postcommand=self._refresh_upgrade_entry)
         tools_menu.add_cascade(label="Repairs", menu=repairs_menu)
         repairs_menu.add_command(

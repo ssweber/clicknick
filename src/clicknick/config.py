@@ -14,6 +14,8 @@ class AppSettings:
         self.exclude_sc_sd_var = tk.BooleanVar(value=False)
         self.exclude_nicknames_var = tk.StringVar(value="")
         self.show_info_tooltip_var = tk.BooleanVar(value=True)
+        # Tools > Redraw Ladder on Sync
+        self.redraw_on_sync_var = tk.BooleanVar(value=True)
 
     @property
     def exclude_sc_sd(self) -> bool:
@@ -41,6 +43,11 @@ class AppSettings:
     def sort_by_nickname(self) -> bool:
         """Get nickname sorting setting."""
         return self.sort_by_nickname_var.get() if self.sort_by_nickname_var else False
+
+    @property
+    def redraw_on_sync(self) -> bool:
+        """Return True if CLICK should redraw its nicknames after each Sync."""
+        return self.redraw_on_sync_var.get()
 
     @property
     def show_info_tooltip(self) -> bool:

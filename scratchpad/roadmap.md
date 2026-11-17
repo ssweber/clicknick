@@ -487,6 +487,12 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   CLICK's process shows another top-level window. Does every redraw, **Tools > Redraw Nicknames in CLICK**
   included, then report CLICK busy? If so, which window classes should the redraw tolerate besides the
   main window and tooltips?
+- Q12 (not for the runner): in ClickNick, rename a nickname and click Sync while your own CLICK 4.00 project
+  is open. Does "Redrawing nicknames in CLICK…" show over CLICK's window, does the ladder show the new name,
+  and is ClickNick's window active again at the end? With **Tools > Redraw Ladder on Sync** off, does a Sync
+  leave the ladder as it was and say to use **Tools > Redraw Nicknames in CLICK**? An agent checked the redraw
+  and the notice on CLICKs that its script launched (2.60, 3.92, 4.00, 2026-11-17), but not through ClickNick's
+  own window. Only the tests cover the setting.
 
 ### Address Editor and store
 - Fill Down / Add Block T1..TD5, then Sync.

@@ -85,6 +85,7 @@ def _app(click: ClickConnection | None = CLICK) -> ClickNickApp:
     app.__dict__["_ui_refresh_id"] = None
     app._request_ui_refresh = MagicMock()
     app.root = FakeRoot()
+    app.settings = SimpleNamespace(redraw_on_sync=True)
     app._session = ConnectionSession(click) if click is not None else None
     app._data = None
     app._update_status = MagicMock()
@@ -173,13 +174,44 @@ def test_no_redraw_without_a_connected_window(redraws) -> None:
     redraws.assert_not_called()
 
 
+def test_with_redraw_ladder_on_sync_off_a_sync_says_how_to_redraw(redraws) -> None:
+    app = _app()
+    app.settings.redraw_on_sync = False
+    store = _store(DatabaseSource())
+    app._open_data(store)
+    _rename(store)
+
+    store.save_all_changes()
+
+    redraws.assert_not_called()
+    app._update_status.assert_called_once_with(
+        "✓ Synced into CLICK's database. Use Tools > Redraw Nicknames in CLICK "
+        "to show the new names in CLICK's ladder",
+        "connected",
+    )
+
+
 # -- Running the redraw off the Tk thread ------------------------------------------------
+
+
+class FakeSplash:
+    """Records in *log* when the notice over CLICK's window shows and when it goes."""
+
+    def __init__(self, log: list, click_hwnd: int) -> None:
+        self.log = log
+        log.append(("splash shown", click_hwnd))
+
+    def close(self) -> None:
+        self.log.append(("splash closed",))
 
 
 @pytest.fixture
 def desktop(monkeypatch) -> SimpleNamespace:
-    """Return the result of each redraw run, in order, and the (pid, hwnd) each run was for."""
-    found = SimpleNamespace(results=[], calls=[], threads=0)
+    """Return the result of each redraw run, in order, and the (pid, hwnd) each run was for.
+
+    *log* lists what the redraw notice and the status line showed, in order.
+    """
+    found = SimpleNamespace(results=[], calls=[], threads=0, log=[])
 
     def redraw(_desktop, pid, main, *, own_pid):
         found.calls.append((pid, main))
@@ -195,11 +227,107 @@ def desktop(monkeypatch) -> SimpleNamespace:
     monkeypatch.setattr(click_redraw, "redraw_nicknames", redraw)
     monkeypatch.setattr(win32_desktop, "Win32ClickDesktop", lambda: object())
     monkeypatch.setattr(ConnectionController, "_run_off_tk", staticmethod(run_off_tk))
+    monkeypatch.setattr(
+        ConnectionController, "_show_splash", lambda _self, hwnd: FakeSplash(found.log, hwnd)
+    )
     return found
 
 
 def _status(app: ClickNickApp) -> tuple[str, str]:
     return app._update_status.call_args.args
+
+
+def _logged_app(desktop: SimpleNamespace) -> ClickNickApp:
+    """Return an app whose status lines go into *desktop.log*."""
+    app = _app()
+    app._update_status.side_effect = lambda message, style="normal": desktop.log.append(
+        ("status", style)
+    )
+    return app
+
+
+@pytest.mark.parametrize(
+    ("result", "style"),
+    [
+        (RedrawResult(RedrawOutcome.REFRESHED), "connected"),
+        (RedrawResult(RedrawOutcome.BUSY, "CLICK does not answer"), "error"),
+        (RedrawResult(RedrawOutcome.FAILED, 'CLICK showed "Open"'), "error"),
+        (OSError("access denied"), "error"),
+    ],
+    ids=["refreshed", "busy", "failed", "raised"],
+)
+def test_the_notice_shows_while_the_redraw_runs_and_goes_before_the_status(
+    desktop, result, style
+) -> None:
+    app = _logged_app(desktop)
+    desktop.results.append(result)
+
+    app._connection.redraw_nicknames(after_sync=True)
+    app.root.run(100)
+
+    assert desktop.log == [("splash shown", 222), ("splash closed",), ("status", style)]
+
+
+def test_the_notice_goes_when_the_redraw_ends_on_another_window(desktop, monkeypatch) -> None:
+    app = _logged_app(desktop)
+    running = []
+    monkeypatch.setattr(ConnectionController, "_run_off_tk", staticmethod(running.append))
+    desktop.results.append(RedrawResult(RedrawOutcome.FAILED, "CLICK's window is closed"))
+
+    app._connection.redraw_nicknames(after_sync=True)
+    assert desktop.log == [("splash shown", 222)]
+    app._session = ConnectionSession(ClickConnection("333", 444, "Other.ckp"))
+    running.pop()()
+    app.root.run(100)
+
+    assert desktop.log == [("splash shown", 222), ("splash closed",)]
+
+
+def test_the_notice_goes_when_the_redraw_cannot_start(desktop, monkeypatch) -> None:
+    app = _logged_app(desktop)
+
+    def no_thread(_work):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(ConnectionController, "_run_off_tk", staticmethod(no_thread))
+
+    with pytest.raises(RuntimeError):
+        app._connection.redraw_nicknames(after_sync=True)
+
+    assert desktop.log == [("splash shown", 222), ("splash closed",)]
+    assert not app._connection._redraw_running
+
+
+def test_the_redraw_runs_when_the_notice_cannot_show(monkeypatch) -> None:
+    from clicknick.views import redraw_splash
+
+    refreshed = RedrawResult(RedrawOutcome.REFRESHED)
+    monkeypatch.setattr(click_redraw, "redraw_nicknames", lambda *_a, **_k: refreshed)
+    monkeypatch.setattr(win32_desktop, "Win32ClickDesktop", lambda: object())
+    monkeypatch.setattr(ConnectionController, "_run_off_tk", staticmethod(lambda work: work()))
+
+    def no_display(_root, _hwnd):
+        raise RuntimeError("no display")
+
+    monkeypatch.setattr(redraw_splash, "RedrawSplash", no_display)
+    app = _app()
+
+    app._connection.redraw_nicknames(after_sync=False)
+    app.root.run(100)
+
+    assert _status(app) == ("✓ CLICK shows the nicknames from its database", "connected")
+
+
+def test_the_menu_command_redraws_with_redraw_ladder_on_sync_off(desktop) -> None:
+    app = _app()
+    app.settings.redraw_on_sync = False
+    desktop.results.append(RedrawResult(RedrawOutcome.REFRESHED))
+
+    app._connection.redraw_nicknames(after_sync=False)
+    app.root.run(100)
+
+    assert desktop.calls == [(111, 222)]
+    assert _status(app) == ("✓ CLICK shows the nicknames from its database", "connected")
 
 
 def test_a_redraw_reports_click_shows_the_names(desktop) -> None:
