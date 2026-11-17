@@ -7,7 +7,12 @@ from tkinter import PhotoImage, filedialog, font, messagebox, ttk
 from typing import TYPE_CHECKING, Any, overload
 
 from .config import AppSettings
-from .connection_controller import REDRAW_COMMAND, REDRAW_ON_SYNC, ConnectionController
+from .connection_controller import (
+    NOT_CONNECTED,
+    REDRAW_COMMAND,
+    REDRAW_ON_SYNC,
+    ConnectionController,
+)
 from .connection_session import ClickConnection, SavedProgram
 from .data.address_store import AddressStore
 from .data.nickname_manager import NicknameManager
@@ -98,10 +103,26 @@ class ClickNickApp:
         """Return the session once ClickNick has read CLICK's database for it, else None.
 
         Building the workspace, simulating, Review Changes and Workspace setup all need that
-        session. Until it exists, they ask the user to connect first.
+        session. When this returns None, they call ``_report_no_project_session``.
         """
         session = self._session
         return session if session is not None and session.has_database else None
+
+    def _report_no_project_session(self) -> None:
+        """Show in the status line why ``_project_session`` returned None, and what to do."""
+        session = self._session
+        if session is None:
+            message = NOT_CONNECTED
+        elif session.reading_database:
+            message = "⚠ ClickNick is still reading CLICK's database. Try again when it has finished"
+        else:
+            # The load failed or was cancelled, or the user loaded a CSV file instead.
+            # Picking the window again connects to it and loads its database.
+            message = (
+                "⚠ ClickNick has not loaded CLICK's database for this project. Select the "
+                "window in the CLICK Windows list to load it"
+            )
+        self._update_status(message, "error")
 
     @staticmethod
     def _format_workspace_time(value) -> str:
@@ -492,7 +513,7 @@ class ClickNickApp:
         """
         session = self._project_session()
         if session is None:
-            self._update_status("Connect to a Click project first", "error")
+            self._report_no_project_session()
             return None
 
         mdb_path = self._live_mdb_path()

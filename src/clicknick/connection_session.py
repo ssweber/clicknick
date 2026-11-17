@@ -153,6 +153,9 @@ class ConnectionSession:
         # The token of the database load in flight, from begin_load. It is None once the load
         # is cancelled.
         self._load_token: object | None = None
+        # Whether a database load started and has not returned yet. end_load and cancel_load
+        # clear it.
+        self._reading = False
         # The scheduler that the connection watch runs on, and the id of its next tick.
         # watch() sets them.
         self._watch_scheduler: tk.Misc | None = None
@@ -166,7 +169,17 @@ class ConnectionSession:
         Use the load's result only while ``loads(token)`` returns True.
         """
         self._load_token = token = object()
+        self._reading = True
         return token
+
+    def end_load(self) -> None:
+        """Record that the database load returned, whether or not it read the database."""
+        self._reading = False
+
+    @property
+    def reading_database(self) -> bool:
+        """Return whether ClickNick is still reading CLICK's database for this session."""
+        return self._reading and not self._closed
 
     def loads(self, token: object) -> bool:
         """Return whether the load that *token* names is still wanted.
@@ -178,6 +191,7 @@ class ConnectionSession:
     def cancel_load(self) -> None:
         """Drop the database load in flight. Its result will not be used."""
         self._load_token = None
+        self._reading = False
 
     # -- Connection watch --------------------------------------------------
 

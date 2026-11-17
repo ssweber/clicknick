@@ -47,6 +47,7 @@
 - When the workspace's CSVs are gone, the notice in Review Changes no longer says that CLICK was saved. It says that ClickNick rebuilt the workspace from CLICK's last save, and that the save does not hold every change from the window. The notice also shows after **Reload from CLICK**.
 - The Address Editor's export option is now called **Export all rows**. It said "entire database", but it exports the rows that the editor holds, which can come from a CSV file and include unsaved edits.
 - The tooltip of the Simulator's **Wiring** button now says what a bench link is: wiring that you add in the Simulator and that the program does not declare. ClickNick saves it and, while **Apply bench links** is on, applies it each time the simulation starts.
+- The Workspace commands and the Simulator no longer tell you to connect to a CLICK project when a CLICK window is already connected. While ClickNick reads CLICK's database, they ask you to try again when it has finished. If ClickNick did not load the database, they tell you to select the window in the CLICK Windows list. If you cancel the Name PLC prompt in Workspace setup, ClickNick no longer shows a message.
 
 ## v0.24.1 - 2026-11-15
 

@@ -44,6 +44,8 @@ class WorkspaceHost(Protocol):
 
     def _project_session(self) -> ConnectionSession | None: ...
 
+    def _report_no_project_session(self) -> None: ...
+
     def _update_status(self, message: str, style: str = "normal") -> None: ...
 
     def _request_ui_refresh(self) -> None: ...
@@ -159,8 +161,10 @@ class WorkspaceController:
     def review_changes(self) -> None:
         """Review workspace changes through the reviewed proposal flow."""
         app = self._app
-        if app._project_session() is None or app._live_server is None:
-            app._update_status("Connect to a CLICK project first", "error")
+        if app._project_session() is None:
+            app._report_no_project_session()
+            return
+        if app._live_server is None:
             return
 
         try:
@@ -197,7 +201,7 @@ class WorkspaceController:
         app = self._app
         session = app._project_session()
         if session is None:
-            app._update_status("Connect to a CLICK project first", "error")
+            app._report_no_project_session()
             return
 
         from .services.workspace_service import WorkspaceState
@@ -280,7 +284,7 @@ class WorkspaceController:
         app = self._app
         session = app._project_session()
         if session is None:
-            app._update_status("Connect to a CLICK project first", "error")
+            app._report_no_project_session()
             return None
 
         window = session.setup_window
@@ -440,7 +444,7 @@ class WorkspaceController:
         dialog_parent = self._setup_parent()
         session = app._project_session()
         if session is None:
-            app._update_status("Connect to a CLICK project first", "error")
+            app._report_no_project_session()
             return
         window = session.setup_window
         config = session.pending_workspace
@@ -464,9 +468,10 @@ class WorkspaceController:
                 parent=dialog_parent,
             )
             return
+        # On None, the user cancelled the prompt, the project closed, or _ensure_plc_name
+        # already showed why in the status line.
         plc_name = self._ensure_plc_name()
         if plc_name is None:
-            app._update_status("Connect to a CLICK project first", "error")
             return
         if not self._setup_unchanged(session, window):
             return

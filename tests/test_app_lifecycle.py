@@ -549,21 +549,76 @@ def test_connecting_opens_the_session_before_the_database_loads(monkeypatch):
         ("workspace", "_ensure_plc_name"),
     ],
 )
-def test_without_its_database_a_session_asks_to_connect_first(monkeypatch, owner, action):
-    """Until the database has loaded, and after the CSV fallback, these ask to connect first.
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        ("no window", "⚠ Connect to a CLICK window first"),
+        (
+            "reading",
+            "⚠ ClickNick is still reading CLICK's database. Try again when it has finished",
+        ),
+        (
+            "not loaded",
+            "⚠ ClickNick has not loaded CLICK's database for this project. Select the window "
+            "in the CLICK Windows list to load it",
+        ),
+    ],
+)
+def test_without_its_database_a_session_says_why_it_cannot_act(
+    monkeypatch, owner, action, state, expected
+):
+    """These need CLICK's database, and each says why it is missing and what to do.
 
-    They ask even though the app has made a session for the connected window.
+    With a window connected, the app has a session for it. The database is still loading, or
+    ClickNick did not load it (the load failed or was cancelled, or a CSV file was loaded).
     """
     app, _prompts = _app(monkeypatch)
     app._live_server = MagicMock()
     app._workspace.plc_name = MagicMock(return_value=None)
+    session = app._session
+    if state == "no window":
+        app._session = None
+    elif state == "reading":
+        session.begin_load()
 
     getattr(app._workspace if owner == "workspace" else app, action)()
 
     ((message, style),) = [call.args for call in app._update_status.call_args_list]
-    assert (message.casefold(), style) == ("connect to a click project first", "error")
+    assert (message, style) == (expected, "error")
     app._live_server.dispatch_now.assert_not_called()
-    assert app._session.analysis is None and app._session.simulation is None
+    assert session.analysis is None and session.simulation is None
+
+
+def test_a_finished_database_load_is_no_longer_reading():
+    session = _session()
+    session.begin_load()
+    assert session.reading_database
+
+    session.end_load()
+
+    assert not session.reading_database
+
+
+def test_cancelling_the_plc_name_prompt_in_workspace_setup_shows_nothing(monkeypatch, tmp_path):
+    """The user is connected and only cancelled, so no status says to connect first."""
+    from clicknick.services.workspace_mirror import ProjectWorkspaceConfig
+
+    app, prompts = _app(monkeypatch)
+    app._session.has_database = True
+    app._session.pending_workspace = ProjectWorkspaceConfig(
+        plc_name="Line1", workspace_path=tmp_path / "Line1"
+    )
+    app._workspace.plc_name = MagicMock(return_value=None)
+    asked = []
+    monkeypatch.setattr(
+        "tkinter.simpledialog.askstring", lambda *args, **kwargs: asked.append(args[0])
+    )
+
+    app._workspace._apply_setup()
+
+    assert asked == ["Name PLC"]
+    app._update_status.assert_not_called()
+    assert prompts == []
 
 
 # -- app#5: Stop turns off popups only -----------------------------------------------------------

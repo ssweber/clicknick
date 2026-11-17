@@ -52,6 +52,8 @@ logger = logging.getLogger(__name__)
 REDRAW_COMMAND = "Redraw Nicknames in CLICK"
 # The Tools menu setting that redraws them after each Sync
 REDRAW_ON_SYNC = "Redraw Ladder on Sync"
+# The status line when a command needs a CLICK window and none is connected
+NOT_CONNECTED = "⚠ Connect to a CLICK window first"
 
 
 class ConnectionHost(Protocol):
@@ -315,6 +317,7 @@ class ConnectionController:
             except queue.Empty:
                 app.root.after(100, finish)
                 return
+            session.end_load()
             if error is not None:
                 app._show_main_window()
                 app._update_status("Database connection failed", "error")
@@ -339,7 +342,7 @@ class ConnectionController:
         """Report the loaded database and watch its window."""
         app = self._app
         if app._click is None:
-            app._update_status("⚠ Not connected", "error")
+            app._update_status(NOT_CONNECTED, "error")
             return False
 
         # Check whether a database backend can be attempted
@@ -669,7 +672,7 @@ class ConnectionController:
         """
         session = self._app._session
         if session is None:
-            self._app._update_status("⚠ Connect to a CLICK window first", "error")
+            self._app._update_status(NOT_CONNECTED, "error")
             return
         if self._redraw_running:
             hwnd = session.click.hwnd
@@ -802,7 +805,7 @@ class ConnectionController:
         """
         # Validate connection to Click instance
         if self._app._click is None:
-            self._app._update_status("⚠ Not connected to ClickPLC window", "error")
+            self._app._update_status(NOT_CONNECTED, "error")
             return False
 
         try:
