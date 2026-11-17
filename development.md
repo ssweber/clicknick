@@ -77,21 +77,22 @@ The version comes from the git tag, so there is no version number to edit.
 
 1. Publish the libraries ClickNick needs: `laddercodec` and `pyclickplc`, then `pyrung`.
 2. On a branch off `main`, update their pins in `pyproject.toml` and `uv.lock` together. The
-   whole runtime tree is pinned with `==`, so a new transitive dependency also needs a pin and
-   an entry in `PURPOSES` in `devtools/trust_report.py`.
+   whole runtime tree is pinned with `==`. If a new transitive dependency appears, add a pin for
+   it and an entry in `PURPOSES` in `devtools/trust_report.py`.
 3. Return to the released dependencies (above) and run `make lint test`. Try what changed by
-   hand: the tests can't drive CLICK.
+   hand, because the tests can't drive CLICK.
 4. Run `make docs-check`.
 5. In `CHANGELOG.md`, condense `Unreleased` as its style comment says and move it under
    `## vX.Y.Z - YYYY-MM-DD`.
-6. Run `make trust-report`. A red check here fails the release later.
-7. Open a pull request into `main`; once CI passes, squash-merge it.
-8. Publish a GitHub release tagged `vX.Y.Z`. `.github/workflows/publish.yml` builds on Windows,
-   publishes to PyPI, attaches the trust report and SBOM to the release, and deploys the docs
-   from the release's tag (not for a pre-release). The public site changes only here: merges to
-   `main` don't deploy it. To put a docs fix up between releases, or after promoting a
-   pre-release, run Docs by hand: `gh workflow run docs.yml --ref main -f ref=<tag or commit>`
-   (an empty `ref` rebuilds the latest release).
+6. Run `make trust-report`. If a check is red here, the release fails later.
+7. Open a pull request into `main`. When CI passes, squash-merge it.
+8. Publish a GitHub release tagged `vX.Y.Z`. `.github/workflows/publish.yml` then builds on
+   Windows, publishes to PyPI, and attaches the trust report and SBOM to the release. It also
+   deploys the docs from the release's tag, except for a pre-release. The public site changes
+   only at this step, because merges to `main` don't deploy it. To publish a docs fix between
+   releases, or after you promote a pre-release, run Docs by hand, with an empty `ref` to
+   rebuild the latest release:
+   `gh workflow run docs.yml --ref main -f ref=<tag or commit>`
 
 ## Basic Developer Workflows
 
@@ -200,10 +201,10 @@ run with `make test`.
 
 ## CLICK runner
 
-`devtools/click_runner.py` drives CLICK v4 on this desktop with nobody at it, so laddercodec and
-pyrung can ask CLICK what it makes of a rung. It starts its own CLICK, connects to the one PLC on
-the LAN without reading its project, pastes the CSV, runs Syntax Check, saves, and decodes what
-CLICK saved:
+`devtools/click_runner.py` drives CLICK v4 on this desktop with nobody at it. laddercodec and
+pyrung use it to ask CLICK what it makes of a rung. The runner starts its own CLICK and connects
+to the one PLC on the LAN without reading its project. It pastes the CSV, runs Syntax Check, and
+saves. Then it decodes what CLICK saved:
 
 ```bat
 set UV_NO_SYNC=1
@@ -212,19 +213,29 @@ uv run python devtools/click_runner.py record --out runs\dialogs
 uv run python devtools/click_runner.py try cases.json --out runs\cases --wire --keep
 ```
 
-`try` asks CLICK's instruction dialogs about each case in a JSON file (`devtools/editor_cases.json`
-holds the rule table's): the fields, mode and lists to set, and the option buttons, each named by
-the label CLICK shows on it or by its id. With `--wire` each case gets a rung of its own (a
-contact `X001` before an output instruction, a coil `Y001` after a Compare). With `--keep` each
-accepted case is saved under `saves\` in the `--out` folder; with `--wire` too, its rung is also
-copied there as CLICK's Edit > Copy puts it on the clipboard.
+`try` asks CLICK's instruction dialogs about each case in a JSON file. `devtools/editor_cases.json`
+holds the cases for the rule table. Each case names the fields, mode and lists to set, and the
+option buttons. You name a button by the label CLICK shows on it or by its id.
 
-`result.json` in the `--out` folder (also on stdout) says how the run went, and `run.log` logs
-each step. A paste whose rungs are not in the saved main program ends the run `aborted`. `record`
-dumps every window of CLICK at each step, to see a dialog the runner does not know yet. It
-refuses to start while CLICK runs or the screen is locked, never writes to the PLC (an allowlist
-of commands, in `devtools/click_desktop.py`), never deletes CLICK's temp folder, and stops at any
-window it does not expect. A CLICK error box stops it with the box's code in `click_error`
-("PTC-013" when the PLC did not answer), so the caller can decide whether to run it again. The
-file's docstring has the options, the rules and the result's fields. `tests/test_click_runner.py`
-runs it against a fake CLICK; no test starts CLICK.
+- With `--wire`, each case gets a rung of its own. An output instruction gets a contact `X001`
+  before it, and a Compare gets a coil `Y001` after it.
+- With `--keep`, each accepted case is saved under `saves\` in the `--out` folder.
+- With both, the rung is also copied there, in the form that CLICK's Edit > Copy puts on the
+  clipboard.
+
+`result.json` in the `--out` folder (also printed on stdout) says how the run went, and `run.log`
+logs each step. If a paste's rungs are not in the saved main program, the run ends `aborted`.
+`record` dumps every window of CLICK at each step, so you can see a dialog that the runner does
+not know yet.
+
+The runner follows these rules:
+
+- It refuses to start while CLICK is running or the screen is locked.
+- It never writes to the PLC. An allowlist of commands in `devtools/click_desktop.py` enforces this.
+- It never deletes CLICK's temp folder.
+- It stops at any window it does not expect.
+- If a CLICK error box appears, it stops and puts the box's code in `click_error`. The code is
+  "PTC-013" when the PLC did not answer. The caller can then decide whether to run it again.
+
+The file's docstring has the options, the rules and the result's fields. `tests/test_click_runner.py`
+runs the runner against a fake CLICK. No test starts CLICK.

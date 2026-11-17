@@ -52,16 +52,16 @@ workspaces are written to the folders the user chooses.
 - **PLC connection.** The Dataview editor connects over Modbus TCP (port 502 by default)
   after the user asks to go live, to the address they enter. It reads values and writes
   values when the user clicks Write.
-- **Simulator.** Starting the Simulator launches a child Python process (`python -m pyrung.dap`),
-  working in the workspace folder, that runs the workspace's `run.py`. The child starts a Modbus TCP
-  listener on `127.0.0.1`, port 502 unless the user picks another, and a command listener on
-  `localhost` with a port chosen by Windows, which the Console and `pyrung live` use. Like the
-  editor listener, it is unauthenticated, and other local users and processes that can reach
-  the port can connect. ClickNick connects to that Modbus listener to show the simulated
-  values, and so does the Dataview editor while it is open. Neither listener exists until the
-  simulation is started, and the child keeps running after
-  the Simulator window closes until the user stops it, or ClickNick disconnects from CLICK or
-  closes.
+- **Simulator.** Starting the Simulator launches a child Python process (`python -m pyrung.dap`)
+  in the workspace folder. The child runs the workspace's `run.py` and starts two listeners.
+  The first is a Modbus TCP listener on `127.0.0.1`, on port 502 unless the user picks another.
+  The second is a command listener on `localhost`, with a port chosen by Windows. The Console and
+  `pyrung live` use the command listener. Like the editor listener, it is unauthenticated, and
+  other local users and processes that can reach the port can connect. ClickNick connects to the
+  Modbus listener to show the simulated values. The Dataview editor does the same while it is
+  open. Neither listener exists until the simulation starts. The child keeps running after
+  the Simulator window closes. It stops when the user stops it, or when ClickNick disconnects
+  from CLICK or closes.
 - **Generated Python.** On project connection, ClickNick translates the ladder into Python
   and runs the generated code in-process to build the model behind Check Program. This
   step does not run files found in the project folder.
