@@ -365,8 +365,9 @@ class CsvFallbackDialog:
 
         # Explanation
         intro_text = (
-            "A project CSV file was found, but it cannot be used directly.\n"
-            "You must save a copy to continue."
+            "CLICK wrote an address CSV file when it opened this project. ClickNick can load "
+            "the nicknames from a copy of that file.\n\n"
+            "To load them, save a copy. To go on without nicknames, click Cancel."
         )
         ttk.Label(main_frame, text=intro_text, wraplength=400, justify=tk.LEFT).pack(pady=(0, 15))
 
@@ -374,9 +375,8 @@ class CsvFallbackDialog:
         warnings_frame = ttk.LabelFrame(main_frame, text="Important", padding="10")
 
         warnings = [
-            "• This file is generated when CLICK opens a project",
-            "• Does NOT update with changes made in CLICK after load",
-            "• Will be DELETED when CLICK closes",
+            "• The file does not change when you change the project in CLICK.",
+            "• CLICK deletes the file when it closes.",
         ]
         for warning in warnings:
             ttk.Label(warnings_frame, text=warning, wraplength=380, justify=tk.LEFT).pack(
@@ -389,7 +389,7 @@ class CsvFallbackDialog:
         button_frame = ttk.Frame(main_frame)
 
         save_btn = ttk.Button(
-            button_frame, text="Save Copy && Continue", command=self._on_save_copy
+            button_frame, text="Save Copy and Load", command=self._on_save_copy
         )
         save_btn.pack(side=tk.LEFT, padx=(0, 10))
 

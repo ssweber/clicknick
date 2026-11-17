@@ -70,3 +70,32 @@ def test_copied_label_reset_after_the_about_dialog_closed(monkeypatch) -> None:
         # Free the root and the dialog's Tk objects on this thread. If they are freed later on
         # another test's worker thread, Tcl aborts the process.
         gc.collect()
+
+
+def _csv_fallback_texts(root) -> None:
+    from pathlib import Path
+    from tkinter import ttk
+
+    dialog = dialogs.CsvFallbackDialog(root, Path("Address.csv"))
+    try:
+        texts = [
+            str(widget.cget("text"))
+            for widget in _descendants(dialog.window)
+            if isinstance(widget, ttk.Label | ttk.Button)
+        ]
+    finally:
+        dialog.window.destroy()
+
+    # Cancel goes on without nicknames (ConnectionController._connect_csv_fallback), so the
+    # dialog must not say that a copy is needed to continue.
+    assert not any("must save a copy" in text for text in texts)
+    assert any("To go on without nicknames, click Cancel." in text for text in texts)
+    assert "Cancel" in texts
+
+
+def test_the_csv_fallback_dialog_says_that_cancel_goes_on_without_nicknames() -> None:
+    tk = pytest.importorskip("tkinter")
+    try:
+        _with_root(tk, _csv_fallback_texts)
+    finally:
+        gc.collect()
