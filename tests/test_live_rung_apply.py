@@ -53,10 +53,11 @@ def _write_bundle(root: Path, programs: dict[str, list[str]]) -> None:
 
 @pytest.fixture
 def project(tmp_path: Path, monkeypatch):
-    """A workspace whose export writes whatever ``propose`` was given.
+    """Return a workspace whose export writes whatever ``propose`` was given.
 
-    Returns ``(context, propose, staged)``: the dispatch context with a mock
-    Review Changes, a function setting the next export, and the staged counts.
+    The fixture returns ``(context, propose, staged)``. The context is the dispatch context
+    with a mock Review Changes. ``propose`` sets the next export. ``staged`` holds the
+    staged counts.
     """
     _write_bundle(tmp_path / "csv", CLICK)
     source = tmp_path / "src" / "plc"
@@ -98,7 +99,7 @@ def test_reports_every_program_that_differs_and_opens_review_changes(
 
     reply = dispatch(ctx, "rung apply")
 
-    # In the order Review Changes walks them: subroutines before main
+    # The files come in the order Review Changes walks them: subroutines before main.
     assert "changed files:\n  rinse_cycle: new, 1 rung\n  main: R2\n" in reply
     assert "only in CLICK (delete there if no longer used): Fill" in reply
     assert staged == [2]
@@ -199,7 +200,7 @@ def test_without_a_window_one_file_replies_with_its_diff(project) -> None:
 
 
 def _earlier_export(project_dir: Path) -> tuple[Path, Path]:
-    """An export holding main.csv and a subroutine the source no longer has."""
+    """Write an export that holds main.csv and a subroutine the source no longer has."""
     main = project_dir / "csv_output" / "main.csv"
     stale = project_dir / "csv_output" / "subroutines" / "Deleted.csv"
     stale.parent.mkdir(parents=True)
@@ -252,7 +253,7 @@ def test_summary_names_rungs_in_an_old_encoding_and_rungs_that_cannot_be_read() 
 
 
 def test_a_program_click_holds_unreadable_is_never_no_change(project, tmp_path: Path) -> None:
-    """The proposal matches CLICK's text, but CLICK's rung 2 still has to be pasted."""
+    """The proposal matches CLICK's text, but you still have to paste CLICK's rung 2."""
     from clicknick.ladder.program import LegacyEncoding, write_legacy_encodings
 
     ctx, propose, _staged = project
@@ -265,7 +266,7 @@ def test_a_program_click_holds_unreadable_is_never_no_change(project, tmp_path: 
     assert "  main: R2; CLICK's R2 unreadable; paste it whole" in reply
     assert "(no changes)" not in reply
     selected = dispatch(ctx, "rung apply main --select r1")
-    # Rungs picked by number are not pasted alone either
+    # Selecting rung 1 by number still pastes R2 whole, because CLICK's R2 is unreadable.
     assert "OK: paste window opened for main (R2; CLICK's R2 unreadable; paste it whole)" in (
         selected
     )

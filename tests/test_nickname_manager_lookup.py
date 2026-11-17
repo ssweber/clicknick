@@ -1,4 +1,4 @@
-"""NicknameManager: sort order, and lookups that match what the dropdown listed."""
+"""NicknameManager sorts nicknames, and its lookups match what the dropdown listed."""
 
 from __future__ import annotations
 
