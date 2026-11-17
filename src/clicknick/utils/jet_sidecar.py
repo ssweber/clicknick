@@ -92,7 +92,7 @@ class JetWorker:
             + b"\n"
         )
         if len(request) > MAX_REQUEST_BYTES:
-            raise JetError("Database changes are too large for one save. Save a smaller selection.")
+            raise JetError("There are too many address changes to save at once.")
         process, responses = self._process, self._responses
 
         def send() -> None:
@@ -118,11 +118,11 @@ class JetWorker:
         except (queue.Empty, OSError, ValueError, JetTransportError) as exc:
             detail = "".join(self._stderr)[-2000:]
             self._stop()
-            message = "Jet database worker timed out or disconnected."
+            message = "The database helper stopped answering."
             if op == "save":
-                message += " The save outcome is unknown. Reload the database before retrying."
+                message += " ClickNick cannot tell whether your changes were saved."
             if detail:
-                message += f" PowerShell: {detail}"
+                message += f" PowerShell said: {detail}"
             raise JetTransportError(message) from exc
         if not response["ok"]:
             raise JetError(str(response.get("error", "Jet database operation failed.")))
