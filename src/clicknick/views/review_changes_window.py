@@ -144,8 +144,8 @@ _FIRST_TIME_TIPS = (
     "To leave a difference out, untick Take this difference above the pane, or click its "
     "+/- gutter. CLICK keeps what it has there. Alt+Down and Alt+Up (or F7 and Shift+F7) "
     "go through every difference, program by program.\n\n"
-    "Subroutines come before main. Create each subroutine in CLICK before you paste into "
-    "it. The New Subroutine button does this for you."
+    "Subroutines come before main. Create each one in CLICK (New Subroutine does this "
+    "for you), then paste into it."
 )
 
 
@@ -306,9 +306,9 @@ def _differences_of(change: ProgramChange) -> list[Opcode]:
 
 
 def _whole_replaces(rung_count: int) -> str:
-    """Say that a whole paste replaces CLICK's copy of the program, and how long it is."""
+    """Say that a whole paste replaces CLICK's copy, and how many rungs the program has."""
     rungs = "rung" if rung_count == 1 else "rungs"
-    return f"the whole program replaces what CLICK has. It has {rung_count} {rungs}"
+    return f"the whole program replaces what CLICK has. The program has {rung_count} {rungs}"
 
 
 def _what_skipping_keeps(opcode: Opcode) -> str:
@@ -871,9 +871,9 @@ class ReviewChangesWindow(tk.Toplevel):
         return (
             f"CLICK holds rungs of {name} that you pasted before ClickNick read this folder "
             f"again. CLICK has not saved them. A whole paste would replace CLICK's {which} with "
-            "ClickNick's reading of the old encoding. You skipped that difference to keep "
-            "CLICK's own copy. Save in CLICK first, then step through the changed rungs. Or "
-            "take that difference."
+            f"ClickNick's reading of the old encoding. You skipped {which} to keep CLICK's own "
+            f"copy. Save in CLICK first, then step through the changed rungs. Or take the "
+            f"skipped {which}."
         )
 
     def _program_steps(
@@ -1388,7 +1388,7 @@ class ReviewChangesWindow(tk.Toplevel):
         return (
             "\nClickNick steps through this program and does not copy it whole. A whole "
             f"paste would replace CLICK's {which} with ClickNick's reading of the old encoding. "
-            "You skipped that difference to keep CLICK's own copy"
+            f"You skipped {which} to keep CLICK's own copy"
         )
 
     def _step_prompt(self, idx: int) -> str:
@@ -1492,8 +1492,8 @@ class ReviewChangesWindow(tk.Toplevel):
                 )
                 kept = "difference" if skipped == 1 else "differences"
                 whole = (
-                    f"{_whole_replaces(count)}. For the {skipped} skipped {kept}, the copy "
-                    "keeps CLICK's rungs"
+                    f"{_whole_replaces(count)}. The copy leaves the {skipped} skipped {kept} "
+                    f"as CLICK has {'it' if skipped == 1 else 'them'}"
                 )
                 button = f"Copy, {skipped} skipped"
             else:
@@ -1724,8 +1724,9 @@ class ReviewChangesWindow(tk.Toplevel):
                 )
             else:
                 lines.append(
-                    "ClickNick rebuilt the workspace from CLICK before you pasted every "
-                    "change. This window still holds the proposal exported at "
+                    "ClickNick rebuilt the workspace from CLICK's last save, and that save "
+                    "does not hold every change from this window. This window still holds the "
+                    "proposal exported at "
                     f"{self._read_at} and can keep pasting it.\n"
                     "The edited source is kept in backup/src/plc. For older backups, run "
                     "clicknick-cli restore list. To work on it again, run clicknick-cli "
@@ -1888,7 +1889,9 @@ class ReviewChangesWindow(tk.Toplevel):
             )
             copy_to_clipboard(result.payload, owner_hwnd=click_hwnd)
         except RuntimeError as exc:
-            self._status_var.set(str(exc))  # The clipboard's errors say what to do
+            self._status_var.set(
+                f"Could not copy the rungs to the clipboard: {exc}\nTo try again, click its row"
+            )
             return False
         except Exception as exc:
             self._status_var.set(f"Could not copy {name}: {exc}")
