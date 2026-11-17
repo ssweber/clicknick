@@ -17,6 +17,16 @@ if TYPE_CHECKING:
     from .cell_note import CellNote
 
 
+def _show_replacement_error(parent: tk.Misc, error: re.error) -> None:
+    """Tell the user that the replacement text does not fit the search's regular expression."""
+    messagebox.showerror(
+        "Find and Replace",
+        f"The replacement text is not valid for this regular expression: {error}. "
+        "Correct it and try again.",
+        parent=parent,
+    )
+
+
 class AddressEditorSheet(Sheet):
     """Custom Sheet subclass with additional features for Address Editor.
 
@@ -42,7 +52,12 @@ class AddressEditorSheet(Sheet):
         try:
             return re.compile(pattern)
         except re.error as e:
-            messagebox.showerror("Regex Error", f"Invalid regex pattern: {e}", parent=self)
+            messagebox.showerror(
+                "Find and Replace",
+                f"The search text is not a valid regular expression: {e}. Correct it and try "
+                "again.",
+                parent=self,
+            )
             return None
 
     def _regex_find_next(
@@ -169,7 +184,7 @@ class AddressEditorSheet(Sheet):
         try:
             new_value = compiled.sub(replace_str, current, count=1)
         except re.error as e:
-            messagebox.showerror("Regex Error", f"Invalid replacement pattern: {e}", parent=self)
+            _show_replacement_error(self, e)
             return
 
         # Create event for validation
@@ -228,13 +243,20 @@ class AddressEditorSheet(Sheet):
         # Call the direct replacement method
         replacements_made = self.regex_replace_all_direct(pattern, replace_str, find_in_selection)
 
-        # Show result message
+        if replacements_made is None:
+            return  # The error is already shown.
         if replacements_made > 0:
+            cells = "cell" if replacements_made == 1 else "cells"
             messagebox.showinfo(
-                "Replace All", f"Replaced {replacements_made} occurrence(s).", parent=self
+                "Replace All", f"Replaced text in {replacements_made} {cells}.", parent=self
             )
         else:
-            messagebox.showinfo("Replace All", "No matches found.", parent=self)
+            messagebox.showinfo(
+                "Replace All",
+                "No cells changed. Replace All changes only the Nickname and Comment cells "
+                "of the rows that are shown.",
+                parent=self,
+            )
 
     def _get_find_window_dimensions_coords_wider(
         self, w_width: int | None = None
@@ -279,7 +301,7 @@ class AddressEditorSheet(Sheet):
         selection_only: bool = False,
         visible_rows_only: bool = True,
         columns: set[int] | None = None,
-    ) -> int:
+    ) -> int | None:
         """Perform regex replacement directly with given pattern and replacement.
 
         Args:
@@ -291,10 +313,8 @@ class AddressEditorSheet(Sheet):
             columns: Data columns to replace in. Default: Nickname and Comment.
 
         Returns:
-            Number of replacements made
-
-        Raises:
-            None - errors are shown to user via messagebox
+            The number of cells changed. None if the pattern or the replacement is not
+            valid. This method shows that error to the user.
         """
         if not find_str:
             return 0
@@ -302,7 +322,7 @@ class AddressEditorSheet(Sheet):
         # Compile and validate the pattern
         compiled = self._compile_pattern(find_str)
         if compiled is None:
-            return 0
+            return None
 
         # Initialize event data for batch changes
         event_data = self.MT.new_event_dict("edit_table")
@@ -376,10 +396,8 @@ class AddressEditorSheet(Sheet):
             try:
                 new_value = compiled.sub(replace_str, current, count=1)
             except re.error as e:
-                messagebox.showerror(
-                    "Regex Error", f"Invalid replacement pattern: {e}", parent=self
-                )
-                return 0
+                _show_replacement_error(self, e)
+                return None
 
             # Skip if no change
             if new_value == current:

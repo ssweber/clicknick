@@ -366,3 +366,22 @@ def test_the_file_menu_has_no_refresh_and_relabels_save_all(monkeypatch) -> None
     assert "Refresh" not in labels
     assert labels[window._save_menu_index] == "Save All"
     assert "Discard Changes" in labels
+
+
+def test_replace_all_with_a_bad_pattern_shows_only_the_error(tk_root, monkeypatch) -> None:
+    from clicknick.views.address_editor import sheet as sheet_module
+
+    dialogs = Mock()
+    monkeypatch.setattr(sheet_module, "messagebox", dialogs)
+    sheet = sheet_module.AddressEditorSheet(tk_root)
+    sheet.set_sheet_data([["", "Tank_1", ""]])
+    sheet.MT.find_window = SimpleNamespace(
+        get=lambda: "Tank(1",
+        window=SimpleNamespace(get_replace=lambda: "Vat", find_in_selection=False),
+    )
+
+    sheet._regex_replace_all()
+
+    dialogs.showerror.assert_called_once()
+    assert "not a valid regular expression" in dialogs.showerror.call_args.args[1]
+    dialogs.showinfo.assert_not_called()  # It used to add "No matches found."

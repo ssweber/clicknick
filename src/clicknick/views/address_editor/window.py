@@ -61,11 +61,14 @@ class AddressEditorWindow(tk.Toplevel):
         total_modified = self._store.get_total_modified_count()
         total_errors = self._store.get_total_error_count()
 
+        # The panel's footer counts the rows that its filter shows. These count every row.
         parts = [f"Tabs: {len(self._tabs)}"]
         if total_modified > 0:
-            parts.append(f"Modified: {total_modified}")
+            noun = "row" if total_modified == 1 else "rows"
+            parts.append(f"{total_modified} {noun} changed")
         if total_errors > 0:
-            parts.append(f"Errors: {total_errors}")
+            noun = "row" if total_errors == 1 else "rows"
+            parts.append(f"{total_errors} {noun} with errors")
         synced_pending = self._get_synced_pending()
         if synced_pending > 0:
             noun = "tag" if synced_pending == 1 else "tags"
@@ -246,8 +249,9 @@ class AddressEditorWindow(tk.Toplevel):
         if dest_start + dest_count > len(panel._displayed_rows):
             messagebox.showerror(
                 "Clone Error",
-                f"Not enough rows below selection. Need {dest_count} empty rows, "
-                f"but only {len(panel._displayed_rows) - dest_start} available.",
+                f"Clone needs {dest_count} rows below the selection, and only "
+                f"{len(panel._displayed_rows) - dest_start} are shown. Ask for fewer clones, "
+                "or clear the filter.",
                 parent=self,
             )
             return
@@ -275,7 +279,7 @@ class AddressEditorWindow(tk.Toplevel):
                         init_val = int(row.initial_value)
                         if init_val == orig_num:
                             result = messagebox.askyesno(
-                                "Increment Values?",
+                                "Increment Initial Values?",
                                 f"Also increment initial values?\n\n"
                                 f"Example: {row.nickname} ({init_val}) → ({init_val + 1})",
                                 parent=self,
@@ -331,8 +335,8 @@ class AddressEditorWindow(tk.Toplevel):
                     init_val = int(first_row.initial_value)
                     if init_val == orig_num:
                         result = messagebox.askyesno(
-                            "Increment Initial Value?",
-                            f"Also increment initial value?\n\n"
+                            "Increment Initial Values?",
+                            f"Also increment initial values?\n\n"
                             f"Example: {first_row.nickname} ({init_val}) → ({init_val + 1})",
                             parent=self,
                         )
@@ -422,7 +426,8 @@ class AddressEditorWindow(tk.Toplevel):
         if self._store.has_errors():
             messagebox.showerror(
                 "Validation Errors",
-                f"Cannot {save_label.lower()}. Fix the validation errors first.",
+                f"Cannot {save_label.lower()}, because some rows have errors. To list "
+                f"them, choose Show: Errors. Fix them, then {save_label} again.",
                 parent=self,
             )
             return
@@ -450,7 +455,11 @@ class AddressEditorWindow(tk.Toplevel):
                 self.close_without_prompt()
 
         except Exception as e:
-            messagebox.showerror(f"{save_label} Error", str(e), parent=self)
+            messagebox.showerror(
+                f"{save_label} Error",
+                f"Could not {save_label.lower()} the changes.\n\n{e}",
+                parent=self,
+            )
 
     def _discard_changes(self) -> None:
         """Discard all unsaved changes by resetting to original values."""
@@ -476,7 +485,9 @@ class AddressEditorWindow(tk.Toplevel):
             self.status_var.set("Changes discarded")
 
         except Exception as e:
-            messagebox.showerror("Error", str(e), parent=self)
+            messagebox.showerror(
+                "Discard Changes", f"Could not discard the changes.\n\n{e}", parent=self
+            )
 
     def _export_to_csv(self) -> None:
         """Export address data to CSV file."""
@@ -494,7 +505,7 @@ class AddressEditorWindow(tk.Toplevel):
                 count = csv_source.save_changes(list(self._store.visible_state.values()))
                 messagebox.showinfo(
                     "Export Complete",
-                    f"Successfully exported {count} rows to:\n{file_path}",
+                    f"Exported {count} rows to\n{file_path}",
                     parent=self,
                 )
             elif export_mode == "visible":
@@ -513,12 +524,14 @@ class AddressEditorWindow(tk.Toplevel):
                 count = csv_source.save_changes(visible_rows)
                 messagebox.showinfo(
                     "Export Complete",
-                    f"Successfully exported {count} visible rows to:\n{file_path}",
+                    f"Exported the {count} rows that the filter shows to\n{file_path}",
                     parent=self,
                 )
 
         except Exception as e:
-            messagebox.showerror("Export Error", str(e), parent=self)
+            messagebox.showerror(
+                "Export Error", f"Could not export to {file_path}.\n\n{e}", parent=self
+            )
 
     def _import_from_csv(self) -> None:
         """Import address data from CSV file with merge options."""
@@ -550,12 +563,15 @@ class AddressEditorWindow(tk.Toplevel):
 
             messagebox.showinfo(
                 "Import Complete",
-                f"Successfully imported {updated_count} addresses from:\n{csv_path.name}",
+                f"Read {updated_count} addresses from {csv_path.name}. "
+                "The table now shows the rows that changed.",
                 parent=self,
             )
 
         except Exception as e:
-            messagebox.showerror("Import Error", str(e), parent=self)
+            messagebox.showerror(
+                "Import Error", f"Could not import {csv_path.name}.\n\n{e}", parent=self
+            )
 
     def _create_tooltip(self, widget: tk.Widget, text: str) -> None:
         """Attach a tooltip to a widget. The tooltip shows only while the widget is disabled.
@@ -796,7 +812,7 @@ class AddressEditorWindow(tk.Toplevel):
 
         panel = self._get_current_panel()
         if not panel:
-            messagebox.showerror("No Active Panel", "Open a tab, then rename again.", parent=self)
+            messagebox.showerror("No Tab Open", "Open a tab, then rename again.", parent=self)
             return
 
         replacements_made = panel.sheet.regex_replace_all_direct(
@@ -806,6 +822,8 @@ class AddressEditorWindow(tk.Toplevel):
             visible_rows_only=False,
             columns={COL_NICKNAME},
         )
+        if replacements_made is None:
+            return  # The sheet has shown the error.
 
         # Clear filter and switch to "Show: Changed"
         if replacements_made > 0:
@@ -822,7 +840,7 @@ class AddressEditorWindow(tk.Toplevel):
             )
         else:
             messagebox.showinfo(
-                "No Matches", f"No nicknames match the pattern for '{old_text}'.", parent=self
+                "Rename", f"No nickname under '{prefix}{old_text}' changed.", parent=self
             )
 
     def _toggle_nav(self) -> None:
@@ -931,7 +949,7 @@ class AddressEditorWindow(tk.Toplevel):
             return True
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to create tab: {e}", parent=self)
+            messagebox.showerror("New Tab", f"Could not open a new tab.\n\n{e}", parent=self)
             import traceback
 
             traceback.print_exc()
@@ -1231,7 +1249,8 @@ class AddressEditorWindow(tk.Toplevel):
         self.fill_down_btn.pack(side=tk.LEFT, padx=(5, 0))
         self._create_tooltip(
             self.fill_down_btn,
-            "Fill empty rows with incrementing nicknames (e.g., Alm1 → Alm2, Alm3...)",
+            "Select a row whose nickname has a number, and the empty rows of the same\n"
+            "type below it. Fill Down numbers them: Alm1 → Alm2, Alm3.",
         )
 
         self.clone_btn = ttk.Button(
@@ -1243,7 +1262,8 @@ class AddressEditorWindow(tk.Toplevel):
         self.clone_btn.pack(side=tk.LEFT, padx=(5, 0))
         self._create_tooltip(
             self.clone_btn,
-            "Clone selected row pattern into empty rows below",
+            "Select rows where at least one nickname has a number.\n"
+            "Clone copies them into the empty rows below.",
         )
 
         # _update_save_ui_labels() relabels this button once the data has loaded.
@@ -1266,7 +1286,10 @@ class AddressEditorWindow(tk.Toplevel):
             self._create_new_tab(clone_from=None)
 
         except Exception as e:
-            messagebox.showerror("Database Error", str(e))
+            messagebox.showerror(
+                "Address Editor",
+                f"Could not read the addresses. The Address Editor will close.\n\n{e}",
+            )
             self.destroy()
 
     @staticmethod
@@ -1281,14 +1304,15 @@ class AddressEditorWindow(tk.Toplevel):
         """Show first-run tips for the Address Editor (appears once per user)."""
         flag_path = self._get_address_editor_popup_flag()
 
-        if flag_path.exists():
+        # The tips are about CLICK's database. They wait until an editor opens on it.
+        if flag_path.exists() or not self._is_using_mdb():
             return
 
         popup_text = (
             "Address Editor\n\n"
-            "This tool edits address information in CLICK's temporary database.\n"
-            "Changes are temporary until you save in CLICK Software.\n\n"
-            "Tip: Close CLICK without saving to undo all changes."
+            "Sync writes your edits to CLICK's temporary database. "
+            "Save the project in CLICK to keep them.\n\n"
+            "To undo every synced edit, close CLICK without saving."
         )
 
         messagebox.showinfo("First-Time Tips", popup_text, parent=self)
@@ -1416,7 +1440,8 @@ class AddressEditorWindow(tk.Toplevel):
             if mt.text_editor.open:
                 messagebox.showwarning(
                     "Cell Being Edited",
-                    "Finish the cell edit first (Enter to keep it, Esc to cancel).",
+                    "A cell is still being edited. Press Enter to keep the edit or Esc to "
+                    "cancel it, then try again.",
                     parent=self,
                 )
                 return False
