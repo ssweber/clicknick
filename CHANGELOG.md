@@ -40,6 +40,9 @@
 - The tooltip of **start** in the Add Block dialog no longer says that the start is 0-based. pyrung starts a block at 1, or at 0 when the block's first address is numbered 0, and the tooltip now says so.
 - In the Address Editor, Replace All no longer adds "No matches found" after it has said that the search text is not a valid regular expression.
 - The Address Editor's footer now counts the errors only in the rows that the filter shows, the same as its other counts. The status bar below it counts the changed rows and the errors in all rows.
+- Review Changes no longer says that CLICK's New Subroutine window has no name box when ClickNick only failed to type the name into it. The notice after the workspace's CSVs are gone no longer says that CLICK was saved, because a Reload from CLICK rebuilds the workspace too.
+- The Address Editor's export option is now called **Export all rows**. It said "entire database", but it exports the rows that the editor holds, which can come from a CSV file and include unsaved edits.
+- The tooltip of the Simulator's **Wiring** button now says what a bench link is: wiring that you add in the Simulator and that the program does not declare. ClickNick saves it and applies it each time the simulation starts.
 
 ## v0.24.1 - 2026-11-15
 
