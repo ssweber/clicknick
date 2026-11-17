@@ -855,9 +855,7 @@ class AddressEditorWindow(tk.Toplevel):
         # Get the current panel
         panel = self._get_current_panel()
         if not panel:
-            messagebox.showerror(
-                "No Active Panel", "Open a tab, then rename again.", parent=self
-            )
+            messagebox.showerror("No Active Panel", "Open a tab, then rename again.", parent=self)
             return
 
         # Use the direct regex replacement method

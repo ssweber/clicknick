@@ -895,7 +895,9 @@ class SimulationSession:
             self._state, snapshot, inputs=inputs, analog_inputs=analog_inputs
         )
         self._schedule_save()
-        self._set_notice(f"Loaded PLC data from {path.name}. The switches are set from the snapshot.")
+        self._set_notice(
+            f"Loaded PLC data from {path.name}. The switches are set from the snapshot."
+        )
 
     def _follow_program(self) -> bool:
         """Restart a failed simulation if CLICK saved a program since. Return True if it did.
@@ -1388,7 +1390,9 @@ class SimulationSession:
             return  # That simulation is gone. The next one tries again.
         forces = {a: v for a, v in self._state.forces.items() if a not in failed}
         self._update_state(forces=forces)
-        self._message(f"Could not restore forces on {', '.join(failed)}. They were released.", "error")
+        self._message(
+            f"Could not restore forces on {', '.join(failed)}. They were released.", "error"
+        )
 
     def _input_patches(self) -> dict[str, PlcValue]:
         patches: dict[str, PlcValue] = {}

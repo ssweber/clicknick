@@ -1039,7 +1039,9 @@ def test_loading_plc_data_sets_switches_and_analog_values(ready, tmp_path):
     assert not ready.sim.switch_on("X003"), "momentary buttons keep no position"
     assert ready.sim.analog_value("DF1") == 6.5
     assert ready.sim.forces == {"Y001": True}, "forces stay"
-    assert ready.sim.notice == "Loaded PLC data from dump.csv. The switches are set from the snapshot."
+    assert (
+        ready.sim.notice == "Loaded PLC data from dump.csv. The switches are set from the snapshot."
+    )
     assert ready.dap.calls[0][2]["snapshot_path"] == data
 
 
