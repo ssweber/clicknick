@@ -41,9 +41,7 @@ class WorkspaceBusyError(ValueError):
     """Raised when a build is regenerating the workspace *where*, a folder or words naming one."""
 
     def __init__(self, where: Path | str) -> None:
-        super().__init__(
-            f"ClickNick is regenerating {where} from CLICK; try again when it finishes"
-        )
+        super().__init__(f"ClickNick is rebuilding {where} from CLICK. Try again when it finishes.")
 
 
 @contextmanager
@@ -467,7 +465,7 @@ def _back_up(project_dir: Path) -> tuple[int, Path | None]:
     """
     source = plc_source_dir(project_dir)
     if not source.is_dir():
-        raise ValueError(f"generated source directory not found: {source}")
+        raise ValueError(f"{source} does not exist, so there is nothing to back up.")
     destination = plc_backup_dir(project_dir)
     when = _now()
     fingerprint = _source_fingerprint(source)
@@ -535,7 +533,7 @@ def _restore(project_dir: Path, older: str | None) -> PlcRestore:
     if older is None:
         chosen = plc_backup_dir(project_dir)
         if not chosen.is_dir():
-            raise ValueError("no source backup found. Run 'clicknick-cli backup' first")
+            raise ValueError("There is no backup of src/plc yet. Run 'clicknick-cli backup' first.")
     else:
         names = older_plc_backups(project_dir)
         if older not in names:

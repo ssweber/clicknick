@@ -44,6 +44,8 @@ class WorkspaceHost(Protocol):
 
     def _project_session(self) -> ConnectionSession | None: ...
 
+    def _report_no_project_session(self) -> None: ...
+
     def _update_status(self, message: str, style: str = "normal") -> None: ...
 
     def _request_ui_refresh(self) -> None: ...
@@ -159,22 +161,26 @@ class WorkspaceController:
     def review_changes(self) -> None:
         """Review workspace changes through the reviewed proposal flow."""
         app = self._app
-        if app._project_session() is None or app._live_server is None:
-            app._update_status("Connect to a CLICK project first", "error")
+        if app._project_session() is None:
+            app._report_no_project_session()
+            return
+        if app._live_server is None:
             return
 
         try:
             app._live_server.dispatch_now("rung apply")
         except Exception as exc:
-            messagebox.showerror("Review Changes", str(exc), parent=app.root)
-            app._update_status(f"Review failed: {exc}", "error")
+            messagebox.showerror(
+                "Review Changes", f"Could not open Review Changes: {exc}", parent=app.root
+            )
+            app._update_status("Could not open Review Changes", "error")
             return
 
         status = self.status()
         if status.changed_rungs:
             app._update_status(f"Reviewing {status.label}", "connected")
         else:
-            app._update_status("Workspace clean. No changed rungs to review", "connected")
+            app._update_status("No changed rungs to review", "connected")
 
     def _reload_finished(self, success: bool, error: str | None) -> None:
         """Report completion of an explicit CLICK-to-workspace reload."""
@@ -187,9 +193,9 @@ class WorkspaceController:
             app._update_status("Workspace reloaded from CLICK", "connected")
             app._request_ui_refresh()
             return
-        message = error or "Workspace could not be reloaded from CLICK."
+        message = error or "ClickNick could not reload the workspace from CLICK."
         messagebox.showerror("Reload from CLICK", message, parent=app.root)
-        app._update_status(f"Workspace reload failed: {message}", "error")
+        app._update_status("Reload from CLICK failed", "error")
         app._request_ui_refresh()
 
     def reload_from_click(self) -> None:
@@ -197,20 +203,23 @@ class WorkspaceController:
         app = self._app
         session = app._project_session()
         if session is None:
-            app._update_status("Connect to a CLICK project first", "error")
+            app._report_no_project_session()
             return
 
         from .services.workspace_service import WorkspaceState
 
         if self.status().state is WorkspaceState.PREPARING:
-            app._update_status("Workspace regeneration is already in progress", "error")
+            app._update_status(
+                "ClickNick is still building the workspace. Try again when it finishes.", "error"
+            )
             return
 
         confirmed = messagebox.askokcancel(
             "Reload from CLICK",
             "Reload the workspace from the saved CLICK project?\n\n"
-            "This replaces the active generated source. Your changes to the workspace "
-            "source are kept in the recovery snapshot.",
+            "This replaces the program in the workspace's src\\plc folder with the program "
+            "that CLICK last saved. If you edited src\\plc, ClickNick first copies your "
+            "version to backup\\src\\plc in the workspace.",
             parent=app.root,
         )
         if not confirmed:
@@ -235,7 +244,7 @@ class WorkspaceController:
 
             os.startfile(path)  # noqa: S606 - explicit user action on Windows
         except OSError as exc:
-            messagebox.showerror(title, str(exc), parent=self._app.root)
+            messagebox.showerror(title, f"Could not open {path}: {exc}", parent=self._app.root)
 
     def open_workspace(self) -> None:
         """Open the one active workspace used by Review Changes and the Simulator."""
@@ -280,7 +289,7 @@ class WorkspaceController:
         app = self._app
         session = app._project_session()
         if session is None:
-            app._update_status("Connect to a CLICK project first", "error")
+            app._report_no_project_session()
             return None
 
         window = session.setup_window
@@ -291,8 +300,8 @@ class WorkspaceController:
                 return None
             value = simpledialog.askstring(
                 "Name PLC",
-                "This project needs a PLC name before it can use a durable workspace.\n\n"
-                "Enter a name (maximum 24 characters):",
+                "This project needs a PLC name before ClickNick can set up a workspace "
+                "folder for it.\n\nEnter a name of up to 24 characters:",
                 parent=parent,
             )
             if value is None or not self._setup_unchanged(session, window):
@@ -366,12 +375,13 @@ class WorkspaceController:
         try:
             config = load_project_workspace_config(sidecar_path_for(Path(selected)))
         except ValueError as exc:
-            messagebox.showerror("Choose Workspace", str(exc), parent=parent)
+            messagebox.showerror("Workspace", str(exc), parent=parent)
             return
         if config.plc_name.casefold() != plc_name.casefold():
             messagebox.showerror(
-                "Choose Workspace",
-                f'This workspace belongs to PLC "{config.plc_name}", not "{plc_name}".',
+                "Workspace",
+                f'The workspace you chose belongs to PLC "{config.plc_name}", not "{plc_name}". '
+                f'Choose a workspace for "{plc_name}".',
                 parent=parent,
             )
             return
@@ -390,7 +400,7 @@ class WorkspaceController:
         pending = session.pending_workspace
         initial_dir = pending.workspace_path.parent if pending is not None else None
         selected = filedialog.askdirectory(
-            title=f"Choose workspace home for {plc_name}",
+            title=f"Choose a location for the {plc_name} workspace",
             initialdir=initial_dir,
             mustexist=True,
             parent=parent,
@@ -412,7 +422,7 @@ class WorkspaceController:
             try:
                 config = load_project_workspace_config(sidecar)
             except ValueError as exc:
-                messagebox.showerror("Setup Workspace", str(exc), parent=parent)
+                messagebox.showerror("Workspace", str(exc), parent=parent)
                 return
         else:
             config = ProjectWorkspaceConfig(
@@ -440,14 +450,14 @@ class WorkspaceController:
         dialog_parent = self._setup_parent()
         session = app._project_session()
         if session is None:
-            app._update_status("Connect to a CLICK project first", "error")
+            app._report_no_project_session()
             return
         window = session.setup_window
         config = session.pending_workspace
         if config is None:
             messagebox.showinfo(
                 "Workspace",
-                "Choose an existing workspace or select a home for a new one.",
+                "Choose an existing workspace, or click Choose Location... to create a new one.",
                 parent=dialog_parent,
             )
             return
@@ -458,22 +468,27 @@ class WorkspaceController:
         build_error = self.earlier_save_build_error()
         if build_error is not None and changing_location:
             messagebox.showerror(
-                "Setup Workspace",
-                "The workspace could not be built from CLICK's last save, so ClickNick "
-                "will not copy an earlier save's workspace.\n\n" + build_error,
+                "Workspace",
+                "Could not build the workspace from CLICK's last save. ClickNick will not copy "
+                "the workspace of an earlier save into the new folder.\n\n"
+                + build_error
+                + "\n\nFix the error and save the project in CLICK. Then try again once the "
+                "workspace builds.",
                 parent=dialog_parent,
             )
             return
+        # If _ensure_plc_name returns None, the user cancelled the prompt or the project
+        # closed, or the method has already shown why in the status line.
         plc_name = self._ensure_plc_name()
         if plc_name is None:
-            app._update_status("Connect to a CLICK project first", "error")
             return
         if not self._setup_unchanged(session, window):
             return
         if config.plc_name.casefold() != plc_name.casefold():
             messagebox.showerror(
-                "Setup Workspace",
-                f'This workspace belongs to PLC "{config.plc_name}", not "{plc_name}".',
+                "Workspace",
+                f'The workspace you chose belongs to PLC "{config.plc_name}", not "{plc_name}". '
+                f'Choose a workspace for "{plc_name}".',
                 parent=dialog_parent,
             )
             return
@@ -481,8 +496,10 @@ class WorkspaceController:
         try:
             mirror_is_nonempty = mirror_path.exists() and any(mirror_path.iterdir())
         except OSError as exc:
-            messagebox.showerror("Setup Workspace", str(exc), parent=dialog_parent)
-            app._update_status(f"Workspace setup failed: {exc}", "error")
+            messagebox.showerror(
+                "Workspace", f"Could not set up the workspace: {exc}", parent=dialog_parent
+            )
+            app._update_status("Could not set up the workspace", "error")
             return
         current_mirror = session.pairing.config.workspace_path if session.pairing.config else None
         same_mirror = (
@@ -492,9 +509,10 @@ class WorkspaceController:
             confirmed = messagebox.askokcancel(
                 "Use Existing Workspace Folder?",
                 f"Use the existing folder?\n\n{mirror_path}\n\n"
-                "ClickNick will update generated files under src/plc and csv, plus "
-                "its generation scripts and data. It will not delete unrelated files "
-                "or replace existing tests, documentation, or editor settings.",
+                "ClickNick will replace the files in src/plc and csv, and the files "
+                "nicknames.csv, project_to_csv.py and run.py. It will not delete other files, "
+                "and it will not replace your tests, documentation or editor settings. If you "
+                "edited src/plc there, ClickNick first copies it to backup/src/plc.",
                 parent=dialog_parent,
             )
             if not confirmed or not self._setup_unchanged(session, window):
@@ -515,8 +533,10 @@ class WorkspaceController:
                 sync_workspace_to_mirror(source, mirror_path)
             remember_project_sidecar(save_project_workspace_config(config), preferred_for=plc_name)
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Setup Workspace", str(exc), parent=dialog_parent)
-            app._update_status(f"Workspace setup failed: {exc}", "error")
+            messagebox.showerror(
+                "Workspace", f"Could not set up the workspace: {exc}", parent=dialog_parent
+            )
+            app._update_status("Could not set up the workspace", "error")
             return
 
         app.mirror_project_selection_var.set(str(mirror_path.resolve()))

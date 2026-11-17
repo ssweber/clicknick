@@ -323,7 +323,7 @@ def test_tag_apply_refuses_a_workspace_with_no_record_of_its_analog_inputs(tmp_p
     store, ctx = _generated_workspace(tmp_path, monkeypatch, rows, project_ini=_ANALOG_INPUT_DF1)
     (ctx.analysis.project_dir / "csv" / "analog_inputs.json").unlink()
 
-    with pytest.raises(ValueError, match="Reload the workspace from CLICK"):
+    with pytest.raises(ValueError, match="Use Workspace > Reload from CLICK"):
         dispatch(ctx, "tag apply")
     assert store.get_dirty_keys() == set()
 

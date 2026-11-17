@@ -27,7 +27,7 @@ from dataclasses import replace
 from tkinter import messagebox
 from typing import TYPE_CHECKING, Protocol
 
-from .connection_session import ClickConnection
+from .connection_session import CONNECT_FIRST, ClickConnection
 from .data.address_store import AddressStore
 from .detection.window_detector import ClickInstance, ClickWindowDetector
 from .utils.mdb_shared import find_fallback_csv
@@ -52,6 +52,8 @@ logger = logging.getLogger(__name__)
 REDRAW_COMMAND = "Redraw Nicknames in CLICK"
 # The Tools menu setting that redraws them after each Sync
 REDRAW_ON_SYNC = "Redraw Ladder on Sync"
+# The status line when a command needs a CLICK window and none is connected
+NOT_CONNECTED = f"⚠ {CONNECT_FIRST}"
 
 
 class ConnectionHost(Protocol):
@@ -65,7 +67,7 @@ class ConnectionHost(Protocol):
     _data: DataSession | None
     nickname_manager: NicknameManager
     detector: ClickWindowDetector
-    # The ClickPLC Windows section
+    # The CLICK Windows section
     instances_combobox: ttk.Combobox
     selected_instance_var: tk.StringVar
     start_button: ttk.Button
@@ -189,10 +191,10 @@ class ConnectionController:
         try:
             click_instances = app.detector.get_click_instances()
         except Exception as e:
-            print(f"Error refreshing Click instances: {e}")
+            print(f"Could not list the CLICK windows: {e}")
             self.click_instances = []
             self._show_instances()
-            app._update_status(f"⚠ Error: {e!s}", "error")
+            app._update_status(f"⚠ Could not list the CLICK windows: {e!s}", "error")
             app.start_button.state(["disabled"])
             return
 
@@ -208,7 +210,10 @@ class ConnectionController:
         app._remove_stale_compare_copies({instance.hwnd for instance in self.click_instances})
 
         if not click_instances:
-            app._update_status("⚠ No ClickPLC windows", "error")
+            app._update_status(
+                "⚠ No CLICK window with a project open. Open a project in CLICK, then click ⟳",
+                "error",
+            )
             app.start_button.state(["disabled"])
             return
         app.start_button.state(["!disabled"])
@@ -315,11 +320,16 @@ class ConnectionController:
             except queue.Empty:
                 app.root.after(100, finish)
                 return
+            session.end_load()
             if error is not None:
                 app._show_main_window()
-                app._update_status("Database connection failed", "error")
+                app._update_status("⚠ Could not read CLICK's database", "error")
                 self._odbc_warning_shown = True
-                messagebox.showerror("Database Connection", error, parent=app.root)
+                messagebox.showerror(
+                    "Database Connection",
+                    f"Could not read the database of {click.filename}: {error}",
+                    parent=app.root,
+                )
                 if session.loads(token):
                     self._connect_csv_fallback(click.filename, click.hwnd)
                 return
@@ -339,12 +349,12 @@ class ConnectionController:
         """Report the loaded database and watch its window."""
         app = self._app
         if app._click is None:
-            app._update_status("⚠ Not connected", "error")
+            app._update_status(NOT_CONNECTED, "error")
             return False
 
         # Check whether a database backend can be attempted
         if not app.nickname_manager.has_database_backend():
-            app._update_status("No nicknames loaded - use File → Load Nicknames...", "status")
+            app._update_status("No nicknames loaded. Use File > Load Nicknames from CSV", "status")
             if not self._odbc_warning_shown:
                 app._show_odbc_warning()
                 self._odbc_warning_shown = True
@@ -371,7 +381,7 @@ class ConnectionController:
             if saved_path:
                 self.load_csv(saved_path)
                 return
-        app._update_status("No nicknames loaded - use File → Load Nicknames...", "error")
+        app._update_status("No nicknames loaded. Use File > Load Nicknames from CSV", "error")
         if not self._odbc_warning_shown:
             app._show_odbc_warning()
             self._odbc_warning_shown = True
@@ -428,7 +438,7 @@ class ConnectionController:
     def _handle_window_closed(self):
         """Clean up after the connected window closed, and refresh the window list in 2 seconds."""
         app = self._app
-        app._update_status("⚠ Connected ClickPLC window closed", "error")
+        app._update_status("⚠ The CLICK window closed", "error")
         self.cancel_monitoring_status()
 
         self.close_session()
@@ -446,8 +456,8 @@ class ConnectionController:
         CLICK's Save As keeps the window's temp folder, its database and its DataView
         folder. Opening another project in the same window does the same. ClickNick cannot
         tell the two apart, so the user answers. The question covers address edits on
-        database data, text in a cell that will not commit, and Dataview edits. Dataview
-        edits count on CSV data too, because the Dataview Editor shows the window's
+        database data, text in a cell that will not commit, and Data View edits. Data View
+        edits count on CSV data too, because the Data View Editor shows the window's
         DataView folder. CSV address edits belong to the CSV file, so the question does
         not cover them. Nothing is saved here. Return False if nothing is unsaved.
         """
@@ -455,26 +465,31 @@ class ConnectionController:
         if data is None:
             return False
         unsaved = []
+        saves = []
         if data.store.is_database:
             # A cell that will not commit (CLICK has the focus) still holds an edit
             committed = data.commit_open_cell_editors()
             if not committed or data.store.has_unsaved_changes():
                 unsaved.append("address changes")
+                saves.append(f"Sync writes the address changes to {new_filename}.")
         dataview = data.dataview_window
         if dataview is not None:
             committed = dataview.commit_open_cell_editor()
             if not committed or dataview.has_unsaved_changes():
-                unsaved.append("Dataview changes")
+                unsaved.append("Data View changes")
+                saves.append(
+                    f"Save in the Data View Editor writes the Data View changes to {new_filename}."
+                )
         if not unsaved:
             return False
-        saves = "Sync and Save then write them" if data.store.is_database else "Save writes them"
         return messagebox.askyesno(
             "Project Changed",
             f"The CLICK window now shows {new_filename}. You have unsaved "
             f"{' and '.join(unsaved)} made in {old_filename}.\n\n"
-            f"Keep them as unsaved changes for {new_filename}? Choose Yes after a Save As in "
-            f"CLICK. {saves} to {new_filename}.\n\n"
-            "No discards them and saves nothing.",
+            f"Keep them as unsaved changes for {new_filename}? Choose Yes if you used Save As "
+            f"in CLICK. {' '.join(saves)}\n\n"
+            "Choose No if you opened another project. No discards the changes and saves "
+            "nothing.",
             icon=messagebox.WARNING,
             parent=self._app.root,
         )
@@ -500,11 +515,11 @@ class ConnectionController:
     def _handle_project_change(self, current_title: str, new_filename: str) -> None:
         """Follow the connected CLICK window to another project.
 
-        The user decides whether unsaved address edits on database data, and Dataview edits,
+        The user decides whether unsaved address edits on database data, and Data View edits,
         are kept for the new project or discarded (``_keeps_edits_for``). If they are kept,
         the data and its windows stay open, and the store's file monitor reads the base from
         the database that the window now holds. Otherwise database data closes with nothing
-        saved, and the new project's database is loaded. CSV data stays loaded. A Dataview
+        saved, and the new project's database is loaded. CSV data stays loaded. A Data View
         Editor that stays open lists its folder again if the edits were kept. Otherwise it
         is opened again on the window's DataView folder (``_reopen_dataview_editor``).
         Monitoring stays as it was.
@@ -524,7 +539,8 @@ class ConnectionController:
         if closing:
             messagebox.showinfo(
                 "Project Changed",
-                f"The Click project was changed. {' and '.join(closing)} will now close.",
+                f"The CLICK window now shows {new_filename}. {' and '.join(closing)} will "
+                "now close.",
             )
 
         self.close_session()
@@ -669,7 +685,7 @@ class ConnectionController:
         """
         session = self._app._session
         if session is None:
-            self._app._update_status("⚠ Connect to a CLICK window first", "error")
+            self._app._update_status(NOT_CONNECTED, "error")
             return
         if self._redraw_running:
             hwnd = session.click.hwnd
@@ -766,11 +782,14 @@ class ConnectionController:
         if after_sync:
             what = "CLICK was busy" if busy else "CLICK did not redraw them"
             message = (
-                f"⚠ Synced into CLICK's database, but {what} ({result.detail}). "
+                f"⚠ Synced the nicknames into CLICK's database, but {what} ({result.detail}). "
                 f"Use Tools > {REDRAW_COMMAND} to show them"
             )
         elif busy:
-            message = f"⚠ CLICK is busy ({result.detail}). Close its dialog and try again"
+            message = (
+                f"⚠ CLICK is busy ({result.detail}). Close any open CLICK dialog or wait, then "
+                "try again"
+            )
         else:
             message = f"⚠ CLICK did not redraw its nicknames ({result.detail})"
         app._update_status(message, "error")
@@ -802,7 +821,7 @@ class ConnectionController:
         """
         # Validate connection to Click instance
         if self._app._click is None:
-            self._app._update_status("⚠ Not connected to ClickPLC window", "error")
+            self._app._update_status(NOT_CONNECTED, "error")
             return False
 
         try:
@@ -824,7 +843,7 @@ class ConnectionController:
         self.cancel_monitoring_status()
         if self._app._session is not None:
             self._app._session.hide_overlay()
-        self._app._update_status("⏹ Stopped", "status")
+        self._app._update_status("⏹ Autocomplete stopped", "status")
         self._show_monitoring_button()
 
     def toggle_monitoring(self):

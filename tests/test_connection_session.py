@@ -44,8 +44,15 @@ def test_a_session_without_its_database_builds_nothing(tmp_path, monkeypatch) ->
     assert session.analysis is None
     assert session.scr_watcher is None
     callback.assert_called_once_with(False, NO_DATABASE)
-    # Review Changes has nothing to compare with, the same as when nothing is connected.
-    assert session.saved_program() == SavedProgram()
+    # Review Changes has nothing to compare with. Its note says why, and not "Connect to CLICK".
+    assert session.saved_program() == SavedProgram(
+        note="ClickNick has not loaded CLICK's database for this project. Select the window in "
+        "the CLICK Windows list to load it"
+    )
+    session.begin_load()
+    assert session.saved_program() == SavedProgram(
+        note="ClickNick is still reading CLICK's database. Try again when it has finished"
+    )
 
 
 def test_a_session_builds_once_its_database_is_read(tmp_path, monkeypatch) -> None:

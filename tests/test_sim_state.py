@@ -216,9 +216,9 @@ def test_an_older_profile_link_is_read_through_pyrungs_upgrade(tmp_path):
     }
     # ClickNick reports a token that no upgrade reads. It does not drop the token silently.
     assert dict(state.unread_links) == {
-        "DF2": "no upgrade reads profile=unknown:a=1",
-        "DF3": "no upgrade reads profile=approach:toward=180",
-        "DF4": "no upgrade reads profile=ramp:up=1]x",
+        "DF2": "the old setting profile=unknown:a=1 has no upgrade",
+        "DF3": "the old setting profile=approach:toward=180 has no upgrade",
+        "DF4": "the old setting profile=ramp:up=1]x has no upgrade",
     }
     # Saving writes the current keys.
     assert "flasher_on" in dump_state(load_state(path))

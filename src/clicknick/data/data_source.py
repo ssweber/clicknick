@@ -164,9 +164,12 @@ def _write_file(path: Path, data: str) -> None:
                 csvfile.write(encoded)
     except PermissionError as exc:
         if _is_read_only(path):
-            raise PermissionError(f"{path.name} is read-only.") from exc
+            raise PermissionError(
+                f"Could not save {path.name}, because the file is read-only. Clear its "
+                "Read-only attribute and save again."
+            ) from exc
         raise PermissionError(
-            f"{path.name} is open in another program (Excel?). Close it and save again."
+            f"{path.name} is open in another program, such as Excel. Close it and save again."
         ) from exc
 
 
@@ -297,8 +300,9 @@ class CsvDataSource(DataSource):
         """
         if self._unreadable is not None:
             raise ValueError(
-                f"Not saved: {Path(self._csv_path).name} changed on disk and can no "
-                f"longer be read ({self._unreadable})."
+                f"Could not save {Path(self._csv_path).name}, because ClickNick can no "
+                "longer read the file on disk. Fix the file, and ClickNick reads it again. "
+                f"The error was: {self._unreadable}"
             )
 
         # The whole file is rewritten, with every row that has content
@@ -353,7 +357,9 @@ class MdbDataSource(DataSource):
         elif click_pid is not None and click_hwnd is not None:
             db_path = find_click_database(click_pid, click_hwnd)
             if not db_path:
-                raise FileNotFoundError("Could not locate CLICK database")
+                raise FileNotFoundError(
+                    "ClickNick found no SC_.mdb in CLICK's temporary folder for this window."
+                )
             self._db_path = db_path
         else:
             raise ValueError("Must provide either db_path or (click_pid, click_hwnd)")

@@ -105,7 +105,9 @@ def test_save_timeout_is_not_replayed(monkeypatch):
     stop = Mock()
     monkeypatch.setattr(worker, "_stop", stop)
     monkeypatch.setattr(jet_sidecar, "SAVE_TIMEOUT", 0.01)
-    with pytest.raises(jet_sidecar.JetTransportError, match="outcome is unknown"):
+    with pytest.raises(
+        jet_sidecar.JetTransportError, match="cannot tell whether your changes were saved"
+    ):
         worker._exchange("save", path="database.mdb", deletes=[], upserts=[])
     assert process.stdin.getvalue().count(b"\n") == 1
     stop.assert_called_once()
@@ -115,7 +117,7 @@ def test_rejects_oversized_save_before_sending(monkeypatch):
     worker = jet_sidecar.JetWorker()
     worker._process = Mock()
     monkeypatch.setattr(jet_sidecar, "MAX_REQUEST_BYTES", 100)
-    with pytest.raises(jet_sidecar.JetError, match="too large"):
+    with pytest.raises(jet_sidecar.JetError, match="too many address changes to save at once"):
         worker._exchange("save", upserts=["x" * 200])
     worker._process.stdin.write.assert_not_called()
 
@@ -304,8 +306,10 @@ def test_none_disables_database_connections_and_probes(monkeypatch, path):
     assert not mdb_shared.has_database_backend()
     assert not mdb_shared.uses_jet_backend()
     result = mdb_shared.probe_database_connection(path)
-    assert not result.success and "CSV mode" in result.message
-    with pytest.raises(RuntimeError, match="CSV mode"):
+    assert not result.success and result.message == (
+        "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)."
+    )
+    with pytest.raises(RuntimeError, match="CLICKNICK_DB_BACKEND is set to none"):
         mdb_shared.create_access_connection(path)
     native.assert_not_called()
     jet.assert_not_called()
@@ -428,12 +432,17 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
     gc.collect()
     connection._load_instance_database(session)
     assert not session.has_database
+    assert session.reading_database
     threads[0].join(timeout=30)
     assert not threads[0].is_alive(), "Background database load did not finish"
     assert native_threads and all(t != ui_thread for t in native_threads)
     if outcome == "cancelled":
         session.cancel_load()
+    else:
+        assert session.reading_database
     callbacks.pop(0)()
+    # Whatever the outcome, ClickNick is no longer reading the database.
+    assert not session.reading_database
     if outcome == "success":
         store = view._data.store
         assert store.loaded_row_count == 408

@@ -38,8 +38,15 @@ and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`).
   analysis.
 - Until ClickNick has read the database, the session builds nothing. `has_database` is False while the database
   loads and after the CSV fallback. In that time, the Workspace's **Review Changes**, **Reload from CLICK**, the
-  simulation and applying Workspace setup ask the user to connect first (`_project_session`). **Compare with >
-  Folder** works without it.
+  simulation and applying Workspace setup refuse to run (`_project_session`). **Compare with > Folder** works
+  without it.
+- `no_database_reason` in `connection_session.py` says why a command cannot run. It tells the user to connect
+  only when no window is connected. Otherwise it says that ClickNick is still reading the database
+  (`reading_database`), that database access is off (`CLICKNICK_DB_BACKEND=none`), or to select the window
+  again to load the database. In the last two cases, a command that needs only nicknames (`nicknames_needed`)
+  also offers File > Load Nicknames from CSV. The status line (`_report_no_project_session`), the commands that
+  need the nicknames (`_report_no_data`) and the commands that need the workspace (`_no_workspace_reason`) all
+  use it.
 - ClickNick drops a database load if its session closed, or if a CSV load or another connect cancelled it. It
   does this also when that happens during the prompt to save the data that the load replaces.
 - While a CLICK window is connected, its session's watch (`_monitor_task`) checks every 100 ms whether the window

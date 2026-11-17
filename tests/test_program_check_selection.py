@@ -101,5 +101,5 @@ def test_report_does_not_call_unselected_checks_passed():
     selected = format_validation_report(
         ValidationReport(findings=(), checked_rules=frozenset({"RUNG_CONTRADICTION"}))
     )
-    assert "1 selected checks passed" in selected
+    assert "the 1 selected check passed" in selected
     assert "not run" in selected

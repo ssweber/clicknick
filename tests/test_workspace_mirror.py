@@ -365,7 +365,10 @@ def test_setup_refuses_an_earlier_saves_workspace_after_a_failed_build(
     showerror = _choose_existing_workspace(monkeypatch, temporary, durable, _failed_build())
 
     message = showerror.call_args.args[1]
-    assert "could not be built from CLICK's last save" in message
+    assert message.startswith(
+        "Could not build the workspace from CLICK's last save. ClickNick will not copy "
+        "the workspace of an earlier save into the new folder."
+    )
     assert "ValueError: bad rung" in message
     assert not durable.exists()
 
@@ -498,9 +501,9 @@ def test_sync_removes_the_mirrors_legacy_record_once_the_workspace_has_none(
 def test_sync_rejects_overlapping_workspace_paths(tmp_path: Path) -> None:
     source = _write_workspace(tmp_path / "active")
 
-    with pytest.raises(ValueError, match="must be separate"):
+    with pytest.raises(ValueError, match="not inside the active workspace"):
         sync_workspace_to_mirror(source, source / "mirror")
-    with pytest.raises(ValueError, match="must be separate"):
+    with pytest.raises(ValueError, match="not inside the active workspace"):
         sync_workspace_to_mirror(source, tmp_path)
     validate_mirror_destination(source, tmp_path / "durable workspace")
 
@@ -583,7 +586,7 @@ def test_session_requires_a_choice_for_unpreferred_duplicate_matches(
 
     assert session.pairing.config is None
     assert session.pairing.matches == matches
-    assert "Multiple workspaces" in session.pairing.error
+    assert "Several workspaces" in session.pairing.error
 
 
 def test_a_new_session_pairs_its_own_plc(monkeypatch, tmp_path: Path) -> None:

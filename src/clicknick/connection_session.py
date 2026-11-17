@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .utils.click_temp import scr_files
+from .utils.mdb_shared import database_access_off
 
 if TYPE_CHECKING:
     import tkinter as tk
@@ -31,11 +32,44 @@ if TYPE_CHECKING:
 # run one at a time.
 _BUILD_GATE = threading.Lock()
 
+# What to do when a command needs a CLICK window and none is connected
+CONNECT_FIRST = "Connect to a CLICK window first"
+
+
+# The advice added when a command needs only nicknames, which a CSV file can also give
+_OR_CSV = ", or use File > Load Nicknames from CSV"
+_USE_CSV = ". Use File > Load Nicknames from CSV"
+
+
+def no_database_reason(session: ConnectionSession | None, *, nicknames_needed: bool = False) -> str:
+    """Say why ClickNick has not read CLICK's database for *session*, and what to do.
+
+    *session* is the connected window's session, or None when no window is connected. With
+    *nicknames_needed*, the command needs only nicknames, so the text also offers a CSV file
+    when the database cannot be loaded now. The text has no final period, so that the status
+    line can show it as it is.
+    """
+    if session is None:
+        return CONNECT_FIRST
+    if session.reading_database:
+        return "ClickNick is still reading CLICK's database. Try again when it has finished"
+    if database_access_off():
+        return (
+            "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)"
+            f"{_USE_CSV if nicknames_needed else ''}"
+        )
+    # The load failed or was cancelled, or the user loaded a CSV file instead. Picking the
+    # window again connects to it and loads its database.
+    return (
+        "ClickNick has not loaded CLICK's database for this project. Select the window in the "
+        f"CLICK Windows list to load it{_OR_CSV if nicknames_needed else ''}"
+    )
+
+
 # The reason a session builds nothing before ClickNick has read CLICK's database (has_database)
 NO_DATABASE = (
-    "ClickNick has not read this project's database (SC_.mdb, through Access ODBC "
-    "or Jet). A build reads CLICK's program from its Scr*.tmp files and the "
-    "nicknames from that database."
+    "ClickNick has not read this project's database, SC_.mdb, so it cannot build the "
+    "workspace. The build reads the nicknames from that database."
 )
 
 
@@ -153,6 +187,9 @@ class ConnectionSession:
         # The token of the database load in flight, from begin_load. It is None once the load
         # is cancelled.
         self._load_token: object | None = None
+        # Whether a database load started and has not returned yet. end_load and cancel_load
+        # clear it.
+        self._reading = False
         # The scheduler that the connection watch runs on, and the id of its next tick.
         # watch() sets them.
         self._watch_scheduler: tk.Misc | None = None
@@ -166,7 +203,17 @@ class ConnectionSession:
         Use the load's result only while ``loads(token)`` returns True.
         """
         self._load_token = token = object()
+        self._reading = True
         return token
+
+    def end_load(self) -> None:
+        """Record that the database load returned, whether or not it read the database."""
+        self._reading = False
+
+    @property
+    def reading_database(self) -> bool:
+        """Whether ClickNick is still reading CLICK's database for this session."""
+        return self._reading and not self._closed
 
     def loads(self, token: object) -> bool:
         """Return whether the load that *token* names is still wanted.
@@ -178,6 +225,7 @@ class ConnectionSession:
     def cancel_load(self) -> None:
         """Drop the database load in flight. Its result will not be used."""
         self._load_token = None
+        self._reading = False
 
     # -- Connection watch --------------------------------------------------
 
@@ -299,7 +347,10 @@ class ConnectionSession:
                         # pyproject.toml that cannot be read when it runs the checks.
                         traceback.print_exc()
             if not published:
-                error = "The project changed while converting. The conversion was discarded."
+                error = (
+                    "The project or its workspace changed while ClickNick was building the "
+                    "workspace. ClickNick dropped that build."
+                )
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
@@ -427,7 +478,7 @@ class ConnectionSession:
         db_value = find_click_database(click_hwnd=self.click.hwnd)
         if not db_value:
             self.analysis.mark_failed(
-                "No Click project database found. Connect to a project in Click Software."
+                "Could not find the database, SC_.mdb, of the connected CLICK project."
             )
             return None
 
@@ -435,8 +486,7 @@ class ConnectionSession:
         scr_folder = db_path.parent
         if not scr_files(scr_folder):
             self.analysis.mark_failed(
-                "No saved ladder files (Scr*.tmp) in the project folder. "
-                "Save the project in Click Software first."
+                "The project folder has no Scr*.tmp ladder files. Save the project in CLICK first."
             )
             return None
         return scr_folder, db_path
@@ -453,7 +503,7 @@ class ConnectionSession:
         from .services.analysis_service import AnalysisStatus
 
         if not self.has_database:
-            return SavedProgram()
+            return SavedProgram(note=no_database_reason(self))
         reading = "Reading CLICK's program…"
         saves = self._save_count
         analysis = self.analysis
@@ -473,7 +523,10 @@ class ConnectionSession:
             return SavedProgram(self, generation, saves, csv_dir=csv_dir, note="")
         if status is AnalysisStatus.FAILED:
             return SavedProgram(
-                self, generation, saves, note="Could not read CLICK's program. See the main window."
+                self,
+                generation,
+                saves,
+                note="Could not build the workspace. Help > About CLICK Project shows why.",
             )
         return SavedProgram(self, generation, saves, note=reading)
 

@@ -60,7 +60,7 @@ def test_workspace_status_covers_unavailable_preparing_and_failure() -> None:
 
     failed = get_workspace_status(_analysis(AnalysisStatus.FAILED, error="conversion broke"))
     assert failed.state is WorkspaceState.FAILED
-    assert failed.label == "Build failed"
+    assert failed.label == "Could not build the workspace"
     assert failed.detail == "conversion broke"
 
     repairable = get_workspace_status(
@@ -70,7 +70,7 @@ def test_workspace_status_covers_unavailable_preparing_and_failure() -> None:
             system_nickname_repairs=(object(),),
         )
     )
-    assert repairable.label == "System names need repair"
+    assert repairable.label == "Run Tools > Repairs > System Nicknames"
 
     old_form = get_workspace_status(
         _analysis(AnalysisStatus.FAILED, error="old annotation form", needs_comment_upgrade=True)
@@ -98,7 +98,7 @@ def test_generated_workspace_opens_after_analysis_failure(tmp_path: Path) -> Non
     project = _clean_workspace(tmp_path)
     analysis = _analysis(AnalysisStatus.FAILED, project, error="reset needs a condition")
     status = get_workspace_status(analysis)
-    assert status.label == "Analysis failed"
+    assert status.label == "Could not build the workspace"
     assert status.detail == "reset needs a condition"
 
     workspace = WorkspaceController(
@@ -154,8 +154,7 @@ def test_connection_session_reload_reports_unsaved_click_project(tmp_path, monke
     assert session.reload_workspace_from_click(_Root(), callback) is False
     callback.assert_called_once_with(
         False,
-        "No saved ladder files (Scr*.tmp) in the project folder. "
-        "Save the project in Click Software first.",
+        "The project folder has no Scr*.tmp ladder files. Save the project in CLICK first.",
     )
 
 
@@ -358,7 +357,11 @@ def test_closed_session_drops_its_queued_build_and_tells_the_caller(tmp_path) ->
     assert done.wait(5)
     session.analysis.build.assert_not_called()
     assert results == [
-        (False, "The project changed while converting. The conversion was discarded.")
+        (
+            False,
+            "The project or its workspace changed while ClickNick was building the "
+            "workspace. ClickNick dropped that build.",
+        )
     ]
 
 
@@ -535,7 +538,7 @@ def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
     session.analysis.generation = 4
     failed = session.saved_program()
     assert failed.csv_dir is None
-    assert "main window" in failed.note
+    assert failed.note == "Could not build the workspace. Help > About CLICK Project shows why."
 
 
 @pytest.mark.parametrize("first_fails", [False, True])
@@ -608,7 +611,7 @@ def test_a_save_during_a_build_reads_as_building_until_its_own_build(
     # The workspace status and the commands that read the workspace, such as ``rung apply``,
     # also wait for the save's own build.
     assert pre_save_state is WorkspaceState.PREPARING
-    assert "try again when it finishes" in pre_save_workspace
+    assert "Try again when it finishes" in pre_save_workspace
     assert saved.save_count == 1
     assert saved.building is False
     assert saved.csv_dir == project / "csv"
@@ -659,7 +662,7 @@ def test_a_save_that_cannot_be_read_during_a_build_reads_as_building_until_it_fi
     session._on_scr_changed()
     try:
         assert session.analysis.status is AnalysisStatus.BUILDING
-        with pytest.raises(ValueError, match="try again when it finishes"):
+        with pytest.raises(ValueError, match="Try again when it finishes"):
             _get_project_dir(DispatchContext(analysis=session.analysis))
     finally:
         release.set()
@@ -667,7 +670,9 @@ def test_a_save_that_cannot_be_read_during_a_build_reads_as_building_until_it_fi
 
     assert outcomes == [(True, None)], "the build was discarded"
     assert session.analysis.status is AnalysisStatus.FAILED
-    assert "No Click project database found" in (session.analysis.error or "")
+    assert session.analysis.error == (
+        "Could not find the database, SC_.mdb, of the connected CLICK project."
+    )
     assert session.saved_program().csv_dir is None
 
 
@@ -703,7 +708,7 @@ def test_a_rebuild_that_fails_before_publishing_has_nothing_to_compare(
         session.analysis.build(tmp_path, None, persist_dir=project)
     failed = session.saved_program()
     assert failed.csv_dir is None
-    assert "main window" in failed.note
+    assert failed.note == "Could not build the workspace. Help > About CLICK Project shows why."
 
     # If the build fails after it generated the workspace, Review Changes still compares
     # with this save.
@@ -720,7 +725,7 @@ def test_switching_workspace_moves_and_restarts_the_simulation(tmp_path, monkeyp
     monkeypatch.setattr(session, "_simulation_key", lambda: "Line1")
     workspace = tmp_path / "Example Workspace"
     known = ProjectWorkspaceConfig("Line1", tmp_path / "Other Workspace")
-    session.pairing = WorkspacePairing(None, [known], "Multiple workspaces are known")
+    session.pairing = WorkspacePairing(None, [known], "Several workspaces are known")
 
     session.use_workspace(ProjectWorkspaceConfig("Line1", workspace))
 
@@ -943,4 +948,4 @@ def test_superseded_build_reports_failure_and_skips_selection_sync(tmp_path, mon
 
     selection.sync.assert_not_called()
     ok, error = callback.call_args.args
-    assert ok is False and "changed while converting" in error
+    assert ok is False and "changed while ClickNick was building the workspace" in error

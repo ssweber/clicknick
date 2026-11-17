@@ -107,7 +107,7 @@ def _render(notes: Iterable[CarryNote], *, written: bool) -> str:
     if released:
         count = len(released)
         forces = "force" if count == 1 else "forces"
-        verb = "Released" if written else "Writing releases"
+        verb = "Released" if written else "Writing the program releases"
         parts.append(f"{verb} {count} {forces}: {', '.join(released)}.")
     renamed = [note.text for note in notes if note.section == "renamed"]
     if renamed:
@@ -310,7 +310,10 @@ def plan_carry(
         winner = None if target is None else followed.get(target.feedback)
         if target is not None and winner is not None and winner != feedback:
             carried_links[feedback] = None
-            text = f"the {_kind(links[feedback])} on {feedback} is dropped for the link on {winner}"
+            text = (
+                f"the {_kind(links[feedback])} on {feedback} is removed, because the link on "
+                f"{winner} moved onto {feedback}"
+            )
             moved.append(CarryNote("link", feedback, "moved", text))
             continue
         notes.extend(CarryNote("link", feedback, "renamed", text) for text in names)

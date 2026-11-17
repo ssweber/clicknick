@@ -73,7 +73,7 @@ class DataSession:
 
     @property
     def dataview_window(self) -> DataviewWindow | None:
-        """Return the open Dataview Editor window, or None. Only one can be open at a time."""
+        """Return the open Data View Editor window, or None. Only one can be open at a time."""
         return self._dataview_window
 
     @property
@@ -118,7 +118,7 @@ class DataSession:
             dataview_owner: Any = window
             answer = messagebox.askyesnocancel(
                 "Unsaved Changes",
-                "You have unsaved changes in Dataview Editor. Save before closing?",
+                "You have unsaved changes in the Data View Editor. Save before closing?",
                 parent=dataview_owner,
             )
             if answer is None:
@@ -153,7 +153,7 @@ class DataSession:
     def close(self, parent: tk.Misc | None = None, *, prompt_save: bool = True) -> bool:
         """Close every window and stop monitoring the store.
 
-        With prompt_save, ClickNick first offers to save unsaved Dataview and address edits.
+        With prompt_save, ClickNick first offers to save unsaved Data View and address edits.
         If the user cancels or a save fails, this method closes nothing and returns False.
         """
         if prompt_save and not self._confirm_close(parent):

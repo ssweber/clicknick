@@ -51,7 +51,7 @@ Address Editor's File > Import from CSV merges a CSV into the loaded data.
 - **Address Editor** is a tabbed tksheet editor with search and replace, block tagging and validation. Each tab
   shows all memory types in one scrollable view.
 - **Tag Browser** is a tree view of the nicknames, split at underscores and array indices.
-- **Dataview Editor** edits .cdv files and looks nicknames up in the shared address data.
+- **Data View Editor** edits .cdv files and looks nicknames up in the shared address data.
 - **Review Changes** steps ladder from a folder of CSVs into CLICK.
 - **Simulator** runs the workspace's program in pyrung, with an I/O panel and a command console. The workspace
   is the pyrung project that ClickNick generates from the connected CLICK project.
@@ -107,7 +107,7 @@ src/clicknick/
 ├── live/                  # clicknick-cli and the server it talks to in the app
 ├── views/                 # Windows and panels (passive observers)
 │   ├── address_editor/    # Address Editor views
-│   ├── dataview_editor/   # Dataview Editor views
+│   ├── dataview_editor/   # Data View Editor views
 │   └── nav_window/        # Tag Browser (outline, blocks)
 ├── widgets/               # Reusable UI components
 ├── detection/             # Window detection for Click.exe

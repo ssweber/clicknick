@@ -48,7 +48,7 @@ def test_a_launch_whose_configuration_done_goes_unanswered_fails(tmp_path, no_su
     (tmp_path / "run.py").write_text("x", encoding="utf-8")
     dap = _Scripted({"configurationDone": None})
 
-    with pytest.raises(RuntimeError, match="configurationDone"):
+    with pytest.raises(RuntimeError, match="stopped answering after it loaded the program"):
         dap.launch(tmp_path)
 
     assert dap.sent == ["initialize", "launch", "configurationDone"]
@@ -75,12 +75,12 @@ def test_the_program_is_launched_without_autoreload(tmp_path, no_subprocess):
 
 def test_requests_to_a_simulation_that_is_gone_are_unavailable_not_refused():
     dap = _Scripted({})
-    with pytest.raises(DapUnavailableError, match="not running"):
+    with pytest.raises(DapUnavailableError, match="the simulation is not running"):
         dap.force("X001", True)
 
     dap._proc = SimpleNamespace()
     dap.answers = {"pyrungForce": None}
-    with pytest.raises(DapUnavailableError, match="no response"):
+    with pytest.raises(DapUnavailableError, match="the simulation did not answer"):
         dap.force("X001", True)
 
     dap.answers = {"pyrungForce": {"success": False, "message": "unknown tag: BAD1"}}
@@ -120,7 +120,7 @@ def test_a_pyrung_without_the_planned_reload_is_named():
     unsupported = {"success": False, "message": "Unsupported command: pyrungReload"}
     dap = _Scripted({"pyrungReload": unsupported})
     dap._proc = SimpleNamespace()
-    with pytest.raises(DapRequestError, match=r"pyrung 0\.16\.0 or later") as refused:
+    with pytest.raises(DapRequestError, match=r"pyrung is older than 0\.16\.0") as refused:
         dap.planned_reload({})
     assert not isinstance(refused.value, DapUnavailableError)
     assert dap.sent == ["pyrungReload"]

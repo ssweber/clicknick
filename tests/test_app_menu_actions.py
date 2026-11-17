@@ -60,7 +60,10 @@ def test_export_refuses_an_earlier_saves_workspace_after_a_failed_build(dialogs)
     app._export_pyrung_project()
 
     (call,) = dialogs.showerror.call_args_list
-    assert "could not be built from CLICK's last save" in call.args[1]
+    assert call.args[1].startswith(
+        "Could not build the workspace from CLICK's last save. There is no current "
+        "workspace to export."
+    )
     assert "ValueError: bad rung" in call.args[1]
     dialogs.askdirectory.assert_not_called()
     analysis.export_project.assert_not_called()

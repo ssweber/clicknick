@@ -98,7 +98,7 @@ class ClickWindowDetector:
             return ChildWindowInfo(active_window_hwnd, window_class, focused_control)
 
         except Exception as e:
-            print(f"Error detecting popup window: {e}")
+            print(f"Could not read the focused CLICK dialog: {e}")
             return None
 
     def field_has_text(self, field: str, window_id: int) -> bool:
@@ -138,7 +138,7 @@ class ClickWindowDetector:
             try:
                 click_windows = json.loads(click_windows_json)
             except json.JSONDecodeError as e:
-                print(f"Error parsing JSON: {e}")
+                print(f"Could not read the list of CLICK windows: {e}")
                 return click_instances
 
             # Process each window

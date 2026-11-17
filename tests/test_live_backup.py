@@ -82,7 +82,7 @@ def test_restore_list_without_older_backups(tmp_path: Path):
 def test_restore_requires_an_existing_backup(tmp_path: Path):
     _write_source(tmp_path, "proposal\n")
 
-    with pytest.raises(ValueError, match="no source backup found"):
+    with pytest.raises(ValueError, match="There is no backup of src/plc yet"):
         dispatch(_context(tmp_path), "restore")
 
 

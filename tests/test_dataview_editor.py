@@ -1034,7 +1034,9 @@ def test_closing_the_data_asks_about_text_still_in_a_dataview_cell(
 
     assert not window._session.close(prompt_save=True)
 
-    assert dialogs.shown == ["You have unsaved changes in Dataview Editor. Save before closing?"]
+    assert dialogs.shown == [
+        "You have unsaved changes in the Data View Editor. Save before closing?"
+    ]
     assert _exists(window)
 
 

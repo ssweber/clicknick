@@ -158,7 +158,7 @@ def test_the_cli_is_refused_while_a_build_publishes(tmp_path: Path, monkeypatch,
     ctx = DispatchContext(store=_Store(), analysis=_Analysis(workspace))
 
     try:
-        with pytest.raises(ValueError, match="try again when it finishes"):
+        with pytest.raises(ValueError, match="Try again when it finishes"):
             dispatch(ctx, command)
     finally:
         publish.finish()
@@ -181,7 +181,7 @@ def test_choosing_a_workspace_is_refused_while_a_build_publishes_the_active_one(
     )
 
     try:
-        with pytest.raises(ValueError, match="try again when it finishes"):
+        with pytest.raises(ValueError, match="Try again when it finishes"):
             sync_workspace_to_mirror(workspace, mirror)
     finally:
         publish.finish()

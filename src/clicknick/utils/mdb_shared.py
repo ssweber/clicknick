@@ -51,6 +51,16 @@ def get_database_backend() -> str:
     return backend
 
 
+def database_access_off() -> bool:
+    """Return whether CLICKNICK_DB_BACKEND is none, so that ClickNick never reads CLICK's
+    database.
+    """
+    try:
+        return get_database_backend() == "none"
+    except ValueError:
+        return False
+
+
 def uses_jet_backend() -> bool:
     """Determine whether connection startup should prepare the Jet worker."""
     backend = get_database_backend()
@@ -91,7 +101,9 @@ def create_access_connection(db_path: str | Path) -> pyodbc.Connection | JetConn
     """
     backend = get_database_backend()
     if backend == "none":
-        raise RuntimeError("Database access is disabled (CSV mode).")
+        raise RuntimeError(
+            "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)."
+        )
     if not Path(db_path).is_file():
         raise FileNotFoundError(f"MDB file not found: {db_path}")
     if backend == "jet":
@@ -100,7 +112,11 @@ def create_access_connection(db_path: str | Path) -> pyodbc.Connection | JetConn
 
     if not available_drivers:
         if backend == "odbc":
-            raise RuntimeError("No Microsoft Access ODBC driver available; ODBC was requested.")
+            raise RuntimeError(
+                "No Microsoft Access ODBC driver is installed, and CLICKNICK_DB_BACKEND is set "
+                "to odbc. Install the driver, or set CLICKNICK_DB_BACKEND to auto, or start "
+                "ClickNick without --db-backend odbc."
+            )
         return JetConnection(db_path)
 
     # Try drivers in order of preference, then any other available
@@ -132,7 +148,10 @@ def create_access_connection(db_path: str | Path) -> pyodbc.Connection | JetConn
 def probe_database_connection(db_path: str | Path | None) -> ConnectionTestResult:
     """Read the expected address columns without changing project data."""
     if get_database_backend() == "none":
-        return ConnectionTestResult(False, "Database access is disabled (CSV mode).")
+        return ConnectionTestResult(
+            False,
+            "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode).",
+        )
     if not db_path:
         return ConnectionTestResult(False, "Open a CLICK project or choose its MDB file first.")
     try:

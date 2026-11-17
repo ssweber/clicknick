@@ -368,7 +368,7 @@ def test_a_busy_click_after_sync_says_the_names_are_synced_and_how_to_redraw(des
     message, style = _status(app)
     assert style == "error"
     assert message == (
-        '⚠ Synced into CLICK\'s database, but CLICK was busy (CLICK shows "Out"). '
+        '⚠ Synced the nicknames into CLICK\'s database, but CLICK was busy (CLICK shows "Out"). '
         "Use Tools > Redraw Nicknames in CLICK to show them"
     )
 
@@ -382,7 +382,9 @@ def test_a_failed_redraw_after_sync_says_so(desktop) -> None:
 
     message, style = _status(app)
     assert style == "error"
-    assert message.startswith("⚠ Synced into CLICK's database, but CLICK did not redraw them")
+    assert message.startswith(
+        "⚠ Synced the nicknames into CLICK's database, but CLICK did not redraw them"
+    )
     assert "(access denied)" in message
 
 
@@ -394,7 +396,7 @@ def test_the_menu_command_on_a_busy_click_says_to_close_its_dialog(desktop) -> N
     app.root.run(100)
 
     assert _status(app) == (
-        "⚠ CLICK is busy (CLICK's window is disabled). Close its dialog and try again",
+        "⚠ CLICK is busy (CLICK's window is disabled). Close any open CLICK dialog or wait, then try again",
         "error",
     )
 
@@ -416,7 +418,7 @@ def test_requests_while_a_redraw_runs_run_once_after_it(desktop) -> None:
     assert desktop.results == []
     # The second run counts as after a Sync, because one of the requests it serves was one.
     message, _style = _status(app)
-    assert message.startswith("⚠ Synced into CLICK's database, but CLICK was busy")
+    assert message.startswith("⚠ Synced the nicknames into CLICK's database, but CLICK was busy")
 
 
 def test_a_redraw_that_ends_on_another_window_shows_nothing(desktop, monkeypatch) -> None:
@@ -468,7 +470,9 @@ def test_a_redraw_reports_on_a_new_session_of_the_same_window(desktop, monkeypat
     assert desktop.calls == [(111, 222), (111, 222)]
     shown = [call.args for call in app._update_status.call_args_list]
     assert shown[0] == ("✓ CLICK shows the nicknames from its database", "connected")
-    assert shown[1][0].startswith("⚠ Synced into CLICK's database, but CLICK was busy")
+    assert shown[1][0].startswith(
+        "⚠ Synced the nicknames into CLICK's database, but CLICK was busy"
+    )
     assert len(shown) == 2
 
 

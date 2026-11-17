@@ -230,7 +230,10 @@ def test_closing_clicknick_asks_about_dataview_edits(monkeypatch):
     app.on_closing()
 
     assert prompts == [
-        ("Unsaved Changes", "You have unsaved changes in Dataview Editor. Save before closing?")
+        (
+            "Unsaved Changes",
+            "You have unsaved changes in the Data View Editor. Save before closing?",
+        )
     ]
     assert dataview.saved and dataview.closed
     assert app.root.destroy.called
@@ -297,6 +300,8 @@ def test_project_change_can_keep_unsaved_database_edits_for_the_new_project(monk
     ((_, title, message),) = prompts
     assert title == "Project Changed"
     assert "Keep them as unsaved changes for Renamed.ckp?" in message
+    assert "Sync writes the address changes to Renamed.ckp." in message
+    assert "Data View" not in message
     assert app._data.store is store
     assert not editor.closed
     # The store's file monitor keeps running. It reads the saved data under the kept edits
@@ -365,7 +370,7 @@ def test_project_change_asks_one_question_about_dataview_edits(monkeypatch, keep
 
     (question, *notices) = prompts
     assert question[:2] == ("askyesno", "Project Changed")
-    assert "Dataview" in question[2]
+    assert "Data View changes" in question[2]
     assert not dataview.saved
     if keep:
         assert notices == []
@@ -549,21 +554,76 @@ def test_connecting_opens_the_session_before_the_database_loads(monkeypatch):
         ("workspace", "_ensure_plc_name"),
     ],
 )
-def test_without_its_database_a_session_asks_to_connect_first(monkeypatch, owner, action):
-    """Until the database has loaded, and after the CSV fallback, these ask to connect first.
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        ("no window", "⚠ Connect to a CLICK window first"),
+        (
+            "reading",
+            "⚠ ClickNick is still reading CLICK's database. Try again when it has finished",
+        ),
+        (
+            "not loaded",
+            "⚠ ClickNick has not loaded CLICK's database for this project. Select the window "
+            "in the CLICK Windows list to load it",
+        ),
+    ],
+)
+def test_without_its_database_a_session_says_why_it_cannot_act(
+    monkeypatch, owner, action, state, expected
+):
+    """These need CLICK's database, and each says why it is missing and what to do.
 
-    They ask even though the app has made a session for the connected window.
+    With a window connected, the app has a session for it. The database is still loading, or
+    ClickNick did not load it (the load failed or was cancelled, or a CSV file was loaded).
     """
     app, _prompts = _app(monkeypatch)
     app._live_server = MagicMock()
     app._workspace.plc_name = MagicMock(return_value=None)
+    session = app._session
+    if state == "no window":
+        app._session = None
+    elif state == "reading":
+        session.begin_load()
 
     getattr(app._workspace if owner == "workspace" else app, action)()
 
     ((message, style),) = [call.args for call in app._update_status.call_args_list]
-    assert (message.casefold(), style) == ("connect to a click project first", "error")
+    assert (message, style) == (expected, "error")
     app._live_server.dispatch_now.assert_not_called()
-    assert app._session.analysis is None and app._session.simulation is None
+    assert session.analysis is None and session.simulation is None
+
+
+def test_a_finished_database_load_is_no_longer_reading():
+    session = _session()
+    session.begin_load()
+    assert session.reading_database
+
+    session.end_load()
+
+    assert not session.reading_database
+
+
+def test_cancelling_the_plc_name_prompt_in_workspace_setup_shows_nothing(monkeypatch, tmp_path):
+    """The user is connected and only cancelled, so no status says to connect first."""
+    from clicknick.services.workspace_mirror import ProjectWorkspaceConfig
+
+    app, prompts = _app(monkeypatch)
+    app._session.has_database = True
+    app._session.pending_workspace = ProjectWorkspaceConfig(
+        plc_name="Line1", workspace_path=tmp_path / "Line1"
+    )
+    app._workspace.plc_name = MagicMock(return_value=None)
+    asked = []
+    monkeypatch.setattr(
+        "tkinter.simpledialog.askstring", lambda *args, **kwargs: asked.append(args[0])
+    )
+
+    app._workspace._apply_setup()
+
+    assert asked == ["Name PLC"]
+    app._update_status.assert_not_called()
+    assert prompts == []
 
 
 # -- app#5: Stop turns off popups only -----------------------------------------------------------
@@ -852,7 +912,7 @@ def test_no_csv_chosen_says_nothing_is_loaded_without_saying_stopped(monkeypatch
     app._connection._connect_csv_fallback("Main.ckp", 222)
 
     app._update_status.assert_called_once_with(
-        "No nicknames loaded - use File → Load Nicknames...", "error"
+        "No nicknames loaded. Use File > Load Nicknames from CSV", "error"
     )
     assert app._connection.monitoring is True
 
@@ -920,7 +980,7 @@ def test_project_change_over_csv_data_says_only_the_simulator_closes(monkeypatch
     app._connection._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
 
     assert notices == [
-        ("Project Changed", "The Click project was changed. The Simulator will now close.")
+        ("Project Changed", "The CLICK window now shows Main2.ckp. The Simulator will now close.")
     ]
     assert not editor.closed
 
@@ -1080,6 +1140,147 @@ def test_verify_checks_the_connected_windows_dataview_folder(monkeypatch, tmp_pa
     assert checked == [connected]
 
 
+@pytest.mark.parametrize(
+    ("action", "command"),
+    [("_verify_mdb_and_cdv", "Verify MDB & CDV"), ("_clean_mdb", "Clean MDB")],
+)
+def test_database_repairs_refuse_csv_data(monkeypatch, action, command):
+    """With a window connected and a CSV file loaded, neither command reads the CSV file."""
+    read = []
+    monkeypatch.setattr(
+        "clicknick.utils.verification.run_verification", lambda *args: read.append(args)
+    )
+    monkeypatch.setattr(
+        "clicknick.data.data_source.MdbDataSource", lambda **kwargs: read.append(kwargs)
+    )
+    app, prompts = _app(monkeypatch)
+    app._data = DataSession(FakeStore(is_database=False, source_path="C:/tmp/Main_Address.csv"))
+
+    getattr(app, action)()
+
+    assert read == []
+    assert prompts == []
+    app._update_status.assert_called_once_with(
+        f"⚠ {command} needs CLICK's database, and the nicknames loaded come from a CSV file. "
+        "Select the window in the CLICK Windows list to load the database",
+        "error",
+    )
+
+
+_READING = "ClickNick is still reading CLICK's database. Try again when it has finished"
+_NOT_LOADED = (
+    "ClickNick has not loaded CLICK's database for this project. Select the window in the "
+    "CLICK Windows list to load it"
+)
+_DATABASE_OFF = "Database access is off, because CLICKNICK_DB_BACKEND is set to none (CSV mode)"
+_OR_CSV = ", or use File > Load Nicknames from CSV"
+_USE_CSV = ". Use File > Load Nicknames from CSV"
+
+
+def _set_state(app: ClickNickApp, state: str) -> None:
+    """Put *app* in *state*: no window, a window whose database is still loading or not loaded,
+    or a window whose database is loaded but whose workspace build has not started.
+    """
+    if state == "no window":
+        app._session = None
+    elif state == "reading":
+        app._session.begin_load()
+    elif state == "not started":
+        app._session.has_database = True
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "_open_dataview_editor",
+        "_open_address_editor",
+        "_repair_system_nicknames",
+        "_upgrade_project",
+    ],
+)
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        (
+            "no window",
+            "No nicknames loaded. Connect to a CLICK window, or use File > Load Nicknames from CSV",
+        ),
+        ("reading", f"⚠ {_READING}"),
+        ("not loaded", f"⚠ {_NOT_LOADED}{_OR_CSV}"),
+        ("access off", f"⚠ {_DATABASE_OFF}{_USE_CSV}"),
+    ],
+)
+def test_without_nicknames_a_command_says_why(monkeypatch, action, state, expected):
+    """With a window connected, no nicknames means that its database is loading or not loaded.
+
+    Only with no window connected does the status say to connect. A CSV file is offered
+    whenever the database cannot be loaded now.
+    """
+    if state == "access off":
+        monkeypatch.setenv("CLICKNICK_DB_BACKEND", "none")
+    app, prompts = _app(monkeypatch)
+    _set_state(app, state)
+
+    getattr(app, action)()
+
+    app._update_status.assert_called_once_with(expected, "error")
+    assert prompts == []
+
+
+@pytest.mark.parametrize(
+    ("action", "title", "lead"),
+    [
+        ("_run_program_checks", "Check Program", "Check Program needs the workspace."),
+        ("_choose_program_checks", "Choose Checks", "Choose Checks needs the workspace."),
+        ("_export_pyrung_project", "Export Workspace", "There is no workspace to export."),
+    ],
+)
+@pytest.mark.parametrize(
+    ("state", "reason"),
+    [
+        ("no window", "Connect to a CLICK window first."),
+        ("reading", f"{_READING}."),
+        ("not loaded", f"{_NOT_LOADED}."),
+        (
+            "not started",
+            "ClickNick has not started building the workspace. Save the project in CLICK, then "
+            "try again.",
+        ),
+    ],
+)
+def test_without_a_workspace_a_command_says_why(monkeypatch, action, title, lead, state, reason):
+    """A command that needs the workspace says why there is none.
+
+    It says to connect only when no window is connected.
+    """
+    app, _prompts = _app(monkeypatch)
+    shown = []
+    monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *args, **kwargs: shown.append(args))
+    _set_state(app, state)
+
+    if action == "_choose_program_checks":
+        app._choose_program_checks(app.root, MagicMock())
+    else:
+        getattr(app, action)()
+
+    assert shown == [(title, f"{lead}\n\n{reason}")]
+
+
+def test_with_database_access_off_the_status_says_so(monkeypatch):
+    """With CLICKNICK_DB_BACKEND set to none, selecting the window cannot load the database."""
+    monkeypatch.setenv("CLICKNICK_DB_BACKEND", "none")
+    app, _prompts = _app(monkeypatch)
+
+    app._workspace.review_changes()
+    app._data = DataSession(FakeStore(is_database=False, source_path="C:/tmp/Main_Address.csv"))
+    app._clean_mdb()
+
+    assert [call.args for call in app._update_status.call_args_list] == [
+        (f"⚠ {_DATABASE_OFF}", "error"),
+        (f"⚠ {_DATABASE_OFF}", "error"),
+    ]
+
+
 @pytest.mark.parametrize("keep", [True, False], ids=["keep", "discard"])
 def test_project_change_asks_about_dataview_edits_over_csv_data(monkeypatch, keep):
     """Over CSV data, a project change asks the same question as over database data.
@@ -1098,7 +1299,7 @@ def test_project_change_asks_about_dataview_edits_over_csv_data(monkeypatch, kee
 
     ((_, title, message),) = prompts
     assert title == "Project Changed"
-    assert "unsaved Dataview changes made in Main.ckp" in message
+    assert "unsaved Data View changes made in Main.ckp" in message
     assert "address changes" not in message  # CSV edits belong to the CSV file, not to the project.
     assert not dataview.saved
     assert app._data.store is store
@@ -1170,4 +1371,69 @@ def test_project_change_counts_text_still_in_a_dataview_cell(monkeypatch, commit
 
     ((_, title, message),) = prompts
     assert title == "Project Changed"
-    assert "unsaved Dataview changes" in message
+    assert "unsaved Data View changes" in message
+
+
+@pytest.mark.parametrize(
+    ("build", "reason"),
+    [
+        ("failed", "Could not build the workspace: bad rung"),
+        ("failed without a reason", "Could not build the workspace."),
+        ("building", "ClickNick is still building the workspace. Try again when it finishes."),
+    ],
+)
+@pytest.mark.parametrize("action", ["_choose_program_checks", "_run_program_checks"])
+def test_workspace_commands_name_the_state_of_the_build(monkeypatch, action, build, reason):
+    """With the database loaded, Choose Checks and Check Program say what happened to the build."""
+    from clicknick.services.analysis_service import AnalysisService
+
+    app, _prompts = _app(monkeypatch)
+    shown = []
+    for kind in ("showinfo", "showerror"):
+        monkeypatch.setattr(
+            f"tkinter.messagebox.{kind}",
+            lambda *args, kind=kind, **kwargs: shown.append((kind, *args)),
+        )
+    session = app._session
+    session.has_database = True
+    session.analysis = AnalysisService()
+    serves = session.analysis.mark_building()
+    if build != "building":
+        session.analysis.mark_failed("bad rung" if build == "failed" else "", serves=serves)
+
+    if action == "_choose_program_checks":
+        app._choose_program_checks(app.root, MagicMock())
+        title = "Choose Checks"
+    else:
+        app._run_program_checks()
+        title = "Check Program"
+
+    kind = "showerror" if build.startswith("failed") and title == "Check Program" else "showinfo"
+    assert shown == [(kind, title, f"{title} needs the workspace.\n\n{reason}")]
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        ("bad rung", "Could not build the workspace: bad rung"),
+        ("", "Could not build the workspace."),
+    ],
+)
+def test_the_simulator_names_a_failed_build(monkeypatch, tmp_path, error, reason):
+    """The Simulator says why the workspace is missing, the same as the other commands."""
+    from clicknick.services.analysis_service import AnalysisService
+
+    app, prompts = _app(monkeypatch)
+    monkeypatch.setattr("clicknick.app.scr_files", lambda _folder: [tmp_path / "Scr1.tmp"])
+    app._live_mdb_path = lambda: tmp_path / "SC_.mdb"
+    app._start_analysis_build = MagicMock()
+    session = app._session
+    session.has_database = True
+    session.analysis = AnalysisService()
+    session.analysis.mark_failed(error)
+
+    assert app._simulation_for_window("Cannot Simulate", "The simulation") is None
+
+    assert prompts == [
+        ("showerror", "Cannot Simulate", f"The simulation needs the workspace.\n\n{reason}")
+    ]

@@ -43,13 +43,13 @@ def get_workspace_status(
         return WorkspaceStatus(WorkspaceState.PREPARING, "Preparing")
     if analysis.status is AnalysisStatus.FAILED:
         if getattr(analysis, "system_nickname_repairs", ()):
-            label = "System names need repair"
+            label = "Run Tools > Repairs > System Nicknames"
         elif getattr(analysis, "needs_comment_upgrade", False):
             label = "Run Tools > Repairs > Upgrade Project"
-        elif analysis.project_dir is not None:
-            label = "Analysis failed"
         else:
-            label = "Build failed"
+            # analysis.error holds the reason that the failed step reported. A workspace
+            # folder from an earlier build may still exist.
+            label = "Could not build the workspace"
         return WorkspaceStatus(WorkspaceState.FAILED, label, detail=analysis.error)
 
     project_dir = analysis.project_dir
