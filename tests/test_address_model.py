@@ -951,14 +951,21 @@ class TestAddressRowDerivedProperties:
         assert row.outline_suffix == "  : BIT"
 
     def test_outline_suffix_bit_retentive(self):
-        """BIT with non-default retentive shows '= Retentive'."""
+        """BIT with non-default retentive shows ', Retentive'."""
         row = AddressRow(memory_type="X", address=1, data_type=DataType.BIT, retentive=True)
-        assert row.outline_suffix == "  : BIT = Retentive"
+        assert row.outline_suffix == "  : BIT, Retentive"
 
     def test_outline_suffix_bit_on(self):
         """BIT with initial_value='1' shows '= ON'."""
         row = AddressRow(memory_type="X", address=1, data_type=DataType.BIT, initial_value="1")
         assert row.outline_suffix == "  : BIT = ON"
+
+    def test_outline_suffix_bit_on_and_non_retentive(self):
+        """BIT with a value and non-default retentive shows the value, then Non-retentive."""
+        row = AddressRow(
+            memory_type="CT", address=1, data_type=DataType.BIT, initial_value="1", retentive=False
+        )
+        assert row.outline_suffix == "  : BIT = ON, Non-retentive"
 
     def test_outline_suffix_int_with_value(self):
         """INT with non-default retentive shows '= <value>'."""

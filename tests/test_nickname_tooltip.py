@@ -52,7 +52,7 @@ def test_retentive_c_bit_is_shown():
 def test_non_retentive_counter_is_shown_as_non_retentive():
     details = _details("CT", "BIT", retentive=False)
     assert details.splitlines()[-1] == "Non-retentive"
-    assert _suffix("CT", DataType.BIT, retentive=False) == "  : BIT = Non-retentive"
+    assert _suffix("CT", DataType.BIT, retentive=False) == "  : BIT, Non-retentive"
 
 
 def test_retentive_timer_value_shows_no_initial_value():
@@ -142,7 +142,9 @@ def test_tooltip_and_tag_browser_agree(
         panel.build_tree(store.visible_state)
         item = next(i for i in panel._item_data.values() if i.addr_key == row.addr_key)
         iid = next(k for k, v in panel._item_data.items() if v is item)
-        suffix_notes = panel.tree.item(iid, "text").partition(" = ")[2]
+        # "Name  : BIT = ON, Non-retentive" or "Name  : BIT, Retentive": the notes follow the type.
+        type_and_notes = panel.tree.item(iid, "text").partition("  : ")[2]
+        suffix_notes = type_and_notes.partition(" ")[2].removeprefix("= ")
     finally:
         panel.destroy()
     assert tooltip_notes == suffix_notes

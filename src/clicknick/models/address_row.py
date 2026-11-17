@@ -123,14 +123,17 @@ class AddressRow:
     def outline_suffix(self) -> str:
         """Get suffix string for outline panel (appended to nickname text).
 
-        Format: ``  : DataType = Value, Retentive``, the parts from `value_notes`.
+        Format: ``  : DataType = Value, Retentive``, the parts from `value_notes`. Without an
+        initial value it is ``  : DataType, Retentive``, so that Retentive does not read as the
+        value.
         """
         initial, retentive = value_notes(
             self.memory_type, self.data_type_display, self.retentive, self.initial_value
         )
-        notes = ", ".join(part for part in (initial, retentive) if part)
         suffix = f"  : {self.data_type_display}"
-        return f"{suffix} = {notes}" if notes else suffix
+        if initial:
+            suffix = f"{suffix} = {initial}"
+        return f"{suffix}, {retentive}" if retentive else suffix
 
     # --- State Helper Properties ---
 
