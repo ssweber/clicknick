@@ -9,194 +9,215 @@
     uv run python devtools/click_runner.py read-data --out DIR [--record]
     uv run python devtools/click_runner.py picker --out DIR [--key KEY ...] [--ok] [--record]
 
-The runner starts its own CLICK, connects to the one PLC on the LAN (so the new project
-takes that PLC's hardware) and answers "Don't read" to reading the PLC's project. ``paste``
-then pastes CSV into the main program, runs Syntax Check, saves the project as
-``DIR/<CSV name>.ckp``, copies CLICK's Scr*.tmp files and Project.ini into ``DIR/click/``,
-disconnects, closes CLICK and decodes ``DIR/click/`` into ``DIR/csv/``. ``record`` connects
-the same way and dumps every window of CLICK (JSON and PNG) at each step into
-``DIR/record/``, then disconnects and ends CLICK (the project was never saved, so it is
-terminated rather than closed); ``paste --record`` and ``try --record`` dump the same way.
-A PNG is the screen where the window is, so whatever lies over CLICK there is in it.
+The runner starts its own CLICK. It connects to the one PLC on the LAN, so the new project
+takes that PLC's hardware. It answers "Don't read" to the question about reading the PLC's
+project. ``paste`` then pastes the CSV into the main program and runs Syntax Check. It saves
+the project as ``DIR/<CSV name>.ckp`` and copies CLICK's Scr*.tmp files and Project.ini into
+``DIR/click/``. It disconnects, closes CLICK and decodes ``DIR/click/`` into ``DIR/csv/``.
+
+``record`` connects the same way and dumps every window of CLICK (JSON and PNG) into
+``DIR/record/`` at each step. It then disconnects and ends CLICK. The project was never
+saved, so the runner terminates CLICK instead of closing it. ``paste --record`` and
+``try --record`` dump the same way. A PNG is a picture of the screen where the window is,
+so anything that lies over CLICK there is in it.
 
 ``try`` asks CLICK's instruction dialogs whether they accept an instruction (``CASES``).
-Once connected, it copies the new project's SC_.mdb to ``DIR/SC_.mdb`` and reads the
-nicknames of the addresses CASES.json lists under ``nicknames`` from the copy (a new
-project's SC_.mdb holds few: live run try3 found SC202, SC203 and SD13 only). It runs Syntax
-Check on the empty main program (``baseline_syntax_check``), which must name rung 1 for the
-missing END (C0201). Then, for each case, it opens the instruction's dialog from the
-ribbon's command at the ladder's cursor and checks the buttons and lists the case takes as
-given (One Shot off, Out's type Out/Toggle, Receive's CPU Port2 and Function Code 01). It
-picks the mode (a mode button already checked is left alone: Math empties its fields on any
-type click) and each list's item the case ``choices`` (Up and Down keys sent to the list
-alone), and fills the fields by WM_SETTEXT. Compare's and Search's operator (the mode) is
-picked after the fields, as a TXT address hides some. Then it sets the case's ``options``,
-each named by the label its button shows now (CLICK relabels Copy's as the fields change)
-or by its id, those asked 1 before those asked 0 (so a radio button's press has unchecked
-its pair asked 0 already); a field the case asks for that a press after the fields
-opened (Copy's Termination code, once its option is checked) is filled then. It reads the
-fields, every list and every option set back (for Receive, every open field, the ones the
-case leaves as the dialog filled them included), waits for the dialog alone and presses OK.
-A field, list, mode or option closed for entry (hidden or disabled), an option label no
-option button shows, a radio button asked to be unchecked, a field, list or option that
-reads back otherwise, or a list without the item asked for, makes the case ``not_taken``
-once the dialog's Cancel has closed it; OK is not pressed. A field CLICK does not answer
-(set or read) stops the run, as CLICK may have stalled, and so does an option that does not
-read as asked after ``OPTION_PRESSES`` presses (live probe d4c saw a press lost). The case's
-``controls`` are the dialog's visible buttons, statics and edits as OK (or Cancel) finds
-them. After OK, CLICK shows an
-error box owned by the dialog (``refused``, with the box's code and message; the box's OK
-and the dialog's Cancel then close both) or closes the dialog. A closed dialog gets a Syntax
-Check of its own (the lines naming a code the empty program's check does not): it is
+Once connected, it copies the new project's SC_.mdb to ``DIR/SC_.mdb``. From the copy it
+reads the nicknames of the addresses that CASES.json lists under ``nicknames``. A new
+project's SC_.mdb holds few: live run try3 found SC202, SC203 and SD13 only. Then it runs
+Syntax Check on the empty main program (``baseline_syntax_check``). That check must name
+rung 1 for the missing END (C0201).
+
+Then, for each case, ``try`` opens the instruction's dialog from the ribbon's command at the
+ladder's cursor. It checks the buttons and lists that the case takes as given: One Shot off,
+Out's type Out/Toggle, Receive's CPU Port2 and Function Code 01. It picks the mode, and it
+picks in each list the item that the case's ``choices`` name. A mode button that is already
+checked is left alone, because Math empties its fields on any type click. Up and Down keys
+are sent to the list alone. It fills the fields by WM_SETTEXT. It picks the operator of
+Compare and Search (the mode) after the fields, because a TXT address hides some operators.
+
+Then it sets the case's ``options``. Each option is named by the label its button shows now,
+or by its id. CLICK relabels Copy's buttons as the fields change. Options asked 1 are set
+before options asked 0, so that a radio button's press has unchecked its pair asked 0
+already. A field that the case asks for may open only after such a press (Copy's Termination
+code, once its option is checked). The runner fills that field then.
+
+It reads back the fields, every list and every option it set. For Receive it reads back
+every open field, including the ones that the case leaves as the dialog filled them. It
+waits until the dialog is alone and presses OK.
+
+A case is ``not_taken`` when any of these is true: a field, list, mode or option is closed
+for entry (hidden or disabled); no option button shows an option label; a radio button is
+asked to be unchecked; a field, list or option reads back otherwise; or a list lacks the
+item asked for. In that case the runner closes the dialog with Cancel and does not press OK.
+The run stops if CLICK does not answer when a field is set or read, because CLICK may have
+stalled. It also stops if an option does not read as asked after ``OPTION_PRESSES`` presses.
+Live probe d4c saw a press lost. The case's ``controls`` list the dialog's visible buttons,
+statics and edits as they are when OK (or Cancel) is pressed.
+
+After OK, CLICK either shows an error box owned by the dialog or closes the dialog. With the
+box, the case is ``refused`` and carries the box's code and message. The box's OK and the
+dialog's Cancel then close both. A dialog that closed gets a Syntax Check of its own. The
+case keeps the lines that name a code the empty program's check does not. The case is
 ``accepted`` only when that check names rung 2 for the missing END, as an instruction in
-rung 1 makes it, and ``other`` otherwise, which stops the run. Edit > Delete then removes
-the instruction, and the next Syntax Check must read as the empty program's did. All cases
-run in one CLICK, which is then disconnected and ended, as ``record`` ends it. result.json
-holds one entry per case under ``cases``, in the file's order, and an abort keeps the
-entries done before it.
+rung 1 makes it. Otherwise it is ``other``, and that stops the run. Edit > Delete then
+removes the instruction, and the next Syntax Check must read as the empty program's did.
 
-``try --wire`` tries each case in a rung of its own, as a program holds it: an output
+All cases run in one CLICK. The runner then disconnects it and ends it, as ``record`` does.
+result.json holds one entry per case under ``cases``, in the file's order. After an abort it
+keeps the entries that were done before.
+
+``try --wire`` tries each case in a rung of its own, as a program holds it. An output
 instruction (Copy, Math, Out, Receive, Search) is placed behind a contact ``X001`` (the
-ribbon's Contact(NO), whose OK leaves the cursor at column B), and a contact instruction
-(Compare, which ``try`` takes only with ``--wire``) gets an Out coil ``Y001`` once its dialog
-closes. An accepted case's Syntax Check must then name nothing the empty program's does not.
-The whole rung is deleted after each case, a contact placed for a case CLICK refused or that
-was not taken too: a click posted on rung 1's number in the ladder view selects the rung
-(``Desktop.click_ladder``), then Edit > Delete. A resume refuses a run whose cases were
-tried otherwise, with ``--wire`` or without.
+ribbon's Contact(NO), whose OK leaves the cursor at column B). A contact instruction
+(Compare, which ``try`` takes only with ``--wire``) gets an Out coil ``Y001`` once its
+dialog closes. The Syntax Check of an accepted case must then name nothing that the empty
+program's check does not. After each case the whole rung is deleted. That includes a contact
+placed for a case that CLICK refused or that was not taken. The runner posts a click on
+rung 1's number in the ladder view, which selects the rung (``Desktop.click_ladder``), then
+runs Edit > Delete. A resume refuses a run whose cases were tried otherwise, with ``--wire``
+or without.
 
-A case's id is its ``case``, unique in its file. Each case's entry is appended to
-``DIR/cases.jsonl`` as one line as soon as it is known, so a run that stops keeps every
-answer before the stop; a case that stops the run gets a line too, with the stop under
-``stops``, and is the result's ``stopped_at``. ``--resume PREV_DIR`` carries the entries of
-PREV_DIR's ``cases.jsonl`` (the last line for each case; they must ask what this file's case
-of that id asks) into this run's ``cases`` and ``cases.jsonl`` before CLICK starts, and
-tries only the cases they leave, in a CLICK of its own: a case with an outcome is not tried
-again, nor one that stopped ``MAX_STOPS`` runs (a Ctrl+C is not counted); one that stopped
-fewer is tried again, and its line with its stops is written too. An answer the run stopped
-after (Delete or the save failed) is kept under the stop, not as the outcome, and with
-``--keep`` an accepted case without its save counts as unanswered. ``--stop-after N`` ends
-the run cleanly once it has tried N cases (``stopped_after``). ``left`` counts the cases
-with no outcome. An unexpected window still stops the run; nothing starts a CLICK again by
-itself.
+A case's id is its ``case``, unique in its file. The runner appends each case's entry to
+``DIR/cases.jsonl`` as one line as soon as it is known. A run that stops therefore keeps
+every answer before the stop. A case that stops the run gets a line too, with the stop under
+``stops``, and is the result's ``stopped_at``.
 
-``try --keep`` also saves the project before each Delete, so what CLICK stores for an
-accepted instruction can be read: File > Save As ``DIR/saves/caseNN.ckp`` (NN the case's
-number), then CLICK's Scr*.tmp files and Project.ini are copied into
-``DIR/saves/caseNN/click/``. Once CLICK has ended (after an abort too), each copy is
-decoded into ``DIR/saves/caseNN/csv/``, and the tags each instruction holds are read as
-stored. With ``--wire``, rung 1 is then also copied by CLICK's Edit > Copy, and the
-clipboard's CLICK data written to ``DIR/saves/caseNN.clip.bin`` (none stops the run); it is
-decoded with the copies into ``DIR/saves/caseNN.clip.csv``; the case's ``clip_error`` names
-what in it laddercodec cannot read or write, or why it cannot be decoded at all. Each save
-renames the project, so a Syntax Check is compared with the empty program's without the
-project's name. Each decoded case's line is written again with what was read. A resumed run
-decodes the carried copies its run left undecoded (that run's process ended first) into its
-own ``DIR/saves/caseNN/csv/``.
+``--resume PREV_DIR`` reads PREV_DIR's ``cases.jsonl`` before CLICK starts. It takes the last
+line for each case. Each such entry must ask what this file's case of that id asks. The
+runner carries the entries into this run's ``cases`` and ``cases.jsonl``, and tries only the
+other cases, in a CLICK of its own. It does not try again a case that has an outcome. It
+also does not try again a case that stopped ``MAX_STOPS`` runs, and a Ctrl+C is not counted.
+A case that stopped fewer runs is tried again, and the runner writes its line with its
+stops too. If the run stopped after an answer (Delete or the save failed), the stop keeps
+the answer and the case has no outcome. With ``--keep``, an accepted case without its save
+counts as unanswered. ``--stop-after N`` ends the run cleanly once it has tried N cases
+(``stopped_after``). ``left`` counts the cases with no outcome. An unexpected window still
+stops the run. Nothing starts a CLICK again by itself.
+
+``try --keep`` also saves the project before each Delete, so that you can read what CLICK
+stores for an accepted instruction. It runs File > Save As ``DIR/saves/caseNN.ckp`` (NN is
+the case's number). Then it copies CLICK's Scr*.tmp files and Project.ini into
+``DIR/saves/caseNN/click/``. Once CLICK has ended (after an abort too), the runner decodes
+each copy into ``DIR/saves/caseNN/csv/`` and reads the tags that each instruction holds, as
+stored. With ``--wire``, CLICK's Edit > Copy then also copies rung 1, and the runner writes
+the clipboard's CLICK data to ``DIR/saves/caseNN.clip.bin``. If the clipboard has none, the
+run stops. The runner decodes that file with the copies into ``DIR/saves/caseNN.clip.csv``.
+The case's ``clip_error`` names what in it laddercodec cannot read or write, or why it
+cannot be decoded at all. Each save renames the project, so a Syntax Check is compared with
+the empty program's without the project's name. The runner writes each decoded case's line
+again with what was read. A resumed run decodes the carried copies that its run left
+undecoded, because that run's process ended first. It decodes them into its own
+``DIR/saves/caseNN/csv/``.
 
 ``import`` imports a nickname CSV through CLICK's own File > Import > Nickname (32900) and
 reads what CLICK stored. With ``--each-row`` it then imports each row on its own, in a file
-of the CSV's header and that row, byte for byte (``DIR/rows/``; a row is one line, as CLICK
-reads it, so a line break inside quotes ends the row), since a row CLICK refuses may change
-another (``split_rows``). Every import picks the mode Delete Existing in the Open dialog, so
-CLICK empties the address table first and what it stores is what it made of that file
-alone; it fills in the path and presses Open. CLICK answers with a box reading "Completed!"
-or with its Import Error List (a text listing each line it could not take, and why); its
-text is kept, and its OK closes it. The runner then waits for the main window alone and
-CLICK's SC_.mdb unchanged for ``IMPORT_SETTLE``, and copies SC_.mdb into ``DIR/mdb/``.
-Once CLICK has ended (disconnected and ended, as ``try`` ends it), each copy is read through
-Access ODBC, so a NULL stays None and a text keeps every character. result.json holds one
-entry per import under ``imports`` (``Run.import_one``), after an abort too.
+of the CSV's header and that row, byte for byte (``DIR/rows/``). It does this because a row
+that CLICK refuses may change another. A row is one line, as CLICK reads it, so a line break
+inside quotes ends the row (``split_rows``). Every import picks the mode Delete Existing in
+the Open dialog, so CLICK empties the address table first and what it stores is what it made
+of that file alone. The runner fills in the path and presses Open. CLICK answers with a box
+reading "Completed!" or with its Import Error List, a text that lists each line CLICK could
+not take, and why. The runner keeps that text and presses the box's OK. It then waits until
+the main window is alone and CLICK's SC_.mdb has been unchanged for ``IMPORT_SETTLE``, and
+copies SC_.mdb into ``DIR/mdb/``. Once CLICK has ended (disconnected and ended, as ``try``
+ends it), the runner reads each copy through Access ODBC, so a NULL stays None and a text
+keeps every character. result.json holds one entry per import under ``imports``
+(``Run.import_one``), after an abort too.
 
 ``reopen`` asks what CLICK does with a project's Project.ini. It disconnects, saves the new
-project as ``DIR/first.ckp``, adds ``--ini-add``'s ASCII lines to the end of the Project.ini
-in CLICK's temp folder (the runner's own CLICK's), saves as ``DIR/second.ckp``, opens
-``second.ckp`` by File > Open Project (32772; CLICK shows "Project Reading" meanwhile) and
-saves it as ``DIR/third.ckp``. At each point (``first``, ``second``, ``opened``, ``third``)
-CLICK's files are copied into ``DIR/<point>/click/``, and result.json keeps the main
-window's title, the status bar, Project.ini's text and the PLC Name that System
-Configuration (32827) shows (``plc_name``) under ``points``. System Configuration is closed
-by Cancel, never by OK (OK saves setup into the project); the notice it shows over itself the
-first time is closed by WM_CLOSE.
+project as ``DIR/first.ckp``, adds the ASCII lines of ``--ini-add`` to the end of the
+Project.ini in CLICK's temp folder (the runner's own CLICK's), saves as ``DIR/second.ckp``,
+opens ``second.ckp`` by File > Open Project (32772; CLICK shows "Project Reading" meanwhile)
+and saves it as ``DIR/third.ckp``. At each point (``first``, ``second``, ``opened``,
+``third``) the runner copies CLICK's files into ``DIR/<point>/click/``. Under ``points``,
+result.json keeps the main window's title, the status bar, Project.ini's text and the PLC
+Name that System Configuration (32827) shows (``plc_name``). The runner closes System
+Configuration by Cancel, never by OK, because OK saves setup into the project. The first
+time, System Configuration shows a notice over itself. The runner closes that notice by
+WM_CLOSE.
 
-``read-data`` saves the PLC's data values through PLC > Read Data from PLC (32851): it
-presses All, waits for every memory type checked, presses Read, gives CLICK's Save dialog
-``DIR/plcdata.csv`` and waits for CLICK's reading window to go and the file to keep its
-size on two polls (``files.plc_data``; ``reading_seen`` says the reading window showed). A
-reading whose window has shown and gone, with the form back and no file for
-``IMPORT_SETTLE``, stops the run; one that never shows the window waits out
-``--paste-timeout``. It reads; it never writes into the PLC.
+``read-data`` saves the PLC's data values through PLC > Read Data from PLC (32851). It
+presses All, waits until every memory type is checked, presses Read, gives CLICK's Save
+dialog ``DIR/plcdata.csv`` and waits until CLICK's reading window has gone and the file
+keeps its size on two polls (``files.plc_data``; ``reading_seen`` says the reading window
+showed). The run stops if the reading window has shown and gone, the form is back, and no
+file has appeared for ``IMPORT_SETTLE``. If the reading window never shows, the runner waits
+out ``--paste-timeout``. It reads; it never writes into the PLC.
 
 ``picker`` opens Program > Address Picker (32834), CLICK's address editor, between two
 copies of SC_.mdb (``DIR/mdb/before.mdb`` and ``after.mdb``, each taken once SC_.mdb is
-unchanged for ``IMPORT_SETTLE``; ``mdb_copies``). Each ``--key`` is sent (not posted) to
-the grid or, once it shows, to CLICK's in-place editor: a key by name (WM_KEYDOWN and
-WM_KEYUP), ``chars:TEXT`` (WM_CHAR), ``text:TEXT`` (WM_SETTEXT) or ``find:TEXT`` (the Find
-box's text, then Find, its BM_CLICK sent too). Each has been handled when it returns, so the
-next key goes to the row it left. A key CLICK does not answer within 5 s, as one that opens
-a box over the picker would, stops the run (the abort dump shows the box), and so does a
-window over the picker after a key. After each key result.json keeps the editor's text,
-whether it shows and the hints CLICK shows under it (``keys``). ``--ok`` closes the picker by OK,
-otherwise WM_CLOSE closes it. The copies are read through Access ODBC once CLICK has ended.
-``read-data`` and ``picker`` dump CLICK's windows into ``DIR/record/`` only with ``--record``.
+unchanged for ``IMPORT_SETTLE``; ``mdb_copies``). The runner sends (does not post) each
+``--key`` to the grid or, once it shows, to CLICK's in-place editor. A key is one of: a key
+by name (WM_KEYDOWN and WM_KEYUP), ``chars:TEXT`` (WM_CHAR), ``text:TEXT`` (WM_SETTEXT) or
+``find:TEXT`` (the Find box's text, then Find, its BM_CLICK sent too). Each key has been
+handled when the send returns, so the next key goes to the row it left. The run stops if
+CLICK does not answer a key within 5 s, as happens when a key opens a box over the picker
+(the abort dump shows the box). It also stops if a window is over the picker after a key.
+After each key result.json keeps the editor's text, whether it shows and the hints CLICK
+shows under it (``keys``). ``--ok`` closes the picker by OK. Without it, WM_CLOSE closes the
+picker. The runner reads the copies through Access ODBC once CLICK has ended. ``read-data``
+and ``picker`` dump CLICK's windows into ``DIR/record/`` only with ``--record``.
 
 Every Syntax Check (``paste``'s too) empties Output first, so a result that reads as the one
 before is still seen. CLICK ignores a Syntax Check posted soon after the last one's result
-showed (live probe 3), and nothing it shows says when it would take one: a check whose
-Output stays empty while CLICK answers is posted again after ``SYNTAX_REPOST_AFTER``
+showed (live probe 3). Nothing it shows says when it would take one. So if Output stays
+empty while CLICK answers, the runner posts the check again after ``SYNTAX_REPOST_AFTER``
 seconds, up to ``SYNTAX_POSTS`` posts in all.
 
-``DIR`` must not exist or be empty. The run ends with ``DIR/result.json``, however it ends,
-and prints it on stdout (nothing else goes there); each step is logged to ``DIR/run.log``
-and stderr. Exit code 0 when the status is ``ok``, 1 when ``aborted``, 2 when ``refused``
-(nothing was started). result.json holds the status, the step reached and the reason, the
-Syntax Check's text with its error and warning counts, the rungs pasted and saved
-(``same`` when the saved main program starts with the CSV's rungs), the PLC the status
-bar named once connected (``plc``), the status bar's panes at each step, the code of a
-CLICK error box that stopped the run (``click_error``; one met while the cleanup
-disconnects is ``cleanup_click_error``), the files written, and how long each step took.
+``DIR`` must not exist or be empty. However the run ends, it ends with ``DIR/result.json``,
+and the runner prints that file on stdout. Nothing else goes there. Each step is logged to
+``DIR/run.log`` and stderr. The exit code is 0 when the status is ``ok``, 1 when ``aborted``
+and 2 when ``refused`` (nothing was started). result.json holds: the status, the step
+reached and the reason; the Syntax Check's text with its error and warning counts; the
+rungs pasted and saved (``same`` when the saved main program starts with the CSV's rungs);
+the PLC that the status bar named once connected (``plc``); the status bar's panes at each
+step; the code of a CLICK error box that stopped the run (``click_error``; one met while the
+cleanup disconnects is ``cleanup_click_error``); the files written; and how long each step
+took.
 
 Rules (scratchpad/roadmap.md, item 4):
 
 - It refuses to start while any CLICK.exe runs or any CLICK window is open, or while the
-  input desktop is not ``Default`` (a locked screen). It touches only the CLICK it started:
-  its windows are found by pid, its files in ``click_temp_dir`` of its main window. It
-  never deletes a temp folder: CLICK looks after its own.
+  input desktop is not ``Default`` (a locked screen). It touches only the CLICK it started.
+  It finds its windows by pid, and its files in ``click_temp_dir`` of its main window. It
+  never deletes a temp folder, because CLICK looks after its own.
 - It never writes to the PLC: every WM_COMMAND goes through ``Desktop.command`` and its
   allowlist (click_desktop.py). The one mouse click it makes (``try --wire``) is posted to
   the ladder view, through ``Desktop.click_ladder``.
 - It connects only when the Connect dialog scans the same LAN and its PLC list has read
-  one PLC for ``PLC_SETTLE`` seconds; two or more stop the run. Once connected, the status
-  bar must name a PLC (``plc`` in result.json; ``--plc NAME`` requires that one) within
-  ``--timeout``. A bar that cannot be read in that time leaves the connection unconfirmed,
-  unless ``--plc`` is given: then the run stops.
-- A Scr*.tmp in CLICK's temp folder before the paste (``scr_before_paste``) that the save
-  does not rewrite stops the run: it would be decoded with the project.
+  one PLC for ``PLC_SETTLE`` seconds. If the list shows two or more PLCs, the run stops.
+  Once connected, the status bar must name a PLC within ``--timeout`` (``plc`` in
+  result.json; ``--plc NAME`` requires that one). If the bar cannot be read in that time,
+  the connection stays unconfirmed, unless ``--plc`` is given. Then the run stops.
+- If a Scr*.tmp is in CLICK's temp folder before the paste (``scr_before_paste``) and the
+  save does not rewrite it, the run stops. Otherwise the runner would decode it with the
+  project.
 - Each step waits for a condition. Waiting for a dialog gives up after ``--timeout``
   seconds (default 60). CLICK freezes while it pastes, so the paste, Syntax Check, save
-  and close may take up to ``--paste-timeout`` (default 300); live run 7 (2026-11-15)
+  and close may take up to ``--paste-timeout`` (default 300). Live run 7 (2026-11-15)
   saw a paste of 301 rungs freeze it for 16 s and their Syntax Check for 6 s. The paste
   is done when CLICK answers again and, if its status bar can be read, shows the rungs
-  pasted; the saved main program holding them is the final check. Nothing is sent to a
-  CLICK that does not answer, and a wait logs the status bar every ``STATUS_EVERY``
-  seconds.
+  pasted. The final check is that the saved main program holds them. Nothing is sent to a
+  CLICK that does not answer. A wait logs the status bar every ``STATUS_EVERY`` seconds.
 - A CLICK error box (a dialog whose text is a code on a line of its own, then a message:
-  "PTC-013", "Timeout on attempting to connect to PLC.") stops the run at any step, with
-  the code in ``click_error`` so a caller can decide to run again. Nothing is pressed in it.
-  A box met while the cleanup disconnects after another stop is logged and kept as
-  ``cleanup_click_error``; it is not what stopped the run. The one exception is ``try``:
-  a box owned by an instruction dialog after its OK is the case's answer. A box there with
-  no code, or with buttons other than one OK, is a question the runner does not answer:
-  the case is kept as ``other`` and the run stops. An import's answer is the "Import
-  Database" box with one text and one OK, or the error list with one text and Ok; any
-  other box there, or a second answer, stops the run.
+  "PTC-013", "Timeout on attempting to connect to PLC.") stops the run at any step. The
+  code goes in ``click_error``, so a caller can decide to run again. Nothing is pressed in
+  it. A box met while the cleanup disconnects after another stop is logged and kept as
+  ``cleanup_click_error``. It is not what stopped the run. The one exception is ``try``: a
+  box owned by an instruction dialog after its OK is the case's answer. A box there with no
+  code, or with buttons other than one OK, is a question the runner does not answer. The
+  case is kept as ``other`` and the run stops. An import's answer is the "Import Database"
+  box with one text and one OK, or the error list with one text and Ok. Any other box
+  there, or a second answer, stops the run.
 - Any top-level window of CLICK that the step does not expect (a tooltip aside) stops the
-  run: every window is dumped into ``DIR/abort/`` (a window that does not answer without
-  its edit text or a PNG), CLICK is disconnected if it answers with no dialog open, then
-  ended without saving. A timeout, an error or Ctrl+C ends the same way. CLICK runs in a
-  job that ends it when the runner's process ends, however that ends.
+  run. The runner dumps every window into ``DIR/abort/`` (a window that does not answer is
+  dumped without its edit text or a PNG). If CLICK answers with no dialog open, the runner
+  disconnects it. It then ends CLICK without saving. A timeout, an error or Ctrl+C ends the
+  run the same way. CLICK runs in a job that ends it when the runner's process ends,
+  however that ends.
 
-Login: CLICK fills in User Type itself (``admin``); the runner fills it in only when it is
+Login: CLICK fills in User Type itself (``admin``). The runner fills it in only when it is
 empty, from ``--user-type`` or ``CLICK_RUNNER_USER_TYPE`` (default ``admin``). The password
 comes from ``--password`` or ``CLICK_RUNNER_PASSWORD`` (default ``123click``). A PLC with
 no password shows no Login dialog.
@@ -249,8 +270,8 @@ DEFAULT_EXE = Path(r"C:\Program Files (x86)\AutomationDirect\CLICK Ver4.00\CLICK
 DEFAULT_PASSWORD = "123click"
 DEFAULT_USER_TYPE = "admin"
 DEFAULT_TIMEOUT = 60.0
-# The ceiling for the steps CLICK may be busy in (paste, Syntax Check, save, close): CLICK
-# freezes until a paste is done
+# The ceiling for the steps that CLICK may be busy in (paste, Syntax Check, save, close).
+# CLICK freezes until a paste is done
 DEFAULT_PASTE_TIMEOUT = 300.0
 POLL_INTERVAL = 0.1
 # How long one check waits for CLICK to answer (WM_NULL); a busy CLICK is no error
@@ -259,18 +280,19 @@ IDLE_TIMEOUT = 2.0
 RESPONSIVE_POLLS = 3
 # How often a wait logs the status bar (or that CLICK does not answer)
 STATUS_EVERY = 10.0
-# Seconds Output may stay empty, CLICK idle, before Syntax Check is posted again, and the most
-# posts. CLICK ignores a Syntax Check posted soon after the last one's result showed (live
-# probe 3: 4 of 4 posted 0 to 0.5 s after it; 5 of 5 posted 1.5 s or more after it ran), and
-# shows nothing that says when it would take one
+# SYNTAX_REPOST_AFTER is how many seconds Output may stay empty, with CLICK idle, before
+# Syntax Check is posted again. SYNTAX_POSTS is the most posts. CLICK ignores a Syntax Check
+# posted soon after the last one's result showed (live probe 3: 4 of 4 posted 0 to 0.5 s
+# after it; 5 of 5 posted 1.5 s or more after it ran). Nothing it shows says when it would
+# take one
 SYNTAX_REPOST_AFTER = 2.0
 SYNTAX_POSTS = 3
 STATUS_BAR_ID = 59393  # AFX_IDW_STATUS_BAR
-# The Connect dialog's PLC list is taken once it reads the same for this many seconds:
-# the LAN scan adds its rows one at a time
+# The runner takes the Connect dialog's PLC list once it has read the same for this many
+# seconds. The LAN scan adds its rows one at a time
 PLC_SETTLE = 2.0
 # An import is done once CLICK's main window is alone and its SC_.mdb has read the same for
-# this many seconds. The live runs saw SC_.mdb written before the answer showed; the hold
+# this many seconds. The live runs saw SC_.mdb written before the answer showed. The wait
 # catches a write that comes later
 IMPORT_SETTLE = 1.0
 # How long a file dialog's File name edit must read the path set before it is pressed
@@ -282,19 +304,20 @@ CASES_LOG = "cases.jsonl"
 MAX_STOPS = 2
 # What ``choose`` returns for a list not open for entry
 _CLOSED = "closed"
-# An option button is pressed up to this many times, each press given this many seconds to
-# show the state asked for: live probe d4c (2026-11-17, job copy-encodings) saw the first
-# BM_CLICK posted to Copy's Termination Code, after its address fields were set by
-# WM_SETTEXT, leave it unchecked, and the next one check it
+# The runner presses an option button up to this many times, and gives each press this many
+# seconds to show the state asked for. Live probe d4c (2026-11-17, job copy-encodings) saw
+# the first BM_CLICK, posted to Copy's Termination Code after its address fields were set by
+# WM_SETTEXT, leave it unchecked. The next BM_CLICK checked it
 OPTION_PRESSES = 3
 OPTION_WAIT = 3.0
 # try --wire: rung 1's number in the ladder view, as a client point at CLICK v4.00's default
-# zoom; a click posted there selects the rung and moves the cursor to 1:1:A, and Edit > Delete
+# zoom. A click posted there selects the rung and moves the cursor to 1:1:A. Edit > Delete
 # then removes the whole rung (live probe d2, 2026-11-17)
 RUNG1_POINT = (25, 70)
 RUNG1_CURSOR = "1:1:A"
-# The contact an output instruction is wired behind, and the coil a contact instruction
-# drives. After the contact's OK the cursor is at 1:1:B, and an output instruction lands at AF
+# The contact that an output instruction is wired behind, and the coil that a contact
+# instruction drives. After the contact's OK the cursor is at 1:1:B, and an output
+# instruction lands at AF
 WIRE_CONTACT = "X001"
 WIRE_COIL = "Y001"
 CONTACT_CURSOR = "1:1:B"
@@ -365,11 +388,11 @@ LOGIN = Expect("login", "#32770", "Login", "connect")
 READ_PROMPT = Expect("read_prompt", "#32770", "Connect", "connect")
 SAVE_AS = Expect("save_as", "#32770", "Save As", MAIN)
 DISCONNECT_PROMPT = Expect("disconnect_prompt", "#32770", "CLICK Programming Software", MAIN)
-# File > Import > Nickname, as live probes 1 to 4 (2026-11-15) dumped it: an Open dialog
-# whose template adds three import modes (Delphi radio buttons, Merge (Project priority)
-# checked as it opens), a progress window, then one answer shown while the progress window
-# is still up: a box reading "Completed!" or the error list. The progress window is titled
-# by its Delphi form's name at first, then by the mode (live run 1)
+# File > Import > Nickname, as live probes 1 to 4 (2026-11-15) dumped it. It opens an Open
+# dialog whose template adds three import modes (Delphi radio buttons, Merge (Project
+# priority) checked as it opens). Then a progress window shows. One answer then shows while
+# the progress window is still up: a box reading "Completed!" or the error list. The progress
+# window is titled by its Delphi form's name at first, then by the mode (live run 1)
 IMPORT_MODE = "Delete Existing"
 OPEN = Expect("open", "#32770", "Open", MAIN)
 IMPORT_STARTING = Expect("import_starting", "TfrmProgress", "frmProgress", MAIN)
@@ -416,24 +439,26 @@ _FIELD_CLASSES = ("Edit", "RichEdit20W")
 
 @dataclass(frozen=True)
 class Instruction:
-    """An instruction dialog: the ribbon command that opens it, its title, fields and modes.
+    """Describe an instruction dialog: the ribbon command that opens it, its title, fields, modes.
 
-    The control ids are those of the dialog's template in CLICK's Inst_<name>.dll, as the
-    live probe of 2026-11-15 found them in the open dialogs. A mode is a radio button.
-    *opens_with* is the state (BM_GETCHECK) of the buttons the cases take as given, as the
-    dialog showed them when it opened in live probe 2; ``try`` checks them before filling.
-    A list is a drop-down list (a ComboBox) a case may pick an item in; *opens_listing* is
-    the item each list shows as the dialog opens, which ``try`` checks too. With
-    *reads_every_field*, a case's answer has every open field's text as OK found it.
+    The control ids come from the dialog's template in CLICK's Inst_<name>.dll. The live
+    probe of 2026-11-15 found them in the open dialogs. A mode is a radio button.
+    *opens_with* gives the state (BM_GETCHECK) of the buttons that the cases take as given,
+    as the dialog showed them when it opened in live probe 2. ``try`` checks them before
+    filling. A list is a drop-down list (a ComboBox) in which a case may pick an item.
+    *opens_listing* gives the item that each list shows as the dialog opens, and ``try``
+    checks that too. With *reads_every_field*, a case's answer has the text of every open
+    field, as OK found it.
 
-    *options* are the ids of the buttons (check boxes or radio buttons) a case may set by
-    the label they show or by id; ``try`` sets them once the fields are filled, as the fields
-    decide which show. With *mode_after_fields*, the mode is pressed after the fields too,
-    since the fields decide which modes are open (Compare's operators); otherwise before
-    them (Math empties its fields on a type click). *kind* is where the instruction sits in
-    a rung: ``output`` (at AF, behind a contact with ``--wire``) or ``contact`` (at A, driving
-    a coil with ``--wire``). *option_radios* are the options that are radio buttons: one is
-    checked by pressing it or its pair, never unchecked by a press.
+    *options* are the ids of the buttons (check boxes or radio buttons) that a case may set
+    by the label they show or by id. ``try`` sets them once the fields are filled, because the
+    fields decide which options show. With *mode_after_fields*, ``try`` presses the mode
+    after the fields too, because the fields decide which modes are open (Compare's
+    operators). Otherwise it presses the mode before them (Math empties its fields on a type
+    click). *kind* is where the instruction sits in a rung: ``output`` (at AF, behind a
+    contact with ``--wire``) or ``contact`` (at A, driving a coil with ``--wire``).
+    *option_radios* are the options that are radio buttons. Pressing one or its pair checks
+    it, and a press never unchecks it.
     """
 
     command: int
@@ -443,8 +468,8 @@ class Instruction:
     opens_with: dict[int, int]  # A button's id -> its state (1 checked, 0 not)
     lists: dict[str, int] = field(default_factory=dict)  # A list's name -> its ComboBox's id
     opens_listing: dict[int, str] = field(default_factory=dict)  # A ComboBox's id -> its item
-    # Whether ``read_back`` (and ``limits``) holds every field open as OK is pressed, the
-    # ones a case leaves as the dialog filled them included
+    # Whether ``read_back`` (and ``limits``) holds every open field as OK is pressed,
+    # including the ones that a case leaves as the dialog filled them
     reads_every_field: bool = False
     options: tuple[int, ...] = ()  # The ids of the option buttons a case may set
     mode_after_fields: bool = False
@@ -465,10 +490,10 @@ INSTRUCTIONS = {
         {"decimal": 2003, "hex": 2004},
         {2005: 0, 2007: 1},
     ),
-    # "to" fields are the end of a range: Block and Pack take a source range, Unpack a
-    # destination range; Block shows the destination's end, which CLICK works out itself.
-    # Fill (5002) is left out: no probe has picked it. One Shot (5024) is off. The option
-    # radios 5019 and 5020 are relabelled as the fields change ("Copy Value"/"Copy Binary",
+    # The "to" fields are the end of a range. Block and Pack take a source range. Unpack takes
+    # a destination range. Block shows the destination's end, which CLICK works out itself.
+    # Fill (5002) is left out: no probe has picked it. One Shot (5024) is off. CLICK relabels
+    # the option radios 5019 and 5020 as the fields change ("Copy Value"/"Copy Binary",
     # "Real Numbering"/"Exponential Numbering", "Copy Character Value"/"Copy ASCII Code
     # Value", "Suppress zero"/"Do not suppress zero"); 5036 and 5037 open hidden, reading
     # "Suppress zero" and "Do not suppress zero". The Termination code field (5023, "$00" as
@@ -498,13 +523,13 @@ INSTRUCTIONS = {
         {},
         {5009: 1, 5006: 0, 5007: 0, 5008: 0},
     ),
-    # Receive, as live probes r1 and r2 (2026-11-16) dumped it from Inst_RD.dll's template:
-    # it opens on CPU Port2, whose protocol the conformance PLC's project sets to MODBUS (a
-    # serial master: Slave ID, then the Modbus fields), Function Code 01, Modbus 984
-    # Addressing; Slave ID reads 1 and Number of Bits 1. CPU Port1 shows the Modbus TCP
-    # fields (an IP address control the runner does not fill). Its COM Port Setup is never
-    # pressed: it edits the project's port setup. Number of Bits is "Number of Master
-    # Addresses" for Function Code 03 and 04. Its Slave ID and Number of Bits open filled
+    # Receive, as live probes r1 and r2 (2026-11-16) dumped it from Inst_RD.dll's template.
+    # It opens on CPU Port2, Function Code 01 and Modbus 984 Addressing. The conformance
+    # PLC's project sets Port2's protocol to MODBUS (a serial master: Slave ID, then the
+    # Modbus fields). Slave ID reads 1 and Number of Bits 1. CPU Port1 shows the Modbus TCP
+    # fields (an IP address control the runner does not fill). The runner never presses its
+    # COM Port Setup, which edits the project's port setup. Number of Bits is "Number of
+    # Master Addresses" for Function Code 03 and 04. Slave ID and Number of Bits open filled
     # (``reads_every_field``), so what a case leaves there is in its answer
     "receive": Instruction(
         RECEIVE_DIALOG,
@@ -531,8 +556,8 @@ INSTRUCTIONS = {
     ),
     # Compare and Search, as live probe d3 (2026-11-17, job copy-encodings) dumped them from
     # Inst_Compare.dll's and Inst_Search.dll's templates. Their operators are unlabelled
-    # radio buttons; d3 placed DS1 ? DS2 with each and decoded them in this order. Compare
-    # opens on ==; with TXT1 in Data A only == and != stay visible, so its operator is
+    # radio buttons. d3 placed DS1 ? DS2 with each and decoded them in this order. Compare
+    # opens on ==. With TXT1 in Data A only == and != stay visible, so its operator is
     # pressed once the fields are in. It is a contact: ``try`` runs it with --wire only
     "compare": Instruction(
         COMPARE_DIALOG,
@@ -565,9 +590,9 @@ WIRE_COIL_DIALOG = INSTRUCTIONS["out"]
 
 @dataclass(frozen=True)
 class Case:
-    """One instruction to try: the rule table's row, what is tried, and what is entered.
+    """Describe one instruction to try: the rule table's row, what is tried, what is entered.
 
-    *name* is the case's id: unique in its file, and what a resumed run matches answers by.
+    *name* is the case's id. It is unique in its file, and a resumed run matches answers by it.
     """
 
     row: str  # The rule table's row ("A9")
@@ -580,7 +605,7 @@ class Case:
     options: dict[str, int] = field(default_factory=dict)
 
     def asks(self) -> dict[str, Any]:
-        """What the case asks, as its entry in ``cases`` names it."""
+        """Return what the case asks, under the keys that its entry in ``cases`` uses."""
         return {
             "row": self.row,
             "case": self.name,
@@ -593,33 +618,39 @@ class Case:
 
 
 class OptionSet(NamedTuple):
-    """What ``Run.set_option`` did: the button *key* named (None when no one button shows
-    it), whether it was pressed, and why it cannot be set (None once it reads as asked)."""
+    """Hold what ``Run.set_option`` did.
+
+    ``button`` is the button that *key* named, or None when no one button shows it.
+    ``pressed`` says whether it was pressed. ``problem`` says why it cannot be set, or is None
+    once it reads as asked.
+    """
 
     button: Control | None
     pressed: bool
     problem: str | None
 
 
-# What an entry written before a key of ``Case.asks`` was added asks there
+# What to count an entry as asking for a key that ``Case.asks`` gained later and the entry
+# lacks
 _ASKED_BEFORE = {"options": {}}
 
 
 def _is_id(key: str) -> bool:
-    """Whether an ``options`` key names its button by id (a decimal string) over a label."""
+    """Return whether an ``options`` key names its button by id (a decimal string), not by label."""
     return key.isascii() and key.isdecimal()
 
 
 def load_cases(path: Path) -> tuple[list[Case], list[str]]:
-    """The cases in *path*, and the addresses whose nicknames to read; ValueError if malformed.
+    """Return the cases in *path* and the addresses whose nicknames to read.
 
-    The file is ``{"cases": [{"row", "case", "instruction", "mode", "fields"}, ...],
-    "nicknames": ["SD21", ...]}``. ``mode`` is required where the dialog has modes and
-    refused where it has none; ``fields`` names the dialog's fields, each with its text; an
-    optional ``choices`` names the dialog's lists, each with the item to pick; an optional
+    Raise ValueError if the file is malformed. The file is
+    ``{"cases": [{"row", "case", "instruction", "mode", "fields"}, ...],
+    "nicknames": ["SD21", ...]}``. ``mode`` is required where the dialog has modes, and
+    rejected where it has none. ``fields`` names the dialog's fields, each with its text. An
+    optional ``choices`` names the dialog's lists, each with the item to pick. An optional
     ``options`` names the dialog's option buttons, each by the label it shows or by its id
     (a decimal string, one of the instruction's ``options``), with 1 (checked) or 0. A label
-    is checked only against the open dialog, since CLICK relabels some buttons. ``case`` is
+    is checked only against the open dialog, because CLICK relabels some buttons. ``case`` is
     the case's id and must be unique in the file.
     """
     from pyclickplc.addresses import parse_address
@@ -727,14 +758,14 @@ _IMPORT_CAUSE = "Cause : "
 
 
 def split_rows(data: bytes) -> tuple[bytes, list[tuple[int, bytes]]]:
-    """The first line of the CSV *data* (its header), and each line after it with its number.
+    """Return the first line of the CSV *data* (its header) and each line after it with its number.
 
-    CLICK reads a nickname CSV line by line: a line break inside a quoted cell ends the row
+    CLICK reads a nickname CSV line by line. A line break inside a quoted cell ends the row
     there, and the error list names the rest as the next line (live probe 3). So each row
-    is one line, with its line end, numbered from 1 for the header as CLICK's error list
-    numbers them; a line that is only a line end is no row. The bytes are kept as they are
-    and split after each line feed byte, which holds for an ASCII-compatible encoding
-    (UTF-8, Latin-1, CP1252) and not for UTF-16. A file with CR line ends only is one
+    is one line, with its line end. Lines are numbered from 1 for the header, as CLICK's
+    error list numbers them. A line that is only a line end is no row. The function keeps the
+    bytes as they are and splits after each line feed byte. That works for an ASCII-compatible
+    encoding (UTF-8, Latin-1, CP1252) and not for UTF-16. A file with CR line ends only is one
     line: a header and no rows.
     """
     *ended, last = data.split(b"\n")
@@ -746,14 +777,14 @@ def split_rows(data: bytes) -> tuple[bytes, list[tuple[int, bytes]]]:
 
 
 def parse_import_errors(text: str) -> list[dict[str, Any]]:
-    """The entries of CLICK's Import Error List: its error, the line it names, and the cause.
+    """Return the entries of CLICK's Import Error List: its error, the line it names, the cause.
 
     Live probe 2 (2026-11-15) read entries such as "Error : Unable to import to
     Database.", "Line 19 : <the line as in the file>", "Cause : The memory address is not
-    supported by this CLICK CPU module.", each followed by an empty line. The line's text is
-    kept exactly (an edge space or a tab is the point); an empty line is no part of an
-    entry, and a line in no known form goes under ``other``. Lines split at CR LF or LF
-    only: a vertical tab or form feed is text.
+    supported by this CLICK CPU module.", each followed by an empty line. The function keeps
+    the line's text exactly, because an edge space or a tab is the point. An empty line is no
+    part of an entry. A line in no known form goes under ``other``. Lines split at CR LF or
+    LF only. A vertical tab or form feed is text.
     """
     entries: list[dict[str, Any]] = []
     for block in re.split(r"\r?\n\r?\n", text):
@@ -775,7 +806,7 @@ def parse_import_errors(text: str) -> list[dict[str, Any]]:
 
 
 def _file_state(path: Path) -> tuple[int, int] | None:
-    """*path*'s size and modification time, or None if it cannot be read."""
+    """Return *path*'s size and modification time, or None if it cannot be read."""
     try:
         stat = path.stat()
     except OSError:
@@ -784,14 +815,17 @@ def _file_state(path: Path) -> tuple[int, int] | None:
 
 
 def _end_rung(text: str) -> int | None:
-    """The rung a Syntax Check's text names for the missing END (C0201), if one."""
+    """Return the rung that a Syntax Check's text names for the missing END (C0201), or None."""
     match = _END_RUNG.search(text)
     return int(match.group(1)) if match else None
 
 
 def _unnamed(check: dict[str, Any]) -> str:
-    """A Syntax Check's text with its project's name (``check_syntax``'s ``project``) put
-    as ``<project>``, so checks of projects saved under other names compare."""
+    """Return a Syntax Check's text with its project's name replaced by ``<project>``.
+
+    The name is ``check_syntax``'s ``project``. Checks of projects saved under other names
+    then compare equal.
+    """
     name = re.escape(check["project"])
     return re.sub(rf"(?<!\w){name}(?!\w)", "<project>", check["text"])
 
@@ -811,12 +845,13 @@ def _describe(window: Window) -> str:
 def classify(
     windows: list[Window], expected: list[Expect], *, main: int | None = None
 ) -> tuple[dict[str, Window], list[Window]]:
-    """Match *windows* to the main frame and *expected*: (name -> window, windows matching none).
+    """Match *windows* to the main frame and *expected*.
 
-    Each expectation matches at most one window, and only one owned by the window its
-    ``owner`` names, so a second Login, or a Login owned by the wrong dialog, is unexpected.
-    With *main*, the window of that hwnd is the main frame whatever its title (CLICK titles
-    it bare while it closes or reads a project).
+    Return (name -> window, windows matching none). Each expectation matches at most one
+    window. That window must be owned by the window that its ``owner`` names. So a second
+    Login, or a Login owned by the wrong dialog, is unexpected. With *main*, the window with
+    that hwnd is the main frame whatever its title. CLICK titles it bare while it closes or
+    reads a project.
     """
     found: dict[str, Window] = {}
     rest = list(windows)
@@ -845,11 +880,11 @@ def classify(
 
 
 def click_error(window: Window, controls: list[Control]) -> tuple[str, str] | None:
-    """The (code, message) of *window* if it is a CLICK error box, else None.
+    """Return the (code, message) of *window* if it is a CLICK error box, else None.
 
-    Live run 3 (2026-11-15) met one during connect: a ``#32770`` titled "CLICK Programming
-    Software", an OK button (id 2) and a Static reading "PTC-013" and, on the next line,
-    "Timeout on attempting to connect to PLC.".
+    Live run 3 (2026-11-15) met one during connect. It was a ``#32770`` titled "CLICK
+    Programming Software" with an OK button (id 2) and a Static. The Static read "PTC-013"
+    and, on the next line, "Timeout on attempting to connect to PLC.".
     """
     if window.cls != "#32770":
         return None
@@ -885,8 +920,10 @@ _VIRTUAL_KEYS = {
 
 
 def _labelled(controls: list[Control], cls: str, text: str) -> Control | None:
-    """The one *cls* control reading *text*; None if there is none or more than one (a
-    Delphi form's controls have no ids of their own: each reads its hwnd)."""
+    """Return the one *cls* control that reads *text*, or None if there is none or more than one.
+
+    A Delphi form's controls have no ids of their own: each reads its hwnd.
+    """
     found = [c for c in controls if c.cls == cls and c.text == text]
     return found[0] if len(found) == 1 else None
 
@@ -899,52 +936,54 @@ def _require(control: Control | None, what: str) -> Control:
 
 @dataclass(frozen=True)
 class StatusBar:
-    """The panes of the main window's status bar.
+    """Hold the panes of the main window's status bar.
 
-    Live run 2 (2026-11-15) read, offline: "", "Bit", "Integer", "Integer(2 words)",
-    "Floating point", "Hex", "Text", "Ascii", "-----", "0000/8000" (program steps),
-    "No select CPU", "1:1:A" (cursor), five empty panes, "NUM", "". Live run 4, connected:
-    "RUN" in place of "-----", "C2-03CPU", and "192.168.1.241(Conformance)" three panes
-    after the cursor; disconnected again: "Offline" and "No select CPU".
+    Live run 2 (2026-11-15) read these panes offline: "", "Bit", "Integer", "Integer(2
+    words)", "Floating point", "Hex", "Text", "Ascii", "-----", "0000/8000" (program steps),
+    "No select CPU", "1:1:A" (cursor), five empty panes, "NUM", "". Live run 4 read these
+    panes while connected: "RUN" in place of "-----", "C2-03CPU", and
+    "192.168.1.241(Conformance)" three panes after the cursor. Disconnected again, it read
+    "Offline" and "No select CPU".
     """
 
     panes: tuple[str, ...]
 
     @property
     def rung(self) -> int | None:
-        """The cursor pane's rung ("2:1:A" is rung 2)."""
+        """Return the rung in the cursor pane ("2:1:A" is rung 2)."""
         match = _CURSOR.search("  ".join(self.panes))
         return int(match.group(1)) if match else None
 
     @property
     def cursor(self) -> str | None:
-        """The cursor pane ("1:1:AF"), if one."""
+        """Return the cursor pane ("1:1:AF"), or None."""
         match = _CURSOR.search("  ".join(self.panes))
         return match.group(0) if match else None
 
     @property
     def steps(self) -> int | None:
-        """The program steps used ("0004/8000" is 4)."""
+        """Return the program steps used ("0004/8000" is 4)."""
         match = _STEPS.search("  ".join(self.panes))
         return int(match.group(1)) if match else None
 
     @property
     def plc(self) -> str | None:
-        """The pane naming the PLC connected to ("192.168.1.241(Conformance)"), if any."""
+        """Return the pane that names the PLC connected to ("192.168.1.241(Conformance)")."""
         return next((p.strip() for p in self.panes if _PLC_PANE.match(p.strip())), None)
 
     @property
     def plc_name(self) -> str | None:
-        """The PLC's name in the ``plc`` pane ("Conformance")."""
+        """Return the PLC's name from the ``plc`` pane ("Conformance")."""
         plc = self.plc
         return plc[plc.index("(") + 1 : -1] if plc else None
 
     def shows_paste(self, before: StatusBar, rungs: int) -> bool:
-        """Whether this reading, against *before* the paste, shows *rungs* rungs pasted.
+        """Return whether this reading, compared with *before* the paste, shows *rungs* pasted.
 
-        The cursor moves down by the rungs pasted, or the program steps rise. Live run 4
-        (2026-11-15) saw the steps stay at 0000/8000 after a paste of a rung with a contact
-        and a coil, so the cursor is what shows a paste; a rise of the steps is taken too.
+        A paste moves the cursor down by the rungs pasted, or raises the program steps. Live
+        run 4 (2026-11-15) saw the steps stay at 0000/8000 after a paste of a rung with a
+        contact and a coil. So the cursor is what shows a paste. A rise of the steps counts
+        too.
         """
         if before.rung is not None and self.rung == before.rung + rungs:
             return True
@@ -966,7 +1005,8 @@ def _json_default(value: object) -> object:
 class Settings:
     command: str  # "paste", "record", "try", "import", "read-data", "reopen" or "picker"
     out: Path
-    # The rest by name only: a field added among them cannot shift a caller's arguments
+    # The rest are keyword-only. A field added among them then cannot shift a caller's
+    # arguments
     _: KW_ONLY
     csv: Path | None = None  # paste's ladder CSV, import's nickname CSV
     each_row: bool = False  # import: each row on its own too
@@ -989,7 +1029,7 @@ class Settings:
 
 
 def _prepare(csv: Path, mdb: Path | None):
-    """Encode *csv* for the clipboard; with *mdb*, add its addresses to that SC_.mdb first."""
+    """Encode *csv* for the clipboard. With *mdb*, first add its addresses to that SC_.mdb."""
     from clicknick.ladder.program import prepare_csv_load
 
     return prepare_csv_load(csv, click_v4=True, mdb_path=mdb)
@@ -1002,27 +1042,33 @@ def _decode(click_dir: Path, csv_dir: Path):
 
 
 class ClipCsv(NamedTuple):
-    """What ``_decode_clip`` made of a clipboard: whether it wrote the CSV, and what in the
-    clipboard laddercodec cannot read or write (None when nothing)."""
+    """Hold what ``_decode_clip`` made of a clipboard.
+
+    ``written`` says whether it wrote the CSV. ``unreadable`` names what in the clipboard
+    laddercodec cannot read or write, or is None when nothing.
+    """
 
     written: bool
     unreadable: str | None
 
 
 def _decode_clip(clip: Path, csv: Path) -> ClipCsv:
-    """Decode CLICK's clipboard data in *clip* by laddercodec's ``decode`` into the ladder
-    CSV *csv*, written by its ``write_csv`` as ``program_save`` writes main.csv.
+    """Decode the CLICK clipboard data in *clip* into the ladder CSV *csv*.
 
-    ``decode`` raises on data it cannot decode at all, and so does this. What it decodes but
-    cannot read is listed in ``unreadable``, each part labelled with who found it and how it
-    counts rungs: an instruction laddercodec cannot read, named before the CSV is written as
-    ``program_save`` names it (``ClickNick, rungs from 1``: ``_unreadable_instructions``),
-    and each warning raised while decoding or writing whose category laddercodec defines, as
-    it words it (``laddercodec <warning>, rungs from 0``). A plain ``UserWarning`` laddercodec
-    raises (such as the writer's lost trailing blank rows) is not listed: it is raised again
-    as it would have been. A laddercodec that writes a marker rung for a rung it cannot read
-    warns; one that cannot write the rung raises ``WriterError``, and then no CSV is kept and
-    the list ends with why (``laddercodec: the CSV cannot be written``)."""
+    The function decodes with laddercodec's ``decode`` and writes with its ``write_csv``,
+    the way ``program_save`` writes main.csv. ``decode`` raises on data it cannot decode at
+    all, and so does this function. Data that it decodes but cannot read is listed in
+    ``unreadable``. Each part is labelled with who found it and how it counts rungs.
+    ClickNick names an instruction that laddercodec cannot read before the CSV is written,
+    as ``program_save`` names it (``ClickNick, rungs from 1``: ``_unreadable_instructions``).
+    laddercodec names each warning that it raises while decoding or writing, if the warning's
+    category is one that laddercodec defines, in its own words (``laddercodec <warning>,
+    rungs from 0``). A plain ``UserWarning`` from laddercodec (such as the writer's lost
+    trailing blank rows) is not listed. It is raised again as it would have been. A
+    laddercodec that writes a marker rung for a rung it cannot read warns. One that cannot
+    write the rung raises ``WriterError``. Then no CSV is kept and the list ends with why
+    (``laddercodec: the CSV cannot be written``).
+    """
     from laddercodec import decode, write_csv
     from laddercodec.csv.writer import WriterError
 
@@ -1042,13 +1088,13 @@ def _decode_clip(clip: Path, csv: Path) -> ClipCsv:
         try:
             write_csv(csv, rungs)
         except WriterError as exc:
-            csv.unlink(missing_ok=True)  # What was written before it raised
+            csv.unlink(missing_ok=True)  # Remove what was written before it raised
             refused = f"laddercodec: the CSV cannot be written: {type(exc).__name__}: {exc}"
     for warning in caught:
         category = warning.category
         if category.__module__.split(".")[0] == "laddercodec":
             found.append(f"laddercodec {category.__name__}, rungs from 0: {warning.message}")
-        else:  # Not about the clipboard: shown as it would have been
+        else:  # Not about the clipboard: show it as it would have been shown
             warnings.warn_explicit(warning.message, category, warning.filename, warning.lineno)
     if refused is not None:
         found.append(refused)
@@ -1056,7 +1102,7 @@ def _decode_clip(clip: Path, csv: Path) -> ClipCsv:
 
 
 def _read_nicknames(mdb: Path, addresses: list[str]) -> dict[str, str | None]:
-    """Each of *addresses*' nickname in the SC_.mdb at *mdb*; None where it has no row."""
+    """Return the nickname of each of *addresses* in the SC_.mdb at *mdb*, or None if no row."""
     from pyclickplc.addresses import get_addr_key, parse_address
 
     from clicknick.utils.mdb_operations import MdbConnection, load_all_addresses
@@ -1074,11 +1120,12 @@ _ROW_COLUMNS = ("DataType", "Nickname", "InitialValue", "Retentive", "Comment", 
 
 
 def _rows_by_address(rows: Iterable[Sequence[Any]]) -> dict[str, dict[str, Any]]:
-    """The address table's *rows* (``AddrKey``, ``MemoryType``, ``Address``, then
-    ``_ROW_COLUMNS``) by their address as CLICK shows it ("DS31"), in the order given.
+    """Return the address table's *rows* keyed by their address as CLICK shows it ("DS31").
 
-    Each row maps every column to its value as stored, the first three included. Two rows
-    for one address raise RuntimeError: a reading by address would hide one of them.
+    Each of the *rows* holds ``AddrKey``, ``MemoryType``, ``Address``, then ``_ROW_COLUMNS``.
+    The result keeps the order given. Each row maps every column to its value as stored,
+    including the first three. Two rows for one address raise RuntimeError, because a reading
+    by address would hide one of them.
     """
     from pyclickplc.addresses import format_address_display
 
@@ -1100,10 +1147,10 @@ def _rows_by_address(rows: Iterable[Sequence[Any]]) -> dict[str, dict[str, Any]]
 
 
 def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
-    """Every row of the address table in the SC_.mdb at *mdb*, as stored, by address.
+    """Return every row of the address table in the SC_.mdb at *mdb*, as stored, by address.
 
     It reads through Access ODBC only, so a NULL stays None and a text keeps every
-    character; see ``_rows_by_address`` for what each row holds.
+    character. See ``_rows_by_address`` for what each row holds.
     """
     import pyodbc
 
@@ -1126,20 +1173,23 @@ def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
 
 
 def _reads_stored_tags() -> bool:
-    """Whether this laddercodec has the private walk ``_read_stored`` reads (laddercodec
-    0.4.0 has none; it came after, in ac7d910)."""
+    """Return whether this laddercodec has the private walk that ``_read_stored`` uses.
+
+    laddercodec 0.4.0 has none. It came after, in ac7d910.
+    """
     module = importlib.import_module("laddercodec.decode_program")
     return all(hasattr(module, name) for name in ("_parse_header", "_walk_until_framing_error"))
 
 
 def _read_stored(scr: Path) -> dict[str, Any]:
-    """The instructions in the Scr*.tmp at *scr* with the tags CLICK stored for them.
+    """Return the instructions in the Scr*.tmp at *scr* with the tags CLICK stored for them.
 
-    Each rung is a list of its instructions: ``row`` (from 0), ``column``, ``class``,
-    ``type``, every scalar tag (``tags``, by its id in hex; a flag reads ``""``) and the
-    indexed tags that are not empty (``indexed``). ``error`` is laddercodec's framing error,
-    or None. This reads laddercodec's own walk of the file (private: no public reader keeps
-    the tags as stored), so a laddercodec that changes it fails here, not in the run.
+    Each rung is a list of its instructions. Each instruction has ``row`` (from 0),
+    ``column``, ``class``, ``type``, every scalar tag (``tags``, by its id in hex; a flag
+    reads ``""``) and the indexed tags that are not empty (``indexed``). ``error`` is
+    laddercodec's framing error, or None. This function uses laddercodec's own walk of the
+    file. The walk is private, because no public reader keeps the tags as stored. So a
+    laddercodec that changes it fails here, not in the run.
     """
     from laddercodec.decode_program import _parse_header, _walk_until_framing_error
 
@@ -1195,8 +1245,8 @@ class Run:
         self.read_stored = read_stored
         self.cases: list[Case] = []
         self.nickname_addresses: list[str] = []
-        # try --resume: the entries carried by case id, and the stops and last entries of the
-        # cases tried again
+        # try --resume: the carried entries by case id, then the earlier stops and the last
+        # entries of the cases that are tried again
         self.carried: dict[str, dict[str, Any]] = {}
         self.earlier_stops: dict[str, list[dict[str, Any]]] = {}
         self.retried: dict[str, dict[str, Any]] = {}
@@ -1280,8 +1330,8 @@ class Run:
     def dump(self, folder: Path, label: str) -> None:
         """Write every window of CLICK as JSON (with its controls) and PNG into *folder*.
 
-        The PNG is the screen where the window is, windows over it included. The files
-        are listed in the result under the folder's name.
+        The PNG is a picture of the screen where the window is, so windows over it are in it.
+        The result lists the files under the folder's name.
         """
         assert self.pid is not None
         folder.mkdir(parents=True, exist_ok=True)
@@ -1289,11 +1339,11 @@ class Run:
         written: list[Path] = self.result["files"].setdefault(folder.name, [])
         count = len(written)
         for window in self.desktop.windows(self.pid):
-            # A window that closed since it was listed (CLICK closing) is left out
+            # Skip a window that closed since it was listed (CLICK closing)
             if not self.desktop.exists(window.hwnd):
                 continue
-            # Listing sends CLICK no message, and neither does the screenshot, but a window
-            # that does not answer is drawn as Windows' ghost: no edit text and no PNG then
+            # Listing sends CLICK no message, and neither does the screenshot. A window that
+            # does not answer is drawn as Windows' ghost, so it gets no edit text and no PNG
             answers = self.desktop.idle(window.hwnd, IDLE_TIMEOUT)
             if not answers:
                 self.log(f"{window.hwnd} does not answer: its dump has no edit text and no PNG")
@@ -1312,7 +1362,7 @@ class Run:
             try:
                 if self.desktop.screenshot(window.hwnd, base.with_suffix(".png")):
                     written.append(base.with_suffix(".png"))
-            except Exception as exc:  # A screenshot is a nice-to-have
+            except Exception as exc:  # A screenshot is optional
                 if self.desktop.exists(window.hwnd):
                     self.log(f"no screenshot of {window.hwnd}: {exc}")
         self.log(f"dumped {len(written) - count} file(s) as {label} into {folder}")
@@ -1337,16 +1387,16 @@ class Run:
     ) -> T:
         """Poll CLICK's windows until *until* returns something other than None or False.
 
-        Any window that is neither the main frame nor one of *expected* aborts the run,
-        except one that was open before the main frame first appeared (CLICK starting up,
-        a splash screen), until the launch step ends. CLICK exiting aborts too, unless
-        *exits* (then the wait ends when it has). With *unloading*, the main window is
-        expected whatever its title: CLICK titles it bare while it closes or reads a
-        project. A CLICK error box aborts at once (``check_error_boxes``), except one owned
-        by the window *answering* names (an instruction dialog whose OK was pressed). It
-        gives up after *timeout* seconds (default ``Settings.timeout``), with a reason that
-        starts with *on_timeout*'s text when it is given. Every ``STATUS_EVERY`` seconds it
-        logs the status bar, or that CLICK does not answer.
+        Any window that is neither the main frame nor one of *expected* aborts the run. The
+        exception is a window that was open before the main frame first appeared (CLICK
+        starting up, a splash screen), until the launch step ends. CLICK exiting aborts too,
+        unless *exits* is set. Then the wait ends when CLICK has exited. With *unloading*, the
+        main window is expected whatever its title, because CLICK titles it bare while it
+        closes or reads a project. A CLICK error box aborts at once (``check_error_boxes``),
+        except one owned by the window that *answering* names (an instruction dialog whose OK
+        was pressed). The wait gives up after *timeout* seconds (default
+        ``Settings.timeout``). The reason starts with *on_timeout*'s text when it is given.
+        Every ``STATUS_EVERY`` seconds it logs the status bar, or that CLICK does not answer.
         """
         assert self.pid is not None
         limit = self.s.timeout if timeout is None else timeout
@@ -1398,8 +1448,8 @@ class Run:
     def check_error_boxes(self, windows: list[Window]) -> None:
         """Raise ``ClickErrorBox`` for a CLICK error box among *windows*.
 
-        Nothing is pressed in it; the cleanup that follows leaves it open (a dialog is open,
-        so it does not disconnect) and ends CLICK.
+        Nothing is pressed in it. The cleanup that follows leaves it open and ends CLICK. It
+        does not disconnect, because a dialog is open.
         """
         for window in windows:
             if window.cls != "#32770":
@@ -1409,7 +1459,7 @@ class Run:
                 raise ClickErrorBox(*error)
 
     def _without_tooltips(self, windows: list[Window]) -> list[Window]:
-        """*windows* but tooltips, each logged the first time it is seen."""
+        """Return *windows* without the tooltips, and log each tooltip when first seen."""
         for window in windows:
             if window.cls == TOOLTIP_CLASS and window.hwnd not in self._tooltips:
                 self._tooltips.add(window.hwnd)
@@ -1417,7 +1467,7 @@ class Run:
         return [w for w in windows if w.cls != TOOLTIP_CLASS]
 
     def only_main(self, found: dict[str, Window]) -> bool:
-        """The main frame alone, enabled and answering messages."""
+        """Return true when the main frame is alone, enabled and answering messages."""
         main = found.get(MAIN)
         return (
             main is not None
@@ -1430,7 +1480,7 @@ class Run:
         return self.desktop.controls(window.hwnd)
 
     def press(self, window: Window, button: Control) -> None:
-        """BM_CLICK *button*, a button found among *window*'s controls."""
+        """Post BM_CLICK to *button*, a button found among *window*'s controls."""
         if button.cls not in ("Button", "TButton", "TRadioButton") or button.hwnd not in {
             c.hwnd for c in self.controls(window)
         }:
@@ -1439,7 +1489,7 @@ class Run:
         self.desktop.press(button.hwnd)
 
     def send_press(self, window: Window, button: Control) -> bool:
-        """``press``, with BM_CLICK sent: handled when it returns True (``Desktop.send_press``)."""
+        """Send BM_CLICK as ``press`` does. Return True once handled (``Desktop.send_press``)."""
         if button.cls not in ("Button", "TButton") or button.hwnd not in {
             c.hwnd for c in self.controls(window)
         }:
@@ -1453,12 +1503,12 @@ class Run:
         self.log(f"command {name} ({command_id})")
 
     def read_status_bar(self) -> StatusBar | None:
-        """The main window's status bar, by SB_GETTEXT; None if it cannot be read.
+        """Return the main window's status bar, read by SB_GETTEXT, or None if it cannot be read.
 
         CLICK's main window has two children with the status bar's id: an MFC bar
         (``Afx:StatusBar...``) and a common control. Live run 2 (2026-11-15) read the
-        common control by SB_GETTEXT; the MFC bar is sent nothing. Call it only while
-        CLICK answers: reading sends it messages.
+        common control by SB_GETTEXT. The runner sends the MFC bar nothing. Call this method
+        only while CLICK answers, because reading sends it messages.
         """
         assert self.main is not None
         for bar in self.desktop.controls(self.main):
@@ -1627,10 +1677,10 @@ class Run:
                 return f"the Connect dialog lists {items} PLC(s)"
 
             def listed(_: dict[str, Window]) -> bool:
-                # One row, unchanged for PLC_SETTLE seconds, with Connect enabled; two or
-                # more stop the run. The list is owner-drawn: CLICK paints its own highlight
-                # and connects to its current row, and the list reports no selection (live
-                # run 2), so the runner selects nothing.
+                # Done when the list has one row, unchanged for PLC_SETTLE seconds, and
+                # Connect is enabled. Two or more rows stop the run. The list is owner-drawn.
+                # CLICK paints its own highlight and connects to its current row, and the
+                # list reports no selection (live run 2). So the runner selects nothing.
                 items = self.desktop.list_view_items(plc_list.hwnd)
                 if items != last[0]:
                     last[0], since[0] = items, time.monotonic()
@@ -1714,9 +1764,10 @@ class Run:
     def confirm_connected(self) -> None:
         """Wait for the status bar to name the PLC (the one ``--plc`` names, if given).
 
-        The bar is read until the wait times out. Then a bar that read but named no PLC
-        stops the run; one that never read leaves the connection unconfirmed and the run
-        goes on, unless ``--plc`` is given, which a bar that cannot be read cannot confirm.
+        The runner reads the bar until the wait times out. Then a bar that was read but named
+        no PLC stops the run. A bar that was never read leaves the connection unconfirmed,
+        and the run goes on. The exception is ``--plc``: a bar that cannot be read cannot
+        confirm it, so the run stops.
         """
         last: list[StatusBar | None] = [None]
 
@@ -1822,14 +1873,14 @@ class Run:
     def _pasted(
         self, before: StatusBar | None, rungs: int
     ) -> Callable[[dict[str, Window]], str | None]:
-        """The paste's done condition, for ``wait``.
+        """Return the condition for ``wait`` that says the paste is done.
 
-        CLICK freezes while it pastes and shows nothing when it is done. Done is CLICK
-        answering again, with the main window alone and enabled, on ``RESPONSIVE_POLLS``
-        polls in a row; then, when the status bar showed a cursor or a step count before
-        the paste, the status bar showing the rungs pasted (``StatusBar.shows_paste``).
-        CLICK answering for ``Settings.timeout`` seconds without that aborts the run.
-        The decoded save is the final check (``check_landed``).
+        CLICK freezes while it pastes and shows nothing when it is done. The paste is done
+        when CLICK answers again on ``RESPONSIVE_POLLS`` polls in a row, with the main window
+        alone and enabled. If the status bar showed a cursor or a step count before the
+        paste, it must then also show the rungs pasted (``StatusBar.shows_paste``). If CLICK
+        answers for ``Settings.timeout`` seconds without that, the run aborts. The decoded
+        save is the final check (``check_landed``).
         """
         answered = [0]
         since: list[float | None] = [None]
@@ -1870,12 +1921,12 @@ class Run:
             self.record("syntax_checked")
 
     def check_syntax(self) -> dict[str, Any]:
-        """Run Syntax Check and wait for its result in Output: its text, its counts, and the
-        project it names (``project``, the stem of the file the main window's title names).
+        """Run Syntax Check, wait for its result in Output and return it.
 
-        Output is emptied first (WM_SETTEXT), so a check that reads as the one before is
-        still seen to finish; live probe 1 (2026-11-15) waited out a second check whose
-        text was the first's.
+        The result holds the text, the counts, and the project it names (``project``, the
+        stem of the file that the main window's title names). The runner empties Output first
+        (WM_SETTEXT), so a check that reads as the one before is still seen to finish. Live
+        probe 1 (2026-11-15) waited out a second check whose text was the first's.
         """
         assert self.main is not None
         controls = self.desktop.controls(self.main)
@@ -1938,11 +1989,10 @@ class Run:
     def try_cases(self) -> None:
         """Read the nicknames asked for, check the empty main program, then try each case.
 
-        The entries carried from ``--resume``'s run are in ``DIR/cases.jsonl`` already
-        (``execute`` writes them before CLICK starts). Then each case not carried is tried
-        in the file's order, and its line is written once its answer is known or it stopped
-        the run (``try_case``). With ``--stop-after N`` the run
-        ends cleanly before its (N+1)th case.
+        ``execute`` writes the entries carried from ``--resume``'s run to
+        ``DIR/cases.jsonl`` before CLICK starts. Each case that was not carried is then tried
+        in the file's order. ``try_case`` writes its line once the answer is known or the case
+        stopped the run. With ``--stop-after N`` the run ends cleanly before its (N+1)th case.
         """
         if self.nickname_addresses:
             with self.step("nicknames"):
@@ -1969,16 +2019,16 @@ class Run:
                 self.try_case(number, case, baseline)
 
     def load_resume(self) -> None:
-        """Read the entries of ``--resume``'s run from its ``cases.jsonl``; Refused if they do
-        not fit the cases file.
+        """Read the entries of ``--resume``'s run from its ``cases.jsonl``.
 
-        The last line for a case is its entry. Each must name a case of the file by its id
-        and ask what that case asks. An entry with an outcome is carried, and so is one whose
-        case stopped ``MAX_STOPS`` runs (a Ctrl+C is not counted): neither is tried again.
-        With ``keep``, an accepted entry without its save (``kept``) has no outcome here. Any
-        other (a case that stopped a run before CLICK answered it) is tried again, its
-        ``stops`` kept. A last line cut short (the run's process ended while writing it) is
-        left out.
+        Raise Refused if they do not fit the cases file. The last line for a case is its
+        entry. Each entry must name a case of the file by its id and ask what that case asks.
+        The run carries an entry that has an outcome, and one whose case stopped ``MAX_STOPS``
+        runs (a Ctrl+C is not counted). It does not try either again. With ``keep``, an
+        accepted entry without its save (``kept``) has no outcome here. The run tries any
+        other entry again (a case that stopped a run before CLICK answered it) and keeps its
+        ``stops``. It leaves out a last line that was cut short because the run's process
+        ended while writing it.
         """
         assert self.s.resume is not None
         path = self.s.resume / CASES_LOG
@@ -2033,11 +2083,13 @@ class Run:
         )
 
     def write_carried(self) -> None:
-        """Put the carried entries into the result and ``DIR/cases.jsonl``, in the file's order,
-        and the entries to try again into ``cases.jsonl`` with their stops, so a run that
-        ends before it tries them still keeps their stops. A case tried writes its own line
-        after them. The file is made even when there is nothing to write, so that a run
-        stopped before its first case can be resumed."""
+        """Write the carried entries into the result and ``DIR/cases.jsonl``, in the file's order.
+
+        Also write the entries to try again into ``cases.jsonl`` with their stops, so that a
+        run that ends before it tries them still keeps their stops. A case that is tried
+        writes its own line after them. The method creates the file even when there is
+        nothing to write, so that a run stopped before its first case can be resumed.
+        """
         path = self.s.out / CASES_LOG
         path.touch()
         self.result["files"]["cases"] = path
@@ -2060,7 +2112,7 @@ class Run:
     def copy_nicknames(self) -> None:
         """Copy the new project's SC_.mdb into DIR and read the nicknames asked for from the copy.
 
-        CLICK's own file is only copied; the copy is what is opened.
+        The runner only copies CLICK's own file and opens the copy.
         """
         assert self.main is not None
         mdb = self.desktop.temp_dir(self.main) / "SC_.mdb"
@@ -2077,23 +2129,25 @@ class Run:
     def try_case(self, number: int, case: Case, baseline: dict[str, Any]) -> None:
         """Try *case* (``ask``) and write its entry to ``DIR/cases.jsonl`` however that ends.
 
-        The case's entry in ``cases``: ``index`` (its number in the file) and ``id`` (its
-        ``case``), what it asks (row, case, instruction, mode, fields, choices, options),
-        ``wired`` (whether it was tried with ``--wire``), then ``outcome`` (``accepted``,
-        ``refused``, ``not_taken`` or ``other``), the box's ``code`` and ``message`` (an
-        accepted case has them only if CLICK closed the dialog along with a box; a
-        ``not_taken`` case's message says what the dialog did not take), ``limits`` (each
-        field's EM_GETLIMITTEXT), ``read_back`` (each field's text as read back before OK;
-        with ``reads_every_field``, every open field's), ``controls`` (each visible Button,
-        Static and Edit of the dialog as OK or Cancel found it: ``id``, ``cls``, ``text``,
-        ``enabled``, and ``checked`` for a Button or ``edit_text`` for an Edit; a group box
-        is a Button of id -1 whose text is its section's label), ``syntax_check`` once the
-        dialog closed (its text, counts, and the ``lines`` naming a code the empty
-        program's check does not), ``kept`` (with ``keep``, an accepted case's save: see
-        ``keep_case``; otherwise None), ``seconds``, ``out`` (the run it was tried in) and
-        ``stops``: each run it stopped (its ``out`` and ``reason``; ``interrupted`` for
-        Ctrl+C; ``outcome``, the answer it had when it stopped, which is then not its
-        ``outcome``). A case that stops the run is the result's ``stopped_at``.
+        The case's entry in ``cases`` has these keys. ``index`` is its number in the file and
+        ``id`` is its ``case``. Then come the keys for what it asks (row, case, instruction,
+        mode, fields, choices, options). ``wired`` says whether it was tried with ``--wire``.
+        ``outcome`` is ``accepted``, ``refused``, ``not_taken`` or ``other``. ``code`` and
+        ``message`` come from the box. An accepted case has them only if CLICK closed the
+        dialog along with a box. A ``not_taken`` case's message says what the dialog did not
+        take. ``limits`` holds each field's EM_GETLIMITTEXT. ``read_back`` holds each field's
+        text as read back before OK, and with ``reads_every_field`` every open field's.
+        ``controls`` holds each visible Button, Static and Edit of the dialog as OK or Cancel
+        found it, with ``id``, ``cls``, ``text``, ``enabled``, and ``checked`` for a Button or
+        ``edit_text`` for an Edit. A group box is a Button of id -1 whose text is its
+        section's label. ``syntax_check`` is set once the dialog closed. It holds the text,
+        the counts, and the ``lines`` that name a code the empty program's check does not.
+        ``kept`` is an accepted case's save with ``keep`` (see ``keep_case``), and None
+        otherwise. ``seconds`` is how long the case took. ``out`` is the run it was tried in.
+        ``stops`` lists each run that the case stopped, with that run's ``out`` and
+        ``reason``. A Ctrl+C sets ``interrupted``. ``outcome`` is the answer the case had when
+        it stopped, which is then not the case's ``outcome``. A case that stops the run is the
+        result's ``stopped_at``.
         """
         entry: dict[str, Any] = {
             "index": number,
@@ -2127,8 +2181,8 @@ class Run:
             stop: dict[str, Any] = {"out": self.s.out, "reason": reason}
             if interrupted:
                 stop["interrupted"] = True
-            # An answer the run stopped after (Delete or a save failed) is not the case's:
-            # the stop keeps it and the case is tried again. ``other`` is the stop itself
+            # An answer that the run stopped after (Delete or a save failed) is not the case's.
+            # The stop keeps it and the case is tried again. ``other`` is the stop itself
             if entry["outcome"] not in (None, "other"):
                 stop["outcome"] = entry["outcome"]
                 entry["outcome"] = None
@@ -2142,11 +2196,11 @@ class Run:
     def ask(self, number: int, case: Case, entry: dict[str, Any], baseline: dict[str, Any]) -> None:
         """Try *case* in a rung of its own and record CLICK's answer in *entry* (``answer``).
 
-        With ``wire``, an output instruction is placed behind a contact (``WIRE_CONTACT``,
-        by its own dialog), and the rung that contact starts is removed again once CLICK has
-        answered the case, whatever it answered (a case that stops the run leaves it; CLICK
-        is ended) (``clear_rung``); a contact instruction gets its coil once its dialog
-        closes (``placed``).
+        With ``wire``, the runner places an output instruction behind a contact
+        (``WIRE_CONTACT``, by its own dialog). Once CLICK has answered the case, whatever it
+        answered, the runner removes the rung that the contact starts (``clear_rung``). A case
+        that stops the run leaves the rung, and CLICK is ended. A contact instruction gets its
+        coil once its dialog closes (``placed``).
         """
         instruction = INSTRUCTIONS[case.instruction]
         what = f"case {number} ({case.row} {case.name})"
@@ -2169,20 +2223,22 @@ class Run:
     ) -> None:
         """Open *case*'s dialog, fill it, press OK and record CLICK's answer in *entry*.
 
-        The mode is pressed before the fields, or after them with ``mode_after_fields``
-        (then a field closed for entry is named with the mode the dialog opened in); the
-        options are set once the fields are filled, those asked 1 before those asked 0.
-        Only when an option or the mode was pressed after the fields are they read again,
-        and a field the case asks for that such a press opened is filled then. Each option
-        set is read again before OK. A field, list, mode or option closed for entry (hidden
-        or disabled), an option label no option button shows, a radio button asked to be
-        unchecked, a field, list or option that reads back other than asked, or a list
-        without the item asked for makes the case ``not_taken`` once the dialog's Cancel
-        has closed it; OK is not pressed. A field CLICK does not answer, or an option that
-        does not read as asked after ``OPTION_PRESSES`` presses, stops the run
-        (``Aborted``). A closed dialog is ``accepted`` only when its Syntax Check names
-        rung 2 for the missing END, as an instruction in rung 1 makes it (``placed``);
-        otherwise the case is ``other`` and the run stops.
+        The runner presses the mode before the fields, or after them with
+        ``mode_after_fields``. In that case a field closed for entry is named with the mode
+        the dialog opened in. It sets the options once the fields are filled, those asked 1
+        before those asked 0. It reads the fields again only when an option or the mode was
+        pressed after the fields. Such a press may open a field that the case asks for, and
+        the runner fills it then. It reads each option set again before OK.
+
+        The case becomes ``not_taken`` once the dialog's Cancel has closed it, and OK is not
+        pressed, when any of these is true: a field, list, mode or option is closed for entry
+        (hidden or disabled); no option button shows an option label; a radio button is asked
+        to be unchecked; a field, list or option reads back other than asked; or a list lacks
+        the item asked for. The run stops (``Aborted``) if CLICK does not answer for a field,
+        or if an option does not read as asked after ``OPTION_PRESSES`` presses. A closed
+        dialog is ``accepted`` only when its Syntax Check names rung 2 for the missing END, as
+        an instruction in rung 1 makes it (``placed``). Otherwise the case is ``other`` and
+        the run stops.
         """
         title = instruction.title
         detail = " ".join(
@@ -2203,8 +2259,8 @@ class Run:
             lambda f: f[DIALOG] if DIALOG in f and f[DIALOG].enabled else None,
         )
         self.check_opening(what, instruction, dialog)
-        # The mode the fields are filled in: with ``mode_after_fields``, the one the dialog
-        # opened in
+        # The mode that the fields are filled in. With ``mode_after_fields`` it is the mode
+        # the dialog opened in
         mode = case.mode
         if case.mode is not None and instruction.mode_after_fields:
             mode = self.checked_mode(dialog, instruction)
@@ -2233,7 +2289,7 @@ class Run:
         for name, text in case.fields.items():
             if name not in closed:
                 typed[name] = self.fill(what, title, name, fields[name], text)
-        # What the fields may leave closed: the mode pressed after them, and the options
+        # Collect what the fields may leave closed: the mode pressed after them, and the options
         shut: list[str] = []
         pressed = False
         if case.mode is not None and instruction.mode_after_fields:
@@ -2244,8 +2300,8 @@ class Run:
             else:
                 shut.append(f"mode {case.mode} closed for entry")
         options: dict[str, tuple[Control, int]] = {}
-        # The options asked 1 first: a radio's press unchecks its pair, so a pair asked
-        # {0, 1} reads as asked whichever the case names first
+        # Set the options asked 1 first. A radio button's press unchecks its pair, so a pair
+        # asked {0, 1} reads as asked whichever the case names first
         for key, state in sorted(case.options.items(), key=lambda item: -item[1]):
             option = self.set_option(what, dialog, dialog_expect, instruction, key, state)
             pressed |= option.pressed
@@ -2253,7 +2309,7 @@ class Run:
                 shut.append(option.problem)
             elif option.button is not None:
                 options[key] = (option.button, state)
-        # A field a press after the fields (an option, the mode) opened is filled now
+        # Fill a field that a press after the fields (an option, the mode) has opened
         if pressed:
             fields = self.field_controls(dialog, instruction, names)
             for name in list(closed):
@@ -2261,7 +2317,8 @@ class Run:
                     self.log(f"{what}: {title}'s {name} field is open now: filled")
                     typed[name] = self.fill(what, title, name, fields[name], case.fields[name])
                     closed.remove(name)
-        # Each option set reads as asked still: a later option or field may change it
+        # Check that each option still reads as asked, because a later option or field may
+        # change it
         controls = {c.id: c for c in self.controls(dialog)}
         for button, state in options.values():
             now = controls.get(button.id)
@@ -2270,8 +2327,8 @@ class Run:
                 shut.append(f"{name} closed for entry once the dialog was filled")
             elif (got := self.desktop.button_checked(button.hwnd)) != state:
                 shut.append(f"{name} reads {got} once the dialog was filled, not {state}")
-        # Read again, as OK will find them: the fields (with ``reads_every_field``, each open
-        # one), then every list
+        # Read again, as OK will find them. First the fields (with ``reads_every_field``, each
+        # open one), then every list
         read = [
             name
             for name, c in fields.items()
@@ -2290,8 +2347,8 @@ class Run:
         for name, item in shown.items():
             if item is not None and self.list_item(dialog, instruction.lists[name]) != item:
                 off.append(name)
-        # A box CLICK showed while the fields were filled aborts here, rather than being
-        # taken for OK's answer
+        # A box that CLICK showed while the fields were filled aborts here. It is not taken
+        # for OK's answer
         self.wait(
             f"the filled {title} dialog alone",
             [dialog_expect],
@@ -2352,7 +2409,7 @@ class Run:
     def field_controls(
         self, dialog: Window, instruction: Instruction, names: list[str]
     ) -> dict[str, Control]:
-        """The edits of *dialog*'s fields *names*, as they are now."""
+        """Return the edits of *dialog*'s fields *names*, as they are now."""
         controls = self.controls(dialog)
         found = {}
         for name in names:
@@ -2364,20 +2421,20 @@ class Run:
         return found
 
     def fill(self, what: str, title: str, name: str, control: Control, text: str) -> str:
-        """Set *title*'s field *name* to *text* by WM_SETTEXT; the text it reads then."""
+        """Set *title*'s field *name* to *text* by WM_SETTEXT. Return the text it then reads."""
         if not self.desktop.set_text(control.hwnd, text):
             raise Aborted(f"{what}: CLICK did not answer setting {title}'s {name} field")
         return self.read_field(what, title, name, control)
 
     def mode_button(self, dialog: Window, instruction: Instruction, mode: str) -> Control:
-        """*dialog*'s radio button for *mode*, as it is now."""
+        """Return *dialog*'s radio button for *mode*, as it is now."""
         return _require(
             _child(self.controls(dialog), cls="Button", id=instruction.modes[mode]),
             f"{instruction.title}'s {mode} button ({instruction.modes[mode]})",
         )
 
     def checked_mode(self, dialog: Window, instruction: Instruction) -> str | None:
-        """The mode whose radio button *dialog* has checked now; None for none."""
+        """Return the mode whose radio button *dialog* has checked now, or None."""
         controls = self.controls(dialog)
         for mode, button_id in instruction.modes.items():
             radio = _child(controls, cls="Button", id=button_id)
@@ -2388,10 +2445,10 @@ class Run:
     def press_mode(
         self, what: str, dialog: Window, expect: Expect, instruction: Instruction, mode: str
     ) -> bool:
-        """Check *mode*'s radio button, unless it is checked already; whether it pressed.
+        """Check *mode*'s radio button unless it is checked already. Return whether it pressed.
 
-        BM_CLICK is posted, and Math empties its fields on a type click even on the type
-        already checked, so a button already checked is not pressed.
+        The runner posts BM_CLICK. Math empties its fields on a type click even on the type
+        already checked, so the runner does not press a button that is already checked.
         """
         title = instruction.title
         radio = self.mode_button(dialog, instruction, mode)
@@ -2419,14 +2476,15 @@ class Run:
     ) -> OptionSet:
         """Set the option button *key* (the label it shows now, or its id) to *state*.
 
-        Only the buttons *instruction* lists as its ``options`` are looked at, and of those
-        showing the label, the one visible. The result names the button, whether it was
-        pressed, and why it cannot be set, if so: no button shows the label, more than one
-        visible does (never seen in CLICK: the runner does not pick one), the button is
-        closed (hidden or disabled), or it is a radio button asked for 0 while checked (a
-        press never unchecks one). Before each press (BM_CLICK, posted) its state is read;
-        each press is given ``OPTION_WAIT`` seconds to show *state*. One that does not read
-        *state* after ``OPTION_PRESSES`` presses stops the run.
+        The runner looks only at the buttons that *instruction* lists as its ``options``. Of
+        those that show the label, it looks at the visible one. The result names the button,
+        says whether it was pressed, and says why the button cannot be set, if it cannot. The
+        reasons are: no button shows the label; more than one visible button does (never seen
+        in CLICK, and the runner does not pick one); the button is closed (hidden or
+        disabled); or it is a radio button asked for 0 while checked (a press never unchecks
+        one). The runner reads the button's state before each press (BM_CLICK, posted). It
+        gives each press ``OPTION_WAIT`` seconds to show *state*. If the button does not read
+        *state* after ``OPTION_PRESSES`` presses, the run stops.
         """
         title = instruction.title
         buttons = [
@@ -2480,9 +2538,12 @@ class Run:
         return OptionSet(button, presses > 0, None)
 
     def visible_controls(self, dialog: Window) -> list[dict[str, Any]]:
-        """Each visible Button, Static and Edit of *dialog*, whatever its id: ``id``,
-        ``cls``, ``text``, ``enabled``, and ``checked`` (a Button) or ``edit_text`` (an
-        Edit). A group box is a Button of id -1 whose text is its section's label."""
+        """Return each visible Button, Static and Edit of *dialog*, whatever its id.
+
+        Each is a row with ``id``, ``cls``, ``text``, ``enabled``, and ``checked`` (a Button)
+        or ``edit_text`` (an Edit). A group box is a Button of id -1 whose text is its
+        section's label.
+        """
         rows = []
         for control in self.controls(dialog):
             if not control.visible or control.cls not in ("Button", "Static", "Edit"):
@@ -2511,9 +2572,9 @@ class Run:
         """Place what ``--wire`` adds to a case's rung (*instruction*: the contact or the
         coil) at the ladder's cursor, with *address* in its address field.
 
-        Its dialog must open as ``check_opening`` takes it and read *address* back; once
-        OK has closed it, the status bar, when it reads, must show the cursor at *cursor*
-        (when given). A CLICK error box stops the run.
+        Its dialog must open as ``check_opening`` expects, and its address field must read
+        *address* back. Once OK has closed the dialog, the status bar must show the cursor at
+        *cursor* (when given), if the bar can be read. A CLICK error box stops the run.
         """
         title = instruction.title
         expect = Expect(DIALOG, "#32770", title, MAIN)
@@ -2553,9 +2614,11 @@ class Run:
         self.record(f"{label}_{'contact' if instruction.kind == CONTACT else 'coil'}")
 
     def select_rung(self, why: str) -> None:
-        """Select rung 1 by a click posted on its number in the ladder view (``RUNG1_POINT``),
-        and wait for the main window alone and, when the status bar reads, the cursor at
-        ``RUNG1_CURSOR``."""
+        """Select rung 1 by posting a click on its number in the ladder view (``RUNG1_POINT``).
+
+        Wait until the main window is alone and, if the status bar can be read, shows the
+        cursor at ``RUNG1_CURSOR``.
+        """
         assert self.main is not None
         self.wait("the main window alone", [], self.only_main)
         try:
@@ -2575,12 +2638,13 @@ class Run:
     def clear_rung(self, what: str, baseline: dict[str, Any]) -> None:
         """Remove what *what* left in rung 1, and check that the main program is empty again.
 
-        Edit > Delete removes what is under the cursor: an output instruction, where CLICK
-        leaves the cursor once it placed one. With ``wire``, rung 1 is selected first
-        (``select_rung``), so Delete removes the whole rung. Nothing outside the ladder view
-        shows that Delete landed: the status bar, the title and the main window's controls
-        stay as they were (live probe 3). The check is the proof: the next Syntax Check must
-        read as the empty program's did, but for the project's name (a save renames it).
+        Edit > Delete removes what is under the cursor. That is an output instruction,
+        because CLICK leaves the cursor there once it has placed one. With ``wire``, the
+        runner selects rung 1 first (``select_rung``), so Delete removes the whole rung.
+        Nothing outside the ladder view shows that Delete landed. The status bar, the title
+        and the main window's controls stay as they were (live probe 3). So the proof is the
+        next Syntax Check, which must read as the empty program's did, except for the
+        project's name (a save renames it).
         """
         if self.s.wire:
             self.select_rung(f"Delete after {what}")
@@ -2594,8 +2658,11 @@ class Run:
             )
 
     def read_field(self, what: str, title: str, name: str, control: Control) -> str:
-        """The text of *title*'s field *name*; Aborted if CLICK does not answer (a stalled
-        CLICK is no answer of the dialog's)."""
+        """Return the text of *title*'s field *name*.
+
+        Raise Aborted if CLICK does not answer, because a stalled CLICK is no answer of the
+        dialog's.
+        """
         text = self.desktop.read_text(control.hwnd)
         if text is None:
             raise Aborted(f"{what}: CLICK did not answer reading {title}'s {name} field")
@@ -2604,16 +2671,18 @@ class Run:
     def not_taken(
         self, what: str, dialog: Window, expect: Expect, entry: dict[str, Any], message: str
     ) -> None:
-        """Close *dialog* by its Cancel, then make the case ``not_taken`` with *message*: an
-        answer is set only once the dialog is closed. The case's ``controls`` are read as
-        Cancel finds them."""
+        """Close *dialog* by its Cancel, then make the case ``not_taken`` with *message*.
+
+        The answer is set only once the dialog is closed. The case's ``controls`` are read as
+        Cancel finds them.
+        """
         entry["controls"] = self.visible_controls(dialog)
         self.cancel(dialog, expect)
         entry.update(outcome="not_taken", message=message)
         self.log(f"{what}: not taken: {message}")
 
     def list_item(self, dialog: Window, list_id: int) -> str | None:
-        """The item the ComboBox *list_id* of *dialog* shows; None for none."""
+        """Return the item that the ComboBox *list_id* of *dialog* shows, or None."""
         combo = _require(
             _child(self.controls(dialog), cls="ComboBox", id=list_id),
             f"{dialog.title}'s list {list_id}",
@@ -2627,13 +2696,13 @@ class Run:
     def choose(
         self, what: str, dialog: Window, expect: Expect, list_id: int, item: str
     ) -> str | None:
-        """Pick *item* in the drop-down list *list_id*, as Up and Down keys pick it; None once
-        picked, or why it cannot be: ``_CLOSED`` for a list not open for entry (hidden or
-        disabled), else that the list has no such item.
+        """Pick *item* in the drop-down list *list_id* with Up and Down keys.
 
-        Each key is sent to the list alone (WM_KEYDOWN, WM_KEYUP), as ``picker`` sends its
-        keys, and moves the selection one item; the list tells the dialog itself, as when a
-        user picks. A list showing no item gets Home first.
+        Return None once it is picked. Otherwise return why it cannot be: ``_CLOSED`` for a
+        list not open for entry (hidden or disabled), else a text saying that the list has no
+        such item. The runner sends each key to the list alone (WM_KEYDOWN, WM_KEYUP), as
+        ``picker`` sends its keys. Each key moves the selection one item. The list tells the
+        dialog itself, as when a user picks. A list that shows no item gets Home first.
         """
         combo = _require(
             _child(self.controls(dialog), cls="ComboBox", id=list_id),
@@ -2692,11 +2761,11 @@ class Run:
 
         With ``wire``, a contact instruction gets its coil first (``WIRE_COIL``, by the Out
         dialog). A Syntax Check that does not name rung 2 for the missing END makes the case
-        ``other`` and stops the run: CLICK closed the dialog and placed nothing. With
-        ``wire``, so does one with a line whose code the empty program's check does not
-        have: the wired rung is whole, so it must check clean but for the missing END. With
-        ``keep``, the project is then saved (``keep_case``). ``clear_rung`` then removes the
-        rung's instructions.
+        ``other`` and stops the run, because CLICK closed the dialog and placed nothing. With
+        ``wire``, a Syntax Check with a line whose code the empty program's check does not
+        have does the same. The wired rung is whole, so it must check clean except for the
+        missing END. With ``keep``, the runner then saves the project (``keep_case``).
+        ``clear_rung`` then removes the rung's instructions.
         """
         if self.s.wire and instruction.kind == CONTACT:
             self.place_wired(what, label, WIRE_COIL_DIALOG, WIRE_COIL)
@@ -2730,19 +2799,20 @@ class Run:
     def keep_case(self, label: str, entry: dict[str, Any]) -> None:
         """Save the project with the case's instruction in it as ``DIR/saves/<label>.ckp``.
 
-        CLICK's Scr*.tmp files and Project.ini are copied into ``DIR/saves/<label>/click/``
-        as ``paste`` copies them; the copy is decoded once CLICK has ended
-        (``decode_kept``). With ``wire``, rung 1 is then copied by CLICK's Edit > Copy
-        (``copy_rung``) into ``DIR/saves/<label>.clip.bin``. The case's ``kept``: ``ckp``
-        and ``click`` (the files copied), ``clip`` (the clipboard's file, or None), then from
-        the decoding ``csv`` (the files written into ``DIR/saves/<label>/csv/``), ``main``
-        (main.csv's lines after its header), ``legacy`` (the rungs laddercodec lists as held
-        in a legacy encoding or unreadable), ``stored`` (each Scr*.tmp's instructions with
-        their tags as stored: ``_read_stored``), ``error`` (why the copy could not be read,
-        or None), ``clip_csv`` (the clipboard decoded into ``DIR/saves/<label>.clip.csv``,
-        written as main.csv is, or None) and ``clip_error`` (what in the clipboard
-        laddercodec cannot read or write, or why it could not be decoded, or None; it does
-        not stop the run).
+        The runner copies CLICK's Scr*.tmp files and Project.ini into
+        ``DIR/saves/<label>/click/``, as ``paste`` copies them. It decodes the copy once CLICK
+        has ended (``decode_kept``). With ``wire``, CLICK's Edit > Copy then copies rung 1
+        (``copy_rung``) into ``DIR/saves/<label>.clip.bin``.
+
+        The case's ``kept`` has these keys. ``ckp`` and ``click`` are the files copied.
+        ``clip`` is the clipboard's file, or None. The decoding then sets ``csv`` (the files
+        written into ``DIR/saves/<label>/csv/``), ``main`` (main.csv's lines after its
+        header), ``legacy`` (the rungs laddercodec lists as held in a legacy encoding or
+        unreadable), ``stored`` (each Scr*.tmp's instructions with their tags as stored:
+        ``_read_stored``) and ``error`` (why the copy could not be read, or None).
+        ``clip_csv`` is the clipboard decoded into ``DIR/saves/<label>.clip.csv``, written as
+        main.csv is, or None. ``clip_error`` is what in the clipboard laddercodec cannot read
+        or write, or why it could not be decoded, or None. It does not stop the run.
         """
         assert self.main is not None
         saves = self.s.out / "saves"
@@ -2768,9 +2838,9 @@ class Run:
     def copy_rung(self, label: str, path: Path) -> Path:
         """Copy rung 1 by CLICK's Edit > Copy and write the clipboard's CLICK data to *path*.
 
-        Rung 1 is selected first (``select_rung``) and the clipboard emptied, so what is
-        read is that Copy's. No CLICK data on the clipboard within ``Settings.timeout``
-        stops the run.
+        The runner selects rung 1 first (``select_rung``) and empties the clipboard, so what
+        it reads is that Copy's. The run stops if no CLICK data is on the clipboard within
+        ``Settings.timeout``.
         """
         self.select_rung(f"{label}'s Edit > Copy")
         try:
@@ -2811,9 +2881,9 @@ class Run:
     ) -> bool:
         """Take CLICK's error box after OK as the case's answer and close it.
 
-        Returns whether CLICK closed the dialog along with the box; if not, the dialog's
-        Cancel closes it. A box that is not one CLICK error with one OK is a question: the
-        case is ``other`` and the run stops.
+        Return whether CLICK closed the dialog along with the box. If it did not, the
+        dialog's Cancel closes it. A box that is not one CLICK error with one OK is a
+        question. The case is then ``other`` and the run stops.
         """
         controls = self.controls(box)
         error = click_error(box, controls)
@@ -2872,21 +2942,22 @@ class Run:
     ) -> None:
         """Import *csv* by File > Import > Nickname, take CLICK's answer, copy SC_.mdb.
 
-        The import's entry in ``imports``: its ``name`` (``whole``, or ``line014`` for the
-        row starting on line 14), the ``csv`` imported, the row's ``line`` and text
-        (``row``, its bytes as Latin-1), then ``answer`` (``completed`` for the box reading
-        "Completed!", ``message`` for that box with any other text, ``errors`` for the
-        Import Error List), the box's or list's text (``message``), the list's entries
-        (``errors``, see ``parse_import_errors``), the copy of SC_.mdb (``mdb``), whether
-        CLICK's SC_.mdb had changed when the answer showed (``mdb_changed_at_answer``),
-        once it settled (``mdb_changed``) and between the two
-        (``mdb_changed_after_answer``), the rows read from the copy once CLICK has
-        ended (``stored``) and ``seconds``.
+        The import's entry in ``imports`` has these keys. ``name`` is ``whole``, or
+        ``line014`` for the row starting on line 14. ``csv`` is the file imported. ``line``
+        and ``row`` are the row's line and text (its bytes as Latin-1). ``answer`` is
+        ``completed`` for the box reading "Completed!", ``message`` for that box with any
+        other text, or ``errors`` for the Import Error List. ``message`` is the box's or
+        list's text. ``errors`` holds the list's entries (see ``parse_import_errors``).
+        ``mdb`` is the copy of SC_.mdb. ``mdb_changed_at_answer`` says whether CLICK's
+        SC_.mdb had changed when the answer showed, ``mdb_changed`` whether it had changed
+        once it settled, and ``mdb_changed_after_answer`` whether it changed between the two.
+        ``stored`` holds the rows read from the copy once CLICK has ended. ``seconds`` is how
+        long the import took.
 
-        The mode is ``IMPORT_MODE`` (Delete Existing): CLICK empties the address table and
-        stores what it takes from the file (live probe 4: an import whose every row fails,
-        or whose header is wrong, leaves no row), so ``stored`` is what CLICK made of
-        this file alone.
+        The mode is ``IMPORT_MODE`` (Delete Existing). CLICK empties the address table and
+        stores what it takes from the file. In live probe 4 an import whose every row fails,
+        or whose header is wrong, left no row. So ``stored`` is what CLICK made of this file
+        alone.
         """
         assert self.main is not None
         label = f"import{number:02d}"
@@ -3037,7 +3108,7 @@ class Run:
     # -- read-data: the PLC's data values into a file -------------------------
 
     def read_data(self) -> None:
-        """PLC > Read Data from PLC: every memory type into ``DIR/plcdata.csv``, then Close."""
+        """Read every memory type through PLC > Read Data from PLC into ``DIR/plcdata.csv``."""
         with self.step("read_data"):
             self.wait("the main window alone", [], self.only_main)
             self.command(READ_DATA_FROM_PLC)
@@ -3063,8 +3134,9 @@ class Run:
             self.fill_path(name, dump, [READ_DATA, SAVE_DATA])
             self.press(save, button)
             last: list[int | None] = [None]
-            # When the reading window had gone, with the form back and no file (a reading that
-            # wrote its file elsewhere, as live run d8's did before ``fill_path``)
+            # Since when the reading window has gone, the form is back and there is no file.
+            # That is a reading that wrote its file elsewhere, as live run d8's did before
+            # ``fill_path``
             idle: list[float | None] = [None]
 
             def written(found: dict[str, Window]) -> bool:
@@ -3143,7 +3215,8 @@ class Run:
                     answered = self.desktop.send_key(target.hwnd, _VIRTUAL_KEYS[token])
                 if not answered:
                     raise Aborted(f"CLICK did not answer the key {token!r}")
-                # Handled already (sent): no window may have come over the picker
+                # The key was sent, so CLICK has handled it. No window may have come over
+                # the picker
                 self.wait(
                     f"the Address Picker after the key {token!r}",
                     [PICKER],
@@ -3161,8 +3234,11 @@ class Run:
             self.copy_mdb(mdb, "after")
 
     def after_key(self, window: Window, token: str, at_open: set[int]) -> None:
-        """Keep what the Address Picker shows after *token* under ``keys``: its editor's
-        text and whether it shows, and the hints it shows (CLICK's hint under the editor)."""
+        """Record what the Address Picker shows after *token* under ``keys``.
+
+        That is its editor's text, whether the editor shows, and the hints (CLICK's hints
+        under the editor).
+        """
         now = self.controls(window)
         editors = [c for c in now if c.hwnd not in at_open and c.cls == "TEdit"]
         editor = editors[-1] if editors else None
@@ -3181,8 +3257,10 @@ class Run:
         self.log(f"  editor {entry['editor']!r} (shown {entry['editor_shown']}), hints {hints!r}")
 
     def copy_mdb(self, mdb: Path, label: str) -> None:
-        """Wait for the main window alone and *mdb* unchanged for ``IMPORT_SETTLE``, then copy
-        it to ``DIR/mdb/<label>.mdb`` (``mdb_copies``)."""
+        """Wait until the main window is alone and *mdb* is unchanged for ``IMPORT_SETTLE``.
+
+        Then copy it to ``DIR/mdb/<label>.mdb`` (``mdb_copies``).
+        """
         held: list[Any] = [None, 0.0]
 
         def settled(found: dict[str, Window]) -> bool:
@@ -3214,11 +3292,11 @@ class Run:
     def reopen(self) -> None:
         """Save, edit Project.ini, save again, open that save, and save once more.
 
-        CLICK is disconnected first, so opening a project compares it with no PLC. Each
-        point (``first``, ``second``, ``opened``, ``third``) copies CLICK's files into
-        ``DIR/<point>/click/`` (``copy_point``). Between ``first`` and ``second``,
-        ``ini_add`` is added to the end of the Project.ini in CLICK's temp folder (the
-        runner's own CLICK's; ``edit_ini``). After each copy, ``plc_name`` is what System
+        The runner disconnects CLICK first, so opening a project compares it with no PLC. At
+        each point (``first``, ``second``, ``opened``, ``third``) it copies CLICK's files into
+        ``DIR/<point>/click/`` (``copy_point``). Between ``first`` and ``second`` it adds
+        ``ini_add`` to the end of the Project.ini in CLICK's temp folder (the runner's own
+        CLICK's; ``edit_ini``). After each copy it reads ``plc_name`` from what System
         Configuration shows (``read_plc_name``).
         """
         assert self.main is not None
@@ -3246,8 +3324,9 @@ class Run:
         """Open System Configuration, keep the PLC Name it shows as *point*'s ``plc_name``,
         and close it by Cancel.
 
-        The PLC Name is the form's one TEdit. The notice that comes over the form the first
-        time is closed by WM_CLOSE, as its title bar's close does; OK is pressed on neither.
+        The PLC Name is the form's one TEdit. The runner closes the notice that comes over
+        the form the first time by WM_CLOSE, as its title bar's close does. It presses OK on
+        neither.
         """
         self.wait("the main window alone", [], self.only_main)
         self.command(SYSTEM_CONFIGURATION)
@@ -3306,8 +3385,10 @@ class Run:
         }
 
     def open_project(self, ckp: Path, temp: Path) -> None:
-        """File > Open Project *ckp*, and wait until the open has begun, its title names it
-        and CLICK's Scr*.tmp files are the same on two polls in a row.
+        """Open *ckp* by File > Open Project, and wait until the open has begun.
+
+        The wait also needs the title to name *ckp* and CLICK's Scr*.tmp files to be the same
+        on two polls in a row.
 
         The open has begun once Project Reading or the bare title has shown, or the Scr*.tmp
         files differ from those before the command. The title can name *ckp* already (reopen
@@ -3357,11 +3438,12 @@ class Run:
         """Set a file dialog's File name *edit* to *path*, and wait until it has read *path*
         for ``FILL_SETTLE`` seconds, setting it again whenever it reads something else.
 
-        A dialog still opening can empty the edit after the path is set: CLICK's Read Data
-        Save dialog, filled as soon as it showed, then saved plcdata.csv into the folder it
-        last saved in (live run d8, 2026-11-16, wrote it there; the D2 runs r1 and r1c met
-        that file as "plcdata.csv already exists", and in r1e the edit read '' once set).
-        Filled after a ``--record`` dump, it kept the path (d7, d10 to d13).
+        A dialog that is still opening can empty the edit after the path is set. CLICK's Read
+        Data Save dialog, filled as soon as it showed, then saved plcdata.csv into the folder
+        it last saved in. Live run d8 (2026-11-16) wrote the file there. The D2 runs r1 and
+        r1c met that file as "plcdata.csv already exists". In r1e the edit read '' once set.
+        When the dialog was filled after a ``--record`` dump, it kept the path (d7, d10 to
+        d13).
         """
         text = str(path)
         held: list[float | None] = [None]
@@ -3410,7 +3492,7 @@ class Run:
         return ckp
 
     def save_as(self, ckp: Path, temp: Path, *, prefix: str = "") -> None:
-        """File > Save As to *ckp*, a file that does not exist, and wait until CLICK saved.
+        """Save the project as *ckp*, a file that does not exist, and wait until CLICK saved.
 
         CLICK has saved once its title names the file, the file exists, and its Scr*.tmp
         files in *temp* differ from before Save As and are the same on two polls in a row.
@@ -3443,8 +3525,11 @@ class Run:
         self.record(f"{prefix}saved")
 
     def copy_temp(self, temp: Path, click_dir: Path) -> list[Path]:
-        """Copy CLICK's Scr*.tmp files and Project.ini from *temp* into *click_dir*, a new
-        folder; the files copied. No Scr*.tmp stops the run."""
+        """Copy CLICK's Scr*.tmp files and Project.ini from *temp* into *click_dir*.
+
+        *click_dir* is a new folder. Return the files copied. The run stops if there is no
+        Scr*.tmp.
+        """
         from clicknick.utils.click_temp import scr_files
 
         click_dir.mkdir(parents=True)
@@ -3483,7 +3568,7 @@ class Run:
         assert self.main is not None and self.pid is not None
         with self.step("close"):
             self.desktop.close(self.main)
-            # CLICK unloads the project first: the main window is titled bare, then goes
+            # CLICK unloads the project first. The main window is titled bare, then goes
             self.wait(
                 "CLICK to exit",
                 [],
@@ -3507,14 +3592,14 @@ class Run:
     def decode_kept(self) -> None:
         """Decode each kept case's copy of CLICK's files and read the tags stored in it.
 
-        Every copy not read yet is read, after an abort too, and the case's line written
-        again with what was read; one that cannot be read keeps why in its ``error``, and
-        any such copy fails the step once all are read. A kept clipboard (``clip``) is decoded
-        too, into ``DIR/saves/<label>.clip.csv``; its ``clip_error`` names what in it
-        laddercodec cannot read or write (``_decode_clip``), or says why it cannot be
-        decoded at all, and fails nothing, since the clipboard may hold what laddercodec
-        does not read yet. A carried case's copy, kept in the run it was tried in, is
-        decoded into this run's ``DIR/saves/``.
+        The method reads every copy not read yet, after an abort too, and writes the case's
+        line again with what was read. A copy that cannot be read keeps why in its ``error``.
+        Once all are read, any such copy fails the step. A kept clipboard (``clip``) is
+        decoded too, into ``DIR/saves/<label>.clip.csv``. Its ``clip_error`` names what in it
+        laddercodec cannot read or write (``_decode_clip``), or says why it cannot be decoded
+        at all. It fails nothing, since the clipboard may hold what laddercodec does not read
+        yet. A carried case's copy, kept in the run it was tried in, is decoded into this
+        run's ``DIR/saves/``.
         """
         from clicknick.utils.click_temp import scr_files
 
@@ -3524,8 +3609,8 @@ class Run:
                 kept = entry["kept"]
                 if kept is None or kept["csv"] is not None or kept["error"] is not None:
                     continue
-                # The case's number in this file names its folder: a carried case's save,
-                # numbered in the run it was tried in, cannot meet another case's
+                # The case's number in this file names its folder. A carried case's save was
+                # numbered in the run it was tried in, so it cannot collide with another case's
                 label = f"case{entry['index']:02d}"
                 click = Path(kept["ckp"]).with_suffix("") / "click"
                 if kept.get("clip") is not None:
@@ -3549,10 +3634,12 @@ class Run:
                 raise RuntimeError(f"the copies of {', '.join(failed)} could not be read")
 
     def decode_kept_clip(self, label: str, kept: dict[str, Any]) -> None:
-        """Decode the clipboard *kept* holds into ``DIR/saves/<label>.clip.csv``
-        (``clip_csv``, None when it is not written), keeping in ``clip_error`` what in it
-        laddercodec cannot read or write (``_decode_clip``), or why it cannot be decoded at
-        all."""
+        """Decode the clipboard that *kept* holds into ``DIR/saves/<label>.clip.csv``.
+
+        ``clip_csv`` is None when the file is not written. ``clip_error`` keeps what in the
+        clipboard laddercodec cannot read or write (``_decode_clip``), or why it cannot be
+        decoded at all.
+        """
         csv = self.s.out / "saves" / f"{label}.clip.csv"
         try:
             csv.parent.mkdir(parents=True, exist_ok=True)
@@ -3571,9 +3658,9 @@ class Run:
     def check_landed(self, main_csv: Path) -> None:
         """Abort unless the saved main program holds the rungs pasted.
 
-        Nothing in CLICK shows that a paste is done, so this is the check: a paste that
-        did not land (the clipboard taken by another program, a payload CLICK refused)
-        leaves the new project's empty main program.
+        Nothing in CLICK shows that a paste is done, so this is the check. A paste that did
+        not land leaves the new project's empty main program. That happens when another
+        program took the clipboard, or when CLICK refused the payload.
         """
         from laddercodec import read_csv
 
@@ -3649,8 +3736,10 @@ class Run:
             self.note_temp()
 
     def note_temp(self) -> None:
-        """Log whether CLICK's temp folder is there; CLICK looks after it, the runner never
-        deletes one."""
+        """Log whether CLICK's temp folder is there.
+
+        CLICK looks after it, and the runner never deletes one.
+        """
         if self.main is not None:
             temp = self.desktop.temp_dir(self.main)
             self.log(f"{temp} {'is still there' if temp.exists() else 'is gone'}")
@@ -3666,7 +3755,7 @@ class Run:
         self.log_path = out / "run.log"
         self.result["files"]["run_log"] = self.log_path
         self.log(f"{self.s.command} into {out}")
-        # Every way out below writes result.json; nothing is started until the checks pass
+        # Every way out below writes result.json. Nothing is started until the checks pass
         refused: str | None = None
         try:
             with self.step("refuse"):
@@ -3707,9 +3796,9 @@ class Run:
                 if self.s.command == "paste":
                     self.close()
                 else:
-                    # The new project was never saved, or (try --keep) changed by a
-                    # Delete since: end CLICK rather than meet a save prompt nobody has
-                    # recorded yet (try leaves it changed, too)
+                    # End CLICK rather than meet a save prompt that nobody has recorded
+                    # yet. The new project was never saved, or (try --keep) a Delete has
+                    # changed it since. try leaves it changed too
                     with self.step("close"):
                         self.end_click()
                     if not self.result["click"]["closed"]:
@@ -3751,10 +3840,10 @@ class Run:
         return self.finish()
 
     def read_after_click(self, read: Callable[[], None], what: str) -> None:
-        """*read* the copies made while CLICK ran, once it has ended, after an abort too.
+        """Call *read* on the copies made while CLICK ran, once CLICK has ended, after an abort too.
 
-        The imports or cases done before an abort keep what was read of them; the step the
-        abort names stays the result's step. A read that fails (*what* says which) stops a
+        The imports or cases done before an abort keep what was read of them. The step that
+        the abort names stays the result's step. A read that fails (*what* says which) stops a
         run that had not stopped.
         """
         stopped_at = self.result["step"] if self.result["status"] is not None else None
@@ -3775,7 +3864,7 @@ class Run:
             self.log(reason)
 
     def stop(self, reason: str) -> None:
-        """Abort the run for *reason*; a cleanup cut short (Ctrl+C again) is logged."""
+        """Abort the run for *reason*. Log a cleanup that is cut short (Ctrl+C again)."""
         self.result.update(status="aborted", reason=reason)
         try:
             self.abort(reason)
@@ -3783,10 +3872,10 @@ class Run:
             self.log(f"the cleanup was cut short: {exc!r}")
 
     def end_click_surely(self) -> None:
-        """``end_click`` unless CLICK is already known gone; tried again if it is cut short.
+        """Call ``end_click`` unless CLICK is already known gone. Call it again if cut short.
 
-        What still fails is logged. The job CLICK runs in (``Desktop.launch``) ends it when
-        the runner's process ends.
+        The method logs what still fails. The job that CLICK runs in (``Desktop.launch``) ends
+        it when the runner's process ends.
         """
         if self.result["click"]["closed"] is True:
             return
@@ -3817,7 +3906,7 @@ class Run:
 
 
 def _project_file(title: str) -> str | None:
-    """The project file a main window's title names ("NewProject4.ckp"), or None.
+    """Return the project file that a main window's title names ("NewProject4.ckp"), or None.
 
     The title is ``CLICK Programming Software (Version4.00) - <file>.ckp``, then
     `` - [<program>]`` while a program is open, and `` (Not Responding)`` while CLICK
@@ -4018,8 +4107,8 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
 def _stdout_to_stderr() -> Iterator[None]:
     """Send what is printed to stdout to stderr, Python's and the process's (fd 1) alike.
 
-    stdout carries only the result: what runs on the way (an ODBC driver's notice, a DLL)
-    must not get into it.
+    stdout carries only the result. Output from what runs on the way (an ODBC driver's
+    notice, a DLL) must not get into it.
     """
     sys.stdout.flush()
     try:
