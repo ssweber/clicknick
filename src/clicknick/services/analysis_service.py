@@ -218,10 +218,10 @@ def _refresh_workspace_guidance(source: Path, destination: Path) -> None:
     """Keep the user's AGENTS.md / README.md pointing at pyrung's guidance file.
 
     The file belongs to the user. If its pointer line is missing, put it back under the
-    file's title, or on top if the file has no title. Change nothing else. An older pyrung
-    wrote all of the text in some of these files, and such a file still contains that
-    pyrung's marker. All of its text is out-of-date guidance. Rename it to ``*.previous.md``
-    and write the file that pyrung has just generated in its place.
+    file's title, or on top if the file has no title. Change nothing else, with one
+    exception. An older pyrung wrote all of the text in some of these files, and such a file
+    still contains that pyrung's marker. All of its text is out-of-date guidance. Rename it
+    to ``*.previous.md`` and write the file that pyrung has just generated in its place.
     """
     generated = source.read_text(encoding="utf-8")
     pointer = next(
