@@ -470,7 +470,9 @@ class WorkspaceController:
             messagebox.showerror(
                 "Workspace",
                 "Could not build the workspace from CLICK's last save. ClickNick will not copy "
-                "the workspace of an earlier save into the new folder.\n\n" + build_error,
+                "the workspace of an earlier save into the new folder.\n\n"
+                + build_error
+                + "\n\nSave the project in CLICK again, and try again once the workspace builds.",
                 parent=dialog_parent,
             )
             return
