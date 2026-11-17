@@ -62,6 +62,14 @@ class AnalysisReportData:
     checked_rules: frozenset[str] | None = None
 
 
+def _checks(count: int) -> str:
+    return "check" if count == 1 else "checks"
+
+
+def _were(count: int) -> str:
+    return "was" if count == 1 else "were"
+
+
 def _rule_rows(grouped: dict[str, list[FindingDisplay]]) -> list[tuple[str, str, str]]:
     """`(code, title, severity)` rows in display order, straight from the registry.
 
@@ -103,7 +111,7 @@ class AnalysisReportWindow:
             self._summary_line = (
                 "All checks passed"
                 if self._checked_rules is None
-                else f"{count} selected checks passed"
+                else f"The {count} selected {_checks(count)} passed"
                 if count
                 else "No checks selected"
             )
@@ -114,10 +122,11 @@ class AnalysisReportWindow:
                 foreground=_PASS_COLOR,
             ).pack(side=tk.LEFT)
             if self._not_run:
-                ttk.Label(bar, text=f"{len(self._not_run)} checks not run", foreground=_MUTED).pack(
-                    side=tk.RIGHT
-                )
-                self._summary_line += f" - {len(self._not_run)} checks not run"
+                not_run = len(self._not_run)
+                ttk.Label(
+                    bar, text=f"{not_run} {_checks(not_run)} not run", foreground=_MUTED
+                ).pack(side=tk.RIGHT)
+                self._summary_line += f". {not_run} {_checks(not_run)} {_were(not_run)} not run"
             return
 
         # One coloured chip per severity that actually occurs, most-severe first.
@@ -141,13 +150,13 @@ class AnalysisReportWindow:
             chips.append(f"{n} {label}")
 
         checked = len(failing) + len(passing)
-        ttk.Label(
-            bar,
-            text=f"{len(passing)}/{checked} checks passed; {len(self._not_run)} not run",
-            font=("Segoe UI", 9),
-            foreground=_MUTED,
-        ).pack(side=tk.RIGHT)
-        self._summary_line = f"{', '.join(chips)} - {len(passing)}/{checked} checks passed; {len(self._not_run)} not run"
+        not_run = len(self._not_run)
+        counts = (
+            f"{len(passing)} of {checked} {_checks(checked)} passed. "
+            f"{not_run} {_were(not_run)} not run"
+        )
+        ttk.Label(bar, text=counts, font=("Segoe UI", 9), foreground=_MUTED).pack(side=tk.RIGHT)
+        self._summary_line = f"{', '.join(chips)} - {counts}"
 
     def _focus_section(self, code: str) -> None:
         self._active_section = code

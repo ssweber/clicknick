@@ -177,7 +177,7 @@ def test_future_registry_rules_and_severities_render_and_remember(report_window,
 def test_report_separates_passed_and_not_run_and_copies_both(report_window):
     data = AnalysisReportData(checked_rules=frozenset({"RUNG_CONTRADICTION"}))
     window = report_window(data)
-    assert "1 selected checks passed" in window._summary_line
+    assert "The 1 selected check passed" in window._summary_line
     assert "not run" in window._summary_line
     assert _is_hidden(window, "__not_run__")
     window._copy_report()
