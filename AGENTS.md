@@ -176,7 +176,8 @@ Tests are in `tests/` and `src/` (pytest discovers both).
   window alone, enabled and answering, and presses only the mode's radio button, Open and the "Completed!" box's
   one button. It tells the import's Open dialog by its three import modes and control ids, never by Windows' own
   strings; it cancels that dialog when it fails with the dialog alone open, and leaves any other window, an Open
-  dialog it did not recognise included, to the user. Tests drive it through a fake `ClickDesktop`.
+  dialog it did not recognise included, to the user. Tests drive it through a fake `ClickDesktop`; it was
+  checked live after a Sync on CLICK 2.60, 3.43, 3.71, 3.92 and 4.00.
   `save_all_changes` calls the store's sync listeners (`add_sync_listener`) once it has written rows into the
   database (every Sync path goes through it: the Address Editor's Sync and Sync and Close, Yes to a save prompt);
   the app's listener runs the redraw for the connected window off the Tk thread

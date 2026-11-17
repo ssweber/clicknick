@@ -447,11 +447,6 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   does CLICK refuse X, T and CT (ClickNick no longer offers them)? In a Receive or Send, do the master address
   (Receive's `Edit20`, Send's `Edit16`), the flags and the exception field get the popup? ClickNick offers
   every function code's banks there.
-- Q9 (CLICK v2/v3 only; v4.00 is checked by the runner): after a Sync, does CLICK redraw the new nicknames
-  (issue #36)? ClickNick drives File > Import > Nickname as CLICK 4 shows it: an Open dialog with the three
-  import modes as `TRadioButton`s, then "Import Database" reading "Completed!". Does CLICK v2/v3's import
-  dialog show those three modes as `TRadioButton`s? On another shape the redraw says it failed and leaves the
-  dialog open for the user; it cancels only a dialog it took for the import's by the three modes.
 - Q10 (runner, non-English Windows): does the redraw after a Sync complete? The live runs were on an English
   Windows. ClickNick tells the Open dialog and its buttons by their control ids and the three import modes,
   and the "Completed!" box by its title, its text and its one button, so Windows' own "Open", "OK" and
