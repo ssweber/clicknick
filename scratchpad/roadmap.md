@@ -28,7 +28,7 @@ How to use it:
 7. Onto pyclickplc's readers (done)
 8. Onto pyrung's named imports (waits on pyrung's deletions release)
 9. The undecoded marker (waits on laddercodec, pyrung)
-10. Recording, ClickNick side (waits on pyrung's recording core and one door)
+10. Recording, ClickNick side (waits on pyrung's recording core and console commands for every change)
 
 Items 5 and 6 come before 10, because recording adds more per-project state. Items 8 and 9 fit in whenever
 their sibling release is out.
@@ -408,7 +408,8 @@ fails when one disappears:
 - `pyrung.core.validation` and its `config`, `registry`, `report`, `stuck_bits` and `ordered_rules`
 - `pyrung.dap.live`, `pyrung.dap.grammar`, `pyrung.dap.protocol`, `pyrung.dap.adapter` (some only in tests)
 
-`dap_service.py` matches on a pyrung error string. That match goes with the one door (item 10).
+`dap_service.py` matches on a pyrung error string. That match goes with the console commands for every change
+(item 10).
 
 ## 9. The undecoded marker (waits on laddercodec, pyrung)
 
@@ -423,15 +424,16 @@ subroutine). `encode()` refuses the marker. On ClickNick's side:
 - Review Changes can never paste the marker back, because `encode()` refuses it. Check the whole-program copy
   path that keeps CLICK's rungs, and the legacy-encoding paths.
 
-## 10. Recording, ClickNick side (waits on pyrung's recording core and one door)
+## 10. Recording, ClickNick side (waits on pyrung's recording core and console commands for every change)
 
 Plan 1, step 4. pyrung, ClickNick and the VS Code extension release together.
 
-- **One door:** the panels send console text for every action that changes state (switches, analog values,
-  forces, mode, step, speed, links). Reads stay structured requests. Delete ClickNick's structured requests for
-  those actions, its `echo` of panel actions, and the Console pane's `;` split (`ConsolePanel._submit_command_text`,
-  and the `autoreload` and `reload` refusals that rely on it). The program write stays `pyrungReload` with its
-  carry plan, and launch and terminate stay structured (`scratchpad/visual-simulator-design.md`).
+- **Console commands for every change:** the panels send console text for every action that changes state
+  (switches, analog values, forces, mode, step, speed, links). Reads stay structured requests. Delete ClickNick's
+  structured requests for those actions, its `echo` of panel actions, and the Console pane's `;` split
+  (`ConsolePanel._submit_command_text`, and the `autoreload` and `reload` refusals that rely on it). The program
+  write stays `pyrungReload` with its carry plan, and launch and terminate stay structured
+  (`scratchpad/visual-simulator-design.md`).
 - **Recordings on every CLICK save:** run them after the build publishes, off the Tk thread (on the build
   worker), and only in a permanent workspace.
 - **Right-click "Assert this".**
