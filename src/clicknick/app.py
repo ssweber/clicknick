@@ -964,7 +964,9 @@ class ClickNickApp:
             compound=tk.LEFT,
             command=self._analyze_program,
         ).pack(fill=tk.X, pady=(0, 8))
-        # The one door to simulation; the command console is a pane inside it.
+        # Simulate opens the Simulator window and starts the simulation, as Tools > Simulate...
+        # does. The Start/Stop button in this group's header starts the simulation without the
+        # window. The Console is a pane inside the Simulator window.
         ttk.Button(
             test,
             text="Simulate",
