@@ -24,7 +24,7 @@ def build_rename_pattern(
         pattern = rf"^({re.escape(prefix)})({re.escape(current_text)})(\d+)(_|$)"
         replacement_template = r"\g<1>{new_text}\g<3>\g<4>"
     else:
-        # Non-array pattern: ^(prefix)(current)(_(?!$)|$), or ^(prefix)(current)($) when exact
+        # Non-array pattern is ^(prefix)(current)(_(?!$)|$), or ^(prefix)(current)($) when exact.
         tail = "($)" if exact else "(_(?!$)|$)"
         pattern = rf"^({re.escape(prefix)})({re.escape(current_text)}){tail}"
         replacement_template = r"\g<1>{new_text}\g<3>"
@@ -33,15 +33,15 @@ def build_rename_pattern(
 
 
 def nickname_under(nickname: str, base: str) -> bool:
-    """True when *nickname* is *base* or continues it after an underscore.
+    """Return True when *nickname* is *base* or continues it after an underscore.
 
-    The nicknames a non-array Rename changes, and the rows the Outline shows for an
-    item that is a nickname itself and has others under it: ``Tank_Pump1`` and
-    ``Tank_Pump1_Run``, not ``Tank_Pump10``.
+    A non-array Rename changes these nicknames. The Outline also shows these rows for an item
+    that is a nickname itself and has others under it. For the base ``Tank_Pump1``, they are
+    ``Tank_Pump1`` and ``Tank_Pump1_Run``, but not ``Tank_Pump10``.
     """
     return nickname == base or (nickname.startswith(base + "_") and len(nickname) > len(base) + 1)
 
 
 def rename_replacement(template: str, new_text: str) -> str:
-    """Fill the template's new text so it is read literally by `re.sub`."""
+    """Fill the template's new text in, escaped so `re.sub` reads it literally."""
     return template.format(new_text=new_text.replace("\\", "\\\\"))

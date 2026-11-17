@@ -44,7 +44,7 @@ COLUMN_FIELDS = {
 
 
 def _initial_value(raw: str, data_type: int) -> str:
-    """A TXT initial value is kept as written (a space is a value); others are trimmed."""
+    """Return *raw* unchanged for a TXT initial value (a space is a value), trimmed otherwise."""
     return raw if data_type == DataType.TXT else raw.strip()
 
 
@@ -106,7 +106,10 @@ def read_mdb_csv(csv_path: str) -> dict[int, AddressRow]:
 
 
 def _row(record: AddressRecord) -> AddressRow:
-    """*record*, read by pyclickplc, as the Address Editor's row (a CSV has no Used)."""
+    """Convert a *record* that pyclickplc read into the Address Editor's row.
+
+    A CSV has no Used column.
+    """
     return AddressRow(
         memory_type=record.memory_type,
         address=record.address,
@@ -120,7 +123,7 @@ def _row(record: AddressRecord) -> AddressRow:
 
 
 def _record(row: AddressRow) -> AddressRecord:
-    """*row*'s content as the record pyclickplc writes."""
+    """Convert the content of *row* into the record that pyclickplc writes."""
     return AddressRecord(
         memory_type=row.memory_type,
         address=row.address,
@@ -143,12 +146,12 @@ def _is_read_only(path: Path) -> bool:
 def _write_file(path: Path, data: str) -> None:
     """Write *data* to *path*, keeping an existing file's identity and attributes.
 
-    The text is encoded before the file is opened, so an encoding error leaves
-    it as it was. An existing file is overwritten in place and truncated to the
-    new length rather than recreated, so a Hidden file still saves and stays
-    Hidden. A program that only reads the file (Explorer's preview pane,
-    antivirus, OneDrive) does not stop the write; one that locks it, such as
-    Excel, does.
+    This function encodes the text before it opens the file, so an encoding error leaves the
+    file as it was. It overwrites an existing file in place and truncates it to the new
+    length instead of recreating it. A Hidden file therefore still saves and stays Hidden.
+    A program that only reads the file does not stop the write. Examples are Explorer's
+    preview pane, antivirus and OneDrive. A program that locks the file, such as Excel,
+    does stop it.
     """
     encoded = data.encode("utf-8")
     try:
@@ -234,7 +237,7 @@ class CsvDataSource(DataSource):
         self._csv_path = csv_path
         self._required = tuple(required)
         self._fields: frozenset[str] = frozenset()
-        # Why the file could not be read the last time it was loaded
+        # The reason the file could not be read the last time it was loaded
         self._unreadable: str | None = None
 
     @property
@@ -253,9 +256,9 @@ class CsvDataSource(DataSource):
 
     @property
     def fields(self) -> frozenset[str]:
-        """The AddressRow fields the file has a column for, as of the last load.
+        """Return the AddressRow fields that the file has a column for, as of the last load.
 
-        A field the file has no column for holds its default in every row read.
+        Every row read has the default for a field that the file has no column for.
         """
         return self._fields
 
@@ -263,9 +266,9 @@ class CsvDataSource(DataSource):
         """Load all addresses from the CSV file.
 
         Raises:
-            ValueError: The file is not a nickname CSV ``read_csv`` reads (the
-                message names the file and, for a row, its line); Save refuses
-                to overwrite it until a load succeeds again.
+            ValueError: The file is not a nickname CSV that ``read_csv`` can read. The
+                message names the file and, for a row, its line. Save refuses to
+                overwrite the file until a load succeeds again.
             OSError: The file cannot be opened.
 
         Returns:
