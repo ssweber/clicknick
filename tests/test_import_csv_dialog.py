@@ -20,7 +20,7 @@ from clicknick.widgets.import_csv_dialog import (  # noqa: E402
 
 @pytest.fixture(scope="module")
 def tk_root():
-    """One root for the whole module (per-test roots fail intermittently)."""
+    """Share one Tk root across the whole module, because a root per test fails intermittently."""
     for attempt in range(3):
         try:
             root = tk.Tk()

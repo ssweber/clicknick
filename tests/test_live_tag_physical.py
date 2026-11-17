@@ -1,4 +1,4 @@
-"""``tag set-physical`` takes one option per pyrung response key."""
+"""``tag set-physical`` accepts one option for each pyrung response key."""
 
 from __future__ import annotations
 

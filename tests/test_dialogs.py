@@ -57,7 +57,7 @@ def _copy_then_reset_after_close(root) -> None:
     about.window.destroy()
 
     (reset,) = scheduled
-    reset()  # raised TclError on the destroyed button
+    reset()  # This call used to raise TclError on the destroyed button.
 
 
 def test_copied_label_reset_after_the_about_dialog_closed(monkeypatch) -> None:
@@ -67,6 +67,6 @@ def test_copied_label_reset_after_the_about_dialog_closed(monkeypatch) -> None:
     try:
         _with_root(tk, _copy_then_reset_after_close)
     finally:
-        # Free the root and the dialog's Tk objects on this thread: freed later on
-        # another test's worker thread, they make Tcl abort the process.
+        # Free the root and the dialog's Tk objects on this thread. If they are freed later on
+        # another test's worker thread, Tcl aborts the process.
         gc.collect()

@@ -38,7 +38,7 @@ from clicknick.workspace_controller import WorkspaceController
 
 
 def _app(session) -> ClickNickApp:
-    """An app connected through *session* (or none), its Workspace setup form mocked."""
+    """Return an app connected through *session* (or to nothing), with Workspace setup mocked."""
     app = ClickNickApp.__new__(ClickNickApp)
     app._request_ui_refresh = MagicMock()
     app.root = MagicMock()
@@ -96,8 +96,8 @@ def test_sidecar_filename_must_match_stored_plc_name(tmp_path: Path) -> None:
         load_project_workspace_config(sidecar)
 
 
-# Project.ini as CLICK writes it: CLICK 3 keeps the PLC name in [PLCName], CLICK 4 in
-# [Sec20] Key1; both write the line, empty when the PLC has no name.
+# Project.ini as CLICK writes it. CLICK 3 stores the PLC name in [PLCName]. CLICK 4 stores it in
+# [Sec20] Key1. Both write the line, and leave it empty when the PLC has no name.
 _PROJECT_INI_NAMES = [
     pytest.param(b"[PLCName]\r\nPLCName=Line 1\r\n[Next]\r\nValue=1\r\n", "Line 1", id="click3"),
     pytest.param(
@@ -106,7 +106,7 @@ _PROJECT_INI_NAMES = [
         id="click4",
     ),
     pytest.param(b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=\r\n", None, id="click4-unnamed"),
-    # CLICK 4 shows the [Sec20] name over a [PLCName] another tool added
+    # CLICK 4 shows the [Sec20] name, not a [PLCName] that another tool added.
     pytest.param(
         b"[PLCName]\r\nPLCName=Old\r\n[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=New\r\n",
         "New",
@@ -281,8 +281,8 @@ def _choose_existing_workspace(
 ) -> MagicMock:
     """Pick *mirror* in Workspace setup while *source* is the active workspace.
 
-    *analysis* is the connection's analysis, if it matters; *ensure_plc_name*
-    stands in for asking the PLC name. Returns the mocked messagebox.showerror.
+    *analysis* is the connection's analysis, if the test needs it. *ensure_plc_name*
+    stands in for asking the PLC name. Return the mocked messagebox.showerror.
     """
     monkeypatch.setattr("clicknick.services.workspace_mirror.remember_project_sidecar", MagicMock())
     monkeypatch.setattr(
@@ -322,7 +322,7 @@ def test_choosing_an_existing_workspace_keeps_its_edited_source(
 
     showerror.assert_not_called()
     assert (durable / "src" / "plc" / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
-    # The build that follows regenerates src/plc; the edits stay in the backup.
+    # The build that follows regenerates src/plc. The edits stay in the backup.
     _publish_generated_project(_generated(tmp_path / "g2", "generated B\n"), durable)
     backup = durable / "backup" / "src" / "plc"
     assert (backup / "main.py").read_text(encoding="utf-8") == "unpasted edits\n"
@@ -371,7 +371,7 @@ def test_setup_refuses_an_earlier_saves_workspace_after_a_failed_build(
 
 
 def test_setup_refused_after_a_failed_build_asks_no_plc_name(monkeypatch, tmp_path: Path) -> None:
-    """The PLC name is written into CLICK's folder, so it is not asked for a refused setup."""
+    """Setup that is refused does not ask for the PLC name, which is written into CLICK's folder."""
     temporary = tmp_path / "pyrung_project"
     _publish_generated_project(_generated(tmp_path / "g1", "earlier save\n"), temporary)
     ensure_plc_name = MagicMock(return_value="Line1")
@@ -438,7 +438,7 @@ def test_choosing_an_edited_workspace_while_the_active_one_is_edited_changes_not
 def test_sync_records_a_mirror_that_took_an_unedited_source_as_that_generation(
     tmp_path: Path,
 ) -> None:
-    """Read and recorded while the sync holds the workspaces, not around it."""
+    """Read and record the generation while the sync holds the workspaces, not around it."""
     source = _write_workspace(tmp_path / "active", main="generated\n")
     record_generated_plc_source(source)
     sync_workspace_to_mirror(source, tmp_path / "Clean Workspace")
@@ -486,13 +486,13 @@ def test_sync_removes_the_mirrors_legacy_record_once_the_workspace_has_none(
     assert (mirror / record).is_file()
     (mirror / "csv" / "user.txt").write_text("keep\n", encoding="utf-8")
 
-    # CLICK saved a clean copy
+    # CLICK saved a clean copy.
     (source / record).unlink()
     sync_workspace_to_mirror(source, mirror)
 
     assert not (mirror / record).exists()
     assert (mirror / "csv" / "main.csv").is_file()
-    assert (mirror / "csv" / "user.txt").is_file()  # Nothing else is removed
+    assert (mirror / "csv" / "user.txt").is_file()  # Nothing else is removed.
 
 
 def test_sync_rejects_overlapping_workspace_paths(tmp_path: Path) -> None:
@@ -532,7 +532,7 @@ def test_directory_info_reports_configuration_and_generation_times(tmp_path: Pat
 
 
 def _machine_session(monkeypatch) -> ConnectionSession:
-    """A session on a project whose PLC is named Machine."""
+    """Return a session on a project whose PLC is named Machine."""
     session = ConnectionSession(ClickConnection("1", 2, "Machine-20260829.ckp"))
     monkeypatch.setattr(session, "plc_name", lambda: "Machine")
     return session
@@ -700,7 +700,7 @@ def test_a_folder_chosen_after_the_click_window_showed_another_project_is_droppe
     app._workspace._ensure_plc_name = MagicMock(return_value="LaserBall")
 
     def choose_after_project_change(**_options):
-        first.close()  # CLICK opened another project while the dialog was up
+        first.close()  # CLICK opened another project while the dialog was up.
         app._session = other
         return str(home)
 
@@ -723,7 +723,7 @@ def test_a_plc_name_entered_after_the_click_window_closed_is_not_written(monkeyp
     app._workspace.plc_name = MagicMock(return_value=None)
 
     def answer_after_close(*_args, **_options):
-        session.close()  # CLICK's window closed while the prompt was up
+        session.close()  # CLICK's window closed while the prompt was up.
         app._session = None
         return "Line 1"
 

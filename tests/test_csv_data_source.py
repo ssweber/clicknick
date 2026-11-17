@@ -15,7 +15,7 @@ from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
 
 CLICK_EXPORT = Path(__file__).parent / "NicknameExport.csv"
-# CLICK's export of Text initial values that are a letter, comma, quote, space and none
+# CLICK's export of Text initial values: a letter, a comma, a quote, a space and none.
 CLICK_TXT_EXPORT = Path(__file__).parent / "NicknameExportTxtSpecials.csv"
 HEADER = "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment"
 
@@ -44,7 +44,7 @@ class TestClickExport:
         assert rows[get_addr_key("YD", 1)].nickname == "Second Slot YD"
 
     def test_saving_what_was_read_writes_clicks_file_back(self, tmp_path):
-        """Same rows, same order, same quoting, and CLICK's CRLF line ends."""
+        """Write the same rows, order and quoting as CLICK's export, with CRLF line ends."""
         rows = CsvDataSource(str(CLICK_EXPORT)).load_all_addresses()
         out = tmp_path / "out.csv"
 
@@ -54,7 +54,7 @@ class TestClickExport:
         assert out.read_bytes() == expected
 
     def test_clicks_bare_comma_and_quote_text_values_load(self):
-        """CLICK exports a Text initial value bare, even a comma or a double quote."""
+        """CLICK exports a Text initial value without quotes, even a comma or a double quote."""
         rows = CsvDataSource(str(CLICK_TXT_EXPORT)).load_all_addresses()
 
         txt = [rows[get_addr_key("TXT", number)] for number in range(1, 6)]
@@ -68,7 +68,7 @@ class TestClickExport:
         assert len(rows) == len(CLICK_TXT_EXPORT.read_bytes().splitlines()) - 1
 
     def test_saving_clicks_text_values_writes_them_as_click_imports_them(self, tmp_path):
-        """Only the comma, quote and space change: CLICK imports them only quoted."""
+        """Write only the comma, quote and space differently: CLICK imports them only in quotes."""
         rows = CsvDataSource(str(CLICK_TXT_EXPORT)).load_all_addresses()
         out = tmp_path / "out.csv"
 
@@ -86,7 +86,7 @@ class TestClickExport:
 
 class TestEncodingAndColumns:
     def test_a_file_saved_with_a_bom_loads(self, tmp_path):
-        """Excel's "CSV UTF-8" puts a BOM before the header."""
+        """Read a file that Excel saved as "CSV UTF-8", which has a BOM before the header."""
         path = _write(
             tmp_path / "bom.csv",
             f'{HEADER}\nX001,BIT,"Start",0,No,""\nDS1,INT,"Speed",100,Yes,"rpm"\n',
@@ -103,7 +103,7 @@ class TestEncodingAndColumns:
         [
             "Data Type,Nickname,Initial Value,Retentive,Address Comment\nBIT,Start,0,No,\n",
             "Address,Data Type,Initial Value\nX001,BIT,0\n",
-            # Excel in a locale that lists with semicolons
+            # This is how Excel writes the file in a locale that separates values with semicolons.
             "Address;Data Type;Nickname;Initial Value;Retentive;Address Comment\n"
             "X001;BIT;Start;0;No;\n",
             "",
@@ -127,7 +127,10 @@ class TestEncodingAndColumns:
         assert full.fields == {"nickname", "data_type", "initial_value", "retentive", "comment"}
 
     def test_clicks_address_csv_is_not_a_nickname_csv(self, tmp_path):
-        """Its Address column holds numbers; read as a nickname CSV it would load empty."""
+        """Reject the Address CSV from CLICK.
+
+        Its Address column holds numbers, so a nickname CSV reader would load it empty.
+        """
         path = _write(
             tmp_path / "Address.csv",
             "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment\n"
@@ -158,7 +161,7 @@ class TestEncodingAndColumns:
         ids=["wrong type", "TXT", "extra cell"],
     )
     def test_a_row_pyrung_would_refuse_fails_the_load(self, tmp_path, row, error):
-        """pyrung reads nicknames.csv with the same reader, so both refuse the same files."""
+        """pyrung reads nicknames.csv with the same reader, so both reject the same files."""
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n{row}\n')
 
         with pytest.raises(ValueError, match=rf"^names\.csv {error}"):
@@ -221,7 +224,7 @@ class TestCsvModeStore:
         assert path.read_bytes() == before
         assert store.is_dirty(get_addr_key("X", 2))
 
-        # Once the file reads again, Save goes ahead
+        # Once the file reads again, Save goes ahead.
         _write(path, f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
         assert store._on_database_update() is True
         store.save_all_changes()
@@ -242,7 +245,7 @@ class TestCsvModeStore:
         assert '"Halt"' in path.read_text(encoding="utf-8")
 
     def test_a_save_that_cannot_write_the_file_fails_and_keeps_the_edits(self, tmp_path):
-        """As when Excel holds the file open: Save must not report success."""
+        """Save must not report success when Excel holds the file open."""
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
         store = AddressStore(CsvDataSource(str(path)))
         store.load_initial_data()
@@ -250,7 +253,7 @@ class TestCsvModeStore:
         with store.edit_session("Rename") as session:
             session.set_field(key, "nickname", "Stop")
         path.unlink()
-        path.mkdir()  # Opening it to write now fails
+        path.mkdir()  # Opening the path to write now fails.
 
         with pytest.raises(OSError):
             store.save_all_changes()
@@ -262,7 +265,7 @@ class TestCsvModeStore:
     def test_an_encoding_failure_leaves_the_file_as_it_was(self, tmp_path):
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
         before = path.read_bytes()
-        # A lone surrogate cannot be encoded
+        # A lone surrogate cannot be encoded.
         rows = [AddressRow("C", 1, nickname="Motor"), AddressRow("C", 2, comment="\ud800")]
 
         with pytest.raises(UnicodeEncodeError):
@@ -278,7 +281,7 @@ class TestCsvModeStore:
         assert path.read_bytes() == f'{HEADER}\r\nC1,BIT,"M",0,No,""\r\n'.encode()
 
     def test_a_file_another_program_is_reading_is_saved(self, tmp_path):
-        """Explorer's preview pane or antivirus holding it open must not fail Save."""
+        """Save must not fail when the Explorer preview pane or an antivirus holds the file open."""
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
 
         with open(path, "rb"):
@@ -346,7 +349,10 @@ class TestFieldValues:
     def test_a_txt_initial_value_is_quoted_when_clicks_import_would_change_it(
         self, tmp_path, value, written
     ):
-        """CLICK imports a bare space as empty, and a bare comma or quote splits the row."""
+        """CLICK imports a space without quotes as empty.
+
+        It splits the row at a comma or a quote that has no quotes around it.
+        """
         path = tmp_path / "txt.csv"
         CsvDataSource(str(path)).save_changes(
             [AddressRow("TXT", 5, nickname="Sep", data_type=6, initial_value=value)]
@@ -358,10 +364,10 @@ class TestFieldValues:
 
     @pytest.mark.parametrize("value", ["\t", " a", "a "])
     def test_a_txt_value_with_a_tab_or_edge_space_is_written_bare(self, tmp_path, value):
-        """pyclickplc's writer quotes only a lone space; ClickNick quoted these before it.
+        """pyclickplc's writer quotes only a lone space. ClickNick quoted these before it did.
 
-        Pinned so a change in pyclickplc shows here. Whether CLICK imports a bare
-        tab is an open user check; the other two are not one Text character.
+        This test pins the behavior, so a change in pyclickplc shows up here. Whether CLICK imports
+        a tab without quotes is an open user check. The other two are not a single Text character.
         """
         path = tmp_path / "txt.csv"
         CsvDataSource(str(path)).save_changes(
@@ -387,7 +393,10 @@ class TestFieldValues:
         assert loaded[get_addr_key("TXT", 6)].comment == "No"
 
     def test_nickname_and_comment_are_read_as_written(self, tmp_path):
-        """CLICK's database keeps them verbatim; so does the CSV."""
+        """Read the nickname and comment exactly as written.
+
+        CLICK's database keeps them verbatim, and so does the CSV.
+        """
         path = tmp_path / "space.csv"
         comment = "  lead and trail  \r\nsecond line"
         CsvDataSource(str(path)).save_changes(

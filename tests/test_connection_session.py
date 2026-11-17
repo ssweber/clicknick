@@ -18,7 +18,7 @@ class _Root:
 
 
 def _saved_project(tmp_path, monkeypatch) -> None:
-    """CLICK's folder holds a database and a saved program."""
+    """Make a CLICK folder that holds a database and a saved program."""
     db_path = tmp_path / "SC_.mdb"
     db_path.write_text("db", encoding="utf-8")
     (tmp_path / "Scr1.tmp").write_text("ladder", encoding="utf-8")
@@ -41,7 +41,7 @@ def test_a_session_without_its_database_builds_nothing(tmp_path, monkeypatch) ->
     assert session.analysis is None
     assert session.scr_watcher is None
     callback.assert_called_once_with(False, NO_DATABASE)
-    # Review Changes has nothing to compare with, as with nothing connected
+    # Review Changes has nothing to compare with, the same as when nothing is connected.
     assert session.saved_program() == SavedProgram()
 
 
@@ -60,7 +60,7 @@ def test_a_session_builds_once_its_database_is_read(tmp_path, monkeypatch) -> No
 
 
 class _Scheduler:
-    """Records after() callbacks so a test can run them."""
+    """Record after() callbacks so a test can run them."""
 
     def __init__(self) -> None:
         self.scheduled: dict[str, object] = {}
@@ -86,7 +86,7 @@ def test_the_watch_runs_until_the_session_closes() -> None:
     tick = MagicMock()
 
     session.watch(scheduler, tick)
-    session.watch(scheduler, tick)  # One watch per session
+    session.watch(scheduler, tick)  # Each session has one watch.
     assert tick.call_count == 1
     scheduler.run_pending()
     assert tick.call_count == 2 and len(scheduler.scheduled) == 1

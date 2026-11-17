@@ -70,21 +70,21 @@ class _Dialog:
 @pytest.mark.parametrize(
     ("rows", "text", "occurrence", "expected"),
     [
-        # a segment that is a string prefix of its own path
+        # A segment that is a string prefix of its own path.
         (
             [("DS", 1, "Tank_T_A"), ("DS", 3, "Tank_T_B"), ("DS", 2, "T_Ambient")],
             "Tank_T",
             0,
             ("Tank_", "T", "NEW", False, False),
         ),
-        # the inner of two equal names
+        # The inner of two equal names.
         (
             [("DS", 1, "Pump_Pump_X"), ("DS", 3, "Pump_Pump_Y"), ("DS", 2, "Pump_Status")],
             "Pump",
             1,
             ("Pump_", "Pump", "NEW", False, False),
         ),
-        # an array keeps its digits out of the renamed text
+        # For an array, the digits stay out of the renamed text.
         (
             [("DS", 1, "Pump01_Run"), ("DS", 2, "Pump02_Run")],
             "Pump[01-02]",
@@ -108,7 +108,7 @@ def test_rename_passes_the_segment_and_what_precedes_it(
 
 
 def test_td_row_follows_its_timer_in_the_outline(panel):
-    """A TD row shows its initial value only when its T row is not Retentive, as the editor does."""
+    """Show a TD row's initial value only when its T row is not Retentive, as the editor does."""
     timer = AddressRow(memory_type="T", address=1, nickname="Tmr", retentive=True)
     value = AddressRow(
         memory_type="TD",
