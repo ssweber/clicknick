@@ -1,4 +1,4 @@
-"""``rung apply``: what it reports and what it hands to Review Changes."""
+"""Tests of what ``rung apply`` reports and what it passes to Review Changes."""
 
 from __future__ import annotations
 
@@ -93,7 +93,7 @@ def test_reports_every_program_that_differs_and_opens_review_changes(
     propose(
         {
             "main.csv": ["Y001", "Y005", "Y002"],
-            "subroutines/Rinse Cycle.csv": ["Y006"],  # new; Fill is gone from the proposal
+            "subroutines/Rinse Cycle.csv": ["Y006"],  # New. The proposal has no Fill.
         }
     )
 
@@ -253,7 +253,10 @@ def test_summary_names_rungs_in_an_old_encoding_and_rungs_that_cannot_be_read() 
 
 
 def test_a_program_click_holds_unreadable_is_never_no_change(project, tmp_path: Path) -> None:
-    """The proposal matches CLICK's text, but you still have to paste CLICK's rung 2."""
+    """Report main as changed although its text matches, because CLICK's R2 is unreadable.
+
+    The user must paste the whole program again.
+    """
     from clicknick.ladder.program import LegacyEncoding, write_legacy_encodings
 
     ctx, propose, _staged = project

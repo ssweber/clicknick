@@ -1,4 +1,8 @@
-"""PlcSourceWatch: whether a project's src/plc still holds what a simulation launched with."""
+"""Tests of PlcSourceWatch.
+
+The watch tells whether a project's src/plc still holds the source that a simulation
+launched with.
+"""
 
 from __future__ import annotations
 
@@ -19,10 +23,11 @@ _saves = iter(range(1, 1_000_000))
 
 
 def _later(path) -> None:
-    """Move *path*'s modification time on, as a save a moment later would.
+    """Move *path*'s modification time later, as a save made a moment later would.
 
-    Each call lands later than the one before: two writes can share one clock
-    tick on Windows, and two saves stamped alike would read as one.
+    Each call moves the time further than the call before. On Windows two writes can get
+    the same time. The watch hashes the files again only when a size or time changes, so it
+    would miss the second write.
     """
     info = path.stat()
     os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns + next(_saves) * 2_000_000_000))

@@ -68,9 +68,10 @@ class FakeScheduler:
 
 
 def _dap_fields(values):
-    """Return a response as pyrungListLinks sends it.
+    """Return a link's response fields as pyrungListLinks sends them.
 
-    Every key has its request field, and unset ones are empty.
+    The dict holds the DAP field of every physical key. A field that *values* does not set is
+    False for a flag and None otherwise.
     """
     return {
         key.dap_field: values.get(name, False if key.is_flag else None)
@@ -134,7 +135,10 @@ class FakeDap:
         self.calls.append(("terminate",))
 
     def planned_reload(self, plan):
-        """Handle pyrungReload. Each entry goes where *plan* says. Others keep their names."""
+        """Handle pyrungReload. Move each entry that *plan* names to where the plan says.
+
+        Every other entry keeps its name.
+        """
         self.calls.append(("reload",))
         self.plans.append(plan)
         if self.reload_error is not None:
@@ -217,7 +221,7 @@ class FakeDap:
     def patch(self, patches):
         self.calls.append(("patch", dict(patches)))
 
-    # Bench links: a small model of pyrung's overlay, keyed by address.
+    # Bench links: a small model of pyrung's overlay, keyed by tag name.
     def link(self, feedback, enable, *, trigger=None, response=()):
         self.calls.append(("link", feedback, enable, {"trigger": trigger, "response": response}))
         if feedback in self.refuse_links:
@@ -303,7 +307,10 @@ class FakeModbus:
 
 
 def _publish(svc: AnalysisService, result: AnalysisResult) -> None:
-    """Publish a build that converted. The graph and the workspace share one snapshot of names."""
+    """Put *svc* in the state that a successful build leaves, with *result* as its result.
+
+    The graph and the workspace use the same tag maps.
+    """
     svc._result = result
     svc._project_tags = result.tag_to_addr_key
     svc._project_keys = result.addr_key_to_tag
@@ -561,11 +568,11 @@ def test_launch_starts_the_simulator_in_stop_with_a_modbus_server(ready):
 
 
 def test_launch_failure_during_rebuild_waits(ready):
-    """A rebuild that starts *and finishes* mid-launch must not surface as an error.
+    """A launch that fails because a rebuild started *and finished* during it is not reported.
 
-    This is the "No module named 'subroutines'" case. The launch read a half-written
-    project. The rebuild has completed by the time the failure arrives, so the status
-    alone looks healthy.
+    The session waits to launch again. This is the "No module named 'subroutines'" case. The
+    launch read a half-written project. The rebuild has completed by the time the failure
+    arrives, so the status alone looks healthy.
     """
     ready.analysis._generation = 5
 
@@ -1259,11 +1266,11 @@ def _rebuild(
     same_program: bool = False,
     compared: bool = True,
 ) -> None:
-    """Rebuild the analysis as a CLICK save does, with a new tag map (*renames* by address).
+    """Rebuild the analysis as a CLICK save does. *renames* maps addresses to new tag names.
 
     If *saved* is false, the rebuild is not a save. It stands for a Reload from CLICK or a
-    Sync. The build writes ``src/plc`` again. Unless *same_program* is set, it now holds
-    another rung. Unless *compared* is false, the session then compares it with the program
+    Sync. The build writes ``src/plc`` again and adds a rung to it, unless *same_program* is
+    set. Unless *compared* is false, the session then compares that source with the program
     it runs, as its watch tick or a frame does.
     """
     if saved:
@@ -1436,7 +1443,8 @@ def test_run_time_edit_reloads_in_place_and_keeps_running(ready):
     ready.scheduler.run_ready()
 
     assert len(ready.daps) == 1 and ("terminate",) not in ready.dap.calls, "no relaunch"
-    # The write is one planned reload, and pyrung pauses first. The force and link keep names.
+    # The write is one planned reload, and pyrung pauses before it reloads. The plan keeps the
+    # force and the link under the names they have.
     assert _calls_since(ready.dap, mark) == [
         ("reload",),
         ("patch", {"X001": True}),
@@ -1567,9 +1575,9 @@ def test_a_console_reload_writes_for_the_mode_it_is_in(ready):
 
 
 def test_frames_name_tags_as_the_written_program_does_from_its_answer_on(ready, tmp_path):
-    """X001 Start is renamed StartPB and X005 is named Start.
+    """X001, named Start, is renamed StartPB, and X005 is given the name Start.
 
-    Frames read `Start` as X001 until the rename is written.
+    Frames read `Start` as X001 until the rename is written, and as X005 after it.
     """
     _name(ready, "X001", "Start")
     ready.sim.set_state_location("Line1", None)
@@ -1598,7 +1606,10 @@ def test_frames_name_tags_as_the_written_program_does_from_its_answer_on(ready, 
 
 
 class _GoneAfterTerminate(FakeDap):
-    """Behaves like DapService. Once terminated, every request fails."""
+    """A FakeDap that fails as DapService does once it is terminated.
+
+    After terminate(), its force, link, unlink, set_links and list_links requests raise.
+    """
 
     gone = False
 
@@ -1632,7 +1643,11 @@ class _GoneAfterTerminate(FakeDap):
 
 
 def _queued(harness: Harness) -> list:
-    """Hold the ordered action worker's jobs until the test runs them."""
+    """Hold the jobs of the ordered action worker until the test runs them.
+
+    Return the list that holds the jobs. Each DAP that the session creates after this call is
+    a _GoneAfterTerminate.
+    """
     jobs: list = []
     harness.sim._run_serial = jobs.append
     original = harness.sim._dap_factory
@@ -1820,7 +1835,7 @@ def test_a_save_during_the_write_keeps_the_old_names_and_offers_it_again(ready):
 def test_a_build_of_the_program_running_is_not_offered(ready):
     """A build that leaves the program as it was is not offered.
 
-    A Sync, a Reload from CLICK or a save counted twice does this.
+    A Sync, a Reload from CLICK or a save counted twice can make such a build.
     """
     from clicknick.simulation_session import WATCH_MS
 
@@ -1837,7 +1852,7 @@ def test_a_build_of_the_program_running_is_not_offered(ready):
     ready.scheduler.fire(WATCH_MS)
     assert ready.sim.program_change is None, "the simulation runs this program already"
     _rebuild(ready, saved=False, same_program=True)
-    ready.dap.frame(mode="run", running=True)  # a frame decides before the views read it
+    ready.dap.frame(mode="run", running=True)  # a frame compares before the views read it
     ready.scheduler.run_ready()
     assert ready.sim.program_change is None
     assert "desired" not in [e.kind for e in ready.events], "nothing was offered"
@@ -1871,7 +1886,10 @@ def test_a_build_is_not_offered_before_it_is_compared(ready):
 
 
 def test_an_offer_goes_when_a_later_build_holds_the_program_running(ready):
-    """CLICK saves another rung, then the program as it was, as after an undo and a save."""
+    """The offer is withdrawn when CLICK saves another rung and then the program as it was.
+
+    The second save is what an undo and a save in CLICK produce.
+    """
     from clicknick.simulation_session import WATCH_MS
 
     _write_source(ready)
@@ -1930,9 +1948,10 @@ def test_a_build_is_offered_when_the_program_running_could_not_be_read(ready, mo
 
 
 def test_a_build_after_a_write_that_raced_a_build_is_offered(ready):
-    """A write races a build, so nobody knows which program pyrung read.
+    """After a build that finished during a write, a build of the earlier program is offered.
 
-    The session offers a build of the program as it was before the write.
+    A CLICK save arrives while the write is under way, so the session cannot tell which
+    program pyrung read. A later build of the program as it was before the write is offered.
     """
     from clicknick.simulation_session import WATCH_MS
 
@@ -2114,7 +2133,11 @@ def test_restart_starts_over_with_the_users_settings(ready, tmp_path):
 
 
 def test_console_releases_while_click_saves_are_kept(ready):
-    """Console `unforce Y001` and `restore X002` typed while CLICK's save builds are kept."""
+    """An `unforce Y001` and a `restore X002` typed in the Console stay in effect.
+
+    The user types them while a CLICK save builds. Neither the write nor a restart forces or
+    links again.
+    """
     from clicknick.simulation_session import WATCH_MS
 
     ready.open()
@@ -2204,10 +2227,10 @@ _saves = iter(range(1, 1_000_000))
 
 
 def _edit(path: Path, text: str) -> None:
-    """Write *text* as an editor save would, each later than the one before.
+    """Write *text* as an editor save would, and move the file's modification time forward.
 
-    Two writes can share one clock tick on Windows. Two saves with the same timestamp
-    would read as one.
+    Each call moves it further forward than the call before. Two writes can share one clock
+    tick on Windows, and two saves with the same timestamp would read as one.
     """
     import os
 
@@ -2259,7 +2282,7 @@ def test_a_click_save_that_rewrites_the_source_is_offered_as_a_save(ready):
     ready.saves += 1
     ready.analysis._generation += 1
     ready.analysis._status = AnalysisStatus.BUILDING
-    _edit(main, "rung = 3\n")  # the build publishes the new source
+    _edit(main, "rung = 3\n")  # the build writes the new source
     ready.scheduler.fire(WATCH_MS)
     assert ready.sim.program_change is None, "still building"
 
@@ -2410,7 +2433,7 @@ def test_switches_on_unassigned_inputs_wait_for_the_analysis(ready, tmp_path):
         SimulatorState(switches={"X001": True, "X201": True}, modules=("cpu:C0-02DD1-D",)),
     )
     result = ready.analysis._result
-    ready.analysis._result = None  # the app just connected; the first build runs
+    ready.analysis._result = None  # the app has just connected, and its first build runs
     ready.analysis._status = AnalysisStatus.BUILDING
     ready.sim.set_state_location("Line1", None)
     ready.open()
@@ -2553,7 +2576,7 @@ def on_pyrung(tmp_path):
     harness.sim._dap_factory = factory
     harness.open()
     dap = harness.dap
-    dap.frame()  # the baseline frames are compared with
+    dap.frame()  # the baseline that later frames are compared with
     harness.scheduler.run_ready()
     harness.sim.set_switch_position("run")
     harness.scheduler.run_ready()
@@ -2597,7 +2620,10 @@ def test_stop_and_write_clears_non_retentive_values_and_keeps_the_force(on_pyrun
 
 
 def test_a_link_that_lands_where_a_followed_name_went_is_dropped(ready):
-    """Start moves from X001 to X002, and X002 has its own cut. Start's link wins."""
+    """The name Start moves from X001 to X002, and X002 has a cut of its own.
+
+    The write keeps Start's link, on X002, and drops the cut.
+    """
     _name(ready, "X001", "Start")
     _name(ready, "Y001", "Motor")
     ready.open()
@@ -2646,7 +2672,8 @@ def test_a_write_pyrung_never_answers_sends_nothing_by_name(ready):
 def _console_command(ready, run=lambda: "done"):
     """Start a Console command.
 
-    Return a function that finishes it and a list of what its done callback got.
+    Return a function that finishes it, and a list of the values that its done callback
+    received.
     """
     started: list = []
     got: list = []
@@ -2778,7 +2805,7 @@ def test_while_the_switch_is_held_the_write_offered_is_for_the_users_position(re
     _unanswered_run_time_edit(ready)
     assert ready.sim.program_change.actions == ("run_time_edit", "stop_and_write", "restart")
     mark = len(ready.dap.calls)
-    ready.sim.write_program()  # STEP's action: not what a write does here
+    ready.sim.write_program()  # the write offered in STEP, which is not offered here
     ready.scheduler.run_ready()
     assert ready.dap.calls[mark:] == []
 
@@ -2897,7 +2924,7 @@ def test_a_plc_data_change_during_a_write_relaunches_once_if_it_already_relaunch
     daps = len(ready.daps)
     _data_file_saved_again(ready, data)
 
-    ready.sim.relaunch()  # the workspace moved: this launch reads the data file
+    ready.sim.relaunch()  # the workspace moved, and this launch reads the changed data file
     _run_jobs(ready, jobs)
     assert len(ready.daps) == daps + 1
     assert ready.dap.calls[0][2]["snapshot_path"] == data
@@ -3099,7 +3126,7 @@ def test_the_programs_own_links_go_with_the_plan_under_their_addresss_new_name(r
     _name(ready, "Y001", "Motor")
     ready.open()
     ready.dap.project = {"Prox": "Motor", "Door": "Motor", "Lamp": "Motor"}
-    ready.dap.bench["Door"] = {"enable": None, "enabled": True}  # cut: its coil does not run
+    ready.dap.bench["Door"] = {"enable": None, "enabled": True}  # a cut stops Door's own link
     _rebuild(ready, {"X002": "ProxSensor", "X003": "DoorSw"})
 
     ready.sim.write_program()
@@ -3133,9 +3160,10 @@ def _link_program(name: str, *, declared: bool, enable: str = "Cmd") -> str:
 
 
 def _timing_on_pyrung(tmp_path, *, declared: bool):
-    """Run the session in RUN on pyrung's adapter.
+    """Run the session in RUN on pyrung's adapter, and return the harness and a timer count.
 
-    X002 Prox's timed link from Cmd is part way through its 100 ms.
+    Prox, on X002, has a timed link from Cmd. The count is how far its 100 ms timer has run,
+    and it is part way through.
     """
     dap_class = _adapter_dap_class()
     project = tmp_path / "project"
@@ -3254,7 +3282,8 @@ def test_declared_links_whose_nicknames_and_comments_swap_keep_their_own_timing(
     start, begin = dap.tag("__tmd_on__Start"), dap.tag("__tmd_on__Begin")
     assert 0 < begin < start < 100, "both part way through, Start further on"
 
-    # In CLICK, X002 and X003 swap nicknames and comments: each link keeps its name.
+    # In CLICK, X002 and X003 swap nicknames and comments. Each link stays with its name, so
+    # it moves to the other address.
     (project / "csv").mkdir()
     CsvDataSource(str(project / "csv" / "nicknames.csv")).save_changes(
         [

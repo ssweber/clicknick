@@ -1,9 +1,14 @@
 """Bench links written into, and read back from, a feedback tag's comment.
 
-"Save to project" turns a simulator bench link into the comment metadata that
-pyrung reads (``[link=Motor_Run, on_delay=2s, off_delay=500ms]``). After a Sync,
-the program declares the link itself and the bench copy drops away. This module
-has no tkinter code and no store. `linked_feedbacks` reads a workspace's
+A bench link is a change to the feedback wiring of one input that the user makes in the
+Simulator window, for that session only. "Save to project" turns a simulator bench link
+into the comment metadata that pyrung reads
+(``[link=Motor_Run, on_delay=2s, off_delay=500ms]``). After a Sync and a rebuild, the
+program declares the link. pyrung then drops the bench copy if the declared link has the
+same wiring. If the wiring differs, the bench link stays while it still fits the program,
+and it overrides the program's link.
+
+This module has no tkinter code and no store. `linked_feedbacks` reads a workspace's
 nicknames.csv.
 """
 
@@ -67,9 +72,9 @@ def _link_texts(enable_name: str, link: BenchLink) -> set[str]:
 def comment_with_link(comment: str, link: BenchLink, enable_name: str) -> str:
     """Return *comment* with its link and response replaced by *link*.
 
-    The block tag, other metadata and free text stay. The physical name is dropped. The
-    response now belongs to this tag alone, so it cannot clash with a definition that is
-    shared under that name.
+    The block tag, other metadata and free text stay. The ``physical=`` key is dropped, so
+    the response belongs to this tag alone. It cannot clash with a shared definition of
+    that name.
     """
     if link.cut:
         raise ValueError("a cut link has nothing to write to the project")

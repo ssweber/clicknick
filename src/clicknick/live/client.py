@@ -8,11 +8,15 @@ from .session import resolve_address
 
 
 def send_command(label: str | None, command: str) -> tuple[bool, str]:
-    """Connect to session *label* (or the sole active one), send *command*.
+    """Send *command* to the session named *label* and return the server's reply.
 
-    Returns ``(ok, text)``; ``ok`` is False when the server replied with an
-    ``ERROR: `` prefix. Raises ``FileNotFoundError``/``LookupError`` from
-    :func:`resolve_address` when no single session can be selected.
+    If *label* is None, the command goes to the only active session.
+
+    Return ``(ok, text)``. ``ok`` is False when the reply starts with ``ERROR: ``, and
+    *text* is then the reply without that prefix.
+
+    :func:`resolve_address` raises ``FileNotFoundError`` if no session matches, and
+    ``LookupError`` if *label* is None and several sessions are active.
     """
     address = resolve_address(label)
     conn = Client(address, family="AF_INET")

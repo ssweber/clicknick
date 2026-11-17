@@ -1,4 +1,6 @@
-"""App lifecycle: closing ClickNick, CLICK closing or changing project, connecting, CSV loads."""
+"""Test what the app does when ClickNick closes, CLICK closes or changes project, the app
+connects, and a CSV loads.
+"""
 
 from __future__ import annotations
 
@@ -297,13 +299,14 @@ def test_project_change_can_keep_unsaved_database_edits_for_the_new_project(monk
     assert "Keep them as unsaved changes for Renamed.ckp?" in message
     assert app._data.store is store
     assert not editor.closed
-    # The store's file monitor keeps running and reads the base from the new database.
+    # The store's file monitor keeps running. It reads the saved data under the kept edits
+    # from the new project's database.
     store.stop_file_monitoring.assert_not_called()
     assert not store.save_all_changes.called
     app._connection._load_instance_database.assert_not_called()
     old_session.close.assert_called_once()
-    # The kept edits are the new project's database data. So the new session has a database
-    # and starts its build at once.
+    # The kept edits are on database data, so the new session has a database and starts its
+    # build at once.
     assert sessions == [(ClickConnection("111", 222, "Renamed.ckp"), True)]
     app._session.start_analysis.assert_called_once_with(app.root)
     assert app._click == ClickConnection("111", 222, "Renamed.ckp")
@@ -343,10 +346,10 @@ def test_project_change_counts_text_still_in_a_cell_editor(monkeypatch):
 
 @pytest.mark.parametrize("keep", [True, False], ids=["keep", "discard"])
 def test_project_change_asks_one_question_about_dataview_edits(monkeypatch, keep):
-    """After File > Open, the window's DataView folder holds the other project's .cdv files.
+    """After File > Open, the app asks once whether to keep or discard the Dataview edits.
 
-    So the app asks once whether to keep the Dataview edits or discard them.
-    It never saves them over those files.
+    The window's DataView folder then holds the other project's .cdv files, so the app never
+    saves the edits over those files.
     """
     monkeypatch.setattr(
         "clicknick.connection_session.ConnectionSession",
@@ -377,10 +380,10 @@ def test_project_change_asks_one_question_about_dataview_edits(monkeypatch, keep
 
 
 def test_project_change_asks_when_a_cell_editor_will_not_commit(monkeypatch):
-    """A cell editor that cannot commit still counts as an unsaved change.
+    """A cell editor that cannot commit its text still counts as an unsaved change.
 
-    CLICK has the focus, so the open cell editor cannot commit.
-    The app asks before it drops the text.
+    When CLICK has the focus, the open cell editor cannot commit. The app asks before it
+    drops the text.
     """
     app, prompts = _app(monkeypatch, yes_no=False)
     editor = _open(app, FakeStore(is_database=True))
@@ -549,7 +552,7 @@ def test_connecting_opens_the_session_before_the_database_loads(monkeypatch):
 def test_without_its_database_a_session_asks_to_connect_first(monkeypatch, owner, action):
     """Until the database has loaded, and after the CSV fallback, these ask to connect first.
 
-    They said the same before the app made a session on connect.
+    They ask even though the app has made a session for the connected window.
     """
     app, _prompts = _app(monkeypatch)
     app._live_server = MagicMock()
@@ -742,7 +745,7 @@ def test_two_windows_with_one_filename_can_each_be_picked(monkeypatch):
     app._connection.connect_to_instance = MagicMock()
     first, second = _instance("1", 0x10, "Main.ckp"), _instance("2", 0x20, "Main.ckp")
     app.detector.get_click_instances = lambda: [first, second]
-    app._data = DataSession(FakeStore(is_database=False))  # Nothing auto-connects.
+    app._data = DataSession(FakeStore(is_database=False))  # So the refresh connects to nothing
     app._connection.refresh_click_instances()
 
     labels = app.instances_combobox["values"]
@@ -957,7 +960,7 @@ def test_after_keep_open_editors_follow_the_new_project_and_its_build(monkeypatc
     app._connection._handle_project_change(
         "CLICK Programming Software - Renamed.ckp", "Renamed.ckp"
     )
-    app._refresh_ui()  # Run what assigning _click schedules.
+    app._refresh_ui()  # Run the UI refresh that assigning _click schedules.
 
     assert app._data.editors == (editor,)
     assert editor.titles == ["Renamed.ckp"]
@@ -1009,7 +1012,10 @@ class FakeDataviewWindow:
 
 
 def _two_click_folders(monkeypatch, tmp_path):
-    """Make a temp root with another window's folder, which sorts first, and the connected one's."""
+    """Make two CLICK temp folders, and return the connected window's DataView folder.
+
+    The other window's folder sorts first, so a test fails if the code takes the first folder.
+    """
     from clicknick.utils import click_temp
 
     monkeypatch.setattr(click_temp, "_windows_temp_path", lambda: str(tmp_path))
@@ -1078,8 +1084,8 @@ def test_verify_checks_the_connected_windows_dataview_folder(monkeypatch, tmp_pa
 def test_project_change_asks_about_dataview_edits_over_csv_data(monkeypatch, keep):
     """Over CSV data, a project change asks the same question as over database data.
 
-    The CSV data stays. The Dataview Editor shows the window's DataView folder,
-    which now holds the other project's .cdv files.
+    The CSV data stays. The Dataview Editor shows the window's DataView folder, which then
+    holds the other project's .cdv files.
     """
     app, prompts = _app(monkeypatch, yes_no=keep)
     store = FakeStore(is_database=False, unsaved=True, source_path="C:/tmp/Main_Address.csv")
@@ -1096,7 +1102,7 @@ def test_project_change_asks_about_dataview_edits_over_csv_data(monkeypatch, kee
     assert "address changes" not in message  # CSV edits belong to the CSV file, not to the project.
     assert not dataview.saved
     assert app._data.store is store
-    # The window shows Other.ckp now. Nothing builds without its database.
+    # The session follows the window to Other.ckp. It has no database, so nothing builds.
     assert app._session.click == ClickConnection("111", 222, "Other.ckp")
     assert not app._session.has_database
     if keep:

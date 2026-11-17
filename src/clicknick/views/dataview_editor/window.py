@@ -152,7 +152,7 @@ class DataviewEditorWindow(tk.Toplevel):
         threading.Thread(target=target, args=args, daemon=True).start()
 
     def _schedule_ui(self, callback: Callable[[], None]) -> None:
-        """Schedule callback on Tk thread; ignore if window is already destroyed."""
+        """Run *callback* on the Tk thread. Do nothing if the window is already destroyed."""
         try:
             self.after(0, callback)
         except tk.TclError:
@@ -163,7 +163,10 @@ class DataviewEditorWindow(tk.Toplevel):
         action: Callable[[], object | None],
         on_complete: Callable[[object | None, Exception | None], None],
     ) -> None:
-        """Execute blocking Modbus action off UI thread and marshal completion to Tk."""
+        """Run a blocking Modbus *action* on a worker thread.
+
+        Then call *on_complete* on the Tk thread with the result and any exception.
+        """
 
         def _worker() -> None:
             result: object | None = None
@@ -185,7 +188,10 @@ class DataviewEditorWindow(tk.Toplevel):
         self._update_modbus_controls()
 
     def _on_modbus_state_callback(self, state: ConnectionState, error: Exception | None) -> None:
-        """Background thread callback from ModbusService."""
+        """Pass a connection state change to the Tk thread.
+
+        ModbusService calls this on a background thread.
+        """
         self._schedule_ui(lambda: self._apply_modbus_state(state, error))
 
     def _apply_modbus_values(self, values: Mapping[str, PlcValue]) -> None:
@@ -194,11 +200,14 @@ class DataviewEditorWindow(tk.Toplevel):
             panel.update_live_values(values)
 
     def _on_modbus_values_callback(self, values: Mapping[str, PlcValue]) -> None:
-        """Background thread callback from ModbusService."""
+        """Pass polled values to the Tk thread.
+
+        ModbusService calls this on a background thread.
+        """
         self._schedule_ui(lambda: self._apply_modbus_values(values))
 
     def _ensure_modbus_service(self) -> ModbusService:
-        """Create ModbusService on first use."""
+        """Return the ModbusService, and create it on first use."""
         if self._modbus is None:
             self._modbus = ModbusService(
                 on_state=self._on_modbus_state_callback,
@@ -208,7 +217,7 @@ class DataviewEditorWindow(tk.Toplevel):
         return self._modbus
 
     def _sync_poll_addresses_from_active_tab(self, *, force: bool = False) -> None:
-        """Replace service poll list from the currently active tab."""
+        """Set the service's poll list to the addresses in the active tab."""
         if self._modbus is None:
             return
         if not force and not self._is_modbus_connected():
@@ -410,7 +419,8 @@ class DataviewEditorWindow(tk.Toplevel):
         before switching to CLICK is still in the editor.
         """
         mt = panel.sheet.MT
-        # A New Value that was refused, in a cell that has not reopened yet, is still an open edit
+        # If a New Value was refused and its cell has not reopened yet, the edit is still
+        # open. reopen_rejected_edit() warns the user and reopens the cell.
         if panel.reopen_rejected_edit():
             return False
         if not mt.text_editor.open:
@@ -477,7 +487,6 @@ class DataviewEditorWindow(tk.Toplevel):
             self.notebook.select(open_panel)
             return
 
-        # Create new panel
         panel = DataviewPanel(
             self.notebook,
             file_path=file_path,
@@ -502,13 +511,11 @@ class DataviewEditorWindow(tk.Toplevel):
         if not self._modbus_toolbar_var.get():
             panel.set_modbus_columns_visible(False)
 
-        # Add tab
         self.notebook.add(panel, text=file_path.stem)
         self.notebook.select(panel)
 
     def _new_dataview(self) -> None:
         """Create a new unsaved dataview."""
-        # Show dialog to get name
         dialog = NewDataviewDialog(self)
         name = dialog.show()
 
@@ -537,7 +544,8 @@ class DataviewEditorWindow(tk.Toplevel):
     def _dialog_folder(self) -> Path:
         """Return the folder where Open, Save As and Export start.
 
-        Use the DataView folder shown, else the folder last used here, else Documents.
+        This is the project's DataView folder if it exists. Otherwise it is the folder last
+        used in this window, then Documents, then the home folder.
         """
         folder = self.shared_data.dataview_folder
         if folder is not None and folder.is_dir():
@@ -571,7 +579,6 @@ class DataviewEditorWindow(tk.Toplevel):
         self.notebook.select(panel)
         initial_dir = self._dialog_folder()
 
-        # Use folder selection dialog
         folder_path = filedialog.askdirectory(
             parent=self,
             title=f"Select Folder to Save '{panel.name}'",
@@ -581,7 +588,6 @@ class DataviewEditorWindow(tk.Toplevel):
             return False
         self._last_folder = Path(folder_path)
 
-        # Use the panel's name for the filename
         new_path = Path(folder_path) / f"{panel.name}.cdv"
 
         other = self._panel_for_path(new_path)
@@ -593,7 +599,6 @@ class DataviewEditorWindow(tk.Toplevel):
             )
             return False
 
-        # Check if file already exists
         if new_path.exists() and new_path != panel.file_path:
             result = messagebox.askyesno(
                 "File Exists",
@@ -617,7 +622,8 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _save_panel(self, panel: DataviewPanel) -> bool:
         """Save a dataview to its file, or ask where to save an untitled one."""
-        # CLICK deletes its temp folder when the window closes: ask where to save instead
+        # CLICK deletes a window's temp folder when that window closes. If the file's
+        # folder is gone, ask where to save.
         if panel.file_path is None or not panel.file_path.parent.is_dir():
             return self._save_as(panel)
         saved = panel.save()
@@ -638,7 +644,6 @@ class DataviewEditorWindow(tk.Toplevel):
 
         initial_dir = self._dialog_folder()
 
-        # Use folder selection dialog
         folder_path = filedialog.askdirectory(
             parent=self,
             title="Select Folder to Export DataView",
@@ -838,11 +843,9 @@ class DataviewEditorWindow(tk.Toplevel):
             self._refresh_navigation()
             self._tag_browser_var.set(True)
         elif self._nav_window.winfo_viewable():
-            # Hide it
             self._nav_window.withdraw()
             self._tag_browser_var.set(False)
         else:
-            # Show it
             self._refresh_navigation()
             self._nav_window.deiconify()
             self._nav_window._dock_to_parent()
@@ -864,7 +867,6 @@ class DataviewEditorWindow(tk.Toplevel):
         else:
             self.modbus_toolbar.pack_forget()
 
-        # Show/hide Modbus columns on all open panels
         for panel in self._iter_open_panels():
             panel.set_modbus_columns_visible(visible)
 
@@ -1041,7 +1043,7 @@ class DataviewEditorWindow(tk.Toplevel):
                 if result is None:  # Cancel
                     return False
                 if result and not self._save_panel(panel):
-                    # Cancelled or failed: the tab stays open
+                    # The user cancelled the save, or it failed. Keep the tab open.
                     return False
 
             self._pending_closed_panel = panel
@@ -1066,18 +1068,15 @@ class DataviewEditorWindow(tk.Toplevel):
 
     def _on_tab_right_click(self, event) -> None:
         """Handle right-click on notebook tab - show close menu."""
-        # Identify which tab was clicked
         try:
             clicked_tab = self.notebook.identify(event.x, event.y)
             if clicked_tab != "label":
                 return
 
-            # Get the tab index at the click position
             tab_index = self.notebook.index(f"@{event.x},{event.y}")
             if tab_index is None:
                 return
 
-            # Create context menu
             menu = tk.Menu(self, tearoff=0)
             menu.add_command(label="Close", command=lambda: self._close_tab_at_index(tab_index))
             menu.post(event.x_root, event.y_root)
@@ -1085,7 +1084,7 @@ class DataviewEditorWindow(tk.Toplevel):
             pass
 
     def _provide_filtered_nicknames(self, search_text: str) -> list[str]:
-        """Data provider for the NicknameCombobox.
+        """Return the nicknames that match *search_text*, for the NicknameCombobox.
 
         Args:
             search_text: The current search text from the combobox
@@ -1175,7 +1174,6 @@ class DataviewEditorWindow(tk.Toplevel):
         self.file_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Double-click to open
         self.file_listbox.bind("<Double-1>", self._on_file_double_click)
 
         # Buttons below file list
@@ -1200,7 +1198,6 @@ class DataviewEditorWindow(tk.Toplevel):
         toolbar = ttk.Frame(self.content)
         toolbar.pack(fill=tk.X, padx=5, pady=(5, 0))
 
-        # Nickname entry with NicknameCombobox
         ttk.Label(toolbar, text="Nickname:").pack(side=tk.LEFT, padx=(0, 5))
 
         # Frame to hold combobox (NicknameCombobox calls master.withdraw())
@@ -1212,11 +1209,9 @@ class DataviewEditorWindow(tk.Toplevel):
         self.nickname_combo = NicknameCombobox(self.combobox_frame, width=30)
         self.nickname_combo.pack()
 
-        # Configure the combobox callbacks
         self.nickname_combo.set_data_provider(self._provide_filtered_nicknames)
         self.nickname_combo.set_selection_callback(self._on_nickname_selected)
 
-        # Insert button
         ttk.Button(toolbar, text="Insert", command=self._on_insert_button_clicked, width=8).pack(
             side=tk.LEFT, padx=(0, 5)
         )
@@ -1276,7 +1271,6 @@ class DataviewEditorWindow(tk.Toplevel):
         self.notebook = CustomNotebook(self.content, on_close_callback=self._on_tab_close_request)
         self.notebook.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
 
-        # Bind tab change and close events
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self.notebook.bind("<<NotebookTabClosed>>", self._on_tab_closed)
         self.notebook.bind("<Button-3>", self._on_tab_right_click)
@@ -1297,7 +1291,6 @@ class DataviewEditorWindow(tk.Toplevel):
         if flag_path.exists():
             return
 
-        # Content
         popup_text = (
             "Dataview Editor\n\n"
             "This tool edits .cdv files in CLICK's temporary project folder.\n"
@@ -1313,9 +1306,9 @@ class DataviewEditorWindow(tk.Toplevel):
         flag_path.touch()
 
     def _on_address_store_changed(self, sender=None, affected_keys=None) -> None:
-        """Observer callback: the AddressStore changed.
+        """Refresh the nicknames in every open panel and the Tag Browser.
 
-        Auto-refreshes nicknames in all open panels when address data is modified.
+        The AddressStore calls this after its data changes.
         """
         self._refresh_nicknames()
         self._refresh_navigation()
@@ -1366,7 +1359,6 @@ class DataviewEditorWindow(tk.Toplevel):
         self._modbus_toolbar_var = tk.BooleanVar(value=False)
         self._target_var = tk.StringVar(value="")
 
-        # Configure window
         self._setup_window()
         self._create_menu()
         self._create_widgets()
@@ -1375,13 +1367,10 @@ class DataviewEditorWindow(tk.Toplevel):
         session.register_dataview_window(self)
         self.shared_data.address_store.add_observer(self._on_address_store_changed)
 
-        # Refresh file list
         self.refresh_file_list()
 
-        # Show first-run popup
         self._show_dataview_editor_popup()
 
-        # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # Open Tag Browser by default
@@ -1402,7 +1391,11 @@ class DataviewEditorWindow(tk.Toplevel):
         self._file_paths = files
 
     def refresh_title(self) -> None:
-        """Show the project that CLICK has open now. The app calls this when the project changes."""
+        """Set the window title to name the project that CLICK has open.
+
+        The title also says when the editor is attached to the simulator. The app calls this
+        when the project changes.
+        """
         title = "ClickNick Dataview Editor"
         title_suffix = self._get_title_suffix()
         if title_suffix:
@@ -1438,10 +1431,10 @@ class DataviewEditorWindow(tk.Toplevel):
         self.destroy()
 
     def commit_open_cell_editor(self) -> bool:
-        """Commit the text typed in every tab's open cell editor, so it is an edit like any other.
+        """Commit the text typed in every tab's open cell editor, so that it counts as an edit.
 
-        Closing, saving and the app's project-change question call this first.
-        Return False, after telling the user, if an editor is still open.
+        Closing, saving and the app's question when the project changes call this first. If
+        an editor stays open, warn the user and return False.
         """
         return all(self._commit_cell_editor(panel) for panel in self._iter_open_panels())
 
@@ -1452,10 +1445,10 @@ class DataviewEditorWindow(tk.Toplevel):
     def save_all(self) -> bool:
         """Save every modified dataview, asking where to save untitled ones.
 
-        Stop at the first dataview that is not saved, because the user cancelled or the
-        save failed (a failed save says why), and return False. A caller that is closing
-        the window then closes nothing. Text still in a cell editor is saved too. A cell
-        that won't commit saves nothing.
+        Stop and return False at the first dataview that is not saved. That happens when the
+        user cancels or the save fails, and a failed save tells the user why. A caller that
+        is closing the window then closes nothing. Text still in a cell editor is saved too.
+        If a cell editor will not commit, nothing is saved.
         """
         if not self.commit_open_cell_editor():
             return False

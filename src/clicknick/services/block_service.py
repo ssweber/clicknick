@@ -37,15 +37,12 @@ def compute_block_colors(rows: list[AddressRow]) -> dict[int, str]:
     Returns:
         Dict mapping row index to bg color string
     """
-    # Get all block ranges using centralized function
     ranges = compute_all_block_ranges(rows)
 
-    # Filter to only blocks with colors
     colored_ranges = [r for r in ranges if r.bg_color]
 
-    # Build row_idx -> color map, with inner blocks overriding outer
-    # Sort by range size descending (larger ranges first)
-    # This ensures inner (smaller) blocks are processed last and override
+    # Sort the largest ranges first, so that inner blocks are applied last and override the
+    # colors of the blocks around them.
     colored_ranges.sort(key=lambda r: -(r.end_idx - r.start_idx))
 
     row_colors: dict[int, str] = {}
@@ -96,7 +93,6 @@ def _transform_block_name_for_pair(name: str, source_type: str, target_type: str
             base_name = dotted_match.group("base")
             suffix = dotted_match.group("suffix")
 
-    # Determine if source and target are base or data types
     base_types = {"T", "CT"}
     data_types = {"TD", "CTD"}
 
@@ -175,7 +171,8 @@ def rename_block_tag(comment: str, new_name: str) -> str:
     tag_text = comment[span[0] : span[1]]
     at = tag_text.find(tag.name)
     if at == -1:
-        # The bg attribute splits the name (`<A bg="x" B>`), so write the tag anew.
+        # A bg attribute can sit inside the name, as in `<A bg="x" B>`. The name is then
+        # not in the tag text in one piece, so build a new tag.
         renamed = format_block_tag(new_name, tag.tag_type, tag.bg_color)
     else:
         renamed = tag_text[:at] + new_name + tag_text[at + len(tag.name) :]
@@ -188,7 +185,10 @@ def same_block_tag(a: BlockTag, b: BlockTag) -> bool:
 
 
 class BlockService:
-    """Handles block tag cascades: what a row's tag change means for the rows tied to it.
+    """Works out how a change to one row's block tag changes the comment of a related row.
+
+    A related row is the row that holds the matching open or close tag, or the T/TD or CT/CTD
+    pair row.
 
     Each method takes the tag before and after the edit and returns the other row's new
     comment, or None to leave it alone. Callers decide which rows to pass. These methods
@@ -222,7 +222,7 @@ class BlockService:
     ) -> str | None:
         """Return the T/TD (CT/CTD) pair's comment after the source row's tag changed.
 
-        The pair's block name carries the _D suffix on TD/CTD. The cases are:
+        On TD and CTD, the pair's block name has the _D suffix. The cases are:
 
         - A pair without a tag gets the new tag appended when the tag was added or renamed.
           A change of colour or kind alone leaves it alone.
