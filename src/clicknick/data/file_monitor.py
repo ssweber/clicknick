@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..utils.scheduling import Scheduler
 
-# File monitoring interval in milliseconds
 FILE_MONITOR_INTERVAL_MS = 2000
 
 
@@ -35,11 +34,13 @@ class FileMonitor:
         Args:
             file_path: Path to the file to monitor (can be None for no monitoring)
             on_modified: Callback to invoke when file modification is detected.
-                Return False when the change could not be consumed and should be retried.
+                It returns False if it could not handle the change. The monitor then
+                calls it again at the next check.
         """
         self._file_path = file_path
         self._on_modified = on_modified
-        # The file's mtime and size when it was last read. A change to either one reloads.
+        # The file's mtime and size when it was last read. If either one changes, the monitor
+        # calls on_modified.
         self._last_mtime: float = 0.0
         self._last_size: int = 0
         self._after_id: str | None = None
@@ -76,7 +77,7 @@ class FileMonitor:
             return
 
         if not self._file_path:
-            return  # Nothing to monitor
+            return
 
         self._tk_root = tk_root
         self._active = True
@@ -110,5 +111,4 @@ class FileMonitor:
             # File might be locked during write, skip this check
             pass
 
-        # Schedule next check
         self._schedule_check()

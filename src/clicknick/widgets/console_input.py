@@ -1,4 +1,4 @@
-"""Slot-aware console input with autocomplete for the pyrung DAP console.
+"""Command line for the pyrung DAP console, with autocomplete for each argument slot.
 
 Extends ``ttk.Combobox`` and reuses ``DropdownManager`` / ``ComboboxTCLManager``
 from :mod:`nickname_combobox`.  Delegates completion logic to
@@ -22,7 +22,7 @@ _MAX_HISTORY = 200
 
 
 class ConsoleInput(ttk.Combobox):
-    """Smart input widget with slot-aware autocomplete."""
+    """A console command line whose autocomplete fits the command's argument under the cursor."""
 
     # ------------------------------------------------------------------
     # History
@@ -239,7 +239,8 @@ class ConsoleInput(ttk.Combobox):
         self._on_submit = on_submit
         self._dropdown = DropdownManager(self)
 
-        # If the caller passes a history, this widget shares it, so it outlives the widget.
+        # If the caller passes a history, this widget shares that list, so the history
+        # outlives the widget.
         self._history: list[str] = history if history is not None else []
         self._history_idx: int = len(self._history)
 
@@ -266,7 +267,7 @@ class ConsoleInput(ttk.Combobox):
         self._push_history(command)
 
     def submit(self) -> None:
-        """Programmatic submit (e.g. from Send button)."""
+        """Submit the typed command, if there is one. The Send button calls this."""
         text = self.get().strip()
         if not text:
             return

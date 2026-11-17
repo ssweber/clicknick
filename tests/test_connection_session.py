@@ -1,4 +1,7 @@
-"""ConnectionSession lifetime: made on connect, before CLICK's database loads."""
+"""Tests of a ConnectionSession from connect to close.
+
+ClickNick creates the session on connect, before CLICK's database loads.
+"""
 
 from __future__ import annotations
 
