@@ -370,7 +370,7 @@ class _Import:
         return None
 
     def _open_controls(self, controls: list[Control]) -> tuple[Control, Control, Control]:
-        """Return the Open dialog's Merge (Project priority) radio, File name edit and Open button."""
+        """Return the Open dialog's Merge (Project priority) radio, File name edit and Open."""
         radios = {c.text: c for c in controls if c.cls == "TRadioButton"}
         boxes = {c.hwnd for c in controls if c.cls == "ComboBox" and c.id == FILE_NAME_ID}
         file_name = next(
