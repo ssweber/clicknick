@@ -209,7 +209,15 @@ CLICK saved:
 set UV_NO_SYNC=1
 uv run python devtools/click_runner.py paste rung.csv --out runs\one
 uv run python devtools/click_runner.py record --out runs\dialogs
+uv run python devtools/click_runner.py try cases.json --out runs\cases --wire --keep
 ```
+
+`try` asks CLICK's instruction dialogs about each case in a JSON file (`devtools/editor_cases.json`
+holds the rule table's): the fields, mode and lists to set, and the option buttons, each named by
+the label CLICK shows on it or by its id. With `--wire` each case gets a rung of its own (a
+contact `X001` before an output instruction, a coil `Y001` after a Compare). With `--keep` each
+accepted case is saved under `saves\` in the `--out` folder; with `--wire` too, its rung is also
+copied there as CLICK's Edit > Copy puts it on the clipboard.
 
 `result.json` in the `--out` folder (also on stdout) says how the run went, and `run.log` logs
 each step. A paste whose rungs are not in the saved main program ends the run `aborted`. `record`

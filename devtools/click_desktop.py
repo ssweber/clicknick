@@ -7,7 +7,8 @@ Win32 calls with no decisions of its own.
 Every ``WM_COMMAND`` goes through ``Desktop.command``, which refuses any command outside
 ``ALLOWED_COMMANDS``. Read Project, Write Project and Write Data are not in it, so the
 runner cannot read a project from the PLC or write anything into it; Read Data from PLC,
-which only reads the PLC's data values, is.
+which only reads the PLC's data values, is. The one mouse click the runner makes is posted to
+CLICK's ladder view, through ``Desktop.click_ladder``, which finds the view itself.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from __future__ import annotations
 import ctypes
 import struct
 import subprocess
+import time
 import zlib
 from abc import ABC, abstractmethod
 from ctypes import wintypes
@@ -56,6 +58,16 @@ COPY_DIALOG = 50040
 # "Receive..." pushes 50060 (and "Send..." 50061) the same way; live probes r1 and r2
 # (2026-11-16) opened the Receive dialog by it (Inst_RD.dll's template, titled "Receive")
 RECEIVE_DIALOG = 50060
+# The ribbon's Contact(NO), Compare and Search push 50001, 50004 and 50041 the same way. Live
+# probes d1 to d3 (2026-11-17, job copy-encodings) opened "Contact Normally Open"
+# (Inst_ContactNO.dll), "Compare (A with B)" (Inst_Compare.dll) and "Search" (Inst_Search.dll)
+# by them
+CONTACT_NO_DIALOG = 50001
+COMPARE_DIALOG = 50004
+SEARCH_DIALOG = 50041
+# MFC's ID_EDIT_COPY: Edit > Copy puts what the ladder has selected on the clipboard, and
+# nothing else (live probe d2, 2026-11-17, job copy-encodings)
+EDIT_COPY = 0xE122
 
 ALLOWED_COMMANDS = {
     PASTE: "Paste",
@@ -73,7 +85,15 @@ ALLOWED_COMMANDS = {
     MATH_DIALOG: "Math...",
     COPY_DIALOG: "Copy...",
     RECEIVE_DIALOG: "Receive...",
+    CONTACT_NO_DIALOG: "Contact(NO)...",
+    COMPARE_DIALOG: "Compare...",
+    SEARCH_DIALOG: "Search...",
+    EDIT_COPY: "Copy",
 }
+
+# The ladder view: the one visible child of CLICK's main window of this class (live probe d2,
+# 2026-11-17). The only window a mouse click is posted to (``Desktop.click_ladder``)
+LADDER_VIEW_CLASS = "AfxFrameOrView100u"
 
 _NEVER = {
     WRITE_DATA_INTO_PLC: "Write Data into PLC",
@@ -84,6 +104,10 @@ _NEVER = {
 
 class ForbiddenCommandError(RuntimeError):
     """A WM_COMMAND outside ALLOWED_COMMANDS."""
+
+
+class LadderViewError(RuntimeError):
+    """The main window has no one visible ladder view to click in."""
 
 
 def check_command(command_id: int) -> str:
@@ -140,6 +164,25 @@ class Desktop(ABC):
 
     @abstractmethod
     def _post_command(self, hwnd: int, command_id: int) -> None: ...
+
+    def click_ladder(self, main: int, x: int, y: int) -> int:
+        """Post a left click (button down, then up) at the client point (*x*, *y*) of the
+        ladder view of the main window *main*: the one way the runner clicks.
+
+        The view is the one visible child of *main* of class ``LADDER_VIEW_CLASS``; raises
+        LadderViewError, before anything is posted, when there is none or more than one.
+        Returns the view's hwnd.
+        """
+        views = [c for c in self.controls(main) if c.cls == LADDER_VIEW_CLASS and c.visible]
+        if len(views) != 1:
+            raise LadderViewError(
+                f"{len(views)} visible ladder views ({LADDER_VIEW_CLASS}) in window {main}"
+            )
+        self._post_click(views[0].hwnd, x, y)
+        return views[0].hwnd
+
+    @abstractmethod
+    def _post_click(self, hwnd: int, x: int, y: int) -> None: ...
 
     @abstractmethod
     def click_processes(self) -> list[int]:
@@ -260,6 +303,14 @@ class Desktop(ABC):
         """Put *payload* on the clipboard in CLICK's format, owned by *owner*."""
 
     @abstractmethod
+    def empty_clipboard(self) -> None:
+        """Empty the clipboard, every format."""
+
+    @abstractmethod
+    def read_clipboard(self) -> bytes | None:
+        """The clipboard's data in CLICK's format, or None if it holds none. It only reads."""
+
+    @abstractmethod
     def temp_dir(self, hwnd: int) -> Path:
         """The temp folder of the CLICK main window *hwnd* (``click_temp_dir``)."""
 
@@ -277,6 +328,9 @@ WM_KEYDOWN = 0x0100
 WM_KEYUP = 0x0101
 WM_CHAR = 0x0102
 WM_COMMAND = 0x0111
+WM_LBUTTONDOWN = 0x0201
+WM_LBUTTONUP = 0x0202
+MK_LBUTTON = 0x0001
 BM_GETCHECK = 0x00F0
 EM_GETLIMITTEXT = 0x00D5
 CB_GETCOUNT = 0x0146
@@ -308,6 +362,9 @@ _MAX_PANES = 32
 SRCCOPY = 0x00CC0020
 CAPTUREBLT = 0x40000000
 _MESSAGE_TIMEOUT_MS = 5000
+# How often, and how far apart, opening the clipboard is tried: another program may hold it
+_CLIPBOARD_TRIES = 20
+_CLIPBOARD_DELAY = 0.05
 _ULONG_PTR = ctypes.c_size_t
 
 
@@ -565,12 +622,17 @@ class Win32Desktop(Desktop):
         )
         return result.value if answered else None
 
-    def _post(self, hwnd: int, msg: int, wparam: int = 0) -> None:
-        if not self._user32.PostMessageW(hwnd, msg, wparam, 0):
+    def _post(self, hwnd: int, msg: int, wparam: int = 0, lparam: int = 0) -> None:
+        if not self._user32.PostMessageW(hwnd, msg, wparam, lparam):
             raise ctypes.WinError(ctypes.get_last_error())
 
     def _post_command(self, hwnd: int, command_id: int) -> None:
         self._post(hwnd, WM_COMMAND, command_id)
+
+    def _post_click(self, hwnd: int, x: int, y: int) -> None:
+        point = (y & 0xFFFF) << 16 | x & 0xFFFF
+        self._post(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, point)
+        self._post(hwnd, WM_LBUTTONUP, 0, point)
 
     def click_processes(self) -> list[int]:
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -835,6 +897,33 @@ class Win32Desktop(Desktop):
         from clicknick.ladder.clipboard import copy_to_clipboard
 
         copy_to_clipboard(payload, owner_hwnd=owner)
+
+    def empty_clipboard(self) -> None:
+        from clicknick.ladder.clipboard import clear_clipboard
+
+        clear_clipboard(0)
+
+    def read_clipboard(self) -> bytes | None:
+        """CLICK's format is the one ``clicknick.ladder.clipboard`` pastes in (522, in the
+        private range CF_PRIVATEFIRST to CF_PRIVATELAST: it has no registered name)."""
+        import win32clipboard
+
+        from clicknick.ladder.clipboard import CLICK_CLIPBOARD_FORMAT
+
+        for _ in range(_CLIPBOARD_TRIES):
+            try:
+                win32clipboard.OpenClipboard(0)
+                break
+            except win32clipboard.error:
+                time.sleep(_CLIPBOARD_DELAY)
+        else:
+            raise OSError(f"the clipboard could not be opened in {_CLIPBOARD_TRIES} tries")
+        try:
+            if not win32clipboard.IsClipboardFormatAvailable(CLICK_CLIPBOARD_FORMAT):
+                return None
+            return bytes(win32clipboard.GetClipboardData(CLICK_CLIPBOARD_FORMAT))
+        finally:
+            win32clipboard.CloseClipboard()
 
     def temp_dir(self, hwnd: int) -> Path:
         from clicknick.utils.click_temp import click_temp_dir
