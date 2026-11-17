@@ -33,9 +33,8 @@ _BUILD_GATE = threading.Lock()
 
 # The reason a session builds nothing before ClickNick has read CLICK's database (has_database)
 NO_DATABASE = (
-    "ClickNick has not read this project's database (SC_.mdb, through Access ODBC "
-    "or Jet). A build reads CLICK's program from its Scr*.tmp files and the "
-    "nicknames from that database."
+    "ClickNick has not read this project's database, SC_.mdb, so it cannot build the "
+    "workspace. The build reads the nicknames from that database."
 )
 
 
@@ -178,7 +177,7 @@ class ConnectionSession:
 
     @property
     def reading_database(self) -> bool:
-        """Return whether ClickNick is still reading CLICK's database for this session."""
+        """Whether ClickNick is still reading CLICK's database for this session."""
         return self._reading and not self._closed
 
     def loads(self, token: object) -> bool:
@@ -313,7 +312,10 @@ class ConnectionSession:
                         # pyproject.toml that cannot be read when it runs the checks.
                         traceback.print_exc()
             if not published:
-                error = "The project changed while converting. The conversion was discarded."
+                error = (
+                    "The project or its workspace changed while ClickNick was building the "
+                    "workspace. ClickNick dropped that build."
+                )
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
@@ -441,7 +443,7 @@ class ConnectionSession:
         db_value = find_click_database(click_hwnd=self.click.hwnd)
         if not db_value:
             self.analysis.mark_failed(
-                "No Click project database found. Connect to a project in Click Software."
+                "Could not find the database, SC_.mdb, of the connected CLICK project."
             )
             return None
 
@@ -449,8 +451,7 @@ class ConnectionSession:
         scr_folder = db_path.parent
         if not scr_files(scr_folder):
             self.analysis.mark_failed(
-                "No saved ladder files (Scr*.tmp) in the project folder. "
-                "Save the project in Click Software first."
+                "The project folder has no Scr*.tmp ladder files. Save the project in CLICK first."
             )
             return None
         return scr_folder, db_path

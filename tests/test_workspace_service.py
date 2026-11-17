@@ -154,8 +154,7 @@ def test_connection_session_reload_reports_unsaved_click_project(tmp_path, monke
     assert session.reload_workspace_from_click(_Root(), callback) is False
     callback.assert_called_once_with(
         False,
-        "No saved ladder files (Scr*.tmp) in the project folder. "
-        "Save the project in Click Software first.",
+        "The project folder has no Scr*.tmp ladder files. Save the project in CLICK first.",
     )
 
 
@@ -358,7 +357,11 @@ def test_closed_session_drops_its_queued_build_and_tells_the_caller(tmp_path) ->
     assert done.wait(5)
     session.analysis.build.assert_not_called()
     assert results == [
-        (False, "The project changed while converting. The conversion was discarded.")
+        (
+            False,
+            "The project or its workspace changed while ClickNick was building the "
+            "workspace. ClickNick dropped that build.",
+        )
     ]
 
 
@@ -667,7 +670,9 @@ def test_a_save_that_cannot_be_read_during_a_build_reads_as_building_until_it_fi
 
     assert outcomes == [(True, None)], "the build was discarded"
     assert session.analysis.status is AnalysisStatus.FAILED
-    assert "No Click project database found" in (session.analysis.error or "")
+    assert session.analysis.error == (
+        "Could not find the database, SC_.mdb, of the connected CLICK project."
+    )
     assert session.saved_program().csv_dir is None
 
 
@@ -943,4 +948,4 @@ def test_superseded_build_reports_failure_and_skips_selection_sync(tmp_path, mon
 
     selection.sync.assert_not_called()
     ok, error = callback.call_args.args
-    assert ok is False and "changed while converting" in error
+    assert ok is False and "changed while ClickNick was building the workspace" in error
