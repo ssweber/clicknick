@@ -1,4 +1,4 @@
-"""Workspace status and main-window workflow ownership."""
+"""Test workspace status and main-window workflow ownership."""
 
 from __future__ import annotations
 
@@ -303,7 +303,7 @@ def test_failure_before_the_build_starts_does_not_stay_preparing(tmp_path, monke
 
 
 def test_new_session_builds_after_the_closed_sessions_build(tmp_path) -> None:
-    """Opening another project in one window: both sessions write the same folder."""
+    """If you open another project in one window, both sessions write the same folder."""
     old = ConnectionSession(ClickConnection("1", 2, "Old.ckp"), has_database=True)
     new = ConnectionSession(ClickConnection("1", 2, "New.ckp"), has_database=True)
     old_building = threading.Event()
@@ -429,7 +429,7 @@ def _saved_click_project(tmp_path, monkeypatch) -> Path:
 
 
 def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> None:
-    """The one signal that CLICK saved: nothing ClickNick does bumps it."""
+    """The save count is the one signal that CLICK saved. Nothing ClickNick does bumps it."""
     _saved_click_project(tmp_path, monkeypatch)
     session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), has_database=True)
     session._start_analysis_thread = MagicMock()
@@ -441,7 +441,7 @@ def test_save_count_counts_only_the_saves_click_makes(tmp_path, monkeypatch) -> 
     _settle(session.scr_watcher)
     assert session.saved_program().save_count == 1
 
-    # A Sync with repairs rebuilds, as do Reload from CLICK and a workspace change.
+    # A Sync with repairs rebuilds. So do Reload from CLICK and a workspace change.
     session.analysis.mark_failed("needs repairs")
     session.start_analysis(root)
     session.reload_workspace_from_click(root)
@@ -536,7 +536,7 @@ def test_saved_program_reports_what_can_be_compared(tmp_path) -> None:
 def test_a_save_during_a_build_reads_as_building_until_its_own_build(
     tmp_path, monkeypatch, first_fails
 ) -> None:
-    """The build of the files before the save publishes first: its csv/ is not that save's."""
+    """The build of the files before the save publishes first. Its csv/ is not that save's."""
     from clicknick.services.analysis_service import AnalysisService
 
     _saved_click_project(tmp_path, monkeypatch)
@@ -805,7 +805,7 @@ def test_successful_main_window_reload_clears_changed_rung_count() -> None:
 
     app._session.record_rung_stage.assert_called_once_with(0)
     app._update_status.assert_called_once_with("Workspace reloaded from CLICK", "connected")
-    # The discarded edits are no longer offered for pasting; an unrelated folder stays
+    # The discarded edits are no longer offered for pasting. An unrelated folder stays.
     proposal.destroy.assert_called_once_with()
     folder.destroy.assert_not_called()
 

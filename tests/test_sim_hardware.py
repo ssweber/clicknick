@@ -1,4 +1,4 @@
-"""Simulator hardware panel: cards from the module list and placeholders for used I/O."""
+"""Check that the simulator hardware panel shows module cards and placeholders for used I/O."""
 
 from __future__ import annotations
 

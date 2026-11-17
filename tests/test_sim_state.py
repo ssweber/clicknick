@@ -1,4 +1,4 @@
-"""Simulator settings: file format, where the file lives, and restoring onto new hardware."""
+"""Cover the simulator settings file: its format, where it lives and restoring it onto hardware."""
 
 from __future__ import annotations
 
@@ -178,7 +178,7 @@ def test_malformed_links_are_skipped(tmp_path):
         "X002": BenchLink("Y001", response=response(on_delay="2s")),
         "X006": BenchLink(None),
     }
-    # A link on something that is not an address is reported, as one ClickNick can't read.
+    # ClickNick reports a link on something that is not an address, because it cannot read it.
     assert state.unread_links == (
         ("X003", "its enable nowhere is not a CLICK address"),
         ("X004", "it has no response"),
@@ -214,7 +214,7 @@ def test_an_older_profile_link_is_read_through_pyrungs_upgrade(tmp_path):
         "X002": BenchLink("Y001", response=response(flasher_on="8ms", flasher_off="9ms")),
         "DF1": BenchLink("Y002", response=response(approach_to="Oven_SP", approach_rate="0.3")),
     }
-    # A token no upgrade reads is reported, not dropped without a word.
+    # ClickNick reports a token that no upgrade reads. It does not drop the token silently.
     assert dict(state.unread_links) == {
         "DF2": "no upgrade reads profile=unknown:a=1",
         "DF3": "no upgrade reads profile=approach:toward=180",
@@ -246,7 +246,7 @@ def test_an_older_profile_runs_through_every_migration_in_order(tmp_path, monkey
 
     from clicknick.services import sim_state
 
-    # A made-up older form that a first migration turns into the ramp form.
+    # An invented older form. The first migration turns it into the ramp form.
     older = SimpleNamespace(
         rewrite_token=lambda token: "profile=ramp:up=0.8" if token == "profile=older:x" else None
     )

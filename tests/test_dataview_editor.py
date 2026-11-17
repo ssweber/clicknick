@@ -1,4 +1,4 @@
-"""Dataview Editor with real Tk widgets: saving, closing, inserting and undo."""
+"""Test the Dataview Editor with real Tk widgets: saving, closing, inserting and undo."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ FIXTURES = Path(__file__).parent
 
 @pytest.fixture(scope="module")
 def tk_root():
-    """One root for the whole module (per-test roots fail intermittently)."""
+    """Return one root for the whole module. A root for each test fails intermittently."""
     for attempt in range(3):
         try:
             root = tk.Tk()
@@ -116,7 +116,7 @@ def _exists(widget) -> bool:
 
 @pytest.fixture()
 def editor(tk_root, monkeypatch, tmp_path):
-    """Build a Dataview Editor on a store; closes whatever is left open."""
+    """Build a Dataview Editor on a store, and close whatever is left open afterwards."""
     monkeypatch.setattr(DataviewEditorWindow, "_show_dataview_editor_popup", lambda self: None)
     monkeypatch.setattr(DataviewEditorWindow, "_toggle_nav", lambda self: None)
     built: list[DataviewEditorWindow] = []
@@ -146,9 +146,10 @@ def _copy(tmp_path: Path, name: str = "DataView1.cdv") -> Path:
 
 
 def _click_writes(path: Path, seconds: float = 10) -> bytes:
-    """Rewrite path as CLICK does while connected, its mtime moved by seconds; return its bytes.
+    """Rewrite *path* as CLICK does while connected, and move its mtime by *seconds*.
 
-    A negative shift is an older copy put back, such as a restored backup.
+    Return the file's bytes. A negative shift puts an older copy back, such as a restored
+    backup.
     """
     mtime = os.path.getmtime(path) + seconds
     shutil.copy(FIXTURES / "DataView1WithNewValues.cdv", path)
@@ -260,7 +261,7 @@ def test_a_save_that_fails_in_a_live_folder_keeps_the_tab_and_window(editor, dia
     window._open_dataview(path)
     panel = window._get_current_panel()
     panel.add_address("DS1")
-    path.chmod(stat.S_IREAD)  # the folder is there; the file cannot be written
+    path.chmod(stat.S_IREAD)  # The folder exists, but the file cannot be written.
     try:
         dialogs.yes_no_cancel.append(True)
         assert window._on_tab_close_request(0) is False
@@ -393,14 +394,14 @@ def test_saving_over_a_change_click_made_between_checks_asks_first(
             assert not panel.is_dirty
         else:
             assert path.read_bytes() == clicks
-        if answer is False:  # Reload: CLICK's rows; Ctrl+Z brings the edit back
+        if answer is False:  # Reload loads CLICK's rows. Ctrl+Z brings the edit back.
             assert [row.address for row in panel.rows if not row.is_empty] == on_disk
             assert panel.rows[0].new_value is True
             assert not panel.is_dirty
             assert panel.undo()
             assert "DS1" in [row.address for row in panel.rows]
             assert panel.is_dirty
-        if answer is None:  # Cancel: the edit stays, unsaved
+        if answer is None:  # Cancel keeps the edit, unsaved.
             assert panel.is_dirty
             panel._check_file_modified()
             assert len(dialogs.shown) == 1, "the monitor does not ask about the same change"
@@ -755,7 +756,7 @@ def test_clear_selected_rows_is_one_undo_step(tk_root, tmp_path):
 
 
 def _cell_editor_window(*, commits_without_focus: bool) -> tuple[DataviewEditorWindow, list]:
-    """A window with one tab whose cell editor is open; committing closes it.
+    """Return a window with one tab whose cell editor is open. Committing closes the editor.
 
     tksheet commits nothing while the application has no focus, so the first
     try may leave it open.
@@ -814,11 +815,11 @@ def _typed(
     column: int = COL_ADDRESS,
     text: str = "x1",
 ) -> tuple[DataviewEditorWindow, DataviewPanel, Path]:
-    """An editor on DataView1.cdv with *text* typed into a cell, not committed.
+    """Return an editor on DataView1.cdv with *text* typed into a cell and not committed.
 
     tksheet commits nothing while the focus is outside ClickNick, so text typed
-    before switching to CLICK is still in the editor. Where the focus is is
-    stubbed: *focused* puts it in the cell editor, otherwise outside ClickNick.
+    before switching to CLICK is still in the editor. The test stubs the focus. With
+    *focused*, the focus is in the cell editor. Otherwise it is outside ClickNick.
     The window stays hidden and never takes the focus.
     """
     path = _copy(tmp_path)
@@ -1002,7 +1003,7 @@ def test_export_writes_text_still_in_a_cell(editor, dialogs, tk_root, tmp_path, 
 def test_write_all_writes_the_value_still_in_a_cell(
     editor, dialogs, tk_root, tmp_path, monkeypatch
 ):
-    """Clicking Write All leaves the focus in the cell editor: the typed value is written."""
+    """If you click Write All while the focus is in the cell editor, the typed value is written."""
     from clicknick.views.dataview_editor.panel import COL_NEW_VALUE
 
     window, _panel, _path = _typed(
@@ -1094,7 +1095,10 @@ def test_write_all_writes_nothing_while_a_cell_will_not_commit(
 
 
 def _pasted_new_values(editor, dialogs, tk_root, addresses, texts):
-    """A panel with *addresses* in its first rows, *texts* pasted down the New Value column."""
+    """Return a panel with *addresses* in its first rows.
+
+    Paste *texts* down the New Value column.
+    """
     window = editor()
     dialogs.new_names.append("Pasted")
     window._new_dataview()
