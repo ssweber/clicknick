@@ -496,16 +496,17 @@ checked against ClickNick's main at c232d31, and the line numbers are from there
     and the names that `check_program_name` refuses. It never adds a suffix.
   - CLICK 4.00 refuses such a name too. Once a subroutine `Pump` exists, CLICK refuses `pump` with GUI-036,
     "The Program Name already exists. Please choose another name." It shows the same box as for a second
-    `Pump`. A live run on the CLICK runner's own CLICK 4.00 saw this on 2026-11-18. So `write_bundle`'s case
-    refusal matches CLICK.
-  - laddy settled `<>:"/\|?*` and a trailing dot from laddercodec's code. `check_program_name` refuses
-    `<>:"/\|?*`.
-  - ClickNick's `program_save` writes its own bundle (`program.py` lines 696-715). `_slugify` (lines 461-466)
+    `Pump`. The CLICK runner showed this on its own CLICK 4.00 on 2026-11-18. So `write_bundle`'s case refusal
+    matches CLICK.
+  - laddercodec's `check_program_name` follows CLICK.exe's Add New Subroutine dialog, by laddy's reading.
+    CLICK refuses `<>:"/\|?*` and the Windows device names, such as `CON`, with GUI-040. It accepts a trailing
+    dot. So `Foo.` and `Foo` can both be subroutines, and ClickNick's `_slugify` gives both the stem `Foo`.
+  - ClickNick's `program_save` writes its own bundle (`program.py` lines 696-717). `_slugify` (lines 461-466)
     removes only `<>:"/\|?*`. It keeps a control character, though Windows refuses one in a file name and
     `write_bundle` refuses it. `_slugify` also collapses runs of spaces, strips dots and spaces from the end,
     and returns "Untitled" for a name that comes out empty.
   - When two names give the same stem with case ignored, `_dedupe_filename_stem` adds " (2)", then " (3)",
-    and so on. The test of `program_save` (`TestProgramSave`, `tests/ladder/test_cli.py` lines 638-677) uses
+    and so on. The test of `program_save` (`TestProgramSave`, `tests/ladder/test_cli.py` lines 638-680) uses
     made-up names.
 - On laddercodec's main, `parse_bundle` returns main first, as "Main Program", then the subroutines sorted by
   name with case ignored. ClickNick never calls `parse_bundle`. Its own readers, `list_program_bundle`
