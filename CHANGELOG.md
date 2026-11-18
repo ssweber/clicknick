@@ -39,6 +39,7 @@
 - In CLICK 4, autocomplete now offers DS and TD nicknames in Out's Delay Setting. In every version, it no longer offers X, T or CT in Out, Set and Reset, because CLICK rejects them there.
 - The Simulator now starts from a PLC data file that has a DF value CLICK shows as `Err-Format`. An analog input on that DF keeps the value it had.
 - The Simulator now loads a Text value of a space or a comma from a PLC data file. 0.24.1 loaded a space as `$20`. For a comma, it left that address blank and moved each Text value after it to the next address.
+- The Simulator window now shows each failure and each refused Restart in one banner. It used to show the same message in two banners, one above the other.
 - The Simulator's Modbus server now answers every request when a client sends several at once. Each reply has the transaction id of its request. 0.24.1 answered only some of them, and some replies had the wrong transaction id. On Windows, the server also keeps accepting clients after a client drops its connection before the server has accepted it. In 0.24.1 the server then stopped accepting clients.
 - On Windows, when another program already listens on the Simulator's Modbus port, the Simulator now says that its Modbus server could not start, and it offers **Change port...**. 0.24.1 showed no error.
 - When an address inside a `:block` range has no nickname, `clicknick-cli` and the Simulator now use the name that the program gives it, such as `Fill3`. `clicknick-cli` still accepts the address too.

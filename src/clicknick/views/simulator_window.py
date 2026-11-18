@@ -1667,8 +1667,24 @@ class SimulatorWindow(tk.Toplevel):
             self._redraw()
             return
         if event.kind == "message" and event.level == "error":
-            self._last_error = event.text
+            self._last_error = None if self._has_banner(event.text) else event.text
         self._refresh_dynamic()
+
+    def _has_banner(self, text: str) -> bool:
+        """Return True if the session's notice or error already puts *text* in a banner.
+
+        The session sends a refusal or a failure as an error message too. Without this check,
+        the window shows it twice.
+        """
+        sim = self._simulation
+        if text == sim.notice:
+            return True
+        error = sim.error or ""
+        return (
+            sim.status is SimStatus.FAILED
+            and error != ""
+            and text.casefold().endswith(error.casefold())
+        )
 
     def _on_store_changed(self, _store: object = None, _keys: object = None) -> None:
         if not self._destroyed:

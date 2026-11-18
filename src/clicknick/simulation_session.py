@@ -1655,7 +1655,7 @@ class SimulationSession:
         self._status = SimStatus.FAILED
         self._error = "the simulation stopped unexpectedly."
         self._error_detail = detail
-        self._message("Simulation stopped unexpectedly.", "error")
+        self._message("The simulation stopped unexpectedly.", "error")
         self._emit("status")
 
     def _on_launched(self, token: int, dap: Any, source: PlcSourceWatch | None) -> None:
