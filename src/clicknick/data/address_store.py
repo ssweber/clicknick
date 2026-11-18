@@ -104,7 +104,7 @@ def _is_trimmed_loaded_nickname(nickname: str, base_row: AddressRow) -> bool:
         base_row.loaded_with_error
         and nickname != ""
         and nickname != base_row.nickname
-        and nickname == trim_entry("nickname", base_row.nickname)
+        and nickname == trim_entry("nickname", base_row.nickname, base_row.data_type)
     )
 
 
@@ -555,12 +555,13 @@ class AddressStore:
             self._stage_trims(changed)
 
     def _stage_trims(self, keys: Iterable[int]) -> None:
-        """Stage the trim of each loaded nickname or comment that has a space at either end.
+        """Stage the trim of each loaded value that has a space or a tab at either end.
 
-        CLICK stores neither with an edge space. A value that was read with one, from a CSV
-        or from a database that another tool wrote, becomes an unsaved edit that holds the
-        trimmed value. It is one undo step, "Trim spaces", and Sync writes it. Undo puts the
-        spaces back, and validation flags them again.
+        The values are nicknames, comments and initial values of any type but Text
+        (trim_entry). CLICK stores none of them with a space or a tab at either end. A value
+        that was read with one, from a CSV or from a database that another tool wrote, becomes
+        an unsaved edit that holds the trimmed value. It is one undo step, "Trim spaces", and
+        Sync writes it. Undo puts the spaces and tabs back, and validation flags them again.
 
         This method looks only at the base rows in *keys*. Callers pass the rows that were
         just loaded, the rows that a read of the data source changed, or every row after a
@@ -587,8 +588,9 @@ class AddressStore:
             override = self.user_overrides.get(key, {})
             for field in TRIMMED_FIELDS:
                 value = getattr(base, field)
-                if field not in override and value != trim_entry(field, value):
-                    trims.append((key, field, trim_entry(field, value)))
+                trimmed = trim_entry(field, value, base.data_type)
+                if field not in override and value != trimmed:
+                    trims.append((key, field, trimmed))
         if not trims:
             return
         if self._current_session is not None:
@@ -737,10 +739,11 @@ class AddressStore:
     def _freeze_session(self, session: EditSession) -> set[int]:
         """Freeze session builders' values into user_overrides.
 
-        A nickname or comment is frozen as CLICK stores it, without a space at either end
-        (trim_entry). Every edit passes through here, cascades included. Values that the
-        base row already holds are kept here. _derive drops them (see _rebase_override),
-        and that is the one place where dirty is decided.
+        A nickname, a comment and an initial value of any type but Text are frozen as CLICK
+        stores them, without a space or a tab at either end (trim_entry). Every edit passes
+        through here, cascades included. Values that the base row already holds are kept
+        here. _derive drops them (see _rebase_override), and that is the one place where
+        dirty is decided.
 
         Returns:
             Set of affected addr_keys
@@ -748,10 +751,14 @@ class AddressStore:
         affected = set()
 
         for addr_key, builder in session.pending.items():
+            base = self.base_state.get(addr_key)
+            if base is None:
+                continue
             changes = {
-                field: trim_entry(field, value) for field, value in builder.changes().items()
+                field: trim_entry(field, value, base.data_type)
+                for field, value in builder.changes().items()
             }
-            if not changes or addr_key not in self.base_state:
+            if not changes:
                 continue
             # Merge onto any existing override, so that fields set in an earlier
             # session keep their values.

@@ -205,7 +205,9 @@ def _assert_cascade_rules(
     Other rows change only as cascades may."""
     for (key, name), value in caller_set.items():
         assert not _differs(
-            replace(before[key], **{name: trim_entry(name, value)}), store.visible_state[key], name
+            replace(before[key], **{name: trim_entry(name, value, before[key].data_type)}),
+            store.visible_state[key],
+            name,
         ), (
             step,
             key,
@@ -441,7 +443,7 @@ def test_incremental_state_matches_full_rebuild(seed: int) -> None:
             if not user_has_field:
                 # A Sync that writes reads the database first. That read stages the trim of a
                 # value with an edge space, and Sync writes the trim too.
-                written = trim_entry(name, value) if wrote else value
+                written = trim_entry(name, value, source.rows[key].data_type) if wrote else value
                 assert getattr(source.rows[key], name) == written, (key, name, "overwritten")
             store._on_database_update()  # the next poll
             step = f"CLICK writes {key}.{name}={value!r} unpolled, then save"

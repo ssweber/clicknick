@@ -301,8 +301,9 @@ class AddressPanel(ttk.Frame):
                 if col == self.COL_NICKNAME:
                     new_nickname = new_value if new_value else ""
 
-                    # Skip if nothing changes once the value is stored without a space at either end
-                    if trim_entry("nickname", new_nickname) == address_row.nickname:
+                    # Skip if the value is unchanged once its edge spaces and tabs are stripped
+                    stored = trim_entry("nickname", new_nickname, address_row.data_type)
+                    if stored == address_row.nickname:
                         self._show_stored(data_idx, col, new_nickname, address_row.nickname)
                         continue
 
@@ -311,8 +312,9 @@ class AddressPanel(ttk.Frame):
                 elif col == self.COL_COMMENT:
                     new_comment = new_value if new_value else ""
 
-                    # Skip if nothing changes once the value is stored without a space at either end
-                    if trim_entry("comment", new_comment) == address_row.comment:
+                    # Skip if the value is unchanged once its edge spaces and tabs are stripped
+                    stored = trim_entry("comment", new_comment, address_row.data_type)
+                    if stored == address_row.comment:
                         self._show_stored(data_idx, col, new_comment, address_row.comment)
                         continue
 
@@ -336,7 +338,10 @@ class AddressPanel(ttk.Frame):
                     else:
                         new_init = new_value if new_value else ""
 
-                    if new_init == address_row.initial_value:
+                    # Skip if the value is unchanged once its edge spaces and tabs are stripped
+                    stored = trim_entry("initial_value", new_init, address_row.data_type)
+                    if stored == address_row.initial_value:
+                        self._show_stored(data_idx, col, new_init, address_row.initial_value)
                         continue
 
                     session.set_field(addr_key, "initial_value", new_init)

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from pyclickplc.addresses import get_addr_key
+from pyclickplc.banks import DataType
 
 from clicknick.data.address_store import AddressStore
 from clicknick.data.data_source import CsvDataSource
@@ -188,3 +189,36 @@ def test_a_nickname_with_an_edge_space_is_staged_and_done_without_it(
 
     store.save_all_changes()
     assert not plan_nicknames(rows, store.base_state)
+
+
+@pytest.mark.parametrize("edge", [" {}", "{} ", "\t{}", "{}\t"])
+def test_a_value_with_an_edge_space_or_tab_is_staged_and_done_without_it(edge: str) -> None:
+    """CLICK stores a nickname, a comment and a number without a space or tab at either end."""
+    ds1 = get_addr_key("DS", 1)
+    store = AddressStore(_Database({}))
+    store.load_initial_data()
+    rows = {
+        ds1: AddressRow(
+            "DS",
+            1,
+            data_type=DataType.INT,
+            nickname=edge.format("Speed"),
+            comment=edge.format("Setpoint"),
+            initial_value=edge.format("5"),
+            retentive=False,
+        )
+    }
+
+    plan = plan_nicknames(rows, store.visible_state)
+    assert [(change.field, change.new) for change in plan.changes] == [
+        ("nickname", "Speed"),
+        ("comment", "Setpoint"),
+        ("initial_value", "5"),
+        ("retentive", False),
+    ]
+
+    stage_nicknames(store, plan, "Stage nicknames")
+    row = store.visible_state[ds1]
+    assert (row.nickname, row.comment, row.initial_value) == ("Speed", "Setpoint", "5")
+    assert not row.has_reportable_error
+    assert not plan_nicknames(rows, store.visible_state)
