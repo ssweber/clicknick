@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from pyclickplc.validation import COMMENT_MAX_LENGTH
-from pyrung.click.tag_map import TagMeta, format_tag_meta
+from pyrung.click import TagMeta, format_tag_meta
 
 from ..services.annotation_service import AnnotationService
 from ..services.physical_response import (

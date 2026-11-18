@@ -13,7 +13,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_addr_key
-from pyrung.click.tag_map import TagMap
+from pyrung.click import TagMap
 
 from ..models.address_row import AddressRow
 

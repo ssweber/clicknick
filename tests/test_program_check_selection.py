@@ -1,9 +1,13 @@
 """App-wide defaults, independent workspace policy, and selection changes."""
 
 import pytest
-from pyrung.core.validation import ValidationReport
-from pyrung.core.validation.config import CheckConfig, load_check_config, save_check_config
-from pyrung.core.validation.registry import RULES, RuleSpec
+from pyrung.validation import (
+    CheckConfig,
+    ValidationReport,
+    load_check_config,
+    ordered_rules,
+    save_check_config,
+)
 
 from clicknick.services.program_check import format_validation_report
 from clicknick.services.program_check_selection import ProgramCheckSelection, update_selection
@@ -84,14 +88,19 @@ def test_selection_edit_preserves_prefixes_and_matches_requested_checks(config):
     assert update_selection(updated, set(updated.resolve())) == updated
 
 
-def test_new_rules_follow_retained_prefix_policy(monkeypatch):
+def test_new_rules_follow_retained_prefix_policy():
+    """The edit keeps the PTR prefix and turns the other PTR rules off by name.
+
+    pyrung has no public way to add a rule, so this test does not add one. It checks the
+    selection that a new PTR rule would meet. ``CheckConfig.resolve()`` turns on every rule
+    that a kept prefix matches and that ``ignore`` does not name, so a new PTR rule would be on.
+    """
     updated = update_selection(CheckConfig(select=("PTR",)), {"PTR_MAY_ESCAPE_BLOCK"})
-    monkeypatch.setitem(
-        RULES,
-        "PTR_FUTURE",
-        RuleSpec("PTR_FUTURE", "PTR", "warning", "pointer", "Future pointer rule"),
-    )
-    assert updated.resolve() == {"PTR_MAY_ESCAPE_BLOCK", "PTR_FUTURE"}
+    pointer_rules = {spec.code for spec in ordered_rules() if spec.code.startswith("PTR_")}
+    assert updated.select == ("PTR",)
+    assert updated.extend_select == ()
+    assert set(updated.ignore) == pointer_rules - {"PTR_MAY_ESCAPE_BLOCK"}
+    assert updated.resolve() == {"PTR_MAY_ESCAPE_BLOCK"}
 
 
 def test_report_does_not_call_unselected_checks_passed():

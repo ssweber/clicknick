@@ -20,7 +20,7 @@ from pathlib import Path
 
 import tomlkit
 from pyclickplc.addresses import normalize_address
-from pyrung.click.tag_map import MIGRATIONS
+from pyrung.click import MIGRATIONS
 
 from .physical_response import PHYSICAL_KEYS, Response, response_check, response_of
 

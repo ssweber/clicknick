@@ -86,7 +86,7 @@ SAVE_DELAY_MS = 500
 MODBUS_POLL_S = 0.1
 #: A refusal to run lists this many rungs ClickNick cannot read and counts the rest.
 UNREADABLE_LISTED = 10
-#: A refusal of a PLC data file lists this many ranges of Text addresses and counts the rest.
+#: The PLC data notice lists this many ranges of Text addresses and counts the rest.
 PLC_DATA_LISTED = 10
 
 
@@ -263,7 +263,7 @@ def _default_snapshot_reader(path: Path) -> Mapping[str, PlcValue]:
 
 
 def _default_send_command(session_name: str, command: str) -> tuple[bool, str]:
-    from pyrung.dap.live import send_command
+    from pyrung.live import send_command
 
     return send_command(session_name, command)
 
@@ -464,6 +464,9 @@ class SimulationSession:
         # Simulated ms left on each linked input's running delay, by address.
         self._links_pending: dict[str, int] = {}
         self._plc_data_mtime: float | None = None
+        # The notice that names the Text addresses pyrung skips in the PLC data file. It shows
+        # once the next launch succeeds, because it says how that simulation started.
+        self._plc_data_warning: str | None = None
 
         # Modbus
         self._modbus_info: dict[str, Any] = {}
@@ -910,9 +913,9 @@ class SimulationSession:
     # Persistence
     # ------------------------------------------------------------------
 
-    def _set_notice(self, text: str) -> None:
+    def _set_notice(self, text: str, level: MessageLevel = "progress") -> None:
         self._notice = text
-        self._message(text, "progress")
+        self._message(text, level)
         self._emit("desired")
 
     def _plc_data_changed(self) -> bool:
@@ -926,49 +929,24 @@ class SimulationSession:
         self._plc_data_mtime = mtime
         return True
 
-    def _plc_data_problem(self, *, running: bool) -> str | None:
-        """Return why the simulation must not start from the PLC data file, or None if it may.
+    def _adopt_snapshot(self, path: Path) -> None:
+        """Set the switches and analog inputs from the PLC data file at *path*.
 
-        The only reason is ``PlcDataReadError``. pyclickplc raises it when it cannot tell what
-        some Text addresses hold. pyrung reads the file again at launch and does not catch that
-        error. Its message is written for a programmer. The launch reports any other failure to
-        read the file.
-
-        If *running* is True, the message is for a Restart that a running simulation refuses.
-        The watch tick restarts that simulation when the file changes. Otherwise the message
-        tells the user to click Retry.
+        pyclickplc raises ``PlcDataReadError`` when it cannot tell what some Text addresses
+        hold. The session then sets the switches and analog inputs from the other addresses.
+        Its notice names the skipped ones once the next launch succeeds (``_on_launched``).
+        pyrung skips the same addresses when it loads the file at launch. pyrung names them in
+        a console output event, and ClickNick does not show that event. So the user reads this
+        notice and nothing else about them.
         """
         from pyclickplc import PlcDataReadError
 
-        path = self._plc_data_path
-        if path is None:
-            return None
-        try:
-            self._snapshot_reader(path)
-        except PlcDataReadError as exc:
-            fix = (
-                "then save the PLC data file again."
-                if running
-                else "save the PLC data file again, and click Retry."
-            )
-            return (
-                f"ClickNick cannot tell what {_address_ranges(exc.addresses)} hold in the PLC "
-                f"data file {path.name}. CLICK writes a Text comma without quotes. So a comma "
-                "next to an empty Text address can belong to more than one address.\n"
-                f"Replace the comma in those Text values in CLICK, {fix} Or click PLC Data and "
-                "choose another file."
-            )
-        except (OSError, ValueError):
-            return None
-        return None
-
-    def _adopt_snapshot(self, path: Path) -> None:
-        from pyclickplc import PlcDataReadError
-
+        self._plc_data_warning = None
+        skipped: tuple[str, ...] = ()
         try:
             snapshot = self._snapshot_reader(path)
-        except PlcDataReadError:
-            return  # start() and restart() refuse this file and say why.
+        except PlcDataReadError as exc:
+            snapshot, skipped = exc.values, exc.addresses
         except (OSError, ValueError) as exc:
             self._message(f"Could not read PLC data {path}: {exc}", "error")
             return
@@ -984,8 +962,18 @@ class SimulationSession:
             self._state, snapshot, inputs=inputs, analog_inputs=analog_inputs
         )
         self._schedule_save()
-        self._set_notice(
+        loaded = (
             f"Loaded PLC data from {path.name}. The switches and analog inputs now have its values."
+        )
+        if not skipped:
+            self._set_notice(loaded)
+            return
+        self._plc_data_warning = (
+            f"{loaded}\nClickNick cannot tell what {_address_ranges(skipped)} hold in "
+            f"{path.name}. The simulation started with them at their power-on values. CLICK "
+            "writes a Text comma without quotes. A comma next to an empty Text address can then "
+            "belong to more than one address. To load those addresses, replace the comma in "
+            "their Text values in CLICK and save the PLC data file again."
         )
 
     def _follow_program(self) -> bool:
@@ -1701,6 +1689,9 @@ class SimulationSession:
         self._message("OK - simulation ready.", "progress")
         self._set_status(SimStatus.READY)
         self._clear_refusal()
+        if self._plc_data_warning is not None:
+            self._set_notice(self._plc_data_warning, "error")
+            self._plc_data_warning = None
         self._check_program()
         self._reapply(dap)
         self._modbus_info_after_id = self._scheduler.after(0, self._poll_modbus_info)
@@ -1820,10 +1811,6 @@ class SimulationSession:
             # The watch tick reads a changed file only while a simulation runs. Read it here, so
             # that the switches come from it and the next watch tick does not restart.
             self._adopt_snapshot(plc_data)
-        plc_data_problem = self._plc_data_problem(running=False)
-        if plc_data_problem is not None:
-            self._fail(plc_data_problem)
-            return
         assert analysis is not None and analysis.project_dir is not None
         project_dir = analysis.project_dir
 
@@ -1884,9 +1871,9 @@ class SimulationSession:
         """Start over on what the workspace holds now (CLICK's last save and any edits).
 
         The new process starts from power-on values (or the PLC data file). It keeps the user's
-        mode, switches, forces and bench links by address. If the workspace or the PLC data file
-        cannot start a simulation, Restart does not stop the running one. It says why, and the
-        simulation runs on.
+        mode, switches, forces and bench links by address. If the workspace cannot start a
+        simulation, Restart does not stop the running one. It says why, and the simulation runs
+        on.
         """
         from .services.analysis_service import AnalysisStatus
 
@@ -1897,18 +1884,16 @@ class SimulationSession:
             return
         if self._dap is not None:
             analysis = self._get_analysis()
-            runs_on = "The simulation still runs the previous program."
             if analysis is not None and analysis.status is AnalysisStatus.BUILDING:
                 reason = "CLICK's save is still being converted. Restart once it is done."
             else:
                 problem = self._workspace_problem(analysis)
-                if problem is not None:
-                    reason = problem[0]
-                else:
-                    reason = self._plc_data_problem(running=True)
-                    runs_on = "The simulation goes on with the PLC data it had."
+                reason = problem[0] if problem is not None else None
             if reason is not None:
-                self._refuse(f"Cannot restart the simulation: {reason}\n{runs_on}")
+                self._refuse(
+                    f"Cannot restart the simulation: {reason}\n"
+                    "The simulation still runs the previous program."
+                )
                 return
         self.relaunch()
 

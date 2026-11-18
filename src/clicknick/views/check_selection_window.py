@@ -6,8 +6,7 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import messagebox, ttk
 
-from pyrung.core.validation.config import CheckConfig
-from pyrung.core.validation.registry import default_on_rules, ordered_rules
+from pyrung.validation import CheckConfig, default_on_rules, ordered_rules
 
 from ..services.program_check_selection import ProgramCheckSelection, update_selection
 

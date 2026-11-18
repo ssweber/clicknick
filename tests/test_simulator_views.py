@@ -191,7 +191,7 @@ def _banners_with(win, text: str) -> int:
     return sum(text in banner for banner, _labels in win._banner_key)
 
 
-def test_a_refused_start_shows_one_banner(simulator, ready, tmp_path):
+def test_a_start_from_unclear_plc_data_shows_one_banner(simulator, ready, tmp_path):
     from test_simulation_session import _plc_data_with_unknown_text
 
     from clicknick.simulation_session import _default_snapshot_reader
@@ -202,11 +202,11 @@ def test_a_refused_start_shows_one_banner(simulator, ready, tmp_path):
     ready.sim.turn_on()
     ready.scheduler.run_ready()
 
-    assert ready.sim.status is SimStatus.FAILED
+    assert ready.sim.is_ready
     assert _banners_with(win, "TXT13-TXT20") == 1
 
 
-def test_a_refused_restart_shows_one_banner(simulator, ready, tmp_path):
+def test_a_restart_from_unclear_plc_data_shows_one_banner(simulator, ready, tmp_path):
     from test_simulation_session import _plc_data_with_unknown_text
 
     from clicknick.simulation_session import _default_snapshot_reader
@@ -236,7 +236,7 @@ def test_an_error_that_no_banner_shows_gets_its_own(simulator, ready):
     assert _banners_with(win, "disk full") == 1
 
 
-def test_a_refusal_leaves_the_banner_of_an_earlier_error(simulator, ready, tmp_path):
+def test_a_plc_data_warning_leaves_the_banner_of_an_earlier_error(simulator, ready, tmp_path):
     from test_simulation_session import _plc_data_with_unknown_text
 
     from clicknick.simulation_session import _default_snapshot_reader
@@ -760,7 +760,7 @@ def test_link_dialog_builds_bench_links(tk_root):
 
 
 def test_link_dialog_offers_pyrungs_kinds_for_the_input(tk_root):
-    from pyrung.core import PHYSICAL_KINDS
+    from pyrung import PHYSICAL_KINDS
 
     from clicknick.views.sim_link_dialog import LinkDialog
 
@@ -803,7 +803,7 @@ def test_link_dialog_shows_each_kinds_fields_and_checks_them(tk_root):
         with pytest.raises(ValueError, match="Enter on delay or off delay."):
             dialog.build()
         dialog._key_vars["on_delay"].set("2")
-        with pytest.raises(ValueError, match="^On delay: no duration tokens"):
+        with pytest.raises(ValueError, match=r"^On delay: '2' is not a duration\. Write a time"):
             dialog.build()
 
         # Timed has a time and a Maintained checkbox.

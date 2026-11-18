@@ -44,19 +44,16 @@ Both forms apply only to the current terminal session. cmd uses `set`, not
 `make install`, and `make upgrade` include explicit dependency synchronization
 and can restore the released package even with `UV_NO_SYNC` set.
 
-### Missing validation.config module
+### An import from pyrung fails
 
-If you see `No module named pyrung.core.validation.config`, the environment
-likely contains released pyrung instead of the paired development checkout.
-Reinstall the local dependency, then restart ClickNick:
+If ClickNick stops with an `ImportError` for a name from `pyrung`, the
+environment probably holds released pyrung, and this ClickNick revision needs
+the sibling checkout. Reinstall the local dependency, then restart ClickNick:
 
 ```bat
 make install-dev
 uv run --no-sync python -u -m clicknick
 ```
-
-The new Check Program selection workflow requires the matching pyrung changes.
-Channel parameter import also requires the matching local pyclickplc checkout.
 
 ### Returning to released dependencies
 

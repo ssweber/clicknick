@@ -242,7 +242,7 @@ def test_a_hand_written_number_is_read_and_a_bad_value_reported(tmp_path):
 def test_an_older_profile_runs_through_every_migration_in_order(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
-    from pyrung.click.tag_map import MIGRATIONS
+    from pyrung.click import MIGRATIONS
 
     from clicknick.services import sim_state
 

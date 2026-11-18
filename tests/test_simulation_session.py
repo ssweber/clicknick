@@ -6,13 +6,15 @@ subprocess and a fake ModbusService for the Modbus client.
 
 from __future__ import annotations
 
+import ast
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from pyclickplc.addresses import format_address_display, normalize_address, parse_addr_key
-from pyrung.core import PHYSICAL_KEYS
+from pyrung import PHYSICAL_KEYS
 
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
@@ -309,7 +311,7 @@ class FakeModbus:
 def _publish(svc: AnalysisService, result: AnalysisResult) -> None:
     """Put *svc* in the state that a successful build leaves, with *result* as its result.
 
-    The graph and the workspace use the same tag maps.
+    The DataView and the workspace use the same tag maps.
     """
     svc._result = result
     svc._project_tags = result.tag_to_addr_key
@@ -324,7 +326,7 @@ def _ready_analysis(project_dir: Path, *, generation: int = 1) -> AnalysisServic
     _publish(
         svc,
         AnalysisResult(
-            graph=SimpleNamespace(tag_roles={}),
+            dataview=SimpleNamespace(tags=set()),
             program=MagicMock(),
             project_dir=project_dir,
             tag_to_addr_key={},
@@ -1024,9 +1026,7 @@ def test_layout_lists_unassigned_io_the_program_uses(ready):
             "_IO1_Module_Error": get_addr_key("X", 101),  # module status, not a terminal
         }
     )
-    ready.analysis._result.graph.tag_roles.update(
-        {"Aux": None, "Lamp": None, "_IO1_Module_Error": None}
-    )
+    ready.analysis._result.dataview.tags.update({"Aux", "Lamp", "_IO1_Module_Error"})
     ready.open()
     ready.sim.refresh_layout(force=True)
     assert ready.sim.layout is not None
@@ -1067,7 +1067,7 @@ def test_a_text_comma_in_plc_data_reads_back_as_a_comma(tmp_path):
     file for the switches and analog inputs. pyrung reads it again at launch for every value.
     """
     from pyclickplc.banks import DataType
-    from pyrung.click.tag_map import TagMap
+    from pyrung.click import TagMap
 
     from clicknick.services.analysis_service import _write_nicknames_csv
     from clicknick.simulation_session import _default_snapshot_reader
@@ -1126,16 +1126,18 @@ def _save_without_the_comma(data: Path) -> None:
     os.utime(data, (before + 5, before + 5))
 
 
-def _assert_one_refusal_of(harness: Harness, data: Path) -> None:
-    errors = harness.messages("error")
-    assert errors.count("TXT13-TXT20") == 1, errors
-    assert f"the PLC data file {data.name}" in errors
-    assert "Replace the comma in those Text values in CLICK" in errors
-    assert "values attribute" not in harness.messages()
-    assert "read_plc_data" not in harness.messages()
+def _assert_one_warning_about(harness: Harness, data: Path) -> None:
+    """Check that the messages name the skipped addresses once, in ClickNick's words."""
+    messages = harness.messages()
+    assert messages.count("TXT13-TXT20") == 1, messages
+    assert f"ClickNick cannot tell what TXT13-TXT20 hold in {data.name}." in messages
+    assert "The simulation started with them at their power-on values." in messages
+    assert "replace the comma in their Text values in CLICK" in messages
+    assert "values attribute" not in messages
+    assert "read_plc_data" not in messages
 
 
-def test_a_plc_data_file_with_unknown_text_does_not_start_the_simulation(ready, tmp_path):
+def test_a_plc_data_file_with_unknown_text_starts_the_simulation_and_warns_once(ready, tmp_path):
     from clicknick.simulation_session import _default_snapshot_reader
 
     ready.read_snapshot = _default_snapshot_reader
@@ -1144,61 +1146,51 @@ def test_a_plc_data_file_with_unknown_text_does_not_start_the_simulation(ready, 
 
     ready.open()
 
-    assert ready.daps == []
-    assert ready.sim.status is SimStatus.FAILED
-    assert ready.sim.error is not None and "TXT13-TXT20" in ready.sim.error
-    assert "save the PLC data file again, and click Retry." in ready.sim.error
-    _assert_one_refusal_of(ready, data)
-
-
-def test_retry_after_fixing_a_refused_plc_data_file_launches_once(ready, tmp_path):
-    from clicknick.simulation_session import WATCH_MS, _default_snapshot_reader
-
-    ready.read_snapshot = _default_snapshot_reader
-    data = _plc_data_with_unknown_text(tmp_path)
-    ready.sim.set_plc_data_path(data)
-    ready.open()
-    assert ready.sim.status is SimStatus.FAILED
-
-    _save_without_the_comma(data)
-    ready.scheduler.fire(WATCH_MS)
-    assert ready.daps == [], "a failed simulation does not restart when the file changes"
-
-    ready.sim.retry()
-    ready.scheduler.run_ready()
     assert len(ready.daps) == 1
     assert ready.dap.calls[0][2]["snapshot_path"] == data
-    assert ready.sim.notice is not None and "Loaded PLC data from data.csv" in ready.sim.notice
-
-    ready.sim.toggle_switch("X001")
-    ready.scheduler.fire(WATCH_MS)
-    assert len(ready.daps) == 1, "the watch tick does not restart a second time"
-    assert ready.sim.switch_on("X001"), "the file is not read again over the switches"
-    assert "The PLC data file changed" not in ready.messages()
+    assert ready.sim.status is not SimStatus.FAILED
+    assert ready.sim.notice is not None and "TXT13-TXT20" in ready.sim.notice
+    assert "TXT13-TXT20" in ready.messages("error")
+    _assert_one_warning_about(ready, data)
 
 
-def test_a_plc_data_file_with_unknown_text_leaves_the_running_simulation(ready, tmp_path):
+def test_a_plc_data_file_with_unknown_text_sets_the_switches_from_the_rest(ready, tmp_path):
+    from pyclickplc import PlcDataReadError
+
+    def unknown_text(_path):
+        raise PlcDataReadError({"X001": True, "X002": False}, ("TXT13", "TXT14"))
+
+    ready.read_snapshot = unknown_text
+    data = tmp_path / "data.csv"
+    data.write_text("x", encoding="utf-8")
+    ready.sim.set_plc_data_path(data)
+
+    ready.open()
+
+    assert ready.sim.switch_on("X001")
+    assert not ready.sim.switch_on("X002")
+    assert ready.sim.notice is not None
+    assert ready.sim.notice.startswith("Loaded PLC data from data.csv.")
+    assert "TXT13-TXT14" in ready.sim.notice
+
+
+def test_a_plc_data_file_with_unknown_text_restarts_the_running_simulation(ready, tmp_path):
     from clicknick.simulation_session import _default_snapshot_reader
 
     ready.open()
-    ready.sim.toggle_switch("X001")
     ready.read_snapshot = _default_snapshot_reader
     data = _plc_data_with_unknown_text(tmp_path)
 
     ready.sim.set_plc_data_path(data)
     ready.scheduler.run_ready()
 
-    assert len(ready.daps) == 1, "the simulation does not restart"
+    assert len(ready.daps) == 2, "the simulation restarts from the file"
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
     assert ready.sim.status is not SimStatus.FAILED
-    assert ready.sim.switch_on("X001"), "the switches stay as they were"
-    errors = ready.messages("error")
-    assert "then save the PLC data file again." in errors
-    assert "The simulation goes on with the PLC data it had." in errors
-    assert "still runs the previous program" not in errors
-    _assert_one_refusal_of(ready, data)
+    _assert_one_warning_about(ready, data)
 
 
-def test_saving_the_fixed_file_restarts_a_simulation_that_refused_it(ready, tmp_path):
+def test_saving_the_fixed_file_restarts_without_another_warning(ready, tmp_path):
     from clicknick.simulation_session import WATCH_MS, _default_snapshot_reader
 
     ready.open()
@@ -1206,17 +1198,24 @@ def test_saving_the_fixed_file_restarts_a_simulation_that_refused_it(ready, tmp_
     data = _plc_data_with_unknown_text(tmp_path)
     ready.sim.set_plc_data_path(data)
     ready.scheduler.run_ready()
-    assert len(ready.daps) == 1
+    assert len(ready.daps) == 2
 
     _save_without_the_comma(data)
     ready.scheduler.fire(WATCH_MS)
     ready.scheduler.run_ready()
 
-    assert len(ready.daps) == 2
+    assert len(ready.daps) == 3
     assert ready.dap.calls[0][2]["snapshot_path"] == data
+    assert ready.sim.notice is not None and "cannot tell" not in ready.sim.notice
+    _assert_one_warning_about(ready, data)
+
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 4
+    assert ready.messages().count("TXT13-TXT20") == 1, "a restart does not read the file again"
 
 
-def test_the_refusal_lists_runs_of_text_addresses_as_ranges():
+def test_the_warning_lists_runs_of_text_addresses_as_ranges():
     from clicknick.simulation_session import PLC_DATA_LISTED, _address_ranges
 
     assert _address_ranges(["TXT2", "TXT3", "TXT5", "TXT13", "TXT14"]) == (
@@ -1226,8 +1225,29 @@ def test_the_refusal_lists_runs_of_text_addresses_as_ranges():
     assert _address_ranges(many).endswith(", TXT19 and 2 more")
 
 
+def test_the_plc_data_warning_waits_for_a_launch_that_succeeds(ready, tmp_path):
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    ready.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_unknown_text(tmp_path)
+    ready.sim.set_plc_data_path(data)
+    ready.next_launch_error = RuntimeError("pyrung could not load the program: boom")
+
+    ready.open()
+
+    assert ready.sim.status is SimStatus.FAILED
+    assert "TXT13-TXT20" not in ready.messages(), "no simulation started from the file"
+
+    ready.next_launch_error = None
+    ready.sim.retry()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.is_ready
+    _assert_one_warning_about(ready, data)
+
+
 def test_a_plc_data_file_that_cannot_be_read_still_reaches_the_launch(ready, tmp_path):
-    """Only a file with more than one reading stops the launch. pyrung reports the rest."""
+    """ClickNick says that it cannot read the file and launches. pyrung reports its own failure."""
 
     def unreadable(_path):
         raise ValueError("TXT1 row has 9 cells, not 10.")
@@ -1475,7 +1495,7 @@ def _rebuild(
     _publish(
         harness.analysis,
         AnalysisResult(
-            graph=old.graph,
+            dataview=old.dataview,
             program=old.program,
             project_dir=old.project_dir,
             tag_to_addr_key={tag: key for key, tag in key_to_tag.items()},
@@ -2625,7 +2645,7 @@ def test_switches_on_unassigned_inputs_wait_for_the_analysis(ready, tmp_path):
     from pyclickplc.addresses import get_addr_key
 
     ready.analysis._result.tag_to_addr_key["Aux"] = get_addr_key("X", 201)
-    ready.analysis._result.graph.tag_roles["Aux"] = None
+    ready.analysis._result.dataview.tags.add("Aux")
     save_state(
         tmp_path / "app" / "Line1.toml",
         SimulatorState(switches={"X001": True, "X201": True}, modules=("cpu:C0-02DD1-D",)),
@@ -2667,13 +2687,13 @@ def test_a_simulation_that_dies_as_it_starts_is_reported(ready):
 
 
 # ----------------------------------------------------------------------
-# Values through a write, on pyrung's own adapter (in process)
+# Values through a write, on pyrung's own DAP server
 # ----------------------------------------------------------------------
 
 _VALUES_PROGRAM = """\
 import warnings
 warnings.simplefilter("ignore")
-from pyrung.core import Bool, Int, PLC, Program, rung, calc, out
+from pyrung import Bool, Int, PLC, Program, rung, calc, out
 start = Bool("Start")
 light = Bool("Light")
 ret = Int("Ret", retentive=True)
@@ -2689,50 +2709,43 @@ runner = PLC(prog, dt=0.010)
 """
 
 
-def _adapter_dap_class():
-    """Return a DapService class that talks to pyrung's DAPAdapter in process.
+@pytest.fixture()
+def pyrung_dap():
+    """Return a DapService class that runs ``python -m pyrung.dap`` in a subprocess, as the app does.
 
-    It scans only when told.
+    pyrung scans only when the test calls ``scan()``. Teardown stops every process that the
+    class started.
     """
-    import io
-
-    adapter_module = pytest.importorskip("pyrung.dap.adapter")
-    from pyrung.dap.protocol import read_message
-
     from clicknick.services.dap_service import DapService
 
-    class AdapterDap(DapService):
-        def launch(self, project_dir, **_kwargs):
-            self._out = io.BytesIO()
-            self._adapter = adapter_module.DAPAdapter(in_stream=io.BytesIO(), out_stream=self._out)
-            self._proc = object()  # requests go to the adapter
-            arguments = {
-                "program": str(project_dir / "run.py"),
-                "startMode": "stop",
-                "keepForcesOnRun": True,
-            }
-            assert self._send_and_wait("launch", arguments)["success"]
-            assert self._send_and_wait("configurationDone")["success"]
+    started: list[DapService] = []
 
-        def terminate(self):
-            self._proc = None
+    class SubprocessDap(DapService):
+        def __init__(self, *, on_frame=None, **_callbacks):
+            # The reader thread runs no session callback, because FakeScheduler is not
+            # thread-safe. frame() runs the session's on_frame on the test's thread.
+            super().__init__()
+            self._session_frame = on_frame
+            self._test_session = f"clicknick-test-{uuid.uuid4().hex}"
+            started.append(self)
 
-        def _send_and_wait(self, command, arguments=None, timeout=10.0):
-            self._seq += 1
-            self._adapter.handle_request(
-                {"seq": self._seq, "type": "request", "command": command,
-                 "arguments": arguments or {}}
-            )  # fmt: skip
-            reader = io.BytesIO(self._out.getvalue())
-            self._out.seek(0)
-            self._out.truncate(0)
-            responses = []
-            while (message := read_message(reader)) is not None:
-                if message.get("type") == "response":
-                    responses.append(message)
-            return responses[-1] if responses else None
+        def launch(self, project_dir, *, snapshot_path=None, **_kwargs):
+            # No Modbus server. Each test has a session name of its own.
+            super().launch(
+                project_dir,
+                session_name=self._test_session,
+                snapshot_path=snapshot_path,
+                start_mode="stop",
+                keep_forces_on_run=True,
+            )
 
-        # In RUN the adapter sets only a running flag and does not free-run. The test scans.
+        def _cache_execution_state(self, body, trace):
+            running = self._running
+            super()._cache_execution_state(body, trace)
+            # pyrung never scans on its own here, and its frames say so. The test scans for it.
+            self._running = running
+
+        # In RUN, pyrung only records that it runs. The test scans.
         def continue_(self):
             self._running = True
 
@@ -2741,24 +2754,42 @@ def _adapter_dap_class():
 
         def scan(self, count: int = 1) -> None:
             for _ in range(count):
-                assert self._send_and_wait("pyrungStepScan")["success"]
+                self._request("pyrungStepScan")
 
         def frame(self) -> None:
-            runner = self._adapter._runner
-            self._mode = str(getattr(runner.mode, "value", runner.mode))
-            self._forces = dict(runner.forces)
-            self._on_frame()
+            # pyrung answers a request only after it sends the frames that earlier requests
+            # queued. So once list_forces() returns, the cached mode and forces are current.
+            self.list_forces()
+            if self._session_frame is not None:
+                self._session_frame()
 
         def tag(self, name):
-            return self._adapter._runner.current_state.tags.get(name)
+            """Return the value of the tag *name*, as the console's ``get`` reads it."""
+            from pyrung.live import send_command
 
-    return AdapterDap
+            ok, text = send_command(self._test_session, f"get {name}")
+            assert ok, text
+            shown, _, value = text.partition(" = ")
+            assert shown == name, text
+            return ast.literal_eval(value)
+
+        def bench_links(self) -> dict[str, str]:
+            """Return the enable of each bench link, keyed by its feedback."""
+            return {
+                link["feedback"]: link["enable"]
+                for link in self.list_links()["links"]
+                if link["source"] == "bench"
+            }
+
+    yield SubprocessDap
+    for dap in started:
+        dap.terminate()
 
 
 @pytest.fixture()
-def on_pyrung(tmp_path):
-    """Return the harness, with the simulation on pyrung's adapter running a counting program."""
-    dap_class = _adapter_dap_class()
+def on_pyrung(tmp_path, pyrung_dap):
+    """Return the harness, with the simulation on pyrung's DAP server running a counting program."""
+    dap_class = pyrung_dap
     project = tmp_path / "project"
     project.mkdir()
     harness = Harness(tmp_path, _ready_analysis(project))
@@ -2789,6 +2820,62 @@ def on_pyrung(tmp_path):
     return harness
 
 
+_TEXT_TAGS_MODULE = """from pyrung import Char
+from pyrung.click import ClickBlocks, TagMap
+
+blocks = ClickBlocks()
+first = Char("First")
+second = Char("Second")
+skipped = Char("Skipped", default="z")
+mapping = TagMap(
+    {first: blocks.txt[1], second: blocks.txt[12], skipped: blocks.txt[13]},
+    include_system=False,
+)
+"""
+
+_TEXT_PROGRAM = """import warnings
+warnings.simplefilter("ignore")
+from pyrung import PLC, Program, copy, rung
+from tags import first, second, skipped
+with Program(strict=False) as prog:
+    for tag in (first, second, skipped):
+        with rung():
+            copy(tag, tag)
+runner = PLC(prog, dt=0.010)
+"""
+
+
+def test_pyrung_starts_from_unclear_plc_data_with_the_skipped_text_at_power_on(
+    tmp_path, pyrung_dap
+):
+    """The Simulator starts on pyrung from a file with unclear Text, as its notice says."""
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project))
+    (project / "tags.py").write_text(_TEXT_TAGS_MODULE, encoding="utf-8")
+    (project / "run.py").write_text(_TEXT_PROGRAM, encoding="utf-8")
+
+    def factory(**callbacks):
+        dap = pyrung_dap(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    harness.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_unknown_text(tmp_path)
+    harness.sim.set_plc_data_path(data)
+    harness.open()
+
+    assert harness.sim.is_ready, harness.messages()
+    dap = harness.dap
+    assert (dap.tag("First"), dap.tag("Second")) == ("A", "i")
+    assert dap.tag("Skipped") == "z", "TXT13 keeps its power-on value"
+    _assert_one_warning_about(harness, data)
+    assert "pyrung skipped" not in harness.messages()
+
+
 def test_run_time_edit_keeps_every_value_and_the_force(on_pyrung):
     dap = on_pyrung.dap
     _rebuild(on_pyrung)
@@ -2799,7 +2886,7 @@ def test_run_time_edit_keeps_every_value_and_the_force(on_pyrung):
     # Both counters read 6 before the write, and the program adds 1 each scan.
     # RUN Time Edit keeps every value, so both read 7 after one scan.
     assert (dap.tag("Ret"), dap.tag("NonRet"), dap.tag("Light")) == (7, 7, True)
-    assert dict(dap._adapter._runner.forces) == {"Light": True}
+    assert dap.list_forces() == {"Light": True}
     assert on_pyrung.sim.program_change is None
 
 
@@ -2813,7 +2900,7 @@ def test_stop_and_write_clears_non_retentive_values_and_keeps_the_force(on_pyrun
     # Stop and Write clears non-retentive values. NonRet starts again from 0 and reads 1
     # after the scan, while Ret reads 7. The Light force survives.
     assert (dap.tag("Ret"), dap.tag("NonRet"), dap.tag("Light")) == (7, 1, True)
-    assert dict(dap._adapter._runner.forces) == {"Light": True}
+    assert dap.list_forces() == {"Light": True}
     assert dap.mode == "run"
 
 
@@ -3346,7 +3433,7 @@ def test_the_programs_own_links_go_with_the_plan_under_their_addresss_new_name(r
 _LINK_PROGRAM = """\
 import warnings
 warnings.simplefilter("ignore")
-from pyrung.core import Bool, PLC, Physical, Program, rung, out
+from pyrung import Bool, PLC, Physical, Program, rung, out
 cmd = Bool({enable!r})
 fb = {feedback}
 with Program(strict=False) as prog:
@@ -3366,13 +3453,12 @@ def _link_program(name: str, *, declared: bool, enable: str = "Cmd") -> str:
     return _LINK_PROGRAM.format(feedback=feedback, enable=enable)
 
 
-def _timing_on_pyrung(tmp_path, *, declared: bool):
-    """Run the session in RUN on pyrung's adapter, and return the harness and a timer count.
+def _timing_on_pyrung(tmp_path, dap_class, *, declared: bool):
+    """Run the session in RUN on pyrung's DAP server. Return the harness and a timer count.
 
     Prox, on X002, has a timed link from Cmd. The count is how far its 100 ms timer has run,
     and it is part way through.
     """
-    dap_class = _adapter_dap_class()
     project = tmp_path / "project"
     project.mkdir()
     harness = Harness(tmp_path, _ready_analysis(project))
@@ -3408,8 +3494,10 @@ def _timing_on_pyrung(tmp_path, *, declared: bool):
     [(False, "Cmd"), (False, "Go"), (True, "Cmd"), (True, "Go")],
     ids=["bench link", "bench link and its enable", "program's link", "program's link and enable"],
 )
-def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, declared, enable):
-    harness, count = _timing_on_pyrung(tmp_path, declared=declared)
+def test_renaming_a_linked_input_while_it_times_keeps_its_timing(
+    tmp_path, pyrung_dap, declared, enable
+):
+    harness, count = _timing_on_pyrung(tmp_path, pyrung_dap, declared=declared)
     dap = harness.dap
     run = harness.analysis.project_dir / "run.py"
     run.write_text(_link_program("ProxSensor", declared=declared, enable=enable), encoding="utf-8")
@@ -3421,12 +3509,11 @@ def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, decla
 
     assert harness.sim.program_change is None
     assert dap.tag("__tmd_on__ProxSensor") == count + 10, "one 10 ms scan on, not from 0"
-    assert dict(dap._adapter._runner.forces) == {enable: True}, "X001's force, on its new name"
+    assert dap.list_forces() == {enable: True}, "X001's force, on its new name"
     assert harness.sim.forces == {"X001": True}
     if declared:
         return
-    assert list(dap._adapter._bench_links) == ["ProxSensor"]
-    assert dap._adapter._bench_links["ProxSensor"].coupling.en_name == enable
+    assert dap.bench_links() == {"ProxSensor": enable}
     assert harness.sim.bench_links == {"X002": BenchLink("X001", response=response(timed="100ms"))}
     renamed = ["the link on Prox is now on ProxSensor"]
     if enable != "Cmd":
@@ -3442,7 +3529,7 @@ def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, decla
 _TWO_LINKS_PROGRAM = """\
 import warnings
 warnings.simplefilter("ignore")
-from pyrung.core import Bool, PLC, Physical, Program, rung, out
+from pyrung import Bool, PLC, Physical, Program, rung, out
 cmd, go = Bool("Cmd"), Bool("Go")
 start = Bool("Start", physical=Physical("Start", timed="100ms"), link="Cmd")
 begin = Bool("Begin", physical=Physical("Begin", timed="100ms"), link="Go")
@@ -3459,8 +3546,10 @@ runner = PLC(prog, dt=0.010)
 """
 
 
-def test_declared_links_whose_nicknames_and_comments_swap_keep_their_own_timing(tmp_path):
-    dap_class = _adapter_dap_class()
+def test_declared_links_whose_nicknames_and_comments_swap_keep_their_own_timing(
+    tmp_path, pyrung_dap
+):
+    dap_class = pyrung_dap
     project = tmp_path / "project"
     project.mkdir()
     harness = Harness(tmp_path, _ready_analysis(project))
@@ -3508,3 +3597,18 @@ def test_declared_links_whose_nicknames_and_comments_swap_keep_their_own_timing(
     assert dap.tag("__tmd_on__Start") == start + 10, "Start's coil, on X003 now"
     assert dap.tag("__tmd_on__Begin") == begin + 10, "Begin's coil, on X002 now"
     assert harness.sim.notice in (None, "")
+
+
+def test_the_console_runs_assert_and_run_until_on_pyrung(on_pyrung):
+    """The Console sends these through ``send_command``, and they need no recording."""
+    from pyrung.live import send_command
+
+    session = on_pyrung.dap._test_session
+    assert send_command(session, "assert Light == True") == (True, "assert ok: Light = True")
+    ok, text = send_command(session, "assert Light == False")
+    assert not ok and "expected False" in text
+    ok, text = send_command(session, "run until Ret > 20 within 100")
+    assert ok and "Ret > 20 is true" in text
+    assert on_pyrung.dap.tag("Ret") == 21
+    ok, text = send_command(session, "run until Ret > 100000 within 5")
+    assert not ok and "still false after 5 scan(s)" in text

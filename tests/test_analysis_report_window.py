@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
-from pyrung.core.validation import FindingDisplay
+from pyrung.validation import FindingDisplay
 
 from clicknick.services.program_check_preferences import ProgramCheckPreferences
 from clicknick.views.analysis_report_window import AnalysisReportData, AnalysisReportWindow
@@ -159,7 +159,7 @@ def test_failed_refresh_retains_previous_results(report_window):
 
 def test_future_registry_rules_and_severities_render_and_remember(report_window, monkeypatch):
     monkeypatch.setattr(
-        "pyrung.core.validation.ordered_rules",
+        "pyrung.validation.ordered_rules",
         lambda: [SimpleNamespace(code="FUTURE_RULE", title="A new check", severity="future")],
     )
     window = report_window(_data("FUTURE_RULE"))

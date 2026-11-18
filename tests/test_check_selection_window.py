@@ -1,7 +1,7 @@
 """Save and Run chooses its settings destination from the active workspace."""
 
 import pytest
-from pyrung.core.validation.config import CheckConfig
+from pyrung.validation import CheckConfig
 
 from clicknick.services.program_check_selection import ProgramCheckSelection
 from clicknick.views.check_selection_window import CheckSelectionWindow

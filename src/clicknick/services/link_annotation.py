@@ -20,7 +20,7 @@ from pathlib import Path
 
 from pyclickplc.addresses import normalize_address, parse_address
 from pyclickplc.banks import BANKS, DataType
-from pyrung.click.tag_map import TagMeta
+from pyrung.click import TagMeta
 
 from ..data.data_source import CsvDataSource
 from .annotation_service import AnnotationService

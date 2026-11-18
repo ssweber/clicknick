@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from pyrung.click.tag_map import TagMeta
+from pyrung.click import TagMeta
 
 from clicknick.services.annotation_service import AnnotationService
 
@@ -159,7 +159,7 @@ class TestValidateMeta:
 
     def test_a_bare_flag_needs_a_link(self) -> None:
         errors = AnnotationService.validate_meta(TagMeta(toggle=True))
-        assert errors == ["TagMeta toggle needs link= or physical= beside it."]
+        assert errors == ["toggle in bracket metadata needs link= or physical= beside it."]
         assert AnnotationService.validate_meta(TagMeta(link="Btn", toggle=True)) == []
 
     def test_system_without_physical_details(self) -> None:

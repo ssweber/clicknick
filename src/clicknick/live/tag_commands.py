@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import fields, replace
 from typing import TYPE_CHECKING
 
-from pyrung.click.tag_map import TagMeta, format_tag_meta
+from pyrung.click import TagMeta, format_tag_meta
 
 from ..models.address_row import initial_values_differ
 from ..services.annotation_service import AnnotationService

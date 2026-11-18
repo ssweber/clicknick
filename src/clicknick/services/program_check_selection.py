@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from pyrung.core.validation.config import CheckConfig, load_check_config, save_check_config
+from pyrung.validation import CheckConfig, load_check_config, save_check_config
 
 from .program_check_preferences import default_preferences_path
 
