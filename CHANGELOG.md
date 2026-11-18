@@ -12,6 +12,7 @@
 
 - The messages of ClickNick, `clicknick-cli` and `clicknick-rung` now say what failed and what to do. Many tooltips and help texts are reworded too. If a script of yours matches on ClickNick's message text or on a `clicknick-cli` reply, check it.
 - The Address Editor no longer has **File > Refresh**. It only discarded your unsaved edits. It did not read CLICK's database or the CSV file again. To discard your edits, use **File > Discard Changes**.
+- Review Changes no longer has a **Skip** button. The button only moved to the next program that you had not pasted yet. It did not leave anything out of the paste. To go to another program, click its row in the list.
 
 ### Changed
 
@@ -24,7 +25,6 @@
 - A Sync or Save in the Address Editor no longer shows a box when it succeeds. The editor's status line says how many rows it wrote, such as "Synced 3 rows".
 - The Dataview Editor is now called the **Data View Editor**, and every title, menu and message writes **Data View** the way CLICK does.
 - The Tag Browser now shows a bit's Retentive setting after a comma, as in `BIT, Retentive`. It used to show `BIT = Retentive`, which read as the bit's value. An initial value still follows `=`, as in `BIT = ON, Non-retentive`.
-- Review Changes no longer has a **Skip** button. The button only went to the next program that was left to paste, and it skipped nothing. To go to another program, click its row in the list.
 
 ### Fixed
 

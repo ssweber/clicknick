@@ -2725,7 +2725,10 @@ def test_copying_needs_the_connected_click_window(monkeypatch, copies) -> None:
 
 
 def test_button_row_has_no_skip(tk_root) -> None:
-    """The row list goes to any row, so the button row has no Skip button."""
+    """Check that the row of buttons has no Skip button.
+
+    The user clicks a row in the list to leave the current row.
+    """
     window = ReviewChangesWindow.__new__(ReviewChangesWindow)
     tk.Toplevel.__init__(window, tk_root)
     try:
