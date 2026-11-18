@@ -109,10 +109,10 @@ def plan_nicknames(
     store's base rows, to see what CLICK's database still lacks. The plan leaves out
     addresses that the store does not track. It compares only *fields*. Pass the fields that
     the file has a column for (``CsvDataSource.fields``), so a column that the file lacks
-    leaves that field as it is. A nickname, a comment and an initial value of any type but
-    Text are taken as CLICK stores them, without a space or a tab at either end
+    leaves that field as it is. A nickname and an initial value of any type but Text are
+    taken as CLICK stores them, without a space or a tab at either end
     (``trim_entry``). So ``"Jog\\t"`` is staged as ``"Jog"``, and it is done once the database
-    holds ``"Jog"``.
+    holds ``"Jog"``. A comment is taken as it is.
     """
     changes: list[FieldChange] = []
     compared = [field for field in _FIELDS if field in fields]

@@ -311,11 +311,7 @@ class AddressPanel(ttk.Frame):
 
                 elif col == self.COL_COMMENT:
                     new_comment = new_value if new_value else ""
-
-                    # Skip if the value is unchanged once its edge spaces and tabs are stripped
-                    stored = trim_entry("comment", new_comment, address_row.data_type)
-                    if stored == address_row.comment:
-                        self._show_stored(data_idx, col, new_comment, address_row.comment)
+                    if new_comment == address_row.comment:
                         continue
 
                     session.set_field(addr_key, "comment", new_comment)

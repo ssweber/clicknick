@@ -196,7 +196,8 @@ Early jobs once it works:
   space as a Text initial value, and whether CLICK strips spaces from nicknames and comments.
 
 The two answers that bear on pyclickplc's reader go to Sam. 4d answers the spaces in an address, the bare
-space, the edge spaces and leading zeros for CLICK's CSV import only. A value typed in CLICK is still open (Q7).
+space, the edge spaces and leading zeros for CLICK's CSV import only. The Address Picker run after 4d's notes
+answers a nickname and a comment typed in CLICK.
 Save As and Open (Q2) ran (job `runner-small`):
 - Save As leaves SC_.mdb's bytes as they were. It changes the title last, about 0.7 s after Save.
 - File > Open deletes the temp folder's files, SC_.mdb included, and the title goes bare. It writes a new
@@ -329,12 +330,25 @@ pyclickplc's `tab_checks.csv` (19 rows, 20 imports) took 58 s. What CLICK did (l
   initial value, Retentive and comment.
 - A quoted nickname or comment loses the spaces and tabs at its ends, and a bare nickname loses its leading
   space. A tab inside is kept. A bare comment with an edge space or tab was not tried. So the import put no
-  edge space in SC_.mdb. Q7 below stays open for a value typed in CLICK.
+  edge space in SC_.mdb. A comment typed in CLICK keeps its edge spaces (the Address Picker run below).
 - A bare Text initial value loses its edge whitespace (a bare tab, vertical tab, form feed or space is stored
   as no value). A quoted one keeps it. A quoted comma and a doubled double quote import as `,` and `"`.
 - CLICK accepts a bare number initial value with an edge space (` 5` and `5 ` are stored as `5`). It refuses a
   quoted one with an edge space or tab (`" 5 "`, `"<tab>5"`, `" 1.5"`).
 - CLICK drops a bare space before or after an address. It refuses a quoted address with an edge space.
+
+Address Picker run of 2026-11-18 (live, CLICK 4.00; it was user check Q7): can SC_.mdb hold a nickname or an
+address comment with a space at either end, typed in CLICK?
+- A nickname typed as ` Pump1 ` in the Address Picker is stored as `Pump1`.
+- A comment typed as ` Note2 ` is stored as ` Note2 `, with both spaces (bytes `20 4e 6f 74 65 32 20`).
+- CLICK showed no message either time.
+- Sam ruled that ClickNick keeps the spaces at the ends of a comment. BOB ruled that ClickNick keeps a tab at
+  the ends of a comment too. CLICK was never checked with a tab.
+- ClickNick still trims nicknames and the initial values of any type but Text. It trims nothing from a
+  comment. A comment with a line break or another control code at either end loads as it is, and it shows an
+  error with its own message.
+- CLICK's own CSV import drops the edge spaces of a comment (above). So a comment with an edge space loses
+  them when you import ClickNick's CSV into CLICK.
 
 Runs of 2026-11-16 (job A):
 - INT refuses `1_000`, `1e3` and `.5`.
@@ -598,10 +612,6 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
 - Q6: after deleting all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the step
   wording say to click the first empty rung? Sam (2026-11-16): "there are always empty rungs". Not to be
   automated.
-- Q7: can SC_.mdb hold a nickname or address comment with a space at either end, typed in CLICK? (CLICK's own
-  CSV import put none there, 4d.) ClickNick trims such a value on load as an unsaved edit ("Trim spaces"). If
-  the answer is yes, the next Sync writes the trimmed value into CLICK. The recorded `tests/SC_.mdb` and
-  `NicknameExport.csv` hold none.
 - Q8 (CLICK v2/v3 only): autocomplete's map for the v2/v3 dialogs is inferred from v4. In an Out, Set or Reset,
   does CLICK refuse X, T and CT? (ClickNick no longer offers them.) In a Receive or Send, do the master
   address (Receive's `Edit20`, Send's `Edit16`), the flags and the exception field get the popup? ClickNick

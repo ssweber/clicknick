@@ -409,6 +409,32 @@ def test_comment_without_block_tag_removes_every_tag():
     assert RowService._comment_without_block_tag("<A>y</A>") == "y"
 
 
+def test_comment_without_block_tag_keeps_the_spaces_at_the_other_end():
+    strip = RowService._comment_without_block_tag
+    assert strip(" Note2 ") == " Note2 "
+    assert strip(" Note2 <B>") == " Note2"
+    assert strip("<B> Note2 ") == "Note2 "
+    # The tag takes one space. The second one belongs to the comment.
+    assert strip("<B>  Note2 ") == " Note2 "
+    # With no space beside it, the tag takes one line break.
+    assert strip("<B>\nNote2") == "Note2"
+    assert strip("Note2\r\n<B>") == "Note2"
+
+
+def test_fill_down_copies_a_comment_with_its_edge_spaces(store):
+    first = get_addr_key("DS", 1)
+    with store.edit_session("Setup") as session:
+        session.set_field(first, "nickname", "Alarm1")
+        session.set_field(first, "comment", " Note2 ")
+    targets = [get_addr_key("DS", n) for n in (2, 3)]
+
+    with store.edit_session("Fill down") as session:
+        RowService.fill_down(session, store, first, targets)
+
+    assert [store.visible_state[key].comment for key in targets] == [" Note2 ", " Note2 "]
+    assert not store.has_errors()
+
+
 def test_fill_down_of_an_open_and_close_comment_leaves_no_stray_tag(store):
     first = get_addr_key("DS", 1)
     with store.edit_session("Setup") as session:

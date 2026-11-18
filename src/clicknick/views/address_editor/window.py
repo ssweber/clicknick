@@ -23,7 +23,7 @@ from pyclickplc.blocks import (
 
 from ...data.data_source import CsvDataSource
 from ...services import ImportService, RowService
-from ...services.block_service import remove_block_tag
+from ...services.block_service import add_block_tag, remove_block_tag
 from ...utils.rename_helpers import build_rename_pattern, rename_replacement
 from ...widgets.add_block_dialog import AddBlockDialog
 from ...widgets.custom_notebook import CustomNotebook
@@ -659,9 +659,6 @@ class AddressEditorWindow(tk.Toplevel):
         first_row = visible[first_key]
         last_row = visible[last_key]
 
-        def make_new_comment(current: str, tag: str) -> str:
-            return f"{current} {tag}" if current else tag
-
         # When the edit session closes, the store adds a matching tag to the other row of each
         # tagged T/TD or CT/CTD pair (T1 and TD1). It then validates the rows, recomputes the
         # block colors and notifies its observers.
@@ -669,14 +666,14 @@ class AddressEditorWindow(tk.Toplevel):
             if first_key == last_key:
                 # Single row - self-closing tag
                 tag = format_block_tag(block_name, "self-closing", color)
-                new_comment = make_new_comment(first_row.comment, tag)
+                new_comment = add_block_tag(first_row.comment, tag)
                 session.set_field(first_key, "comment", new_comment)
             else:
                 # Range - opening and closing tags
-                open_comment = make_new_comment(
+                open_comment = add_block_tag(
                     first_row.comment, format_block_tag(block_name, "open", color)
                 )
-                close_comment = make_new_comment(
+                close_comment = add_block_tag(
                     last_row.comment, format_block_tag(block_name, "close")
                 )
                 session.set_field(first_key, "comment", open_comment)

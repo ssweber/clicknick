@@ -31,6 +31,7 @@ from pyclickplc.validation import (
 
 from clicknick.models.address_row import AddressRow
 from clicknick.models.validation import (
+    CONTROL_EDGE_ERROR,
     nickname_duplicate_checker,
     validate_comment,
     validate_nickname,
@@ -312,6 +313,24 @@ class TestValidateComment:
         assert is_valid is False
         assert "Too long" in error
         assert "129/128" in error
+
+    @pytest.mark.parametrize("comment", [" Note2 ", " Note2", "Note2 ", "\tNote2\t", "   "])
+    def test_a_space_or_tab_at_either_end_is_valid(self, comment):
+        """CLICK 4.00 stores a comment with the spaces at its ends."""
+        assert validate_comment(comment) == (True, "")
+
+    def test_the_spaces_at_the_ends_count_toward_the_length(self):
+        assert validate_comment(" " + "A" * (COMMENT_MAX_LENGTH - 2) + " ") == (True, "")
+        is_valid, error = validate_comment(" " + "A" * COMMENT_MAX_LENGTH)
+        assert is_valid is False
+        assert "129/128" in error
+
+    def test_a_line_break_or_a_control_code_at_either_end_is_refused(self):
+        """Only a space and a tab are allowed at the ends. The message names the line break."""
+        assert validate_comment("Note2\n") == (False, CONTROL_EDGE_ERROR)
+        assert validate_comment(" \nNote2") == (False, CONTROL_EDGE_ERROR)
+        assert validate_comment("Note2\x01\t") == (False, CONTROL_EDGE_ERROR)
+        assert validate_comment("Note\n2") == (True, "")
 
 
 class TestAddressRow:

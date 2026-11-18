@@ -15,6 +15,8 @@ from pyclickplc.blocks import (
     parse_block_tag,
 )
 
+from ..models.validation import control_code_edges
+
 if TYPE_CHECKING:
     from pyclickplc.blocks import BlockTag
 
@@ -134,24 +136,82 @@ def _block_tag_span(comment: str) -> tuple[int, int] | None:
 
 
 def add_block_tag(comment: str, tag_text: str) -> str:
-    """Append a block tag to a comment, after one space, as Add Block does."""
+    """Append a block tag to a comment, after one space.
+
+    The space is the tag's separator. It is added to any comment that is not empty, whatever
+    whitespace the comment already ends with. An empty comment gets the tag alone.
+    """
     return f"{comment} {tag_text}" if comment else tag_text
 
 
-def remove_block_tag(comment: str) -> str:
-    """Remove the block tag and the one space that set it apart from the text.
+# Every code up to 0x20: the characters that remove_block_tag strips from an end that it
+# would otherwise leave invalid
+_UP_TO_SPACE = "".join(chr(code) for code in range(0x21))
 
-    This is the inverse of add_block_tag. The rest of the comment is kept as it is.
+# The separators that remove_block_tag may remove beside a tag. A "\r\n" counts as one line
+# break. It comes before "\n" in this list.
+_SEPARATORS = (" ", "\r\n", "\n")
+
+
+def _leading_separator(text: str) -> int:
+    """Return the length of the separator at the start of *text*, or 0 if it has none."""
+    return next((len(sep) for sep in _SEPARATORS if text.startswith(sep)), 0)
+
+
+def _trailing_separator(text: str) -> int:
+    """Return the length of the separator at the end of *text*, or 0 if it has none."""
+    return next((len(sep) for sep in _SEPARATORS if text.endswith(sep)), 0)
+
+
+def remove_block_tag(comment: str) -> str:
+    """Remove the block tag and at most one separator beside it.
+
+    A separator is one space. If there is no space, it is one line break (``"\\n"`` or
+    ``"\\r\\n"``).
+
+    - If the tag is at the start, this function removes the separator after the tag.
+    - If the tag is at the end, it removes the separator before the tag.
+    - If the tag is in the middle, it removes a separator only if there is one on both sides.
+      It removes the space after the tag, or else the space before it, or else the line break
+      after it.
+
+    It never removes a tab or a second separator. The rest of the comment stays as it is,
+    with one exception. Removing a tag never makes a valid comment invalid at an end. If
+    *comment* has no control code at either end and the result would start or end with one,
+    this function strips every code up to 0x20 from that end of the result, spaces and tabs
+    included. So ``" <T>\\nx"`` gives ``"x"``. control_code_edges makes the test, the same
+    one that validate_comment makes. A comment that has a control code at an end already
+    gets only the separator rule.
+
+    add_block_tag puts one space before the tag. So ``remove_block_tag(add_block_tag(comment,
+    tag))`` returns *comment* for a valid comment with no ``<``. A ``<`` in a comment can
+    confuse the tag parser, and this is a known issue. For example, ``"Level < 5 <Motor>"``
+    parses as a tag named ``5 <Motor``.
     """
     span = _block_tag_span(comment)
     if span is None:
         return comment
     before, after = comment[: span[0]], comment[span[1] :]
-    if after.startswith(" ") and (not before or before.endswith(" ")):
-        after = after[1:]
-    elif before.endswith(" ") and not after:
-        before = before[:-1]
-    return before + after
+    if not before:
+        after = after[_leading_separator(after) :]
+    elif not after:
+        before = before[: len(before) - _trailing_separator(before)]
+    elif _trailing_separator(before) and _leading_separator(after):
+        if after.startswith(" "):
+            after = after[1:]
+        elif before.endswith(" "):
+            before = before[:-1]
+        else:
+            after = after[_leading_separator(after) :]
+    result = before + after
+    if any(control_code_edges(comment)):
+        return result
+    bad_start, bad_end = control_code_edges(result)
+    if bad_start:
+        result = result.lstrip(_UP_TO_SPACE)
+    if bad_end:
+        result = result.rstrip(_UP_TO_SPACE)
+    return result
 
 
 def replace_block_tag(comment: str, tag_text: str) -> str:
