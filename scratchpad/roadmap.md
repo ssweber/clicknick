@@ -348,9 +348,10 @@ Runs of 2026-11-16 (job A):
   Picker does (job F, item 4).
 
 The Read Data dump and Project.ini's section case, left here before, ran as jobs D and C (item 4). These runs
-answer the open check "(4b) CSV TXT quoting import", which is deleted. One finding goes to pyclickplc.
-Its writer writes a Text value of a tab, or with an edge space, bare, and CLICK's import stores that value
-trimmed (`test_a_txt_value_with_a_tab_or_edge_space_is_written_bare`).
+answer the open check "(4b) CSV TXT quoting import", which is deleted. One finding went to pyclickplc.
+Its writer wrote a Text value of a tab, or with an edge space, bare, and CLICK's import stored that value
+trimmed. pyclickplc 0.8.0 fixed it. Its writer quotes such a value, and CLICK's import keeps a quoted one
+(`test_a_txt_value_with_a_tab_or_edge_space_is_quoted`).
 
 ## 5. ConnectionSession owns the window and project (done)
 
@@ -389,7 +390,8 @@ What it changed:
 
 What stays in ClickNick (Sam, 2026-11-15): its own `read_mdb_csv` for CLICK's `Address.csv`, which pyclickplc's
 reader reads differently, and `convert_mdb_csv_to_user_csv`, which now writes through `format_csv`. The names
-for unassigned I/O slots in `sim_hardware.py` stay too. The Text quoting import is an open user check (4b).
+for unassigned I/O slots in `sim_hardware.py` stay too. Item 4d answered the open check on the Text quoting
+import.
 
 Left over (nothing): ClickNick's `read_mdb_csv` reads a blank DataType as BIT. The database path
 (`mdb_operations`) reads it as the bank's type. Nothing shows that CLICK writes a blank DataType. If it did,

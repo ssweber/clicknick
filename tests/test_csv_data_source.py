@@ -369,11 +369,11 @@ class TestFieldValues:
         )
 
     @pytest.mark.parametrize("value", ["\t", " a", "a "])
-    def test_a_txt_value_with_a_tab_or_edge_space_is_written_bare(self, tmp_path, value):
-        """pyclickplc's writer quotes only a lone space. ClickNick quoted these before it did.
+    def test_a_txt_value_with_a_tab_or_edge_space_is_quoted(self, tmp_path, value):
+        """CLICK's import drops a space or tab at either end of a Text value without quotes.
 
-        This test pins the behavior, so a change in pyclickplc shows up here. Whether CLICK imports
-        a tab without quotes is an open user check. The other two are not a single Text character.
+        A quoted value keeps it. pyclickplc's writer quotes these values from 0.8.0 on. The last
+        two values are longer than the one character that a Text address holds.
         """
         path = tmp_path / "txt.csv"
         CsvDataSource(str(path)).save_changes(
@@ -381,7 +381,7 @@ class TestFieldValues:
         )
 
         line = path.read_bytes().decode("utf-8").split("\r\n")[1]
-        assert line == f'TXT5,TEXT,"Sep",{value},No,""'
+        assert line == f'TXT5,TEXT,"Sep","{value}",No,""'
 
     @pytest.mark.parametrize("value", ['"', ",", " ", " a", "\t", 'a"b,c'])
     def test_a_txt_initial_value_round_trips(self, tmp_path, value):

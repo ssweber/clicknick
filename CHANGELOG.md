@@ -13,9 +13,13 @@
 - The messages of ClickNick, `clicknick-cli` and `clicknick-rung` now say what failed and what to do. Many tooltips and help texts are reworded too. If a script of yours matches on ClickNick's message text or on a `clicknick-cli` reply, check it.
 - The Address Editor no longer has **File > Refresh**. It only discarded your unsaved edits. It did not read CLICK's database or the CSV file again. To discard your edits, use **File > Discard Changes**.
 - Review Changes no longer has a **Skip** button. The button only moved to the next program that you had not pasted yet. It did not leave anything out of the paste. To go to another program, click its row in the list.
+- The Address Editor now shows an error for a nickname that is `max`, `min`, `mdn`, `avg`, `rand` or `abs` in any letter case, because CLICK 4.00 reserves these words. It also shows an error for a nickname that holds a comma, and for a nickname or comment that starts or ends with a tab. An initial value of any type but Text now shows an error when it starts or ends with a space or a tab, or holds an underscore (`1_000`) or a character outside ASCII. So does a HEX initial value that starts with `0x`. Sync writes nothing while a row has an error. If your project has one of these, rename the nickname or fix the value. 0.24.1 accepted them.
+- The Data View Editor no longer accepts a New Value on SC50 (`_PLC_Mode_Change_to_STOP`) or SC51 (`_Watchdog_Timer_Reset`), and it does not write these bits. Set them from the ladder program instead. A .cdv file that holds a New Value on them still opens, and **Verify MDB & CDV** reports the value.
 
 ### Changed
 
+- The Simulator's Modbus server now accepts a write to an X, T or CT bit, the same as a CLICK PLC. It used to refuse the write with exception 02.
+- The Data View Editor now writes T and CT bits. It used to report an error for them.
 - The tag annotation dialog and `clicknick-cli tag set-flag` no longer have a `lock` flag.
 - ClickNick now requires Python 3.13 or 3.14. 0.24.1 also ran on Python 3.11 and 3.12. If you install with `uv tool install clicknick`, uv downloads a suitable Python for you. Python 3.15 is not supported yet because pywin32 has no build for it.
 - ClickNick now trims spaces from the start and end of nicknames and comments, the same as CLICK. If your project already has some, it opens with an unsaved **Trim spaces** edit. Sync to write it to CLICK. Until you Sync, closing ClickNick asks whether to save the edit. If you undo the edit, the spaces show as errors and Sync refuses them.
