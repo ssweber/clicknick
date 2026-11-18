@@ -2673,17 +2673,17 @@ def test_a_simulation_that_dies_as_it_starts_is_reported(ready):
 _VALUES_PROGRAM = """\
 import warnings
 warnings.simplefilter("ignore")
-from pyrung.core import Bool, Int, PLC, Program, Rung, calc, out
+from pyrung.core import Bool, Int, PLC, Program, rung, calc, out
 start = Bool("Start")
 light = Bool("Light")
 ret = Int("Ret", retentive=True)
 nonret = Int("NonRet", retentive=False)
 with Program(strict=False) as prog:
-    with Rung(start):
+    with rung(start):
         out(light)
-    with Rung():
+    with rung():
         calc(ret + 1, ret)
-    with Rung():
+    with rung():
         calc(nonret + 1, nonret)
 runner = PLC(prog, dt=0.010)
 """
@@ -3346,13 +3346,13 @@ def test_the_programs_own_links_go_with_the_plan_under_their_addresss_new_name(r
 _LINK_PROGRAM = """\
 import warnings
 warnings.simplefilter("ignore")
-from pyrung.core import Bool, PLC, Physical, Program, Rung, out
+from pyrung.core import Bool, PLC, Physical, Program, rung, out
 cmd = Bool({enable!r})
 fb = {feedback}
 with Program(strict=False) as prog:
-    with Rung(cmd):
+    with rung(cmd):
         out(Bool("Lamp"))
-    with Rung(fb):
+    with rung(fb):
         out(Bool("Sink"))
 runner = PLC(prog, dt=0.010)
 """
@@ -3442,18 +3442,18 @@ def test_renaming_a_linked_input_while_it_times_keeps_its_timing(tmp_path, decla
 _TWO_LINKS_PROGRAM = """\
 import warnings
 warnings.simplefilter("ignore")
-from pyrung.core import Bool, PLC, Physical, Program, Rung, out
+from pyrung.core import Bool, PLC, Physical, Program, rung, out
 cmd, go = Bool("Cmd"), Bool("Go")
 start = Bool("Start", physical=Physical("Start", timed="100ms"), link="Cmd")
 begin = Bool("Begin", physical=Physical("Begin", timed="100ms"), link="Go")
 with Program(strict=False) as prog:
-    with Rung(cmd):
+    with rung(cmd):
         out(Bool("Lamp"))
-    with Rung(go):
+    with rung(go):
         out(Bool("Horn"))
-    with Rung(start):
+    with rung(start):
         out(Bool("Sink"))
-    with Rung(begin):
+    with rung(begin):
         out(Bool("Drain"))
 runner = PLC(prog, dt=0.010)
 """
