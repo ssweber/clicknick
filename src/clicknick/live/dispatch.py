@@ -199,8 +199,9 @@ def _cmd_set(ctx: DispatchContext, identifier: str, field_name: str, raw_value: 
     with ctx.store.edit_session(f"AI: set {identifier} {field_name}") as session:
         session.set_field(addr_key, field_name, value)
 
-    # Report the value as stored. The store trims a space from either end of a nickname
-    # or comment. CLICK does the same.
+    # Report the value as stored. The store strips spaces and tabs from either end of a
+    # nickname, a comment and a non-Text initial value. CLICK also trims a space from either
+    # end of a nickname or a comment.
     stored = getattr(ctx.store.get_visible_row(addr_key), field_name)
     return f"OK: {identifier} {field_name} = {stored!r} (staged change)"
 

@@ -570,8 +570,8 @@ class AddressStore:
 
         A nickname flagged ``loaded_with_error`` is trimmed too. After the trim,
         ``_validate_row`` still skips the format rules for it, but checks it for duplicates
-        like any other nickname. No SC or SD name in pyclickplc's table has an edge space, so a
-        documented name is never changed. CLICK generates the X ``_IO`` names, and no table
+        like any other nickname. No SC or SD name in pyclickplc's table has a space or a tab at
+        either end, so a documented name is never changed. CLICK generates the X ``_IO`` names, and no table
         checks them.
 
         No undo step is pushed when no row needs a trim. Edit sessions do not nest. While a

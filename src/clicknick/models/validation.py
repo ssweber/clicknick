@@ -31,7 +31,7 @@ def validate_comment(
     is_block_name_duplicate: Callable[[str, int], bool] | None = None,
     current_addr_key: int = 0,
 ) -> tuple[bool, str]:
-    """Validate a comment's format (length, no space at either end) and block name uniqueness.
+    """Validate a comment's format (length, no space or tab at either end) and block name uniqueness.
 
     Args:
         comment: The comment to validate

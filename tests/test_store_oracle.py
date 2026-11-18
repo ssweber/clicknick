@@ -22,7 +22,7 @@ from pyclickplc.blocks import parse_block_tag
 
 from clicknick.data.address_store import AddressStore
 from clicknick.models.address_row import AddressRow, initial_values_differ
-from clicknick.models.validation import trim_entry
+from clicknick.models.validation import EDGE_CHARACTERS, trim_entry
 from clicknick.services.block_service import (
     compute_block_colors,
     remove_block_tag,
@@ -235,11 +235,11 @@ def _assert_cascade_rules(
         if (key, "comment") not in caller_set and new.comment != old.comment:
             assert tag_changed, (step, key, "comment changed by a free-text edit")
             # A cascade may only add, rename or remove the block tag in a comment. The rest of
-            # the comment stays the same. A space left at either end where the tag was is
-            # trimmed, so both sides are compared after strip(" ").
-            assert remove_block_tag(new.comment).strip(" ") == remove_block_tag(old.comment).strip(
-                " "
-            ), (
+            # the comment stays the same. A space or tab left at either end where the tag was
+            # is trimmed, so both sides are compared after strip(EDGE_CHARACTERS).
+            assert remove_block_tag(new.comment).strip(EDGE_CHARACTERS) == remove_block_tag(
+                old.comment
+            ).strip(EDGE_CHARACTERS), (
                 step,
                 key,
                 old.comment,
