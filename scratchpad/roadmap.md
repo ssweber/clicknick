@@ -500,7 +500,8 @@ checked against ClickNick's main at c232d31, and the line numbers are from there
     matches CLICK.
   - laddercodec's `check_program_name` follows CLICK.exe's Add New Subroutine dialog, by laddy's reading.
     CLICK refuses `<>:"/\|?*` and the Windows device names, such as `CON`, with GUI-040. It accepts a trailing
-    dot. So `Foo.` and `Foo` can both be subroutines, and ClickNick's `_slugify` gives both the stem `Foo`.
+    dot. If CLICK accepts both `Foo.` and `Foo` as subroutines, `_slugify` gives both the stem `Foo`, and
+    `program_save` writes the second as `Foo (2).csv`. Nobody has tried the pair in CLICK.
   - ClickNick's `program_save` writes its own bundle (`program.py` lines 696-717). `_slugify` (lines 461-466)
     removes only `<>:"/\|?*`. It keeps a control character, though Windows refuses one in a file name and
     `write_bundle` refuses it. `_slugify` also collapses runs of spaces, strips dots and spaces from the end,
