@@ -183,6 +183,88 @@ def test_a_failed_conversion_shows_in_the_console_and_offers_retry(simulator, tm
     assert "Traceback" not in _output(win._console)
     [labels] = [labels for text, labels in win._banner_key if text.startswith("Cannot simulate")]
     assert "Retry" in labels and "Show details" in labels
+    assert _banners_with(win, "pyrung conversion crashed") == 1
+
+
+def _banners_with(win, text: str) -> int:
+    win._refresh_banners()
+    return sum(text in banner for banner, _labels in win._banner_key)
+
+
+def test_a_refused_start_shows_one_banner(simulator, ready, tmp_path):
+    from test_simulation_session import _plc_data_with_unknown_text
+
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    win = simulator(ready, turn_on=False)
+    ready.read_snapshot = _default_snapshot_reader
+    ready.sim.set_plc_data_path(_plc_data_with_unknown_text(tmp_path))
+    ready.sim.turn_on()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.status is SimStatus.FAILED
+    assert _banners_with(win, "TXT13-TXT20") == 1
+
+
+def test_a_refused_restart_shows_one_banner(simulator, ready, tmp_path):
+    from test_simulation_session import _plc_data_with_unknown_text
+
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    win = simulator(ready)
+    ready.read_snapshot = _default_snapshot_reader
+    ready.sim.set_plc_data_path(_plc_data_with_unknown_text(tmp_path))
+    ready.scheduler.run_ready()
+
+    assert ready.sim.is_ready
+    assert _banners_with(win, "TXT13-TXT20") == 1
+
+
+def test_a_simulation_that_dies_shows_one_banner(simulator, ready):
+    win = simulator(ready)
+    ready.dap.callbacks["on_state"](SimpleNamespace(value="error"), None)
+    ready.scheduler.run_ready()
+
+    assert ready.sim.status is SimStatus.FAILED
+    assert _banners_with(win, "stopped unexpectedly") == 1
+
+
+def test_an_error_that_no_banner_shows_gets_its_own(simulator, ready):
+    win = simulator(ready)
+    ready.sim._message("Could not save simulator settings to x: disk full", "error")
+
+    assert _banners_with(win, "disk full") == 1
+
+
+def test_a_refusal_leaves_the_banner_of_an_earlier_error(simulator, ready, tmp_path):
+    from test_simulation_session import _plc_data_with_unknown_text
+
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    win = simulator(ready)
+    ready.sim._message("Could not save simulator settings to x: disk full", "error")
+    ready.read_snapshot = _default_snapshot_reader
+    ready.sim.set_plc_data_path(_plc_data_with_unknown_text(tmp_path))
+    ready.scheduler.run_ready()
+
+    assert _banners_with(win, "disk full") == 1
+    assert _banners_with(win, "TXT13-TXT20") == 1
+
+
+def test_a_failed_write_shows_one_banner(simulator, ready):
+    from test_simulation_session import _rebuild
+
+    from clicknick.services.dap_service import DapRequestError
+
+    win = simulator(ready)
+    _rebuild(ready)
+    ready.dap.reload_error = DapRequestError("Reload failed: invalid syntax (main.py, line 3)")
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.write_error is not None
+    assert "Writing the program failed" in ready.messages("error")
+    assert _banners_with(win, "invalid syntax") == 1
 
 
 def test_simulator_draws_the_rack_and_drives_the_session(simulator, ready):

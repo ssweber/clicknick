@@ -381,6 +381,7 @@ class Harness:
         self.launch_hook = None
         self.saves = 0
         self.snapshot: dict = {}
+        self.read_snapshot = lambda _path: dict(self.snapshot)
         self.sim = SimulationSession(
             scheduler=self.scheduler,
             get_analysis=lambda: self.analysis,
@@ -390,7 +391,7 @@ class Harness:
             dap_factory=dap_factory,
             modbus_factory=modbus_factory,
             layout_reader=lambda _path, used: build_panel_layout([CPU], used),
-            snapshot_reader=lambda _path: dict(self.snapshot),
+            snapshot_reader=lambda path: self.read_snapshot(path),
             run_background=lambda target, _name: target(),
             run_serial=lambda job: job(),
             send_command=send_command,
@@ -1057,6 +1058,189 @@ def test_loading_plc_data_sets_switches_and_analog_values(ready, tmp_path):
         == "Loaded PLC data from dump.csv. The switches and analog inputs now have its values."
     )
     assert ready.dap.calls[0][2]["snapshot_path"] == data
+
+
+def test_a_text_comma_in_plc_data_reads_back_as_a_comma(tmp_path):
+    """Read a PLC data file whose TXT2 holds a comma, as both readers of the Simulator do.
+
+    CLICK writes the comma without quotes, so the TXT1 row has 11 cells. The session reads the
+    file for the switches and analog inputs. pyrung reads it again at launch for every value.
+    """
+    from pyclickplc.banks import DataType
+    from pyrung.click.tag_map import TagMap
+
+    from clicknick.services.analysis_service import _write_nicknames_csv
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    lines = [
+        "<DS=START>",
+        "Address,1,2,3,4,5,6,7,8,9,10,",
+        "DS1,7,0,0,0,0,0,0,0,0,0,",
+        "</DS=END>",
+        "",
+        "<TXT=START>",
+        "Address,1,2,3,4,5,6,7,8,9,10,",
+        "TXT1,A,,,B,C,D,E,F,G,H,I,",
+        "</TXT=END>",
+        "",
+    ]
+    data = tmp_path / "data.csv"
+    data.write_bytes("\r\n".join(lines).encode("ascii"))
+    named = [AddressRow("TXT", n, nickname=f"Msg{n}", data_type=DataType.TXT) for n in (1, 2, 3)]
+    rows = {row.addr_key: row for row in named}
+    mapping = TagMap.from_nickname_file(_write_nicknames_csv(tmp_path, rows))
+
+    snapshot = _default_snapshot_reader(data)
+    state = mapping.load_snapshot(data)
+
+    assert [snapshot[f"TXT{n}"] for n in range(1, 5)] == ["A", ",", "B", "C"]
+    assert snapshot["DS1"] == 7
+    assert {name: state.tags[name] for name in ("Msg1", "Msg2", "Msg3")} == {
+        "Msg1": "A",
+        "Msg2": ",",
+        "Msg3": "B",
+    }
+
+
+def _plc_data_with_unknown_text(tmp_path: Path) -> Path:
+    """Write a PLC data file in which pyclickplc cannot tell what TXT13 to TXT20 hold.
+
+    The TXT11 row holds "Hi," and then empty cells. CLICK writes the comma without quotes, so the
+    comma may be in any of TXT13 to TXT20.
+    """
+    return _write_txt_rows(tmp_path / "data.csv", "TXT1,A,B,C,,,,,,,,", "TXT11,H,i,,,,,,,,,,")
+
+
+def _write_txt_rows(data: Path, *rows: str) -> Path:
+    lines = ["<TXT=START>", "Address,1,2,3,4,5,6,7,8,9,10,", *rows, "</TXT=END>", ""]
+    data.write_bytes("\r\n".join(lines).encode("ascii"))
+    return data
+
+
+def _save_without_the_comma(data: Path) -> None:
+    """Write the file again without the comma, as CLICK would after the user fixed the Text."""
+    import os
+
+    before = data.stat().st_mtime
+    _write_txt_rows(data, "TXT1,A,B,C,,,,,,,,", "TXT11,H,i,x,y,z,a,b,c,d,e,")
+    os.utime(data, (before + 5, before + 5))
+
+
+def _assert_one_refusal_of(harness: Harness, data: Path) -> None:
+    errors = harness.messages("error")
+    assert errors.count("TXT13-TXT20") == 1, errors
+    assert f"the PLC data file {data.name}" in errors
+    assert "Replace the comma in those Text values in CLICK" in errors
+    assert "values attribute" not in harness.messages()
+    assert "read_plc_data" not in harness.messages()
+
+
+def test_a_plc_data_file_with_unknown_text_does_not_start_the_simulation(ready, tmp_path):
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    ready.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_unknown_text(tmp_path)
+    ready.sim.set_plc_data_path(data)  # The simulation is off, so nothing starts yet.
+
+    ready.open()
+
+    assert ready.daps == []
+    assert ready.sim.status is SimStatus.FAILED
+    assert ready.sim.error is not None and "TXT13-TXT20" in ready.sim.error
+    assert "save the PLC data file again, and click Retry." in ready.sim.error
+    _assert_one_refusal_of(ready, data)
+
+
+def test_retry_after_fixing_a_refused_plc_data_file_launches_once(ready, tmp_path):
+    from clicknick.simulation_session import WATCH_MS, _default_snapshot_reader
+
+    ready.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_unknown_text(tmp_path)
+    ready.sim.set_plc_data_path(data)
+    ready.open()
+    assert ready.sim.status is SimStatus.FAILED
+
+    _save_without_the_comma(data)
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.daps == [], "a failed simulation does not restart when the file changes"
+
+    ready.sim.retry()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 1
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+    assert ready.sim.notice is not None and "Loaded PLC data from data.csv" in ready.sim.notice
+
+    ready.sim.toggle_switch("X001")
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == 1, "the watch tick does not restart a second time"
+    assert ready.sim.switch_on("X001"), "the file is not read again over the switches"
+    assert "The PLC data file changed" not in ready.messages()
+
+
+def test_a_plc_data_file_with_unknown_text_leaves_the_running_simulation(ready, tmp_path):
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    ready.open()
+    ready.sim.toggle_switch("X001")
+    ready.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_unknown_text(tmp_path)
+
+    ready.sim.set_plc_data_path(data)
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == 1, "the simulation does not restart"
+    assert ready.sim.status is not SimStatus.FAILED
+    assert ready.sim.switch_on("X001"), "the switches stay as they were"
+    errors = ready.messages("error")
+    assert "then save the PLC data file again." in errors
+    assert "The simulation goes on with the PLC data it had." in errors
+    assert "still runs the previous program" not in errors
+    _assert_one_refusal_of(ready, data)
+
+
+def test_saving_the_fixed_file_restarts_a_simulation_that_refused_it(ready, tmp_path):
+    from clicknick.simulation_session import WATCH_MS, _default_snapshot_reader
+
+    ready.open()
+    ready.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_unknown_text(tmp_path)
+    ready.sim.set_plc_data_path(data)
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 1
+
+    _save_without_the_comma(data)
+    ready.scheduler.fire(WATCH_MS)
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == 2
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+
+
+def test_the_refusal_lists_runs_of_text_addresses_as_ranges():
+    from clicknick.simulation_session import PLC_DATA_LISTED, _address_ranges
+
+    assert _address_ranges(["TXT2", "TXT3", "TXT5", "TXT13", "TXT14"]) == (
+        "TXT2-TXT3, TXT5, TXT13-TXT14"
+    )
+    many = [f"TXT{n}" for n in range(1, 2 * (PLC_DATA_LISTED + 2), 2)]
+    assert _address_ranges(many).endswith(", TXT19 and 2 more")
+
+
+def test_a_plc_data_file_that_cannot_be_read_still_reaches_the_launch(ready, tmp_path):
+    """Only a file with more than one reading stops the launch. pyrung reports the rest."""
+
+    def unreadable(_path):
+        raise ValueError("TXT1 row has 9 cells, not 10.")
+
+    ready.read_snapshot = unreadable
+    data = tmp_path / "data.csv"
+    data.write_text("x", encoding="utf-8")
+    ready.sim.set_plc_data_path(data)
+
+    ready.open()
+
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+    assert "Could not read PLC data" in ready.messages("error")
 
 
 # ----------------------------------------------------------------------
