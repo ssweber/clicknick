@@ -36,6 +36,10 @@ DISCONNECT = 32850
 # File > Import > Nickname. The string table calls it "Import to Address Picker". It opens an
 # Open dialog with three import modes, and CLICK writes the imported rows into SC_.mdb.
 IMPORT_NICKNAME = 32900
+# File > Export > Nickname. The string table calls it "Export Nickname". CLICK's help page for it
+# says that it opens a Save As dialog, and that CLICK writes the address table into the CSV file
+# that you name there.
+EXPORT_NICKNAME = 32901
 # Program > Address Picker (Ctrl+T) opens CLICK's editor of nicknames and address comments.
 # The string table calls it "Address Picker".
 ADDRESS_PICKER = 32834
@@ -89,6 +93,7 @@ ALLOWED_COMMANDS = {
     SAVE_PROJECT_AS: "Save Project As",
     DISCONNECT: "Disconnect",
     IMPORT_NICKNAME: "Import Nickname",
+    EXPORT_NICKNAME: "Export Nickname",
     READ_DATA_FROM_PLC: "Read Data from PLC",
     ADDRESS_PICKER: "Address Picker",
     SYSTEM_CONFIGURATION: "System Configuration",

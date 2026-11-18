@@ -1,10 +1,11 @@
 """Drive CLICK v4 unattended: paste a ladder CSV into a new project, check it, save it, decode it.
 
-    uv run python devtools/click_runner.py paste CSV --out DIR [--record]
+    uv run python devtools/click_runner.py paste CSV --out DIR [--add-end] [--record]
     uv run python devtools/click_runner.py record --out DIR
     uv run python devtools/click_runner.py try CASES.json --out DIR [--wire] [--keep]
         [--resume PREV_DIR] [--stop-after N] [--record]
     uv run python devtools/click_runner.py import CSV --out DIR [--each-row] [--record]
+    uv run python devtools/click_runner.py export-nicknames --out DIR [--import CSV] [--record]
     uv run python devtools/click_runner.py reopen --out DIR [--ini-add LINES] [--record]
     uv run python devtools/click_runner.py read-data --out DIR [--record]
     uv run python devtools/click_runner.py picker --out DIR [--key KEY ...] [--ok] [--record]
@@ -14,6 +15,14 @@ takes that PLC's hardware. It answers "Don't read" to the question about reading
 project. ``paste`` then pastes the CSV into the main program and runs Syntax Check. It saves
 the project as ``DIR/<CSV name>.ckp`` and copies CLICK's Scr*.tmp files and Project.ini into
 ``DIR/click/``. It disconnects, closes CLICK and decodes ``DIR/click/`` into ``DIR/csv/``.
+
+``paste --add-end`` adds an unconditional end() after the CSV's last rung, unless that rung is
+one already (``ends_unconditionally``). The added rung is ``END_ROW``: a wire across columns A to
+AE, and end() in AF. The runner writes the CSV with that rung into ``DIR/pasted.csv`` and pastes
+that file. ``added_end`` in result.json says whether the runner added the rung.
+``rungs.pasted`` in result.json counts the added rung, and the runner checks that the saved
+main program holds it too. Without ``--add-end``, the runner pastes the CSV as it is. So a CSV
+that tests END itself reaches CLICK exactly as written.
 
 ``record`` connects the same way and dumps every window of CLICK (JSON and PNG) into
 ``DIR/record/`` at each step. It then disconnects and ends CLICK. The project was never
@@ -168,6 +177,31 @@ ends it), the runner reads each copy through Access ODBC, so a NULL stays None a
 keeps every character. result.json holds one entry per import under ``imports``
 (``Run.import_one``), after an abort too.
 
+``export-nicknames`` exports the nicknames through CLICK's own File > Export > Nickname (32901)
+and reads the bytes that CLICK wrote. With ``--import CSV``, it first imports CSV once, as
+``import`` does, and result.json holds that import under ``imports``. The runner fills the
+export's Save As with ``DIR/click/nicknames.csv`` and presses Save. That file does not exist.
+TagDB.dll's save dialogs set ofCreatePrompt, so Windows may ask whether to create it. The
+runner presses Yes only if the file is still missing, a text in that box names nicknames.csv,
+and its buttons are Yes and No. CLICK then shows a box titled "Export Database". The runner
+presses its OK only if the box reads "Completed!" and has no other button. Once the main
+window is alone and the file has been unchanged for ``IMPORT_SETTLE``, the runner copies the
+file's bytes to ``DIR/export.csv``. The run stops if that has not happened within
+``--paste-timeout``. Under ``export``, result.json holds the texts of Windows' box
+(``create_prompt``), the text of CLICK's box (``answer``) and what ``export_facts`` reads
+in the bytes:
+
+- the size;
+- the byte order mark, if any;
+- whether the bytes decode as UTF-8 and as CP1252;
+- the line ends;
+- the first 5 lines, read as Latin-1;
+- each character that is not ASCII, with its line, its column and its bytes.
+
+Live runs on 2026-11-18 confirmed the Save As and the "Export Database" box. Neither run saw
+Windows' question or a progress window. The comment at ``EXPORT_SAVE`` says what each of the
+export's windows rests on.
+
 ``reopen`` asks what CLICK does with a project's Project.ini. It disconnects, saves the new
 project as ``DIR/first.ckp``, adds the ASCII lines of ``--ini-add`` to the end of the
 Project.ini in CLICK's temp folder (the runner's own CLICK's), saves as ``DIR/second.ckp``,
@@ -275,10 +309,14 @@ Rules (scratchpad/roadmap.md, item 4):
   there with no code, or with buttons other than one OK, is a question that the runner does
   not answer. The case is kept as ``other`` and the run stops. An import's answer is the
   "Import Database" box with one text and one OK, or the error list with one text and Ok.
+  The export's answer is the "Export Database" box that reads "Completed!" and has one OK.
+  Before it, Windows may ask whether to create the export's file, and the runner answers.
   Any other box there, or a second answer, stops the run.
-- Any top-level window of CLICK that the step does not expect (a tooltip aside) stops the
-  run. The runner dumps every window into ``DIR/abort/`` (a window that does not answer is
-  dumped without its edit text or a PNG). If CLICK answers with no dialog open, the runner
+- Any top-level window of CLICK that the step does not expect stops the run. Tooltips and
+  drop shadows (``SysShadow`` with no title and no owner) do not, because they come and go
+  over CLICK's windows at any step. The
+  runner dumps every window into ``DIR/abort/`` (a window that does not answer is dumped
+  without its edit text or a PNG). If CLICK answers with no dialog open, the runner
   disconnects it. It then ends CLICK without saving. A timeout, an error or Ctrl+C ends the
   run the same way. CLICK runs in a job that ends it when the runner's process ends,
   however that ends.
@@ -292,6 +330,7 @@ no password shows no Login dialog.
 from __future__ import annotations
 
 import argparse
+import codecs
 import importlib
 import json
 import os
@@ -317,6 +356,7 @@ from click_desktop import (
     DISCONNECT,
     DRUM_DIALOG,
     EDIT_COPY,
+    EXPORT_NICKNAME,
     FOR_DIALOG,
     IMPORT_NICKNAME,
     IP_ADDRESS_CLASS,
@@ -438,9 +478,22 @@ _SYNTAX_CODE = re.compile(r"\b(?:error|warning) ([A-Z]\d{4}):")
 _END_RUNG = re.compile(r"\bRung (\d+) : error C0201:")
 # The status bar's pane naming the PLC connected to, "192.168.1.241(Conformance)"
 _PLC_PANE = re.compile(r"^\d+\.\d+\.\d+\.\d+\(.+\)$")
-# The class of the windows that may come and go over CLICK's at any step (a toolbar's
-# tooltip)
+# The classes of the windows that may show over CLICK's windows at any step, with what each
+# window is. A tooltip shows over a toolbar. A drop shadow lies under a menu. In three live
+# runs on 2026-11-18, a shadow with no title and no owner showed while the runner filled the
+# File name of Save As. The runner lists windows by process (``Desktop.windows``), and those
+# runs listed the shadow among the windows of CLICK's process. The runner lets a shadow be
+# only if it has no title and no owner, as in those runs (``_ignored_as``)
 TOOLTIP_CLASS = "tooltips_class32"
+SHADOW_CLASS = "SysShadow"
+_IGNORED_CLASSES = {TOOLTIP_CLASS: "a tooltip", SHADOW_CLASS: "a drop shadow"}
+
+
+def _ignored_as(window: Window) -> str | None:
+    """Return what *window* is if the runner lets it be (``_IGNORED_CLASSES``), else None."""
+    if window.cls == SHADOW_CLASS and (window.title or window.owner):
+        return None
+    return _IGNORED_CLASSES.get(window.cls)
 
 
 class Refused(Exception):
@@ -482,7 +535,7 @@ class Expect:
 
     name: str
     cls: str
-    title: str
+    title: str | None  # None matches any title
     owner: str  # The name of the expected window that owns it
 
 
@@ -512,6 +565,33 @@ IMPORT_STARTING = Expect("import_starting", "TfrmProgress", "frmProgress", MAIN)
 IMPORT_PROGRESS = Expect("import_progress", "TfrmProgress", f"Import - {IMPORT_MODE}", MAIN)
 IMPORT_DONE = Expect("import_done", "#32770", "Import Database", MAIN)
 IMPORT_ERRORS = Expect("import_errors", "TfrmErrorList", "Import Error List", MAIN)
+# File > Export > Nickname. TagDB.dll handles both Import and Export. Two live runs on
+# 2026-11-18 dumped the export's windows (the e1 and e2 runs of the runner-export job):
+# - The Save As: confirmed by a live run on 2026-11-18. It is a #32770 titled "Save As" and
+#   owned by the main window. The runner filled its File name edit (Edit 1148 in ComboBox
+#   1148), as in the project's Save As.
+# - The "Export Database" box: confirmed by a live run on 2026-11-18. It reads "Completed!"
+#   (``EXPORT_COMPLETED``) beside an icon with no text, and has one OK (id 2). The runner takes
+#   the box only if it reads ``EXPORT_COMPLETED`` and has one OK button. TagDB.dll also holds
+#   the title "Export Error". A box with that title stops the run.
+# - Windows' question whether to create the file: possible, but neither live run saw it.
+#   TagDB.dll's three save dialogs set ofCreatePrompt, and the runner saves to a file that does
+#   not exist. So Windows may ask, in a box owned by the Save As. The box's title and words
+#   would depend on Windows' language. The runner matches any title, and presses Yes only if
+#   the file is still missing, a text in the box names the file, and the buttons are Yes and
+#   No.
+# - The progress window: neither live run saw it. The import's progress window is titled
+#   "frmProgress", its Delphi form's name, at first. The runner lets the export's progress
+#   window be only with that title. A progress window with any other title stops the run.
+# Any other window stops the run
+EXPORT_SAVE = Expect("export_save", "#32770", "Save As", MAIN)
+EXPORT_CREATE = Expect("export_create", "#32770", None, EXPORT_SAVE.name)
+EXPORT_STARTING = Expect("export_starting", "TfrmProgress", "frmProgress", MAIN)
+EXPORT_DONE = Expect("export_done", "#32770", "Export Database", MAIN)
+EXPORT_COMPLETED = "Completed!"
+# The file that CLICK writes, under DIR, and the copy of it that the runner reads
+EXPORT_WRITTEN = Path("click") / "nicknames.csv"
+EXPORT_COPY = "export.csv"
 # File > Open Project: while CLICK reads the project, it shows this progress box. A live
 # run on 2026-11-16 found a progress bar, "Reading ..." and a hidden button in it. CLICK
 # also leaves the project's name out of the main window's title
@@ -1138,6 +1218,143 @@ def parse_import_errors(text: str) -> list[dict[str, Any]]:
     return entries
 
 
+# ---------------------------------------------------------------------------
+# ``export-nicknames``: the bytes of CLICK's nickname export
+# ---------------------------------------------------------------------------
+
+# The byte order marks that ``export_facts`` looks for. UTF-32 LE's mark starts with UTF-16
+# LE's, so the UTF-32 marks come first
+_BOMS = (
+    (codecs.BOM_UTF32_LE, "utf-32-le"),
+    (codecs.BOM_UTF32_BE, "utf-32-be"),
+    (codecs.BOM_UTF8, "utf-8"),
+    (codecs.BOM_UTF16_LE, "utf-16-le"),
+    (codecs.BOM_UTF16_BE, "utf-16-be"),
+)
+# A line end: CR LF, or a CR or an LF on its own
+_LINE_END = re.compile(rb"\r\n|\n|\r")
+# How many lines of the export ``export_facts`` keeps as text
+EXPORT_FIRST_LINES = 5
+
+
+def _decoded(data: bytes, encoding: str) -> str | None:
+    """Return *data* decoded strictly as *encoding*, or None if it does not decode."""
+    try:
+        return data.decode(encoding)
+    except UnicodeDecodeError:
+        return None
+
+
+def _character(line: int, column: int, raw: bytes) -> dict[str, Any]:
+    return {
+        "line": line,
+        "column": column,
+        "bytes": raw.hex(" "),
+        "utf8": _decoded(raw, "utf-8"),
+        "cp1252": _decoded(raw, "cp1252"),
+    }
+
+
+def export_facts(data: bytes) -> dict[str, Any]:
+    """Return the facts about the bytes *data* of a nickname export.
+
+    The function guesses no encoding. It reads bytes, and it decodes no UTF-16 or UTF-32. In
+    such a file, a CR LF counts as a CR and an LF, and the columns count the NUL bytes, so
+    these facts mean little.
+    ``bom`` names such a file only if the file starts with a byte order mark. The facts are
+    these:
+
+    - ``size``: the number of bytes.
+    - ``bom``: the encoding whose byte order mark starts *data* (``utf-8``, ``utf-16-le``,
+      ``utf-16-be``, ``utf-32-le``, ``utf-32-be``), or None.
+    - ``utf8`` and ``cp1252``: whether *data* decodes strictly in each encoding. A UTF-8 BOM
+      is valid UTF-8.
+    - ``line_endings``: how many line ends of each kind *data* holds. The kinds are CR LF
+      (``crlf``), an LF without a CR before it (``lf``) and a CR without an LF after it
+      (``cr``).
+    - ``line_ending``: the one kind that *data* holds. It is ``mixed`` if *data* holds more
+      than one kind, and None if it holds no line end.
+    - ``first_lines``: the first ``EXPORT_FIRST_LINES`` lines without their line ends,
+      decoded as Latin-1. Latin-1 makes each byte one character, so no byte is lost. A BOM
+      stays at the start of the first line.
+    - ``non_ascii``: each character that is not ASCII, in the order of the file. If *data*
+      is valid UTF-8, a character is one UTF-8 sequence. Otherwise each byte from 0x80 up is
+      one character. Each entry gives the character's line, its column, its bytes in hex,
+      and what its bytes decode to in UTF-8 and in CP1252 (None if they do not decode). The
+      column counts bytes from 1 at the start of the line. A BOM is a character too.
+    """
+    ends = [match.group() for match in _LINE_END.finditer(data)]
+    counts = {"crlf": ends.count(b"\r\n"), "lf": ends.count(b"\n"), "cr": ends.count(b"\r")}
+    kinds = [kind for kind, count in counts.items() if count]
+    lines = _LINE_END.split(data) if data else []
+    if ends and data.endswith(ends[-1]):
+        lines.pop()  # The empty text after the last line end is not a line
+    utf8 = _decoded(data, "utf-8") is not None
+    characters: list[dict[str, Any]] = []
+    for number, line in enumerate(lines, 1):
+        if utf8:
+            # No byte of a UTF-8 sequence is CR or LF, so each line decodes on its own
+            column = 1
+            for char in line.decode("utf-8"):
+                raw = char.encode("utf-8")
+                if not char.isascii():
+                    characters.append(_character(number, column, raw))
+                column += len(raw)
+        else:
+            for column, byte in enumerate(line, 1):
+                if byte >= 0x80:
+                    characters.append(_character(number, column, bytes([byte])))
+    return {
+        "size": len(data),
+        "bom": next((name for mark, name in _BOMS if data.startswith(mark)), None),
+        "utf8": utf8,
+        "cp1252": _decoded(data, "cp1252") is not None,
+        "line_endings": counts,
+        "line_ending": kinds[0] if len(kinds) == 1 else ("mixed" if kinds else None),
+        "first_lines": [line.decode("latin-1") for line in lines[:EXPORT_FIRST_LINES]],
+        "non_ascii": characters,
+    }
+
+
+# ---------------------------------------------------------------------------
+# ``paste --add-end``: an end() rung after the CSV's rungs
+# ---------------------------------------------------------------------------
+
+# The rung that ``paste --add-end`` appends, in laddercodec's CSV form: a wire across columns A
+# to AE, and end() in AF
+END_ROW = "R," + "-," * 31 + "end()"
+
+
+def ends_unconditionally(rungs: Sequence[Any]) -> bool:
+    """Return True if the last of *rungs* (laddercodec's) is an unconditional end().
+
+    That rung has one row, a wire (``-``) in every condition column and end() in AF.
+    """
+    from laddercodec import End
+
+    if not rungs:
+        return False
+    last = rungs[-1]
+    return (
+        last.logical_rows == 1
+        and all(cell == "-" for cell in last.conditions[0])
+        and isinstance(last.instructions[0], End)
+    )
+
+
+def with_end(data: bytes) -> bytes:
+    """Return the ladder CSV *data* with ``END_ROW`` added as its last line.
+
+    The row ends with the line end of *data*'s first line, or with LF if *data* has no line
+    end. If the last line of *data* has no line end, the function adds one before the row.
+    """
+    match = _LINE_END.search(data)
+    end = match.group() if match else b"\n"
+    if data and not data.endswith((b"\n", b"\r")):
+        data += end
+    return data + END_ROW.encode("ascii") + end
+
+
 def _file_state(path: Path) -> tuple[int, int] | None:
     """Return *path*'s size and modification time, or None if it cannot be read."""
     try:
@@ -1203,7 +1420,7 @@ def classify(
             for window in rest:
                 if (
                     window.cls == expect.cls
-                    and window.title == expect.title
+                    and expect.title in (None, window.title)
                     and window.owner == owner
                 ):
                     found[expect.name] = window
@@ -1359,12 +1576,16 @@ def _json_default(value: object) -> object:
 
 @dataclass
 class Settings:
-    command: str  # "paste", "record", "try", "import", "read-data", "reopen" or "picker"
+    # "paste", "record", "try", "import", "export-nicknames", "read-data", "reopen" or "picker"
+    command: str
     out: Path
     # The rest are keyword-only. A field added among them then cannot shift a caller's
     # arguments
     _: KW_ONLY
-    csv: Path | None = None  # paste's ladder CSV, import's nickname CSV
+    # paste's ladder CSV, import's nickname CSV, and the nickname CSV that export-nicknames
+    # imports first (--import)
+    csv: Path | None = None
+    add_end: bool = False  # paste: append an end() rung unless the CSV ends with one
     each_row: bool = False  # import: each row on its own too
     cases: Path | None = None  # try's CASES.json
     keep: bool = False  # try: save each accepted case's project and decode it
@@ -1618,6 +1839,8 @@ class Run:
         self.carried: dict[str, dict[str, Any]] = {}
         self.earlier_stops: dict[str, list[dict[str, Any]]] = {}
         self.retried: dict[str, dict[str, Any]] = {}
+        # The ladder CSV that paste pastes. With --add-end it is DIR/pasted.csv
+        self.paste_csv = settings.csv
         # import's CSV: its header and each row with the line it starts on
         self.header = b""
         self.rows: list[tuple[int, bytes]] = []
@@ -1631,7 +1854,7 @@ class Run:
         # The windows that were open before the main frame first appeared. ``starting``
         # lists those of them that are still open
         self._tolerated: set[int] = set()
-        self._tooltips: set[int] = set()
+        self._ignored: set[int] = set()  # The tooltips and drop shadows logged
         self._status_errors: set[str] = set()
         # CLICK's Scr*.tmp files before the paste (a new project has none)
         self._scr_before: tuple[tuple[str, int, int], ...] = ()
@@ -1671,8 +1894,14 @@ class Run:
                 baseline_syntax_check=None,
                 cases=[],
             )
+        if settings.command == "paste" and settings.add_end:
+            self.result.update(added_end=None)
         if settings.command == "import":
             self.result.update(import_mode=IMPORT_MODE, each_row=settings.each_row, imports=[])
+        if settings.command == "export-nicknames":
+            if settings.csv is not None:
+                self.result.update(import_mode=IMPORT_MODE, imports=[])
+            self.result.update(export=None)
         if settings.command == "reopen":
             self.result.update(ini_add=settings.ini_add, points={})
         if settings.command == "read-data":
@@ -1786,7 +2015,7 @@ class Run:
                 [w for w in windows if answering is None or w.owner != answering]
             )
             found, unexpected = classify(windows, expected, main=self.main if unloading else None)
-            unexpected = self._without_tooltips(unexpected)
+            unexpected = self._without_ignored(unexpected)
             if self.main is None and MAIN not in found:
                 for window in unexpected:
                     if window.hwnd not in self._tolerated:
@@ -1834,13 +2063,17 @@ class Run:
             if error is not None:
                 raise ClickErrorBox(*error)
 
-    def _without_tooltips(self, windows: list[Window]) -> list[Window]:
-        """Return *windows* without the tooltips, and log each tooltip when first seen."""
+    def _without_ignored(self, windows: list[Window]) -> list[Window]:
+        """Return *windows* without the tooltips and drop shadows (``_IGNORED_CLASSES``).
+
+        The method logs each of these windows the first time that it sees the window.
+        """
         for window in windows:
-            if window.cls == TOOLTIP_CLASS and window.hwnd not in self._tooltips:
-                self._tooltips.add(window.hwnd)
-                self.log(f"ignoring a tooltip: {_describe(window)}")
-        return [w for w in windows if w.cls != TOOLTIP_CLASS]
+            what = _ignored_as(window)
+            if what is not None and window.hwnd not in self._ignored:
+                self._ignored.add(window.hwnd)
+                self.log(f"ignoring {what}: {_describe(window)}")
+        return [w for w in windows if _ignored_as(w) is None]
 
     def only_main(self, found: dict[str, Window]) -> bool:
         """Return true when the main frame is alone, enabled and answering messages."""
@@ -1944,10 +2177,12 @@ class Run:
             assert self.s.csv is not None
             if not self.s.csv.is_file():
                 raise Refused(f"no CSV at {self.s.csv}")
+            if self.s.add_end:
+                self.paste_csv = self.add_end(self.s.csv)
             try:
-                self.prepare(self.s.csv, None)
+                self.prepare(self.paste_csv, None)
             except Exception as exc:
-                raise Refused(f"cannot encode {self.s.csv}: {exc}") from exc
+                raise Refused(f"cannot encode {self.paste_csv}: {exc}") from exc
         if self.s.command == "try":
             assert self.s.cases is not None
             if not self.s.cases.is_file():
@@ -2000,6 +2235,9 @@ class Run:
                 raise Refused(f"cannot read {self.s.csv}: {exc}") from exc
             if self.s.each_row and not self.rows:
                 raise Refused(f"{self.s.csv} has no rows after its header to import one by one")
+        if self.s.command == "export-nicknames" and self.s.csv is not None:
+            if not self.s.csv.is_file():
+                raise Refused(f"no CSV at {self.s.csv} to import before the export")
         if self.s.ini_add is not None and not self.s.ini_add.isascii():
             raise Refused(f"--ini-add is not ASCII: {self.s.ini_add!r}")
         for token in self.s.keys:
@@ -2008,6 +2246,48 @@ class Run:
                     f"--key {token!r} is not a key the runner knows. "
                     f"Use one of {', '.join(_VIRTUAL_KEYS)}, or chars:TEXT, text:TEXT or find:TEXT."
                 )
+
+    def add_end(self, csv: Path) -> Path:
+        """Return the ladder CSV that ``paste --add-end`` pastes in place of *csv*.
+
+        If the last rung of *csv* is an unconditional end() (``ends_unconditionally``), the
+        method returns *csv*. Otherwise it writes *csv* with ``END_ROW`` after its last line
+        into ``DIR/pasted.csv``, and returns that file. ``added_end`` in the result
+        says which of the two happened. The run is refused if *csv* cannot be read, or if
+        laddercodec does not read the new file as *csv*'s rungs and then an unconditional
+        end(). The rungs are compared by ``rung_fingerprint``.
+        """
+        from laddercodec import read_csv
+
+        from clicknick.ladder.program import rung_fingerprint
+
+        try:
+            rungs = read_csv(csv)
+        except Exception as exc:
+            raise Refused(f"cannot read {csv}: {exc}") from exc
+        if ends_unconditionally(rungs):
+            self.result["added_end"] = False
+            self.log(f"{csv.name} ends with an unconditional end(). The runner adds no rung.")
+            return csv
+        pasted = self.s.out / "pasted.csv"
+        pasted.write_bytes(with_end(csv.read_bytes()))
+        self.result["files"]["pasted_csv"] = pasted
+        try:
+            added = read_csv(pasted)
+        except Exception as exc:
+            raise Refused(f"cannot read {pasted}, which is {csv.name} with end(): {exc}") from exc
+        kept = [rung_fingerprint(r) for r in added[:-1]] == [rung_fingerprint(r) for r in rungs]
+        if len(added) != len(rungs) + 1 or not kept or not ends_unconditionally(added):
+            raise Refused(
+                f"laddercodec reads {len(added)} rung(s) in {pasted}, which is {csv.name} with "
+                f"end() added. It should read the {len(rungs)} rung(s) of {csv.name} and then "
+                "an unconditional end()."
+            )
+        self.result["added_end"] = True
+        self.log(
+            f"{csv.name} does not end with an unconditional end(). The runner pastes {pasted}."
+        )
+        return pasted
 
     def launch(self) -> None:
         with self.step("launch"):
@@ -2326,12 +2606,12 @@ class Run:
         )
 
     def paste(self) -> None:
-        assert self.main is not None and self.s.csv is not None
+        assert self.main is not None and self.paste_csv is not None
         with self.step("paste"):
             mdb = self.desktop.temp_dir(self.main) / "SC_.mdb"
             if not mdb.is_file():
                 raise Aborted(f"CLICK's SC_.mdb is not at {mdb}")
-            prepared = self.prepare(self.s.csv, mdb)
+            prepared = self.prepare(self.paste_csv, mdb)
             if prepared.mdb_error:
                 raise Aborted(f"cannot add the CSV's addresses to {mdb}: {prepared.mdb_error}")
             self.log(
@@ -3932,6 +4212,170 @@ class Run:
                     values = ", ".join(f"{column}={value!r}" for column, value in row.items())
                     self.log(f"  {address}: {values}")
 
+    # -- export-nicknames: CLICK's nickname export, byte for byte ----------------
+
+    def export_nicknames(self) -> None:
+        """Import ``--import`` if given, then export the nicknames and describe the file's bytes.
+
+        ``import_one`` runs the import. The export runs File > Export > Nickname and saves to
+        ``DIR/click/nicknames.csv`` (``EXPORT_WRITTEN``). Once CLICK's main window is alone
+        and that file has been unchanged for ``IMPORT_SETTLE``, the runner copies the file's
+        bytes to ``DIR/export.csv`` and keeps ``export_facts`` of them under ``export``.
+        """
+        if self.s.csv is not None:
+            (self.s.out / "mdb").mkdir()
+            with self.step("import"):
+                self.import_one(1, "whole", self.s.csv, None, None)
+        with self.step("export"):
+            self.export()
+
+    def export(self) -> None:
+        assert self.main is not None
+        written = (self.s.out / EXPORT_WRITTEN).resolve()
+        written.parent.mkdir()
+        self.wait("the main window alone", [], self.only_main)
+        self.command(EXPORT_NICKNAME)
+        dialog = self.wait(
+            "the export's Save As",
+            [EXPORT_SAVE],
+            lambda f: (
+                f[EXPORT_SAVE.name]
+                if EXPORT_SAVE.name in f and f[EXPORT_SAVE.name].enabled
+                else None
+            ),
+        )
+        self.record("export_save")
+        controls = self.controls(dialog)
+        name = self._file_name_edit(controls)
+        button = _require(
+            _child(controls, cls="Button", id=1, text="&Save"),
+            "the export Save As dialog's Save (1)",
+        )
+        self.fill_path(name, written, [EXPORT_SAVE])
+        self.press(dialog, button)
+        # The result holds what the export has answered so far, after an abort too
+        entry: dict[str, Any] = {"written": written, "create_prompt": None, "answer": None}
+        self.result["export"] = entry
+        prompted: list[int | None] = [None]  # The hwnd of the prompt whose Yes was pressed
+        answered: list[int | None] = [None]  # The hwnd of the box whose OK was pressed
+        # The file's last state, and the time from which it has read that state with the
+        # main window alone
+        held: list[Any] = [None, 0.0]
+        alone = [False]  # Whether the main window was alone at the last poll
+
+        def done(found: dict[str, Window]) -> bool:
+            prompt = found.get(EXPORT_CREATE.name)
+            if prompt is not None and prompt.hwnd != prompted[0]:
+                if prompted[0] is not None:
+                    raise Aborted(f"Windows asked again to create {written}: {_describe(prompt)}")
+                if not prompt.enabled:
+                    return False
+                self.answer_create(prompt, written, entry)
+                prompted[0] = prompt.hwnd
+            box = found.get(EXPORT_DONE.name)
+            if box is not None and box.hwnd != answered[0]:
+                if answered[0] is not None:
+                    raise Aborted(f"CLICK answered the export again: {_describe(box)}")
+                if not box.enabled:
+                    return False
+                self.answer_export(box, entry)
+                answered[0] = box.hwnd
+            alone[0] = self.only_main(found)
+            if not alone[0]:
+                held[0] = None
+                return False
+            state, now = _file_state(written), time.monotonic()
+            if state is None or state != held[0]:
+                held[:] = [state, now]
+                return False
+            return now - held[1] >= IMPORT_SETTLE
+
+        def timed_out() -> str:
+            if not written.is_file():
+                return f"CLICK wrote no {written}"
+            if not alone[0]:
+                return (
+                    f"CLICK wrote {written}, but its main window was not alone, enabled and "
+                    "answering"
+                )
+            return (
+                f"CLICK wrote {written}, but the file did not stay unchanged for "
+                f"{IMPORT_SETTLE:g} s"
+            )
+
+        self.wait(
+            f"CLICK to write {written.name}",
+            [EXPORT_SAVE, EXPORT_CREATE, EXPORT_STARTING, EXPORT_DONE],
+            done,
+            timeout=self.s.paste_timeout,
+            on_timeout=timed_out,
+        )
+        copy = self.s.out / EXPORT_COPY
+        copy.write_bytes(written.read_bytes())
+        self.result["files"]["export"] = copy
+        facts = export_facts(copy.read_bytes())
+        entry.update(copy=copy, **facts)
+        self.log(
+            f"exported {facts['size']} bytes into {written} and copied them to {copy}. "
+            f"BOM {facts['bom']}, UTF-8 {facts['utf8']}, CP1252 {facts['cp1252']}, "
+            f"line ends {facts['line_ending']}, {len(facts['non_ascii'])} character(s) "
+            "that are not ASCII"
+        )
+        for character in facts["non_ascii"]:
+            self.log(
+                f"  line {character['line']}, column {character['column']}: "
+                f"{character['bytes']} (UTF-8 {character['utf8']!r}, "
+                f"CP1252 {character['cp1252']!r})"
+            )
+        self.record("exported")
+
+    def answer_create(self, prompt: Window, written: Path, entry: dict[str, Any]) -> None:
+        """Press Yes in the box in which Windows asks whether to create *written*.
+
+        *written* must not exist, so that the box cannot be Windows' question whether to
+        replace it. The box must have a text that holds *written*'s name, and the buttons Yes
+        and No and no other. Windows words the question in its own language, so the runner
+        checks only the name. The runner keeps the box's title and texts under
+        ``create_prompt``. Any other box stops the run, and the runner presses nothing in it.
+        """
+        self.record("export_create_prompt")
+        controls = self.controls(prompt)
+        texts = [c.text for c in controls if c.cls == "Static" and c.text]
+        buttons = [c for c in controls if c.cls == "Button"]
+        labels = [b.text for b in buttons]
+        if written.exists():
+            raise Aborted(
+                f"the export's Save As asks about {written}, which exists already: {texts!r}, "
+                f"buttons {labels!r}"
+            )
+        if not any(written.name in text for text in texts) or sorted(labels) != ["&No", "&Yes"]:
+            raise Aborted(
+                "the export's Save As: Windows asked something the runner does not answer: "
+                f"{texts!r}, buttons {labels!r}"
+            )
+        entry["create_prompt"] = {"title": prompt.title, "texts": texts}
+        self.log(f"the export's Save As asks {texts!r}. The runner presses Yes.")
+        self.press(prompt, buttons[labels.index("&Yes")])
+
+    def answer_export(self, box: Window, entry: dict[str, Any]) -> None:
+        """Press OK in the export's "Export Database" box if it reads ``EXPORT_COMPLETED``.
+
+        The box must have that one text and one button, OK. The runner keeps the text under
+        ``answer``. Any other box stops the run, and the runner presses nothing in it.
+        """
+        self.record("export_answer")
+        controls = self.controls(box)
+        texts = [c.text for c in controls if c.cls == "Static" and c.text]
+        buttons = [c for c in controls if c.cls == "Button"]
+        if texts != [EXPORT_COMPLETED] or [b.text for b in buttons] != ["OK"]:
+            raise Aborted(
+                f"the export: CLICK asked something the runner does not answer: {texts!r}, "
+                f"buttons {[b.text for b in buttons]!r}"
+            )
+        entry["answer"] = texts[0]
+        self.log(f"the export: {texts[0]!r}")
+        self.press(box, buttons[0])
+
     # -- read-data: the PLC's data values into a file -------------------------
 
     def read_data(self) -> None:
@@ -4527,14 +4971,15 @@ class Run:
 
         Nothing in CLICK shows that a paste is done, so this is the check. A paste that did
         not land leaves the new project's empty main program. That happens when another
-        program took the clipboard, or when CLICK refused the payload.
+        program took the clipboard, or when CLICK refused the payload. The rungs pasted are
+        those of ``paste_csv``, so they include the end() that ``--add-end`` added.
         """
         from laddercodec import read_csv
 
         from clicknick.ladder.program import is_empty_rung, rung_fingerprint
 
-        assert self.s.csv is not None
-        pasted = read_csv(self.s.csv)
+        assert self.paste_csv is not None
+        pasted = read_csv(self.paste_csv)
         saved = read_csv(main_csv)
         same = [rung_fingerprint(r) for r in pasted] == [
             rung_fingerprint(r) for r in saved[: len(pasted)]
@@ -4568,7 +5013,7 @@ class Run:
         if self.connected and self.main is not None and self.desktop.alive(self.pid):
             try:
                 found, unexpected = classify(self.desktop.windows(self.pid), [])
-                unexpected = self._without_tooltips(unexpected)
+                unexpected = self._without_ignored(unexpected)
                 if not self.desktop.idle(self.main, IDLE_TIMEOUT):
                     self.log("not disconnecting: CLICK does not answer")
                 elif unexpected or not self.only_main(found):
@@ -4659,6 +5104,8 @@ class Run:
                     self.try_cases()
                 elif self.s.command == "import":
                     self.import_csvs()
+                elif self.s.command == "export-nicknames":
+                    self.export_nicknames()
                 elif self.s.command == "read-data":
                     self.read_data()
                 elif self.s.command == "reopen":
@@ -4704,7 +5151,9 @@ class Run:
                 self.result.update(status="aborted", reason=f"decoding failed: {exc}")
                 self.log(f"ABORT: decoding failed: {exc}")
         if self.result["click"]["closed"] is True:
-            if self.s.command == "import":
+            if self.s.command == "import" or (
+                self.s.command == "export-nicknames" and self.s.csv is not None
+            ):
                 self.read_after_click(self.read_imports, "reading the copies of SC_.mdb")
             elif self.s.command == "picker":
                 self.read_after_click(self.read_mdb_copies, "reading the copies of SC_.mdb")
@@ -4868,6 +5317,12 @@ def _parser() -> argparse.ArgumentParser:
         "paste", parents=[common], help="paste one ladder CSV into the main program and save"
     )
     paste.add_argument("csv", type=Path, help="the ladder CSV")
+    paste.add_argument(
+        "--add-end",
+        action="store_true",
+        help="paste the CSV with an unconditional end() rung after its rungs, unless its last "
+        "rung is one already",
+    )
     paste.add_argument("--record", action="store_true", help="also dump every window at each step")
     commands.add_parser(
         "record",
@@ -4923,6 +5378,23 @@ def _parser() -> argparse.ArgumentParser:
     imports.add_argument(
         "--record", action="store_true", help="also dump every window at each step"
     )
+    exports = commands.add_parser(
+        "export-nicknames",
+        parents=[common],
+        help="export the nicknames through CLICK's File > Export > Nickname and describe the "
+        "file's bytes",
+    )
+    exports.add_argument(
+        "--import",
+        dest="import_csv",
+        type=Path,
+        default=None,
+        metavar="CSV",
+        help="first import this nickname CSV, as the import command does",
+    )
+    exports.add_argument(
+        "--record", action="store_true", help="also dump every window at each step"
+    )
     reads = commands.add_parser(
         "read-data", parents=[common], help="read the PLC's data values into a file"
     )
@@ -4967,10 +5439,12 @@ def _parser() -> argparse.ArgumentParser:
 def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None) -> Settings:
     args = _parser().parse_args(argv)
     env = os.environ if environ is None else environ
+    csv = args.csv if args.command in ("paste", "import") else getattr(args, "import_csv", None)
     return Settings(
         command=args.command,
         out=args.out.resolve(),
-        csv=args.csv.resolve() if args.command in ("paste", "import") else None,
+        csv=csv.resolve() if csv is not None else None,
+        add_end=getattr(args, "add_end", False),
         each_row=getattr(args, "each_row", False),
         cases=args.cases.resolve() if args.command == "try" else None,
         keep=getattr(args, "keep", False),

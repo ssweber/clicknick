@@ -208,7 +208,12 @@ set UV_NO_SYNC=1
 uv run python devtools/click_runner.py paste rung.csv --out runs\one
 uv run python devtools/click_runner.py record --out runs\dialogs
 uv run python devtools/click_runner.py try cases.json --out runs\cases --wire --keep
+uv run python devtools/click_runner.py export-nicknames --out runs\export --import nicknames.csv
 ```
+
+`paste --add-end` adds an unconditional `end()` rung after the CSV's rungs before it pastes them,
+unless the last rung is one already. `added_end` in `result.json` says whether it added one.
+Leave the flag off when the CSV tests END itself, so that CLICK gets the CSV exactly as written.
 
 `try` asks CLICK's instruction dialogs about each case in a JSON file. `devtools/editor_cases.json`
 holds the cases for the rule table. Each case names the fields, mode and lists to set, and the
@@ -219,6 +224,12 @@ option buttons. You name a button by the label CLICK shows on it or by its id.
 - With `--keep`, each accepted case is saved under `saves\` in the `--out` folder.
 - With both, the rung is also copied there, in the form that CLICK's Edit > Copy puts on the
   clipboard.
+
+`export-nicknames` runs CLICK's File > Export > Nickname. CLICK writes the export into
+`click\nicknames.csv` in the `--out` folder, and the runner copies its bytes to `export.csv` there.
+`result.json` says what the bytes are: the byte order mark, whether they decode as UTF-8 and as
+CP1252, the line ends, and each character that is not ASCII. With `--import`, the runner first
+imports that nickname CSV, as the `import` command does.
 
 `result.json` in the `--out` folder (also printed on stdout) says how the run went, and `run.log`
 logs each step. If a paste's rungs are not in the saved main program, the run ends `aborted`.
