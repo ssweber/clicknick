@@ -100,6 +100,37 @@ RECEIVE_FILLED = {5014: "1", 5017: "1"}
 # The Function Code items under which Word Swap (5003) is enabled: 03 and 04, which read
 # registers. CLICK disables Word Swap under the other codes.
 WORD_SWAP_OPEN_FOR = {2, 3}
+# The drop-down lists of CLICK's Send dialog, as the live run on 2026-11-18 dumped them. A PLC
+# with no Slot0 or Slot1 module lists no port of theirs.
+SEND_LISTS = {
+    5000: (["CPU Port1", "CPU Port2", "CPU Port3", "WLAN Port"], 1),
+    5001: (
+        [
+            "05 - Write Single Coil",
+            "06 - Write Single Register",
+            "15 - Write Multiple Coils",
+            "16 - Write Multiple Registers",
+        ],
+        0,
+    ),
+    5002: (["Modbus 984 Addressing", "Modbus Hex Addressing", "CLICK Addressing"], 0),
+    5003: (["ON", "OFF"], 1),
+}
+SEND_LIMITS = {5014: 6, 5017: 4, 5020: 16, 5023: 16, 5026: 16, 5029: 16, 5039: 5}
+SEND_FILLED = {5014: "0", 5017: "1", 5039: "502"}
+# Send enables Number of Bits (5017) under 15 and 16, and Word Swap (5003) only under 16.
+# CPU Port1 and WLAN Port show the Server IP Address and the Server Port Number.
+SEND_COUNT_FOR = {2, 3}
+SEND_WORD_SWAP_FOR = {3}
+SEND_IP_PORTS = {0, 3}
+UNITS = (["ms", "sec", "min", "hour", "day"], 0)
+# The drop-down lists of each instruction dialog, by its title and then by control id
+DIALOG_LISTS = {
+    "Receive": RECEIVE_LISTS,
+    "Send": SEND_LISTS,
+    "Timer": {5006: UNITS},
+    "Drum": {5003: UNITS},
+}
 # The option buttons of the Copy and Search dialogs as they open, by control id. Each entry
 # holds the label, whether the button is visible, whether it is enabled and whether it is
 # checked. In Copy, 5019 and 5020 are a pair of radio buttons, and so are 5036 and 5037. The
@@ -118,6 +149,8 @@ OPTION_BUTTONS = {
     },
 }
 OPTION_RADIOS = {5019: 5020, 5020: 5019, 5036: 5037, 5037: 5036}
+# Timer's "Current value will not be retained" (5010) and Retentive (5011) are a pair
+TIMER_RADIOS = {5010: 5011, 5011: 5010}
 
 
 def copy_options(source: str, destination: str) -> tuple[tuple[str, str], bool, bool, bool]:
@@ -189,6 +222,22 @@ class FakeClick(cd.Desktop):
     With *slow_options*, the first press on an option button leaves the dialog busy
     (``idle`` returns False) for longer than ``cr.OPTION_WAIT``. The button shows its new
     state without waiting for that.
+
+    Timer, Counter, Shift Register, For, Drum and Send open as a live run on 2026-11-18
+    dumped them. Timer and Counter fill their read-only fields once the timer's or the
+    counter's number is set. Timer's OFF Delay disables its retentive pair. Drum's Event
+    Base disables Unit and Elapsed Time and empties the step rows, and Time and Event shows
+    the durations' column. Send's Com Port shows or hides the server's IP address and port,
+    and sets the Function Code to 06 again. Its Function Code enables Number of
+    Bits and Word Swap. Its IP address control holds four Edits with its id. When *judge*
+    returns a list of ``(code, message)``, CLICK shows those boxes one after another, each
+    after the last one's OK. CLICK ignores the first *sticky_boxes* presses on an error
+    box's OK, and records ``ok_ignored`` for each. Another program holds the clipboard for
+    the first *clipboard_held* calls that set or empty it, and each records
+    ``clipboard_held``. *list_on_fill* names a list of Receive, Send, Timer or Drum and what
+    setting any field does to it. With ``reset``, the list selects its first item. With
+    ``stuck``, it selects its first item and ignores every later key. With ``closed``, it is
+    disabled. With *mode_resets_on_fill*, setting any field checks the dialog's first mode.
 
     File > Import > Nickname opens CLICK's Open dialog, with a radio button for each import
     mode. Merge (Project priority) is checked when it opens. Open passes the file's bytes to
@@ -264,11 +313,14 @@ class FakeClick(cd.Desktop):
         system_config_notice: bool = False,
         ansi_fields: bool = False,
         lists_follow_keys: bool = True,
-        list_resets_on_fill: bool = False,
+        list_on_fill: tuple[str, str] | None = None,
+        mode_resets_on_fill: bool = False,
         lost_presses: int = 0,
         slow_options: bool = False,
         copies: bool = True,
         ladder_views: int = 1,
+        sticky_boxes: int = 0,
+        clipboard_held: int = 0,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -341,6 +393,8 @@ class FakeClick(cd.Desktop):
         self.busy_until = 0.0  # ``idle`` returns False until this time
         self.copies = copies
         self.ladder_views = ladder_views
+        self.sticky_boxes = sticky_boxes
+        self.clipboard_held = clipboard_held
         self.on_dialog: Callable[[FakeWindow], None] | None = None  # Run as a dialog opens
         self.entered: list[tuple[str, str | None, dict[str, str]]] = []
         self.import_answer = import_answer or import_like_click
@@ -357,7 +411,10 @@ class FakeClick(cd.Desktop):
         self.ansi_fields = ansi_fields
         self.lists_follow_keys = lists_follow_keys
         # If set, the Receive dialog's Function Code goes back to 01 whenever a field is set
-        self.list_resets_on_fill = list_resets_on_fill
+        self.list_on_fill = list_on_fill
+        self.mode_resets_on_fill = mode_resets_on_fill
+        self.stuck_list: FakeControl | None = None  # A list that ignores its keys
+        self.mode_radios: list[int] = []  # The open dialog's mode buttons, in order
         self.receive_lists: dict[str, FakeControl] = {}
         self.last_folder = tmp_path / "last folder"
         self.editor_keys: Callable[[int], None] = lambda vk: None
@@ -912,14 +969,41 @@ class FakeClick(cd.Desktop):
             name: self._control(dialog, "Button", "", id, checked=int(index == 0))
             for index, (name, id) in enumerate(spec.modes.items())
         }
-        edits = {
-            name: self._control(dialog, "RichEdit20W" if name == "formula" else "Edit", "", id)
-            for name, id in spec.fields.items()
-        }
-        for name, edit in edits.items():
-            if title == "Receive":
-                edit.limit = RECEIVE_LIMITS.get(spec.fields[name], 30000)
-                edit.value = RECEIVE_FILLED.get(spec.fields[name], "")
+        self.mode_radios = list(spec.modes.values())
+        self.stuck_list = None
+        # One control per id. Drum's mode fields share some ids (a step's duration in Time
+        # Base is its event in Event Base), so several names may lead to one control
+        ids = {**spec.fields, **spec.read_only}
+        for more in spec.mode_fields.values():
+            ids.update(more)
+        by_id: dict[int, FakeControl] = {}
+        for name, id in ids.items():
+            if id in by_id:
+                continue
+            if name == "formula":
+                cls = "RichEdit20W"
+            elif title == "Send" and name == "ip":
+                cls = cd.IP_ADDRESS_CLASS
+            else:
+                cls = "Edit"
+            by_id[id] = self._control(dialog, cls, "", id)
+        edits = {name: by_id[id] for name, id in ids.items()}
+        limits = {"Receive": RECEIVE_LIMITS, "Send": SEND_LIMITS}.get(title, {})
+        filled = {"Receive": RECEIVE_FILLED, "Send": SEND_FILLED}.get(title, {})
+        if title == "Drum":
+            filled = {5021: "1", 5022: "1"}
+        for id, edit in by_id.items():
+            edit.limit = limits.get(id, 30000)
+            edit.value = filled.get(id, "")
+        if title == "Send":
+            # The IP address control holds four Edits with its id. Windows lists them from
+            # right to left
+            ip = edits["ip"]
+            for part in reversed(range(4)):
+                left = 10 * part
+                self._control(
+                    dialog, "Edit", "", ip.id, parent=ip.hwnd, rect=(left, 0, left + 8, 8)
+                )
         buttons: dict[int, FakeControl] = {}
         for id, (text, visible, enabled, checked) in OPTION_BUTTONS.get(title, {}).items():
             buttons[id] = self._control(
@@ -936,7 +1020,15 @@ class FakeClick(cd.Desktop):
 
         def follow_fields() -> None:
             # Copy's option buttons follow its fields. Compare hides its >, <, >= and <=
-            # buttons when Data A holds a TXT address.
+            # buttons when Data A holds a TXT address. Timer and Counter fill their
+            # read-only fields from the number of the timer or counter.
+            done = edits["done"].value if "done" in edits else ""
+            if title == "Timer":
+                edits["accumulator"].value = f"TD{done[1:]}" if done.startswith("T") else ""
+            if title == "Counter":
+                counter = done.startswith("CT")
+                edits["accumulator"].value = f"CTD{done[2:]}" if counter else ""
+                edits["completion_bit"].value = done if counter else ""
             if title == "Compare (A with B)":
                 text = edits["a"].value.startswith("TXT")
                 for name in (">", "<", ">=", "<="):
@@ -952,12 +1044,16 @@ class FakeClick(cd.Desktop):
             buttons[5021].enabled = terminates
             edits["termination_code"].enabled = terminates and buttons[5021].checked == 1
 
+        radio_pairs = TIMER_RADIOS if title == "Timer" else OPTION_RADIOS
+
         def toggle(button: FakeControl) -> None:
-            if button.id in OPTION_RADIOS:
+            if button.id in radio_pairs:
                 button.checked = 1
-                buttons[OPTION_RADIOS[button.id]].checked = 0
+                buttons[radio_pairs[button.id]].checked = 0
             else:
                 button.checked = 1 - button.checked
+            if title == "Drum":  # Load New Step Number opens the step's field
+                edits["jump_step"].enabled = buttons[5017].checked == 1
             follow_fields()
 
         def press_option(button: FakeControl) -> None:
@@ -975,7 +1071,7 @@ class FakeClick(cd.Desktop):
         dialog.on_text = follow_fields
         lists = {}
         for name, list_id in spec.lists.items():
-            items, selected = RECEIVE_LISTS[list_id]
+            items, selected = DIALOG_LISTS[title][list_id]
             lists[name] = self._control(
                 dialog, "ComboBox", "", list_id, options=list(items), selected=selected
             )
@@ -983,7 +1079,7 @@ class FakeClick(cd.Desktop):
         def key(combo: FakeControl, vk: int) -> None:
             # Home, Up and Down move a drop-down list's selection. The list tells the dialog
             # at once, with a sent CBN_SELCHANGE.
-            if not self.lists_follow_keys:
+            if not self.lists_follow_keys or combo is self.stuck_list:
                 return
             last = len(combo.options) - 1
             if vk == 0x24:
@@ -993,17 +1089,39 @@ class FakeClick(cd.Desktop):
             elif vk == 0x26:
                 combo.selected = max(combo.selected - 1, 0)
 
+        def follow_send() -> None:
+            # Send's Function Code opens Number of Bits and Word Swap. Its port shows the
+            # server's fields
+            function = lists["function"].selected
+            edits["count"].enabled = function in SEND_COUNT_FOR
+            lists["word_swap"].enabled = function in SEND_WORD_SWAP_FOR
+            shown = lists["port"].selected in SEND_IP_PORTS
+            for name in ("ip", "server_port"):
+                edits[name].visible = shown
+            for child in dialog.controls:
+                if child.parent == edits["ip"].hwnd:
+                    child.visible = shown
+
         def follow(combo: FakeControl, vk: int) -> None:
             key(combo, vk)
-            if combo is lists.get("function"):
+            if title == "Send":
+                if combo is lists["port"]:  # A port sets the Function Code to 06 again
+                    lists["function"].selected = 1
+                follow_send()
+            elif combo is lists.get("function"):
                 lists["word_swap"].enabled = combo.selected in WORD_SWAP_OPEN_FOR
 
         for combo in lists.values():
             combo.on_key = lambda vk, c=combo: follow(c, vk)
         if title == "Receive":
             lists["word_swap"].enabled = lists["function"].selected in WORD_SWAP_OPEN_FOR
+        if title == "Send":
+            follow_send()
+        if title in ("Receive", "Send"):
             # The runner must never press this button, because it edits the port setup
             self._control(dialog, "Button", "COM Port Setup", 5013)
+        if title == "Drum":
+            edits["jump_step"].enabled = False
         self.receive_lists = lists
 
         def pick(name: str) -> None:
@@ -1018,9 +1136,24 @@ class FakeClick(cd.Desktop):
                 "pack": ("destination_end",),
                 "unpack": ("source_end",),
             }
-            for key, edit in edits.items():
-                if key != "termination_code":  # Its check box enables it
-                    edit.enabled = key not in closed.get(name, ())
+            if title == "Copy":
+                for key, edit in edits.items():
+                    if key != "termination_code":  # Its check box enables it
+                        edit.enabled = key not in closed.get(name, ())
+            if title == "Timer":  # OFF Delay cannot retain the current value
+                for id in (5010, 5011):
+                    buttons[id].enabled = name == "on_delay"
+            if title == "Drum":
+                # Event Base has no unit and no elapsed time, and it empties the step rows.
+                # Time and Event shows a second column, for the durations
+                events = name == "event_drum"
+                lists["unit"].enabled = edits["accumulator"].enabled = not events
+                if events:
+                    lists["unit"].selected = 0
+                for step in range(16):
+                    if events:
+                        by_id[5094 + step].value = ""
+                    by_id[5130 + step].visible = name == "time_event_drum"
 
         for name, radio in radios.items():
             radio.on_press = lambda n=name: self._later("mode", lambda: pick(n))
@@ -1029,7 +1162,8 @@ class FakeClick(cd.Desktop):
 
         def ok() -> None:
             mode = next((n for n, r in radios.items() if r.checked), None)
-            values = {name: edit.value for name, edit in edits.items() if edit.value}
+            live = {**spec.fields_in(mode), **spec.read_only}
+            values = {name: by_id[id].value for name, id in live.items() if by_id[id].value}
             values.update({name: c.options[c.selected] for name, c in lists.items()})
             self.entered.append((title, mode, values))
             self.option_states.append({id: buttons[id].checked for id in spec.options})
@@ -1042,22 +1176,38 @@ class FakeClick(cd.Desktop):
                 self._control(box, "Button", "&Yes", 6)
                 self._control(box, "Button", "&No", 7)
                 dialog.enabled = False
+            elif isinstance(answer, list):  # A chain of error boxes, one after another
+                show_box(answer, 0, warn=False)
             else:
-                warn = answer[0] == "warn"
-                code, message = answer[-2:]
-                box = self._window("#32770", "CLICK Programming Software", dialog.hwnd)
+                show_box([answer[-2:]], 0, warn=answer[0] == "warn")
 
-                def closed() -> None:
-                    self._drop(box)
-                    if warn:
-                        place()
-                    else:
-                        dialog.enabled = True
+        def show_box(chain: list, index: int, *, warn: bool) -> None:
+            # Show the error box *chain*[*index*]. Its OK shows the next box a few polls
+            # later, and the last box's OK enables the dialog again (or, with *warn*, places
+            # the instruction). While *sticky_boxes* lasts, CLICK ignores an OK press.
+            code, message = chain[index]
+            box = self._window("#32770", "CLICK Programming Software", dialog.hwnd)
 
-                self._control(box, "Button", "OK", 2, on_press=lambda: self._later("box", closed))
-                self._control(box, "Static", "", 20)
-                self._control(box, "Static", f"{code}\n{message}", 65535)
-                dialog.enabled = False
+            def closed() -> None:
+                self._drop(box)
+                if index + 1 < len(chain):
+                    self._later("next_box", lambda: show_box(chain, index + 1, warn=warn))
+                elif warn:
+                    place()
+                else:
+                    dialog.enabled = True
+
+            def pressed() -> None:
+                if self.sticky_boxes:
+                    self.sticky_boxes -= 1
+                    self.events.append("ok_ignored")
+                    return
+                self._later("box", closed)
+
+            self._control(box, "Button", "OK", 2, on_press=pressed)
+            self._control(box, "Static", "", 20)
+            self._control(box, "Static", f"{code}\n{message}", 65535)
+            dialog.enabled = False
 
         def place() -> None:
             if self.places:
@@ -1381,8 +1531,19 @@ class FakeClick(cd.Desktop):
         window = next(w for w in self.wins.values() if any(c.hwnd == hwnd for c in w.controls))
         if window.on_text is not None:
             window.on_text()
-        if self.list_resets_on_fill and "function" in self.receive_lists:
-            self.receive_lists["function"].selected = 0
+        if self.list_on_fill is not None and self.list_on_fill[0] in self.receive_lists:
+            name, effect = self.list_on_fill
+            combo = self.receive_lists[name]
+            if effect == "closed":
+                combo.enabled = False
+            else:
+                combo.selected = 0
+                if effect == "stuck":
+                    self.stuck_list = combo
+        if self.mode_resets_on_fill:
+            radios = [c for c in window.controls if c.id in self.mode_radios]
+            for radio in radios:
+                radio.checked = int(radio is radios[0])
         if text == self.box_on_fill:
             dialog = next(w for w in self.wins.values() if any(c.hwnd == hwnd for c in w.controls))
             box = self._window("#32770", "CLICK Programming Software", dialog.hwnd)
@@ -1390,6 +1551,29 @@ class FakeClick(cd.Desktop):
             self._control(box, "Static", "OBJ-1001\nThe Formula has an error.", 65535)
             dialog.enabled = False
         return True
+
+    def _ip_parts(self, hwnd: int) -> list[FakeControl]:
+        control = self._find(hwnd)
+        assert control.cls == cd.IP_ADDRESS_CLASS, f"IPM_ sent to {control.cls}"
+        window = next(w for w in self.wins.values() if control in w.controls)
+        parts = [c for c in window.controls if c.parent == hwnd]
+        assert len(parts) == 4
+        return sorted(parts, key=lambda c: c.rect[0])
+
+    def set_ip_address(self, hwnd: int, numbers: tuple[int, int, int, int]) -> bool:
+        if not self._message("IPM_SETADDRESS"):
+            return False
+        for part, number in zip(self._ip_parts(hwnd), numbers, strict=True):
+            part.value = str(number)
+        text = ".".join(map(str, numbers))
+        self._find(hwnd).value = text
+        self.typed[self._find(hwnd).id] = text
+        return True
+
+    def ip_address(self, hwnd: int) -> str | None:
+        if not self._message("WM_GETTEXT"):
+            return None
+        return ".".join(part.value for part in self._ip_parts(hwnd))
 
     def button_checked(self, hwnd: int) -> int | None:
         return self._find(hwnd).checked if self._message("BM_GETCHECK") else None
@@ -1499,13 +1683,26 @@ class FakeClick(cd.Desktop):
         path.write_bytes(b"\x89PNG fake")
         return True
 
+    def _hold_clipboard(self) -> None:
+        # Another program holds the clipboard for the first *clipboard_held* calls. The text
+        # is what ClickNick's clipboard code raises then
+        if self.clipboard_held:
+            self.clipboard_held -= 1
+            self.events.append("clipboard_held")
+            raise RuntimeError(
+                "Could not open the clipboard after 20 attempts. Another program may hold it "
+                "open. Try again."
+            )
+
     def set_clipboard(self, payload: bytes, owner: int) -> None:
         self._check("set_clipboard")
         assert self.main is not None and owner == self.main.hwnd
+        self._hold_clipboard()
         self.clipboard = payload
 
     def empty_clipboard(self) -> None:
         self._check("empty_clipboard")
+        self._hold_clipboard()
         self.clipboard = None
         self.events.append("empty_clipboard")
 
@@ -3173,14 +3370,14 @@ def test_a_field_closed_in_the_mode_is_not_taken(tmp_path, setup):
         ({"cases": []}, "lists no cases"),
         ({"cases": [{"row": "A1"}]}, "case 1 needs a 'row' and a 'case'"),
         (
-            {"cases": [{**TRY_CASES[0], "instruction": "timer"}]},
+            {"cases": [{**TRY_CASES[0], "instruction": "sequencer"}]},
             "'instruction' is not one of math, copy, out",
         ),
         ({"cases": [{**TRY_CASES[0], "mode": None}]}, "'mode' is not one of decimal, hex"),
         ({"cases": [{**TRY_CASES[5], "mode": "single"}]}, "Out has no modes"),
         (
-            {"cases": [{**TRY_CASES[3], "mode": "fill"}]},
-            "'mode' is not one of single, block, pack, unpack",
+            {"cases": [{**TRY_CASES[3], "mode": "spread"}]},
+            "'mode' is not one of single, block, pack, unpack, fill",
         ),
         ({"cases": [{**TRY_CASES[0], "fields": {"source": "DS1"}}]}, "Math has no field source"),
         ({"cases": [{**TRY_CASES[0], "fields": {}}]}, "'fields' must name at least one field"),
@@ -3938,13 +4135,46 @@ def test_wire_keep_stops_when_the_clipboard_cannot_be_emptied(tmp_path, setup, m
         raise RuntimeError("OpenClipboard failed after 20 attempts")
 
     monkeypatch.setattr(fake, "empty_clipboard", held)
+    monkeypatch.setattr(cr, "CLIPBOARD_WAIT", 1.0)
     out = tmp_path / "out"
     code, result = run_try(
         fake, tmp_path, exe, {"cases": [SEARCH]}, "--wire", "--keep", read_stored=Stored()
     )
-    reason = "case01: the clipboard could not be emptied: OpenClipboard failed after 20 attempts"
+    # The runner tries for CLIPBOARD_WAIT seconds before it stops
+    reason = (
+        "case01: the clipboard could not be emptied: OpenClipboard failed after 20 attempts. "
+        "The runner timed out after 1 s waiting for the clipboard to be emptied"
+    )
     assert_aborted(fake, out, code, result, reason)
     assert "Copy" not in fake.commands
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert log.count("Trying again.") == 1  # The same failure is logged once
+
+
+@pytest.mark.parametrize("method", ["empty_clipboard", "set_clipboard"])
+def test_the_runner_waits_for_a_clipboard_that_another_program_holds(tmp_path, setup, method):
+    # Another program holds the clipboard for the first 50 tries (compare case413 in a live
+    # run on 2026-11-18). ``set_clipboard`` is ``paste``'s, ``empty_clipboard`` that of
+    # ``--keep``'s Edit > Copy
+    csv, exe = setup
+    if method == "set_clipboard":
+        fake = FakeClick(tmp_path, clipboard_held=50)
+        out = tmp_path / "out"
+        code, result = run(fake, out, csv, exe)
+    else:
+        fake, code, result = try_again(
+            tmp_path, exe, "held", {"cases": [SEARCH]}, "--wire", "--keep", clipboard_held=50
+        )
+        out = tmp_path / "held" / "out"
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.events.count("clipboard_held") == 50
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "the clipboard could not be" in log
+    assert "after 50 failure(s)" in log
+    if method == "set_clipboard":
+        assert fake.pasted is not None
+    else:
+        assert result["cases"][0]["kept"]["clip"] is not None
 
 
 def test_keep_without_wire_copies_nothing(tmp_path, setup):
@@ -4345,17 +4575,552 @@ def test_a_list_closed_for_entry_is_not_taken(tmp_path, setup):
     assert [e[0] for e in fake.entered] == ["Math"] and second["outcome"] == "accepted"
 
 
-def test_a_list_that_changes_while_the_fields_are_filled_is_not_taken(tmp_path, setup):
+# Cases from laddercodec's editor grids (tests/fixtures/editor_grids), one per dialog
+COPY_FILL = {
+    "row": "F1",
+    "case": "fill DS1..DS10 with 5",
+    "instruction": "copy",
+    "mode": "fill",
+    "fields": {"source": "5", "destination": "DS1", "destination_end": "DS10"},
+}
+TIMER = {
+    "row": "T1",
+    "case": "on delay T1, 100 sec, retained",
+    "instruction": "timer",
+    "mode": "on_delay",
+    "fields": {"done": "T1", "preset": "100"},
+    "choices": {"unit": "sec"},
+    "options": {"retained": 1},
+}
+COUNTER = {
+    "row": "K1",
+    "case": "count up and down CT1 to 10",
+    "instruction": "counter",
+    "mode": "count_up_down",
+    "fields": {"done": "CT1", "preset": "10"},
+}
+SHIFT = {
+    "row": "S1",
+    "case": "shift C1..C10",
+    "instruction": "shift",
+    "fields": {"start_bit": "C1", "end_bit": "C10"},
+}
+FOR = {
+    "row": "L1",
+    "case": "for 10, one shot",
+    "instruction": "for",
+    "fields": {"count": "10"},
+    "options": {"oneshot": 1},
+}
+DRUM = {
+    "row": "D1",
+    "case": "time drum, 2 steps",
+    "instruction": "drum",
+    "mode": "time_drum",
+    "fields": {
+        "num_steps": "2",
+        "num_outputs": "1",
+        "current_step": "DS1",
+        "accumulator": "TD1",
+        "completion_flag": "C1",
+        "outputs[0]": "Y001",
+        "presets[0]": "100",
+        "presets[1]": "200",
+        "jump_step": "DS2",
+    },
+    "choices": {"unit": "sec"},
+    "options": {"jog_enabled": 0, "jump_enabled": 1},
+}
+SEND = {
+    "row": "M1",
+    "case": "send registers to 192.168.1.10",
+    "instruction": "send",
+    "fields": {
+        "slave_id": "1",
+        "slave_address": "400001",
+        "master_address": "DS1",
+        "count": "2",
+        "sending": "C100",
+        "success": "C101",
+        "error": "C102",
+        "exception": "DS100",
+        "ip": "192.168.1.10",
+        "server_port": "502",
+    },
+    "choices": {
+        "port": "CPU Port1",
+        "function": "16 - Write Multiple Registers",
+        "addressing": "Modbus 984 Addressing",
+        "word_swap": "ON",
+    },
+}
+
+
+def test_try_answers_the_seven_dialogs(tmp_path, setup):
     _, exe = setup
-    case = {**RECEIVE, "choices": {"function": "03 - Read Holding Registers"}}
-    fake = FakeClick(tmp_path, list_resets_on_fill=True)
+    cases = [COPY_FILL, TIMER, COUNTER, SHIFT, FOR, DRUM, SEND]
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": cases})
+    assert code == cr.EXIT_OK, result["reason"]
+    assert [c["outcome"] for c in result["cases"]] == ["accepted"] * 7
+    assert [name for name in fake.commands if name.endswith("...")] == [
+        "Copy...",
+        "Timer...",
+        "Counter...",
+        "Shift Register...",
+        "For...",
+        "Drum...",
+        "Send...",
+    ]
+    fill, timer, counter, shift, loop, drum, send = fake.entered
+    assert fill[:2] == ("Copy", "fill")
+    assert {k: fill[2][k] for k in COPY_FILL["fields"]} == COPY_FILL["fields"]
+    assert shift[2] == SHIFT["fields"]
+    assert loop[2] == FOR["fields"]
+    assert fake.option_states[4] == {5003: 1}
+    # Timer: the unit picked by keys, Retentive checked, and Current Value as CLICK filled it
+    assert timer[:2] == ("Timer", "on_delay")
+    assert timer[2] == {**TIMER["fields"], "unit": "sec", "accumulator": "TD1"}
+    assert fake.option_states[1] == {5011: 1}
+    assert result["cases"][1]["read_back"] == {**TIMER["fields"], "accumulator": "TD1"}
+    # Counter: both read-only fields read back
+    assert counter[:2] == ("Counter", "count_up_down")
+    assert result["cases"][2]["read_back"] == {
+        **COUNTER["fields"],
+        "accumulator": "CTD1",
+        "completion_bit": "CT1",
+    }
+    # Drum: Load New Step Number opened the step's field, which the runner filled then
+    assert drum[:2] == ("Drum", "time_drum")
+    assert drum[2] == {**DRUM["fields"], "unit": "sec"}
+    assert fake.option_states[5] == {5016: 0, 5017: 1}
+    # Send: the lists picked port first, the IP address set as four numbers
+    assert send[2] == {**SEND["fields"], **SEND["choices"]}
+    assert result["cases"][6]["read_back"] == SEND["fields"]
+    assert result["cases"][6]["limits"]["server_port"] == 5
+    assert "ip" not in result["cases"][6]["limits"]
+    assert "COM Port Setup" not in fake.pressed
+    # With --wire, each one that has a single input sits behind the contact X001, in a rung of
+    # its own
+    timer = {**TIMER, "options": {"retained": 0}}
+    wired = [COPY_FILL, timer, SEND]
+    fake, code, result = try_again(tmp_path, exe, "wire", {"cases": wired}, "--wire")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert [c["outcome"] for c in result["cases"]] == ["accepted"] * 3
+    assert fake.commands.count("Contact(NO)...") == 3
+
+
+@pytest.mark.parametrize(
+    ("case", "reason"),
+    [
+        (TIMER, "A retentive Timer has a Reset input."),
+        ({**TIMER, "options": {"5011": 1}}, "A retentive Timer has a Reset input."),
+        # Only the open dialog shows which button has a label, so a label may name 5011
+        (
+            {
+                **TIMER,
+                "options": {"Current value will be retained while this timer is disabled.": 1},
+            },
+            "A retentive Timer has a Reset input.",
+        ),
+        (COUNTER, "Counter has a Reset input."),
+        (SHIFT, "Shift Register has a Clock input and a Reset input."),
+        (FOR, "For needs a Next after it."),
+        (DRUM, "Drum has a Reset input."),
+    ],
+)
+def test_wire_refuses_an_instruction_with_more_than_one_input(tmp_path, setup, case, reason):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [COPY_FILL, case]}, "--wire")
+    assert code == cr.EXIT_REFUSED
+    assert result["reason"] == (
+        f"try --wire cannot place 1 case(s). The first is {case['case']!r}. {reason} --wire "
+        "wires only an instruction's first input, and it places no Next. CLICK's Syntax Check "
+        "would then report an error. Run try without --wire to try these cases."
+    )
+    assert fake.pid is None
+
+
+def test_a_read_only_field_is_read_back_and_never_set(tmp_path, setup):
+    _, exe = setup
+    # A grid case may name what CLICK fills. The case is taken only if CLICK filled that
+    timer = {
+        **TIMER,
+        "case": "timer names TD1",
+        "fields": {**TIMER["fields"], "accumulator": "TD1"},
+    }
+    counter = {
+        **COUNTER,
+        "case": "counter names CTD2",
+        "fields": {**COUNTER["fields"], "accumulator": "CTD2"},
+    }
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [timer, counter]})
+    assert code == cr.EXIT_OK, result["reason"]
+    first, second = result["cases"]
+    assert first["outcome"] == "accepted"
+    assert (second["outcome"], second["message"]) == (
+        "not_taken",
+        "accumulator is read-only, and CLICK filled it with 'CTD1'",
+    )
+    # Each entry names the fields that the case gave and the runner never typed
+    assert first["filled_by_click"] == second["filled_by_click"] == ["accumulator"]
+    assert second["read_back"]["completion_bit"] == "CT1"
+    # Timer's Current Value is 5007, and Counter's are 5006 and 5007. The runner set none
+    assert not {5006, 5007} & set(fake.typed)
+    assert [title for title, _, _ in fake.entered] == ["Timer"]
+
+
+def test_off_delay_cannot_retain(tmp_path, setup):
+    _, exe = setup
+    case = {**TIMER, "mode": "off_delay"}
+    fake = FakeClick(tmp_path)
     code, result = run_try(fake, tmp_path, exe, {"cases": [case]})
+    assert code == cr.EXIT_OK, result["reason"]
+    answer = result["cases"][0]
+    assert answer["outcome"] == "not_taken"
+    assert "is closed for entry" in answer["message"]
+    assert fake.entered == []
+
+
+def test_drum_takes_each_mode_and_refuses_a_pattern_cell(tmp_path, setup):
+    _, exe = setup
+    events = {
+        **DRUM,
+        "case": "event drum",
+        "mode": "event_drum",
+        "fields": {"num_steps": "1", "outputs[0]": "Y001", "events[0]": "X001"},
+        "choices": {},
+        "options": {},
+    }
+    both = {
+        **events,
+        "case": "time and event drum",
+        "mode": "time_event_drum",
+        "fields": {**events["fields"], "presets[0]": "100"},
+    }
+    pattern = {**events, "case": "a pattern cell", "fields": {"pattern[0][0]": "1"}}
+    misplaced = {**DRUM, "case": "an event in a time drum", "fields": {"events[0]": "X001"}}
+    unit = {**events, "case": "event drum in sec", "choices": {"unit": "sec"}}
+    fake = FakeClick(tmp_path)
+    cases = [events, both, pattern, misplaced, unit]
+    code, result = run_try(fake, tmp_path, exe, {"cases": cases})
+    assert code == cr.EXIT_OK, result["reason"]
+    answers = [(c["outcome"], c["message"]) for c in result["cases"]]
+    assert answers[:2] == [("accepted", None), ("accepted", None)]
+    assert answers[2] == (
+        "not_taken",
+        "the Drum dialog's pattern is a grid whose cells have no control ids, so the runner "
+        "cannot set a cell: pattern[0][0]",
+    )
+    assert answers[3] == (
+        "not_taken",
+        "these fields have no control in time_drum mode: events[0]",
+    )
+    assert answers[4] == ("not_taken", "list unit is closed for entry in event_drum mode")
+    # In Time and Event, a step's duration has a column of its own (5130) beside its event.
+    # Number of Outputs stays at the 1 that it opens with
+    opened = {"num_outputs": "1", "unit": "ms"}
+    assert fake.entered[0][2] == {**events["fields"], **opened}
+    assert fake.entered[1][2] == {**both["fields"], **opened}
+    assert fake.typed[5130] == "100" and fake.typed[5094] == "X001"
+
+
+def test_send_refuses_a_port_the_plc_lacks_and_a_bad_address(tmp_path, setup):
+    _, exe = setup
+    slot = {**SEND, "case": "slot port", "choices": {**SEND["choices"], "port": "Slot0 Port1"}}
+    bad = {**SEND, "case": "bad ip", "fields": {**SEND["fields"], "ip": "192.168.1.300"}}
+    hidden = {
+        **SEND,
+        "case": "ip on port 2",
+        "choices": {**SEND["choices"], "port": "CPU Port2"},
+    }
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [slot, bad, hidden]})
+    assert code == cr.EXIT_OK, result["reason"]
+    answers = [(c["outcome"], c["message"]) for c in result["cases"]]
+    items = SEND_LISTS[5000][0]
+    assert answers[0] == (
+        "not_taken",
+        f"port: the list has no item 'Slot0 Port1' (its items: {items!r})",
+    )
+    assert answers[1] == (
+        "not_taken",
+        "ip '192.168.1.300' is not four numbers from 0 to 255, and an IP address control "
+        "takes nothing else",
+    )
+    # CPU Port2 hides the server's fields
+    assert answers[2] == (
+        "not_taken",
+        "these fields are closed for entry: ip, server_port",
+    )
+    assert fake.entered == []
+
+
+def test_send_picks_its_port_before_its_function_code(tmp_path, setup):
+    _, exe = setup
+    # The case lists its choices in another order. A port pick sets the Function Code again,
+    # so the runner picks in the dialog's order
+    choices = dict(reversed(list(SEND["choices"].items())))
+    case = {**SEND, "choices": choices}
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [case]})
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["cases"][0]["outcome"] == "accepted"
+    assert fake.entered[0][2]["function"] == "16 - Write Multiple Registers"
+
+
+def test_an_ip_address_control_reads_its_four_edits_from_left_to_right(monkeypatch):
+    target = cd.Win32Desktop()
+    sent: list[tuple[int, ...]] = []
+
+    def send(hwnd: int, message: int, wparam: int = 0, lparam: int = 0) -> int:
+        sent.append((hwnd, message, wparam, lparam))
+        return 0
+
+    monkeypatch.setattr(target, "_send", send)
+    assert target.set_ip_address(7, (192, 168, 1, 10))
+    assert sent == [(7, cd.IPM_SETADDRESS, 0, 0xC0A8010A)]
+    with pytest.raises(ValueError, match="not four numbers"):
+        target.set_ip_address(7, (192, 168, 1, 256))
+    # EnumChildWindows lists the Edits from right to left. An Edit elsewhere is not one of them
+    texts = {11: "10", 12: "1", 13: "168", 14: "192", 15: "x"}
+
+    def edit(hwnd: int, parent: int, left: int) -> cd.Control:
+        return cd.Control(hwnd, parent, "Edit", "", 5036, True, True, (left, 0, left + 8, 8))
+
+    children = [edit(11, 7, 30), edit(12, 7, 20), edit(13, 7, 10), edit(14, 7, 0), edit(15, 9, 0)]
+    monkeypatch.setattr(target, "controls", lambda hwnd: children)
+    monkeypatch.setattr(target, "read_text", lambda hwnd: texts[hwnd])
+    assert target.ip_address(7) == "192.168.1.10"
+    texts[12] = None  # pyright: ignore[reportArgumentType]
+    assert target.ip_address(7) is None
+
+
+CHAIN = [
+    ("OBJ-041", "The data type of the source and the destination do not match."),
+    ("OBJ-024", "The entered range is not correct."),
+]
+
+
+def test_a_chain_of_error_boxes_is_one_answer(tmp_path, setup):
+    _, exe = setup
+
+    def judge(title: str, mode: str | None, values: dict[str, str]) -> object:
+        return list(CHAIN) if title == "Copy" else None
+
+    fake = FakeClick(tmp_path, judge=judge)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [COPY_FILL, TRY_CASES[0]]})
+    assert code == cr.EXIT_OK, result["reason"]
+    first, second = result["cases"]
+    assert (first["outcome"], first["code"], first["message"]) == ("refused", *CHAIN[0])
+    assert first["boxes"] == [list(box) for box in CHAIN]
+    assert "ok_presses" not in first
+    assert fake.pressed.count("OK") >= 2 and second["outcome"] == "accepted"
+    assert "boxes" not in second
+
+
+def test_a_box_that_stays_gets_a_second_ok(tmp_path, setup, monkeypatch):
+    _, exe = setup
+    monkeypatch.setattr(cr, "REPRESS_AFTER", 0.5)
+
+    def judge(title: str, mode: str | None, values: dict[str, str]) -> object:
+        return CHAIN[0] if title == "Copy" else None
+
+    fake = FakeClick(tmp_path, judge=judge, sticky_boxes=1)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [COPY_FILL, TRY_CASES[0]]})
+    assert code == cr.EXIT_OK, result["reason"]
+    first, second = result["cases"]
+    assert (first["outcome"], first["code"]) == ("refused", CHAIN[0][0])
+    assert first["ok_presses"] == 2 and "boxes" not in first
+    assert fake.events.count("ok_ignored") == 1
+    assert second["outcome"] == "accepted"
+    log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
+    assert "the box is still open 0.5 s after its OK. Pressing OK again." in log
+
+
+class ClosesBeforeTheSecondOk(FakeClick):
+    """A CLICK whose error box closes just as the runner presses its OK a second time.
+
+    CLICK ignores the first OK. With *at* "check", the box closes as the runner looks for
+    its OK again. With *at* "post", it closes after that. The post of BM_CLICK then fails,
+    as PostMessage fails on a window that has gone."""
+
+    def __init__(self, *args, at: str, **kwargs) -> None:
+        super().__init__(*args, sticky_boxes=1, **kwargs)
+        self.at = at
+        self.box: FakeWindow | None = None
+
+    def close_box(self) -> None:
+        assert self.box is not None
+        self.wins[self.box.owner].enabled = True
+        self._drop(self.box)
+        self.box = None
+        self.events.append("box_closed")
+
+    def controls(self, hwnd: int) -> list[cd.Control]:
+        if self.at == "check" and self.box is not None and hwnd == self.box.hwnd:
+            self.close_box()
+        return super().controls(hwnd)
+
+    def press(self, hwnd: int) -> None:
+        box = next(w for w in self.wins.values() if any(c.hwnd == hwnd for c in w.controls))
+        if self.at == "post" and box is self.box:
+            self.close_box()
+            raise OSError(1400, "Invalid window handle.")
+        ignored = self.events.count("ok_ignored")
+        super().press(hwnd)
+        if self.events.count("ok_ignored") > ignored:
+            self.box = box
+
+
+@pytest.mark.parametrize("at", ["check", "post"])
+def test_a_box_that_closes_before_its_second_ok_is_the_answer(tmp_path, setup, monkeypatch, at):
+    _, exe = setup
+    monkeypatch.setattr(cr, "REPRESS_AFTER", 0.5)
+
+    def judge(title: str, mode: str | None, values: dict[str, str]) -> object:
+        return CHAIN[0] if title == "Copy" else None
+
+    fake = ClosesBeforeTheSecondOk(tmp_path, judge=judge, at=at)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [COPY_FILL, TRY_CASES[0]]})
+    assert code == cr.EXIT_OK, result["reason"]
+    first, second = result["cases"]
+    assert (first["outcome"], first["code"]) == ("refused", CHAIN[0][0])
+    assert "ok_presses" not in first
+    assert fake.events.count("box_closed") == 1
+    assert second["outcome"] == "accepted"
+    log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
+    assert "the box closed before the runner pressed OK again" in log
+
+
+def test_a_box_that_stays_after_two_oks_stops_the_run(tmp_path, setup, monkeypatch):
+    _, exe = setup
+    monkeypatch.setattr(cr, "REPRESS_AFTER", 0.5)
+    fake = FakeClick(tmp_path, judge=lambda *_: CHAIN[0], sticky_boxes=2)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [COPY_FILL]})
+    assert_aborted(
+        fake,
+        tmp_path / "out",
+        code,
+        result,
+        "timed out after 5 s waiting for the error box to close",
+    )
+
+
+def test_more_than_max_boxes_stops_the_run(tmp_path, setup):
+    _, exe = setup
+    chain = [(f"OBJ-{n:03d}", "Again.") for n in range(cr.MAX_BOXES + 1)]
+    fake = FakeClick(tmp_path, judge=lambda *_: chain)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [COPY_FILL]})
+    reason = f"CLICK showed more than {cr.MAX_BOXES} error boxes for one OK"
+    assert_aborted(fake, tmp_path / "out", code, result, reason)
+
+
+# Send under Function Code 16, with Word Swap OFF. Word Swap opens on OFF, and its first item
+# is ON
+SEND_NO_SWAP = {**SEND, "choices": {**SEND["choices"], "word_swap": "OFF"}}
+
+
+def test_a_list_that_a_field_resets_is_picked_again(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, list_on_fill=("word_swap", "reset"))
+    code, result = run_try(fake, tmp_path, exe, {"cases": [SEND_NO_SWAP]})
+    assert code == cr.EXIT_OK, result["reason"]
+    (entry,) = result["cases"]
+    assert entry["outcome"] == "accepted"
+    assert fake.entered[0][2]["word_swap"] == "OFF"
+    # The entry shows the list after the picks, once the fields were filled, and after the
+    # second pick
+    lists = entry["lists"]
+    assert [lists[stage]["word_swap"]["selected"] for stage in lists] == [1, 0, 1]
+    assert list(lists) == ["picked", "filled", "picked_again"]
+    assert lists["filled"]["word_swap"] == {
+        "items": ["ON", "OFF"],
+        "selected": 0,
+        "visible": True,
+        "enabled": True,
+    }
+    log = (tmp_path / "out" / "run.log").read_text(encoding="utf-8")
+    assert "list 5003 shows 'ON' once the fields are filled. Picking 'OFF' again." in log
+
+
+@pytest.mark.parametrize(
+    ("effect", "message"),
+    [
+        (
+            "stuck",
+            "list word_swap shows 'ON' once the fields are filled, and again after the runner "
+            "picked 'OFF' once more",
+        ),
+        ("closed", "list word_swap is closed for entry once the fields are filled"),
+    ],
+)
+def test_a_list_that_a_field_changes_for_good_is_not_taken(tmp_path, setup, effect, message):
+    _, exe = setup
+    fake = FakeClick(tmp_path, list_on_fill=("word_swap", effect))
+    code, result = run_try(fake, tmp_path, exe, {"cases": [SEND_NO_SWAP]})
+    assert code == cr.EXIT_OK, result["reason"]
+    (entry,) = result["cases"]
+    assert (entry["outcome"], entry["message"]) == ("not_taken", message)
+    assert entry["lists"]["filled"]["word_swap"]["enabled"] == (effect != "closed")
+    assert ("picked_again" in entry["lists"]) == (effect == "stuck")
+    assert fake.entered == []
+
+
+# A Send case that picks a port and no Function Code. The port pick sets the Function Code
+# to 06, and the case takes that as CLICK's default
+SEND_ON_PORT3 = {
+    "row": "M2",
+    "case": "send on CPU Port3",
+    "instruction": "send",
+    "fields": {"slave_id": "1"},
+    "choices": {"port": "CPU Port3"},
+}
+
+
+def test_a_list_that_the_case_does_not_choose_keeps_what_the_picks_set(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [SEND_ON_PORT3]})
+    assert code == cr.EXIT_OK, result["reason"]
+    (entry,) = result["cases"]
+    assert entry["outcome"] == "accepted"
+    assert fake.entered[0][2]["function"] == "06 - Write Single Register"
+    assert entry["lists"]["picked"]["function"]["selected"] == 1
+    assert "picked_again" not in entry["lists"]
+
+
+def test_a_list_that_the_case_does_not_choose_and_a_field_changes_is_not_taken(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, list_on_fill=("function", "reset"))
+    code, result = run_try(fake, tmp_path, exe, {"cases": [SEND_ON_PORT3]})
     assert code == cr.EXIT_OK, result["reason"]
     (entry,) = result["cases"]
     assert (entry["outcome"], entry["message"]) == (
         "not_taken",
-        "these read back other than the case asked: function",
+        "list function shows '05 - Write Single Coil' once the fields are filled. It showed "
+        "'06 - Write Single Register' after the picks, and the case does not choose it",
     )
+    # The runner does not pick in a list that the case does not choose
+    assert "picked_again" not in entry["lists"]
+    assert fake.entered == []
+
+
+def test_a_mode_that_a_field_resets_is_not_taken(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, mode_resets_on_fill=True)
+    code, result = run_try(fake, tmp_path, exe, {"cases": [COUNTER]})
+    assert code == cr.EXIT_OK, result["reason"]
+    (entry,) = result["cases"]
+    assert (entry["outcome"], entry["message"]) == (
+        "not_taken",
+        "mode count_up_down is not checked once the fields are filled. The dialog shows mode "
+        "count_up",
+    )
+    # The runner pressed the mode once, before the fields, and never again
+    assert fake.pressed.count("Button@0") == 1
     assert fake.entered == []
 
 
@@ -5198,7 +5963,7 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_nineteen_commands():
+def test_the_allowlist_is_the_twenty_five_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         0xE122: "Copy",
@@ -5219,6 +5984,13 @@ def test_the_allowlist_is_the_nineteen_commands():
         50040: "Copy...",
         50041: "Search...",
         50060: "Receive...",
+        # The ids where the live run on 2026-11-18 opened these dialogs (dump_probe.py)
+        50020: "Timer...",
+        50021: "Counter...",
+        50031: "Drum...",
+        50036: "Shift Register...",
+        50052: "For...",
+        50061: "Send...",
     }
     # Nothing that reads a project from the PLC or writes anything into it
     assert not {32852, 32853, 32854} & set(cd.ALLOWED_COMMANDS)

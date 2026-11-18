@@ -67,6 +67,15 @@ RECEIVE_DIALOG = 50060
 CONTACT_NO_DIALOG = 50001
 COMPARE_DIALOG = 50004
 SEARCH_DIALOG = 50041
+# In the same code, the ribbon's Timer, Counter, Shift Register, For, Drum and Send buttons push
+# these ids. A live run on 2026-11-18 opened each dialog with them: "Timer", "Counter", "Shift
+# Register", "For", "Drum" and "Send".
+TIMER_DIALOG = 50020
+COUNTER_DIALOG = 50021
+SHIFT_DIALOG = 50036
+FOR_DIALOG = 50052
+DRUM_DIALOG = 50031
+SEND_DIALOG = 50061
 # This is MFC's ID_EDIT_COPY. Edit > Copy puts what is selected in the ladder on the clipboard, and
 # nothing else.
 EDIT_COPY = 0xE122
@@ -90,8 +99,20 @@ ALLOWED_COMMANDS = {
     CONTACT_NO_DIALOG: "Contact(NO)...",
     COMPARE_DIALOG: "Compare...",
     SEARCH_DIALOG: "Search...",
+    TIMER_DIALOG: "Timer...",
+    COUNTER_DIALOG: "Counter...",
+    SHIFT_DIALOG: "Shift Register...",
+    FOR_DIALOG: "For...",
+    DRUM_DIALOG: "Drum...",
+    SEND_DIALOG: "Send...",
     EDIT_COPY: "Copy",
 }
+
+# The class of the IP address control (Send's Server IP Address). It has four Edits as children,
+# one per number, and each child has the control's id. The runner sets the control by
+# ``Desktop.set_ip_address`` and reads it by ``Desktop.ip_address``. ``Win32Desktop.ip_address``
+# reads the four Edits, because IPM_GETADDRESS cannot answer across processes.
+IP_ADDRESS_CLASS = "SysIPAddress32"
 
 # The ladder view is the one visible child of CLICK's main window that has this class. It is the
 # only window that the runner posts a mouse click to (``Desktop.click_ladder``).
@@ -247,6 +268,23 @@ class Desktop(ABC):
         """Send WM_SETTEXT and return whether *hwnd* answered."""
 
     @abstractmethod
+    def set_ip_address(self, hwnd: int, numbers: tuple[int, int, int, int]) -> bool:
+        """Set the IP address control *hwnd* to *numbers* (IPM_SETADDRESS).
+
+        Each number is from 0 to 255. Return whether the control answered.
+        """
+
+    @abstractmethod
+    def ip_address(self, hwnd: int) -> str | None:
+        """Return the text of the IP address control *hwnd*.
+
+        The text is the four numbers that its Edits show, from left to right, joined by dots.
+        A number left blank reads as an empty string, so a blank control reads "...". The
+        method reads each Edit by WM_GETTEXT. It only reads. Return None if an Edit does not
+        answer, or if the control does not hold four Edits.
+        """
+
+    @abstractmethod
     def button_checked(self, hwnd: int) -> int | None:
         """Return the BM_GETCHECK result, or None if *hwnd* does not answer."""
 
@@ -361,6 +399,7 @@ CB_GETLBTEXTLEN = 0x0149
 CB_ERR = 0xFFFFFFFF
 BM_CLICK = 0x00F5
 LVM_GETITEMCOUNT = 0x1004
+IPM_SETADDRESS = 0x0400 + 101  # WM_USER + 101
 SB_GETPARTS = 0x0406
 SB_GETTEXTLENGTHW = 0x040C
 SB_GETTEXTW = 0x040D
@@ -790,6 +829,28 @@ class Win32Desktop(Desktop):
     def set_text(self, hwnd: int, text: str) -> bool:
         buffer = ctypes.create_unicode_buffer(text)
         return self._send(hwnd, WM_SETTEXT, 0, ctypes.addressof(buffer)) is not None
+
+    def set_ip_address(self, hwnd: int, numbers: tuple[int, int, int, int]) -> bool:
+        if len(numbers) != 4 or not all(0 <= n <= 255 for n in numbers):
+            raise ValueError(f"not four numbers from 0 to 255: {numbers!r}")
+        first, second, third, fourth = numbers
+        packed = first << 24 | second << 16 | third << 8 | fourth  # MAKEIPADDRESS
+        return self._send(hwnd, IPM_SETADDRESS, 0, packed) is not None
+
+    def ip_address(self, hwnd: int) -> str | None:
+        # IPM_GETADDRESS writes into a buffer that lParam points at, and Windows does not copy
+        # that buffer across processes as it does WM_GETTEXT's. So this reads the four Edits.
+        # EnumChildWindows lists them from right to left, so sort them by position
+        edits = sorted(
+            (c for c in self.controls(hwnd) if c.cls == "Edit" and c.parent == hwnd),
+            key=lambda c: c.rect[0],
+        )
+        if len(edits) != 4:
+            return None
+        texts = [self.read_text(edit.hwnd) for edit in edits]
+        if any(text is None for text in texts):
+            return None
+        return ".".join(text or "" for text in texts)
 
     def button_checked(self, hwnd: int) -> int | None:
         return self._send(hwnd, BM_GETCHECK)
