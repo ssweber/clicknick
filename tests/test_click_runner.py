@@ -8,6 +8,7 @@ later poll, as it does in CLICK.
 
 from __future__ import annotations
 
+import codecs
 import csv as csv_module
 import io
 import json
@@ -78,6 +79,7 @@ class FakeWindow:
     controls: list[FakeControl] = field(default_factory=list)
     on_close: Callable[[], None] | None = None
     on_text: Callable[[], None] | None = None  # Run when a field's text is set (EN_CHANGE)
+    on_drop: Callable[[], None] | None = None  # Run when the window goes
 
 
 # SYSTEM_ROWS holds two of the system rows that CLICK's Address Picker writes into SC_.mdb on
@@ -266,6 +268,22 @@ class FakeClick(cd.Desktop):
     a second time after the first is closed. ``imported`` lists the mode and the file name
     of each import.
 
+    File > Export > Nickname opens a Save As dialog. Save shows a progress window titled
+    "frmProgress", then writes the export and shows a box titled "Export Database". These
+    windows are those of the comment at ``EXPORT_SAVE``. The export holds the fake's SC_.mdb
+    rows as CP1252 text with CR LF line ends, as CLICK wrote them in live runs on 2026-11-18,
+    or *export_bytes* if given. With *export_writes* off, the export writes no file. *export_box* is
+    ``completed`` for the box reading "Completed!" with OK, ``question`` for a Yes/No box,
+    ``other`` for a box with OK and another text, ``disabled`` for the "Completed!" box that
+    stays disabled, or None for no box. *create_prompt* is the box in which Windows asks
+    whether to create the file, before the progress window: ``windows`` for Windows' wording
+    with Yes and No, ``text`` for a text that does not name the file, ``buttons`` for the
+    file's name with OK and Cancel, ``exists`` for Windows' wording after an empty file has
+    appeared at the path, or None for no box.
+    ``exported`` lists the path of each export. With *shadow*, a drop shadow (``SysShadow``,
+    no title, no owner) shows while a Save As dialog is open. A paste moves the cursor down
+    by *paste_rungs*, the number of rungs that the test pastes (RUNG_CSV has one).
+
     PLC > Read Data from PLC opens CLICK's form, Save dialog and progress window. With
     *writes_data* off, the reading writes no file. With *save_clears*, the Save dialog
     empties its File name edit a few polls after it shows. Real CLICK did this once. If the
@@ -338,6 +356,12 @@ class FakeClick(cd.Desktop):
         ladder_views: int = 1,
         sticky_boxes: int = 0,
         clipboard_held: int = 0,
+        paste_rungs: int = 1,
+        shadow: bool = False,
+        export_bytes: bytes | None = None,
+        export_writes: bool = True,
+        export_box: str | None = "completed",
+        create_prompt: str | None = None,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -442,6 +466,13 @@ class FakeClick(cd.Desktop):
         self.last_folder = tmp_path / "last folder"
         self.editor_keys: Callable[[int], None] = lambda vk: None
         self.ckps: dict[Path, dict[str, bytes]] = {}  # Each saved project's files
+        self.paste_rungs = paste_rungs
+        self.shadow = shadow
+        self.export_bytes = export_bytes
+        self.export_writes = export_writes
+        self.export_box = export_box
+        self.create_prompt = create_prompt
+        self.exported: list[Path] = []
         self.opened: list[Path] = []
 
     @property
@@ -472,6 +503,8 @@ class FakeClick(cd.Desktop):
     def _drop(self, window: FakeWindow | None) -> None:
         if window is not None:
             self.wins.pop(window.hwnd, None)
+            if window.on_drop is not None:
+                window.on_drop()
 
     def _later(self, event: str, action: Callable[[], None], polls: int | None = None) -> None:
         """Run *action* *polls* polls from now, or ``lag`` polls if *polls* is None.
@@ -722,15 +755,27 @@ class FakeClick(cd.Desktop):
         self._control(prompt, "Button", "OK", 1, on_press=lambda: self._later("dont_read", ok))
         self._control(prompt, "Button", "Cancel", 2)
 
-    def _show_save_as(self) -> None:
+    def _show_save_dialog(self) -> tuple[FakeWindow, FakeControl]:
+        """Show a Save As dialog owned by the main window, and return it and its File name edit.
+
+        With *shadow*, a drop shadow shows with the dialog and goes when the dialog goes.
+        """
         assert self.main is not None
-        main = self.main
-        main.enabled = False
-        dialog = self._window("#32770", "Save As", main.hwnd)
+        self.main.enabled = False
+        dialog = self._window("#32770", "Save As", self.main.hwnd)
         self._control(dialog, "ComboBox", "", 1137)
         box_ex = self._control(dialog, "ComboBoxEx32", "", 1148)
         box = self._control(dialog, "ComboBox", "", 1148, parent=box_ex.hwnd)
         name = self._control(dialog, "Edit", "", 1148, parent=box.hwnd)
+        if self.shadow:
+            shadow = self._window("SysShadow", "", 0)
+            dialog.on_drop = lambda: self._drop(shadow)
+        return dialog, name
+
+    def _show_save_as(self) -> None:
+        assert self.main is not None
+        main = self.main
+        dialog, name = self._show_save_dialog()
 
         def save() -> None:
             path = Path(name.value)
@@ -1395,6 +1440,92 @@ class FakeClick(cd.Desktop):
 
         self._later("import_progress", titled)
 
+    def _show_export(self) -> None:
+        """Show the Save As dialog of File > Export > Nickname."""
+        assert self.main is not None
+        main = self.main
+        dialog, name = self._show_save_dialog()
+
+        def answer() -> None:
+            if self.export_box is None:
+                main.enabled = True
+                return
+            box = self._window("#32770", "Export Database", main.hwnd)
+            if self.export_box == "question":
+                self._control(box, "Static", "Overwrite the file?", 65535)
+                self._control(box, "Button", "&Yes", 6)
+                self._control(box, "Button", "&No", 7)
+                return
+            if self.export_box == "disabled":
+                box.enabled = False
+
+            def closed() -> None:
+                self._drop(box)
+                main.enabled = True
+
+            self._control(box, "Button", "OK", 2, on_press=lambda: self._later("export_ok", closed))
+            self._control(box, "Static", "", 20)
+            text = "No data to export." if self.export_box == "other" else "Completed!"
+            self._control(box, "Static", text, 65535)
+
+        def save() -> None:
+            if self.create_prompt is None:
+                export()
+                return
+            path = Path(name.value)
+            if self.create_prompt == "exists":
+                path.write_bytes(b"")
+            prompt = self._window("#32770", "Save As", dialog.hwnd)
+            self._control(prompt, "Static", "", 20)
+            if self.create_prompt == "text":
+                self._control(prompt, "Static", "Create the file?", 65535)
+            else:
+                self._control(prompt, "Static", f"{path.name}\nThis file does not exist.", 65535)
+                self._control(prompt, "Static", "Create the file?", 65536)
+            yes, no = ("OK", "Cancel") if self.create_prompt == "buttons" else ("&Yes", "&No")
+
+            def created() -> None:
+                self._drop(prompt)
+                export()
+
+            self._control(prompt, "Button", yes, 6, on_press=lambda: self._later("create", created))
+            self._control(prompt, "Button", no, 7)
+
+        def export() -> None:
+            path = Path(name.value)
+            self._drop(dialog)
+            progress = self._window("TfrmProgress", "frmProgress", main.hwnd, enabled=False)
+
+            def write() -> None:
+                self.exported.append(path)
+                if self.export_writes:
+                    path.write_bytes(self._export_data())
+                self._drop(progress)
+                answer()
+
+            self._later("export_write", write)
+
+        self._control(dialog, "Button", "&Save", 1, on_press=lambda: self._later("export", save))
+        self._control(dialog, "Button", "Cancel", 2)
+
+    def _export_data(self) -> bytes:
+        """Return *export_bytes*, or else the header and the rows of the fake's SC_.mdb."""
+        if self.export_bytes is not None:
+            return self.export_bytes
+        assert self.main is not None
+        try:
+            table = json.loads((self.temp_dir(self.main.hwnd) / "SC_.mdb").read_text("utf-8"))
+        except ValueError:
+            table = {}  # A new project's SC_.mdb, which holds b"mdb" in this fake
+        lines = ["Address,Data Type,Nickname,Initial Value,Retentive,Address Comment"]
+        for address, row in table.items():
+            retentive = "Yes" if row["Retentive"] else "No"
+            lines.append(
+                f'{address},{row["DataType"]},"{row["Nickname"]}",{row["InitialValue"] or ""},'
+                f'{retentive},"{row["Comment"] or ""}"'
+            )
+        return "".join(f"{line}\r\n" for line in lines).encode("cp1252")
+
     # -- Desktop ----------------------------------------------------------------
 
     def _post_command(self, hwnd: int, command_id: int) -> None:
@@ -1408,10 +1539,9 @@ class FakeClick(cd.Desktop):
         if command_id == cd.PASTE:
 
             def paste() -> None:
-                # RUNG_CSV has one rung, so the cursor moves down one rung. The step count
-                # does not change.
+                # The cursor moves down by the rungs pasted. The step count does not change.
                 self.pasted = self.clipboard
-                self.cursor_rung += 1
+                self.cursor_rung += self.paste_rungs
 
             self._later("paste", paste)
         elif (
@@ -1459,6 +1589,8 @@ class FakeClick(cd.Desktop):
             self._later("disconnect", self._show_disconnect)
         elif command_id == cd.IMPORT_NICKNAME:
             self._later("import_open", self._show_open)
+        elif command_id == cd.EXPORT_NICKNAME:
+            self._later("export_open", self._show_export)
         elif command_id == cd.OPEN_PROJECT:
             self._later("open_project", self._show_open_project)
         elif command_id == cd.READ_DATA_FROM_PLC:
@@ -2183,6 +2315,147 @@ def test_tooltips_are_let_be(tmp_path, setup):
     assert code == cr.EXIT_OK, result["reason"]
     log = (out / "run.log").read_text(encoding="utf-8")
     assert log.count("ignoring a tooltip: 'tooltips_class32'") == 2
+
+
+def test_a_drop_shadow_is_let_be(tmp_path, setup):
+    """A drop shadow over Save As does not stop the run.
+
+    Three live runs on 2026-11-18 stopped while the runner filled Save As. Each met a window of
+    class ``SysShadow`` with no title and no owner.
+    """
+    csv, exe = setup
+    fake = FakeClick(tmp_path, shadow=True)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.saved
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert log.count("ignoring a drop shadow: 'SysShadow' ''") == 1
+
+
+@pytest.mark.parametrize(
+    ("cls", "title", "owner", "what"),
+    [
+        ("SysShadow", "", 0, "a drop shadow"),
+        ("SysShadow", "Shadow", 0, None),  # A shadow has no title
+        ("SysShadow", "", 7, None),  # A shadow has no owner
+        ("tooltips_class32", "Save", 7, "a tooltip"),
+        ("#32770", "", 0, None),
+    ],
+)
+def test_only_tooltips_and_untitled_unowned_shadows_are_let_be(cls, title, owner, what):
+    window = cd.Window(1, cls, title, owner, True, (0, 0, 1, 1))
+    assert cr._ignored_as(window) == what
+
+
+# ---------------------------------------------------------------------------
+# paste --add-end
+# ---------------------------------------------------------------------------
+
+
+def decode_as(monkeypatch: pytest.MonkeyPatch, csv: Path) -> None:
+    """Decode the fake's saved main program as the rungs of *csv*, once *csv* exists."""
+    monkeypatch.setattr(
+        "clicknick.ladder.program.decode_program",
+        lambda data: Program("Main Program", 1, read_csv(csv) if data != b"empty" else []),
+    )
+
+
+def test_paste_add_end_pastes_the_csv_with_an_end_rung(tmp_path, setup, monkeypatch):
+    csv, exe = setup
+    out = tmp_path / "out"
+    pasted = out / "pasted.csv"
+    decode_as(monkeypatch, pasted)
+    fake = FakeClick(tmp_path, paste_rungs=2)
+
+    code, result = run(fake, out, csv, exe, "--add-end")
+
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["added_end"] is True
+    assert result["files"]["pasted_csv"] == str(pasted)
+    data = csv.read_bytes()
+    assert pasted.read_bytes() == cr.with_end(data)
+    assert pasted.read_bytes().startswith(data)
+    # The pasted rungs are the CSV's and then the end() rung, and the comparison counts both
+    assert fake.pasted == prepare_csv_load(pasted, click_v4=True, mdb_path=None).payload
+    assert result["rungs"] == {"pasted": 2, "saved_main": 2, "same": True}
+    assert cr.ends_unconditionally(read_csv(pasted))
+    # The project is named after the CSV that was given
+    assert Path(result["files"]["ckp"]) == out / "rung.ckp"
+
+
+def test_paste_add_end_pastes_a_csv_that_ends_with_end_as_it_is(tmp_path, setup, monkeypatch):
+    _, exe = setup
+    csv = tmp_path / "ended.csv"
+    csv.write_bytes((RUNG_CSV + cr.END_ROW + "\n").encode("ascii"))
+    decode_as(monkeypatch, csv)
+    fake = FakeClick(tmp_path, paste_rungs=2)
+    out = tmp_path / "out"
+
+    code, result = run(fake, out, csv, exe, "--add-end")
+
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["added_end"] is False
+    assert not (out / "pasted.csv").exists() and "pasted_csv" not in result["files"]
+    assert fake.pasted == prepare_csv_load(csv, click_v4=True, mdb_path=None).payload
+    assert result["rungs"] == {"pasted": 2, "saved_main": 2, "same": True}
+
+
+def test_paste_without_add_end_adds_no_rung(tmp_path, setup):
+    csv, exe = setup
+    fake = FakeClick(tmp_path)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert "added_end" not in result and not (out / "pasted.csv").exists()
+    assert fake.pasted == prepare_csv_load(csv, click_v4=True, mdb_path=None).payload
+    assert result["rungs"] == {"pasted": 1, "saved_main": 1, "same": True}
+
+
+def test_paste_add_end_refuses_a_csv_that_does_not_read(tmp_path, setup):
+    _, exe = setup
+    csv = tmp_path / "bad.csv"
+    csv.write_text("not a ladder CSV\n", encoding="utf-8")
+    fake = FakeClick(tmp_path)
+    code, result = run(fake, tmp_path / "out", csv, exe, "--add-end")
+    assert code == cr.EXIT_REFUSED
+    assert result["reason"].startswith(f"cannot read {csv}: ")
+    assert fake.pid is None
+
+
+def test_with_end_adds_the_end_row_with_the_files_line_end():
+    row = cr.END_ROW.encode("ascii")
+    assert row.split(b",") == [b"R", *[b"-"] * 31, b"end()"]
+    assert cr.with_end(b"h\r\nR,x\r\n") == b"h\r\nR,x\r\n" + row + b"\r\n"
+    assert cr.with_end(b"h\nR,x\n") == b"h\nR,x\n" + row + b"\n"
+    # A last line without a line end gets one before the row
+    assert cr.with_end(b"h\r\nR,x") == b"h\r\nR,x\r\n" + row + b"\r\n"
+    assert cr.with_end(b"h") == b"h\n" + row + b"\n"
+
+
+WIRE_TO_AE = ",".join(["-"] * 30)  # The wire from column B to column AE
+
+
+@pytest.mark.parametrize(
+    ("rows", "ends"),
+    [
+        ([cr.END_ROW], True),
+        ([RUNG_CSV.splitlines()[1].replace("out(Y001)", "end()")], False),  # Behind a contact
+        ([RUNG_CSV.splitlines()[1]], False),
+        ([], False),  # No rung at all
+        # end() behind X001 OR X002: one rung of two rows
+        ([f"R,T:X001,{WIRE_TO_AE},end()", ",X002" + "," * 31], False),
+        # X001 to out(Y001), and under it a wire to end(). laddercodec splits the two circuits
+        # into two rungs, as CLICK does, so the last rung is an unconditional end()
+        ([f"R,T:X001,{WIRE_TO_AE},out(Y001)", f",-,{WIRE_TO_AE},end()"], True),
+    ],
+    ids=["end_row", "behind_a_contact", "a_coil", "no_rung", "or_branch", "wire_to_end_below"],
+)
+def test_ends_unconditionally_reads_the_last_rung(tmp_path, rows, ends):
+    csv = tmp_path / "rungs.csv"
+    lines = RUNG_CSV.splitlines()[:1] + rows
+    csv.write_bytes("".join(f"{line}\n" for line in lines).encode("ascii"))
+    assert cr.ends_unconditionally(read_csv(csv)) is ends
 
 
 def test_no_guide_no_login_and_a_splash(tmp_path, setup):
@@ -6117,6 +6390,268 @@ def test_read_data_that_writes_no_file_aborts_once_the_reading_ends(tmp_path, se
 
 
 # ---------------------------------------------------------------------------
+# export-nicknames: CLICK's nickname export, byte for byte
+# ---------------------------------------------------------------------------
+
+# A nickname export with `€` in a nickname and `café` in a comment, in UTF-8 with a BOM and in
+# CP1252. Which of them CLICK writes is what a live run is to find out
+EXPORT_ROW = 'DS1,INT,"Price€",0,No,"café"\r\n'
+UTF8_BOM_EXPORT = codecs.BOM_UTF8 + HEADER + EXPORT_ROW.encode("utf-8")
+CP1252_EXPORT = HEADER + EXPORT_ROW.encode("cp1252")
+
+
+@pytest.mark.parametrize("data", [UTF8_BOM_EXPORT, CP1252_EXPORT], ids=["utf8_bom", "cp1252"])
+def test_export_nicknames_copies_the_file_that_click_writes(tmp_path, setup, data):
+    _, exe = setup
+    fake = FakeClick(tmp_path, export_bytes=data)
+    out = tmp_path / "out"
+
+    code, result = run_command(fake, tmp_path, exe, "export-nicknames")
+
+    assert code == cr.EXIT_OK, result["reason"]
+    written = (out / "click" / "nicknames.csv").resolve()
+    assert fake.exported == [written] and written.read_bytes() == data
+    assert (out / "export.csv").read_bytes() == data
+    assert result["files"]["export"] == str(out / "export.csv")
+    export = result["export"]
+    assert export == {
+        "written": str(written),
+        "create_prompt": None,
+        "answer": "Completed!",
+        "copy": str(out / "export.csv"),
+        **json.loads(json.dumps(cr.export_facts(data))),
+    }
+    assert "imports" not in result
+    # The runner typed the path into the export's Save As, pressed Save and the box's OK. It
+    # sent no command but Export Nickname before Disconnect
+    assert fake.typed[1148] == str(written)
+    assert fake.pressed[-3:] == ["&Save", "OK", "&Yes"]
+    assert fake.commands == ["Export Nickname", "Disconnect"]
+    # The project was never saved, so the runner ends CLICK instead of closing it
+    assert not fake.connected and fake.terminated and not fake.saved
+    assert list(result["timings"])[-3:] == ["export", "disconnect", "close"]
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert f"exported {len(data)} bytes into {written}" in log
+
+
+def test_an_export_without_a_box_ends_once_the_file_stays_the_same(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, export_bytes=CP1252_EXPORT, export_box=None)
+    out = tmp_path / "out"
+    code, result = run_command(fake, tmp_path, exe, "export-nicknames")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["export"]["answer"] is None
+    assert (out / "export.csv").read_bytes() == CP1252_EXPORT
+    assert "OK" not in fake.pressed[fake.pressed.index("&Save") :]
+
+
+def test_export_nicknames_imports_first(tmp_path, setup):
+    _, exe = setup
+    csv = tmp_path / "nicknames.csv"
+    csv.write_bytes(IMPORT_CSV)
+    fake = FakeClick(tmp_path, shadow=True)
+    rows = Rows()
+    out = tmp_path / "out"
+
+    code, result = run_command(
+        fake, tmp_path, exe, "export-nicknames", "--import", str(csv), "--record", read_rows=rows
+    )
+
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.imported == [("Delete Existing", "nicknames.csv")]
+    assert fake.commands == ["Import Nickname", "Export Nickname", "Disconnect"]
+    assert result["import_mode"] == "Delete Existing"
+    (whole,) = result["imports"]
+    assert whole["name"] == "whole" and whole["answer"] == "errors"
+    assert set(whole["stored"]) == {"DS20", "TXT20"}
+    assert rows.read == [out / "mdb" / "01-whole.mdb"]
+    # The fake's export lists what the import stored
+    lines = result["export"]["first_lines"]
+    assert lines[0] == HEADER.decode("ascii").rstrip("\r\n")
+    assert [line.split(",")[0] for line in lines[1:]] == ["DS20", "TXT20"]
+    assert list(result["timings"])[-5:] == ["import", "export", "disconnect", "close", "read"]
+    labels = {p.name.split("-")[1] for p in (out / "record").glob("*.json")}
+    assert {"export_save", "export_answer", "exported"} <= labels
+    # The drop shadow under the export's Save As did not stop the run
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "ignoring a drop shadow: 'SysShadow' ''" in log
+
+
+@pytest.mark.parametrize(
+    ("switches", "reason"),
+    [
+        (
+            {"export_box": "question"},
+            "the export: CLICK asked something the runner does not answer",
+        ),
+        (
+            {"export_box": "other"},
+            "the export: CLICK asked something the runner does not answer: "
+            "['No data to export.'], buttons ['OK']",
+        ),
+        ({"surprise": "export"}, "unexpected window while waiting for CLICK to write"),
+        (
+            {"create_prompt": "text"},
+            "the export's Save As: Windows asked something the runner does not answer: "
+            "['Create the file?'], buttons ['&Yes', '&No']",
+        ),
+        (
+            {"create_prompt": "buttons"},
+            "the export's Save As: Windows asked something the runner does not answer",
+        ),
+        # A question about a file that exists asks whether to replace it, not to create it
+        ({"create_prompt": "exists"}, "the export's Save As asks about "),
+    ],
+    ids=[
+        "question",
+        "other_text",
+        "another_window",
+        "prompt_text",
+        "prompt_buttons",
+        "prompt_file_exists",
+    ],
+)
+def test_an_unknown_box_during_the_export_stops_the_run(tmp_path, setup, switches, reason):
+    _, exe = setup
+    fake = FakeClick(tmp_path, **switches)
+    out = tmp_path / "out"
+    code, result = run_command(fake, tmp_path, exe, "export-nicknames")
+    assert_aborted(fake, out, code, result, reason)
+    written = (out / "click" / "nicknames.csv").resolve()
+    assert result["step"] == "export"
+    assert result["export"] == {"written": str(written), "create_prompt": None, "answer": None}
+    assert not (out / "export.csv").exists()
+    # The runner pressed nothing after Save
+    assert fake.pressed[fake.pressed.index("&Save") :] == ["&Save"]
+
+
+def test_export_nicknames_answers_windows_question_to_create_the_file(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, export_bytes=CP1252_EXPORT, create_prompt="windows")
+    out = tmp_path / "out"
+    code, result = run_command(fake, tmp_path, exe, "export-nicknames")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["export"]["create_prompt"] == {
+        "title": "Save As",
+        "texts": ["nicknames.csv\nThis file does not exist.", "Create the file?"],
+    }
+    assert result["export"]["answer"] == "Completed!"
+    assert (out / "export.csv").read_bytes() == CP1252_EXPORT
+    # The last &Yes answers the question whether to disconnect
+    assert fake.pressed[fake.pressed.index("&Save") :] == ["&Save", "&Yes", "OK", "&Yes"]
+
+
+def test_an_export_whose_box_stays_disabled_names_the_main_window(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, export_bytes=CP1252_EXPORT, export_box="disabled")
+    out = tmp_path / "out"
+    code, result = run_command(fake, tmp_path, exe, "export-nicknames")
+    written = (out / "click" / "nicknames.csv").resolve()
+    assert_aborted(
+        fake,
+        out,
+        code,
+        result,
+        f"CLICK wrote {written}, but its main window was not alone, enabled and answering. "
+        "The runner timed out",
+    )
+    assert written.read_bytes() == CP1252_EXPORT
+    assert not (out / "export.csv").exists()
+    assert fake.pressed[fake.pressed.index("&Save") :] == ["&Save"]
+
+
+def test_an_export_that_writes_no_file_stops_on_a_timeout(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, export_writes=False)
+    out = tmp_path / "out"
+    code, result = run_command(fake, tmp_path, exe, "export-nicknames")
+    written = (out / "click" / "nicknames.csv").resolve()
+    assert_aborted(fake, out, code, result, f"CLICK wrote no {written}. The runner timed out")
+    assert result["step"] == "export" and "copy" not in result["export"]
+    assert fake.exported == [written] and not written.exists()
+    assert not (out / "export.csv").exists()
+
+
+def test_export_nicknames_refuses_an_import_csv_that_is_not_there(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    missing = tmp_path / "missing.csv"
+    code, result = run_command(fake, tmp_path, exe, "export-nicknames", "--import", str(missing))
+    assert code == cr.EXIT_REFUSED
+    assert result["reason"] == f"no CSV at {missing} to import before the export"
+    assert fake.pid is None
+
+
+def test_export_facts_of_utf8_with_a_bom():
+    facts = cr.export_facts(UTF8_BOM_EXPORT)
+    assert facts["size"] == len(UTF8_BOM_EXPORT)
+    assert (facts["bom"], facts["utf8"], facts["cp1252"]) == ("utf-8", True, True)
+    assert facts["line_endings"] == {"crlf": 2, "lf": 0, "cr": 0}
+    assert facts["line_ending"] == "crlf"
+    # Latin-1 keeps each byte, the BOM's too
+    assert facts["first_lines"] == [
+        "\xef\xbb\xbf" + HEADER.decode("ascii").rstrip("\r\n"),
+        'DS1,INT,"Price\xe2\x82\xac",0,No,"caf\xc3\xa9"',
+    ]
+    assert facts["non_ascii"] == [
+        {"line": 1, "column": 1, "bytes": "ef bb bf", "utf8": "﻿", "cp1252": "ï»¿"},
+        {"line": 2, "column": 15, "bytes": "e2 82 ac", "utf8": "€", "cp1252": "â‚¬"},
+        {"line": 2, "column": 29, "bytes": "c3 a9", "utf8": "é", "cp1252": "Ã©"},
+    ]
+
+
+def test_export_facts_of_cp1252():
+    facts = cr.export_facts(CP1252_EXPORT)
+    assert (facts["bom"], facts["utf8"], facts["cp1252"]) == (None, False, True)
+    assert facts["line_ending"] == "crlf"
+    assert facts["first_lines"][1] == 'DS1,INT,"Price\x80",0,No,"caf\xe9"'
+    # Not UTF-8, so each byte from 0x80 up is one character
+    assert facts["non_ascii"] == [
+        {"line": 2, "column": 15, "bytes": "80", "utf8": None, "cp1252": "€"},
+        {"line": 2, "column": 27, "bytes": "e9", "utf8": None, "cp1252": "é"},
+    ]
+
+
+def test_export_facts_count_each_kind_of_line_end():
+    facts = cr.export_facts(b"a\r\nb\nc\rd")
+    assert facts["line_endings"] == {"crlf": 1, "lf": 1, "cr": 1}
+    assert facts["line_ending"] == "mixed"
+    assert facts["first_lines"] == ["a", "b", "c", "d"]
+    assert cr.export_facts(b"x\ny\n")["line_ending"] == "lf"
+    assert cr.export_facts(b"x\ny\n")["first_lines"] == ["x", "y"]
+    empty = cr.export_facts(b"")
+    assert (empty["size"], empty["line_ending"], empty["first_lines"]) == (0, None, [])
+    assert cr.export_facts(b"1\n2\n3\n4\n5\n6\n")["first_lines"] == ["1", "2", "3", "4", "5"]
+    # Only CR and LF end a line. CP1252's 0x85 is "…", and Latin-1 reads it as NEL
+    nel = cr.export_facts(b"a\x85b\r\n")
+    assert nel["first_lines"] == ["a\x85b"]
+    assert nel["non_ascii"] == [
+        {"line": 1, "column": 2, "bytes": "85", "utf8": None, "cp1252": "…"}
+    ]
+    # CP1252 has no character at 0x81
+    assert cr.export_facts(b"\x81")["cp1252"] is False
+
+
+@pytest.mark.parametrize(
+    ("argv", "csv"),
+    [
+        (["export-nicknames", "--out", "o"], None),
+        (["export-nicknames", "--out", "o", "--import", "n.csv"], "n.csv"),
+    ],
+)
+def test_export_nicknames_settings(argv, csv):
+    settings = cr.settings_from(argv, environ={})
+    assert settings.command == "export-nicknames"
+    assert settings.csv == (None if csv is None else Path(csv).resolve())
+    assert settings.add_end is False
+
+
+def test_paste_add_end_settings():
+    assert cr.settings_from(["paste", "r.csv", "--out", "o", "--add-end"], environ={}).add_end
+    assert not cr.settings_from(["paste", "r.csv", "--out", "o"], environ={}).add_end
+
+
+# ---------------------------------------------------------------------------
 # picker: CLICK's Address Picker and what it writes into SC_.mdb
 # ---------------------------------------------------------------------------
 
@@ -6245,7 +6780,7 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_twenty_five_commands():
+def test_the_allowlist_is_the_twenty_six_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         0xE122: "Copy",
@@ -6256,6 +6791,7 @@ def test_the_allowlist_is_the_twenty_five_commands():
         32899: "Save Project As",
         32850: "Disconnect",
         32900: "Import Nickname",
+        32901: "Export Nickname",
         32851: "Read Data from PLC",
         32834: "Address Picker",
         32827: "System Configuration",
