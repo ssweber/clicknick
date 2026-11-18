@@ -1,5 +1,11 @@
+import logging
 import tkinter as tk
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
+
+from .services import settings_file
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -8,14 +14,24 @@ class AppSettings:
 
     EXCLUDE_PLACEHOLDER_TEXT = "txt1, txt2, txt3"
 
-    def __init__(self):
+    def __init__(self, settings_path: Path | None = None):
+        """Create the settings, with the values saved in *settings_path*.
+
+        *settings_path* defaults to ``settings_file.default_settings_path()``.
+        """
         self.search_var = tk.StringVar(value="contains")
         self.sort_by_nickname_var = tk.BooleanVar(value=False)
         self.exclude_sc_sd_var = tk.BooleanVar(value=False)
         self.exclude_nicknames_var = tk.StringVar(value="")
         self.show_info_tooltip_var = tk.BooleanVar(value=True)
-        # Tools > Redraw Ladder on Sync
-        self.redraw_on_sync_var = tk.BooleanVar(value=True)
+        # Tools > Redraw Ladder on Sync. It is on until the user turns it off.
+        self._settings_path = settings_path
+        self._saved = settings_file.read_settings(settings_path)
+        saved_redraw = self._saved.redraw_on_sync
+        self.redraw_on_sync_var = tk.BooleanVar(
+            value=True if saved_redraw is None else saved_redraw
+        )
+        self.redraw_on_sync_var.trace_add("write", self._on_redraw_on_sync_set)
 
     @property
     def exclude_sc_sd(self) -> bool:
@@ -48,6 +64,45 @@ class AppSettings:
     def redraw_on_sync(self) -> bool:
         """Return True if CLICK should redraw its nicknames after each Sync."""
         return self.redraw_on_sync_var.get()
+
+    @property
+    def redraw_notice_due(self) -> bool:
+        """Return True if the next redraw after a Sync should show the notice about it.
+
+        The notice shows once for each Windows user. It never shows once the user has set
+        Redraw Ladder on Sync in the Tools menu.
+        """
+        return not self._saved.redraw_notice_shown and self._saved.redraw_on_sync is None
+
+    def mark_redraw_notice_shown(self) -> None:
+        """Save that the notice about the redraw after a Sync has shown."""
+        self._save(redraw_notice_shown=True)
+
+    def _on_redraw_on_sync_set(self, *_args: object) -> None:
+        """Save Redraw Ladder on Sync each time the user sets it in the Tools menu."""
+        self._save(redraw_on_sync=self.redraw_on_sync)
+
+    def _save(self, **changes: bool) -> None:
+        """Use *changes* from now on and write them to the settings file.
+
+        Read the file again first and change only the values in *changes*. So another
+        ClickNick that saved a value since this one started keeps it. Where the file leaves a
+        value unset, or cannot be read, keep this ClickNick's value. So a value that has
+        been set never goes back to unset. If the write fails, log a warning. ClickNick then
+        uses *changes* until it closes.
+        """
+        own = self._saved
+        on_file = settings_file.read_settings(self._settings_path)
+        merged = settings_file.SavedSettings(
+            redraw_on_sync=own.redraw_on_sync
+            if on_file.redraw_on_sync is None
+            else on_file.redraw_on_sync,
+            redraw_notice_shown=on_file.redraw_notice_shown or own.redraw_notice_shown,
+        )
+        self._saved = replace(own, **changes)
+        saved = replace(merged, **changes)
+        if not settings_file.write_settings(saved, self._settings_path):
+            logger.warning("Could not save ClickNick's settings file")
 
     @property
     def show_info_tooltip(self) -> bool:

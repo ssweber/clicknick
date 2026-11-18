@@ -52,6 +52,14 @@ logger = logging.getLogger(__name__)
 REDRAW_COMMAND = "Redraw Nicknames in CLICK"
 # The Tools menu setting that redraws them after each Sync
 REDRAW_ON_SYNC = "Redraw Ladder on Sync"
+# The notice after the first redraw that follows a Sync. It does not show once the user has
+# set Tools > Redraw Ladder on Sync.
+REDRAW_NOTICE = (
+    "CLICK doesn't redraw its ladder when ClickNick syncs nicknames. So after a Sync, "
+    "ClickNick opens CLICK's File > Import > Nickname and cancels it. CLICK then shows the "
+    "new names.\n\n"
+    f"To stop this, turn off Tools > {REDRAW_ON_SYNC}."
+)
 # The status line when a command needs a CLICK window and none is connected
 NOT_CONNECTED = f"⚠ {CONNECT_FIRST}"
 
@@ -696,7 +704,6 @@ class ConnectionController:
         self._start_redraw(session, after_sync)
 
     def _start_redraw(self, session: ConnectionSession, after_sync: bool) -> None:
-        import os
         import queue
 
         from .services.click_redraw import RedrawOutcome, RedrawResult, redraw_nicknames
@@ -704,15 +711,12 @@ class ConnectionController:
         self._redraw_running = True
         results: queue.Queue[RedrawResult] = queue.Queue(maxsize=1)
         click = session.click
-        own_pid = os.getpid()
 
         def work() -> None:
             try:
                 from .utils.win32_desktop import Win32ClickDesktop
 
-                result = redraw_nicknames(
-                    Win32ClickDesktop(), int(click.pid), click.hwnd, own_pid=own_pid
-                )
+                result = redraw_nicknames(Win32ClickDesktop(), int(click.pid), click.hwnd)
             except Exception as exc:
                 result = RedrawResult(RedrawOutcome.FAILED, str(exc) or type(exc).__name__)
             results.put(result)
@@ -726,11 +730,14 @@ class ConnectionController:
             self._close_splash(splash)
             self._redraw_running = False
             current = self._app._session
-            if current is not None and current.click.hwnd == click.hwnd:
+            reported = current is not None and current.click.hwnd == click.hwnd
+            if reported:
                 self._report_redraw(result, after_sync)
             pending, self._redraw_pending = self._redraw_pending, None
             if pending is not None and current is not None and current.click.hwnd == pending[0]:
                 self._start_redraw(current, pending[1])
+            if reported and after_sync and result.outcome is RedrawOutcome.REFRESHED:
+                self._show_redraw_notice()
 
         splash = self._show_splash(click.hwnd)
         try:
@@ -740,6 +747,19 @@ class ConnectionController:
             self._redraw_running = False
             raise
         self._app.root.after(100, finish)
+
+    def _show_redraw_notice(self) -> None:
+        """Show the notice that explains the redraw after a Sync, unless it is not due.
+
+        Show nothing if the notice has shown before, or if the user has set Tools > Redraw
+        Ladder on Sync. The notice is saved as shown before it shows. So a redraw that ends
+        while it is on screen does not show it again.
+        """
+        settings = self._app.settings
+        if not settings.redraw_notice_due:
+            return
+        settings.mark_redraw_notice_shown()
+        messagebox.showinfo(REDRAW_ON_SYNC, REDRAW_NOTICE, parent=self._app.root)
 
     def _show_splash(self, click_hwnd: int) -> RedrawSplash | None:
         """Show the notice over the CLICK window *click_hwnd*, or return None if it fails.
@@ -764,8 +784,8 @@ class ConnectionController:
         """Run *work* on a thread of its own.
 
         The thread is not a daemon, so a redraw started as ClickNick closes (the save
-        prompt's Sync) runs to its end. Its waits are bounded. That takes about a minute at
-        worst, and a second or two when CLICK answers.
+        prompt's Sync) runs to its end. Its waits are bounded. That takes about 20 seconds at
+        worst, and under a second when CLICK answers.
         """
         import threading
 
