@@ -148,7 +148,7 @@ starts from power-on values or the PLC data file, with the same desired state an
 do the same:
 
 - Start.
-- A change to the PLC data file.
+- A change to the PLC data file while a simulation runs.
 - A change to the Modbus port.
 - A later build that converts, when the simulation failed to start (`_follow_program`).
 
@@ -157,10 +157,17 @@ relaunch comes once the write is answered, unless the simulation relaunched mean
 build runs, the relaunch comes once the build ends.
 
 Before a launch, the session reads the PLC data file (`_plc_data_problem`). pyclickplc raises
-`PlcDataReadError` when a line of Text addresses holds a comma and also an empty address. The session then
-does not launch, and it names the addresses in its own message. If a simulation is running, Restart refuses
-and that simulation goes on running. pyrung 0.16.0 does not catch this error at launch, so the session checks
-first. The session leaves any other failure to read the file to pyrung's launch, which reports it.
+`PlcDataReadError` when it cannot tell what some Text addresses hold. This can happen when a Text comma is next
+to an empty Text address. The session then does not launch, and it names the addresses in its own message.
+pyrung 0.16.0 does not catch this error at launch, so the session checks first. The session leaves any other
+failure to read the file to pyrung's launch, which reports it.
+
+- If no simulation runs, the start fails. The watch tick does not restart a failed simulation when the file
+  changes, so the message tells the user to save the file again and click Retry. `start()` records the file's
+  modification time and reads a changed file into the switches (`_plc_data_changed`). So the next watch tick
+  does not restart the simulation a second time.
+- If a simulation runs, Restart refuses, and that simulation goes on. When the user saves the file again, the
+  watch tick restarts the simulation from it.
 
 A workspace move relaunches through `relaunch`, without Restart's check. So it stops the running simulation
 even when the moved workspace cannot run. It waits out the build.

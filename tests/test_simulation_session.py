@@ -1102,23 +1102,28 @@ def test_a_text_comma_in_plc_data_reads_back_as_a_comma(tmp_path):
     }
 
 
-def _plc_data_with_two_readings(tmp_path: Path) -> Path:
-    """Write a PLC data file in which TXT13 to TXT20 have more than one reading.
+def _plc_data_with_unknown_text(tmp_path: Path) -> Path:
+    """Write a PLC data file in which pyclickplc cannot tell what TXT13 to TXT20 hold.
 
     The TXT11 row holds "Hi," and then empty cells. CLICK writes the comma without quotes, so the
     comma may be in any of TXT13 to TXT20.
     """
-    lines = [
-        "<TXT=START>",
-        "Address,1,2,3,4,5,6,7,8,9,10,",
-        "TXT1,A,B,C,,,,,,,,",
-        "TXT11,H,i,,,,,,,,,,",
-        "</TXT=END>",
-        "",
-    ]
-    data = tmp_path / "data.csv"
+    return _write_txt_rows(tmp_path / "data.csv", "TXT1,A,B,C,,,,,,,,", "TXT11,H,i,,,,,,,,,,")
+
+
+def _write_txt_rows(data: Path, *rows: str) -> Path:
+    lines = ["<TXT=START>", "Address,1,2,3,4,5,6,7,8,9,10,", *rows, "</TXT=END>", ""]
     data.write_bytes("\r\n".join(lines).encode("ascii"))
     return data
+
+
+def _save_without_the_comma(data: Path) -> None:
+    """Write the file again without the comma, as CLICK would after the user fixed the Text."""
+    import os
+
+    before = data.stat().st_mtime
+    _write_txt_rows(data, "TXT1,A,B,C,,,,,,,,", "TXT11,H,i,x,y,z,a,b,c,d,e,")
+    os.utime(data, (before + 5, before + 5))
 
 
 def _assert_one_refusal_of(harness: Harness, data: Path) -> None:
@@ -1130,11 +1135,11 @@ def _assert_one_refusal_of(harness: Harness, data: Path) -> None:
     assert "read_plc_data" not in harness.messages()
 
 
-def test_a_plc_data_file_with_two_readings_does_not_start_the_simulation(ready, tmp_path):
+def test_a_plc_data_file_with_unknown_text_does_not_start_the_simulation(ready, tmp_path):
     from clicknick.simulation_session import _default_snapshot_reader
 
     ready.read_snapshot = _default_snapshot_reader
-    data = _plc_data_with_two_readings(tmp_path)
+    data = _plc_data_with_unknown_text(tmp_path)
     ready.sim.set_plc_data_path(data)  # The simulation is off, so nothing starts yet.
 
     ready.open()
@@ -1142,16 +1147,43 @@ def test_a_plc_data_file_with_two_readings_does_not_start_the_simulation(ready, 
     assert ready.daps == []
     assert ready.sim.status is SimStatus.FAILED
     assert ready.sim.error is not None and "TXT13-TXT20" in ready.sim.error
+    assert "save the PLC data file again, and click Retry." in ready.sim.error
     _assert_one_refusal_of(ready, data)
 
 
-def test_a_plc_data_file_with_two_readings_leaves_the_running_simulation(ready, tmp_path):
+def test_retry_after_fixing_a_refused_plc_data_file_launches_once(ready, tmp_path):
+    from clicknick.simulation_session import WATCH_MS, _default_snapshot_reader
+
+    ready.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_unknown_text(tmp_path)
+    ready.sim.set_plc_data_path(data)
+    ready.open()
+    assert ready.sim.status is SimStatus.FAILED
+
+    _save_without_the_comma(data)
+    ready.scheduler.fire(WATCH_MS)
+    assert ready.daps == [], "a failed simulation does not restart when the file changes"
+
+    ready.sim.retry()
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 1
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+    assert ready.sim.notice is not None and "Loaded PLC data from data.csv" in ready.sim.notice
+
+    ready.sim.toggle_switch("X001")
+    ready.scheduler.fire(WATCH_MS)
+    assert len(ready.daps) == 1, "the watch tick does not restart a second time"
+    assert ready.sim.switch_on("X001"), "the file is not read again over the switches"
+    assert "The PLC data file changed" not in ready.messages()
+
+
+def test_a_plc_data_file_with_unknown_text_leaves_the_running_simulation(ready, tmp_path):
     from clicknick.simulation_session import _default_snapshot_reader
 
     ready.open()
     ready.sim.toggle_switch("X001")
     ready.read_snapshot = _default_snapshot_reader
-    data = _plc_data_with_two_readings(tmp_path)
+    data = _plc_data_with_unknown_text(tmp_path)
 
     ready.sim.set_plc_data_path(data)
     ready.scheduler.run_ready()
@@ -1159,8 +1191,29 @@ def test_a_plc_data_file_with_two_readings_leaves_the_running_simulation(ready, 
     assert len(ready.daps) == 1, "the simulation does not restart"
     assert ready.sim.status is not SimStatus.FAILED
     assert ready.sim.switch_on("X001"), "the switches stay as they were"
-    assert "The simulation still runs the previous program." in ready.messages("error")
+    errors = ready.messages("error")
+    assert "then save the PLC data file again." in errors
+    assert "The simulation goes on with the PLC data it had." in errors
+    assert "still runs the previous program" not in errors
     _assert_one_refusal_of(ready, data)
+
+
+def test_saving_the_fixed_file_restarts_a_simulation_that_refused_it(ready, tmp_path):
+    from clicknick.simulation_session import WATCH_MS, _default_snapshot_reader
+
+    ready.open()
+    ready.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_unknown_text(tmp_path)
+    ready.sim.set_plc_data_path(data)
+    ready.scheduler.run_ready()
+    assert len(ready.daps) == 1
+
+    _save_without_the_comma(data)
+    ready.scheduler.fire(WATCH_MS)
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == 2
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
 
 
 def test_the_refusal_lists_runs_of_text_addresses_as_ranges():

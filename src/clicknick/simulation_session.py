@@ -907,12 +907,25 @@ class SimulationSession:
         self._message(text, "progress")
         self._emit("desired")
 
-    def _plc_data_problem(self) -> str | None:
+    def _plc_data_changed(self) -> bool:
+        """Return True if the PLC data file is newer than the last time recorded, and record it."""
+        mtime = _mtime(self._plc_data_path)
+        if mtime is None or (self._plc_data_mtime is not None and mtime <= self._plc_data_mtime):
+            return False
+        self._plc_data_mtime = mtime
+        return True
+
+    def _plc_data_problem(self, *, running: bool) -> str | None:
         """Return why the simulation must not start from the PLC data file, or None if it may.
 
-        The only reason is a file that has more than one reading. pyrung reads the file again at
-        launch and would fail on it with pyclickplc's message, which is written for a programmer.
-        Any other failure to read the file is left to the launch, which reports it.
+        The only reason is ``PlcDataReadError``. pyclickplc raises it when it cannot tell what
+        some Text addresses hold. pyrung reads the file again at launch and does not catch that
+        error. Its message is written for a programmer. The launch reports any other failure to
+        read the file.
+
+        If *running* is True, the message is for a Restart that a running simulation refuses.
+        The watch tick restarts that simulation when the file changes. Otherwise the message
+        tells the user to click Retry.
         """
         from pyclickplc import PlcDataReadError
 
@@ -922,13 +935,17 @@ class SimulationSession:
         try:
             self._snapshot_reader(path)
         except PlcDataReadError as exc:
+            fix = (
+                "then save the PLC data file again."
+                if running
+                else "save the PLC data file again, and click Retry."
+            )
             return (
                 f"ClickNick cannot tell what {_address_ranges(exc.addresses)} hold in the PLC "
-                f"data file {path.name}. CLICK writes a Text comma without quotes. So a line of "
-                "Text addresses in the file that holds a comma and also an empty address can be "
-                "read in more than one way.\n"
-                "Replace the comma in those Text values in CLICK, then save the PLC data file "
-                "again. Or click PLC Data and choose another file."
+                f"data file {path.name}. CLICK writes a Text comma without quotes. So a comma "
+                "next to an empty Text address can belong to more than one address.\n"
+                f"Replace the comma in those Text values in CLICK, {fix} Or click PLC Data and "
+                "choose another file."
             )
         except (OSError, ValueError):
             return None
@@ -1175,9 +1192,7 @@ class SimulationSession:
             return
         self.refresh_layout()
         if self.is_ready and self._plc_data_path is not None:
-            mtime = _mtime(self._plc_data_path)
-            if mtime is not None and (self._plc_data_mtime is None or mtime > self._plc_data_mtime):
-                self._plc_data_mtime = mtime
+            if self._plc_data_changed():
                 if self._writing:
                     self._message(
                         "The PLC data file changed. The simulation restarts from it once the "
@@ -1789,7 +1804,12 @@ class SimulationSession:
         if problem is not None:
             self._fail(*problem)
             return
-        plc_data_problem = self._plc_data_problem()
+        plc_data = self._plc_data_path
+        if plc_data is not None and self._plc_data_changed():
+            # The watch tick reads a changed file only while a simulation runs. Read it here, so
+            # that the switches come from it and the next watch tick does not restart.
+            self._adopt_snapshot(plc_data)
+        plc_data_problem = self._plc_data_problem(running=False)
         if plc_data_problem is not None:
             self._fail(plc_data_problem)
             return
@@ -1853,8 +1873,9 @@ class SimulationSession:
         """Start over on what the workspace holds now (CLICK's last save and any edits).
 
         The new process starts from power-on values (or the PLC data file). It keeps the user's
-        mode, switches, forces and bench links by address. If the workspace cannot start, the
-        running simulation is not stopped. Restart says why, and the simulation runs on.
+        mode, switches, forces and bench links by address. If the workspace or the PLC data file
+        cannot start a simulation, Restart does not stop the running one. It says why, and the
+        simulation runs on.
         """
         from .services.analysis_service import AnalysisStatus
 
@@ -1865,16 +1886,18 @@ class SimulationSession:
             return
         if self._dap is not None:
             analysis = self._get_analysis()
+            runs_on = "The simulation still runs the previous program."
             if analysis is not None and analysis.status is AnalysisStatus.BUILDING:
                 reason = "CLICK's save is still being converted. Restart once it is done."
             else:
                 problem = self._workspace_problem(analysis)
-                reason = self._plc_data_problem() if problem is None else problem[0]
+                if problem is not None:
+                    reason = problem[0]
+                else:
+                    reason = self._plc_data_problem(running=True)
+                    runs_on = "The simulation goes on with the PLC data it had."
             if reason is not None:
-                self._refuse(
-                    f"Cannot restart the simulation: {reason}\n"
-                    "The simulation still runs the previous program."
-                )
+                self._refuse(f"Cannot restart the simulation: {reason}\n{runs_on}")
                 return
         self.relaunch()
 

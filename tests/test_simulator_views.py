@@ -192,13 +192,13 @@ def _banners_with(win, text: str) -> int:
 
 
 def test_a_refused_start_shows_one_banner(simulator, ready, tmp_path):
-    from test_simulation_session import _plc_data_with_two_readings
+    from test_simulation_session import _plc_data_with_unknown_text
 
     from clicknick.simulation_session import _default_snapshot_reader
 
     win = simulator(ready, turn_on=False)
     ready.read_snapshot = _default_snapshot_reader
-    ready.sim.set_plc_data_path(_plc_data_with_two_readings(tmp_path))
+    ready.sim.set_plc_data_path(_plc_data_with_unknown_text(tmp_path))
     ready.sim.turn_on()
     ready.scheduler.run_ready()
 
@@ -207,13 +207,13 @@ def test_a_refused_start_shows_one_banner(simulator, ready, tmp_path):
 
 
 def test_a_refused_restart_shows_one_banner(simulator, ready, tmp_path):
-    from test_simulation_session import _plc_data_with_two_readings
+    from test_simulation_session import _plc_data_with_unknown_text
 
     from clicknick.simulation_session import _default_snapshot_reader
 
     win = simulator(ready)
     ready.read_snapshot = _default_snapshot_reader
-    ready.sim.set_plc_data_path(_plc_data_with_two_readings(tmp_path))
+    ready.sim.set_plc_data_path(_plc_data_with_unknown_text(tmp_path))
     ready.scheduler.run_ready()
 
     assert ready.sim.is_ready
