@@ -36,14 +36,13 @@ from .views.overlay import Overlay
 
 if TYPE_CHECKING:
     import tkinter as tk
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable
     from tkinter import ttk
 
     from .config import AppSettings
     from .connection_session import ConnectionSession
     from .data.nickname_manager import NicknameManager
     from .data_session import DataSession
-    from .models.address_row import AddressRow
     from .services.click_redraw import RedrawResult
     from .views.redraw_splash import RedrawSplash
 
@@ -57,7 +56,7 @@ REDRAW_ON_SYNC = "Redraw Ladder on Sync"
 REDRAW_NOTICE = (
     "CLICK doesn't redraw its ladder when ClickNick syncs nicknames. So after a Sync, "
     "ClickNick opens CLICK's File > Import > Nickname and cancels it. CLICK then shows the "
-    "new names. It also counts the project as changed.\n\n"
+    "new names.\n\n"
     f"To stop this, turn off Tools > {REDRAW_ON_SYNC}."
 )
 # The status line when a command needs a CLICK window and none is connected
@@ -655,20 +654,12 @@ class ConnectionController:
 
     # -- Redrawing CLICK's nicknames -------------------------------------------
 
-    def after_sync(self, written: Mapping[int, tuple[AddressRow, AddressRow]]) -> None:
+    def after_sync(self) -> None:
         """Make CLICK redraw the nicknames that a Sync just wrote into its database.
-
-        *written* maps each addr_key that the Sync wrote to the row before and the row
-        written (``AddressStore.add_sync_listener``). If the Sync changed no nickname or
-        comment of a used address, redraw nothing.
 
         If the user turned Tools > Redraw Ladder on Sync off, redraw nothing. The status
         line then says how to show the new names.
         """
-        from .services.click_redraw import ladder_changed
-
-        if not ladder_changed(written):
-            return
         if self._app.settings.redraw_on_sync:
             self.redraw_nicknames(after_sync=True)
             return

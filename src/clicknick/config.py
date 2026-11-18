@@ -28,7 +28,9 @@ class AppSettings:
         self._settings_path = settings_path
         self._saved = settings_file.read_settings(settings_path)
         saved_redraw = self._saved.redraw_on_sync
-        self.redraw_on_sync_var = tk.BooleanVar(value=True if saved_redraw is None else saved_redraw)
+        self.redraw_on_sync_var = tk.BooleanVar(
+            value=True if saved_redraw is None else saved_redraw
+        )
         self.redraw_on_sync_var.trace_add("write", self._on_redraw_on_sync_set)
 
     @property

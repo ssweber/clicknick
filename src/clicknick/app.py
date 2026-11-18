@@ -38,7 +38,6 @@ if TYPE_CHECKING:
 
     from .connection_session import ConnectionSession
     from .data_session import DataSession
-    from .models.address_row import AddressRow
     from .views.review_changes_window import ProposalSource
 
 # Set DPI awareness for better UI rendering
@@ -681,16 +680,16 @@ class ClickNickApp:
             ):
                 self._start_analysis_build()
 
-    def _on_database_synced(self, written: dict[int, tuple[AddressRow, AddressRow]]) -> None:
+    def _on_database_synced(self, _addr_keys: set[int]) -> None:
         """Tell CLICK to redraw the nicknames that a Sync wrote into its database (issue #36).
 
         Every Sync goes through ``AddressStore.save_all_changes``, which calls this. That
         covers the Address Editor's Sync and Sync and Close, and Yes to a save prompt.
-        *written* maps each addr_key written to the row before and the row written.
-        ``ConnectionController.after_sync`` decides whether to ask, and whether to redraw.
+        If the user turned Tools > Redraw Ladder on Sync off, ``ConnectionController.after_sync``
+        redraws nothing.
         """
         if self._click is not None:
-            self._connection.after_sync(written)
+            self._connection.after_sync()
 
     def _open_address_editor(
         self, initial_filter: str | None = None, *, close_after_sync: bool = False

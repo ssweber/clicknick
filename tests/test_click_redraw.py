@@ -13,13 +13,11 @@ from __future__ import annotations
 
 import pytest
 
-from clicknick.models.address_row import AddressRow
 from clicknick.models.desktop import Control, Window
 from clicknick.services import click_redraw
 from clicknick.services.click_redraw import (
     IMPORT_NICKNAME,
     RedrawOutcome,
-    ladder_changed,
     redraw_nicknames,
 )
 
@@ -406,50 +404,3 @@ def test_a_win32_call_failing_part_way_cancels_the_open_dialog() -> None:
     assert result.detail == "access denied"
     assert click.pressed == [CANCEL]
     assert not click.open_shown
-
-
-# -- Which Syncs need a redraw -----------------------------------------------------------
-
-
-def _row(*, used: bool, nickname: str = "", comment: str = "", initial_value: str = ""):
-    return AddressRow(
-        memory_type="DS",
-        address=1,
-        nickname=nickname,
-        comment=comment,
-        initial_value=initial_value,
-        used=used,
-    )
-
-
-@pytest.mark.parametrize(
-    ("before", "after", "changed"),
-    [
-        (_row(used=True), _row(used=True, nickname="Pump"), True),
-        (_row(used=True, nickname="Pump"), _row(used=True), True),
-        (_row(used=True), _row(used=True, comment="Main pump"), True),
-        (_row(used=False), _row(used=False, nickname="Pump"), False),
-        (_row(used=False), _row(used=False, comment="Main pump"), False),
-        (_row(used=True), _row(used=True, initial_value="5"), False),
-    ],
-    ids=[
-        "used, nickname added",
-        "used, nickname removed",
-        "used, comment",
-        "unused, nickname",
-        "unused, comment",
-        "used, initial value only",
-    ],
-)
-def test_ladder_changed(before, after, changed) -> None:
-    assert ladder_changed({1: (before, after)}) is changed
-
-
-def test_ladder_changed_by_any_written_row() -> None:
-    written = {
-        1: (_row(used=False), _row(used=False, nickname="Spare")),
-        2: (_row(used=True), _row(used=True, nickname="Pump")),
-    }
-
-    assert ladder_changed(written)
-    assert not ladder_changed({})

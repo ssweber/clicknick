@@ -26,12 +26,11 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
-from ..models.address_row import AddressRow
 from ..models.desktop import Control, Window
 
 logger = logging.getLogger(__name__)
@@ -92,19 +91,6 @@ class RedrawResult:
     outcome: RedrawOutcome
     # What CLICK showed, or why it failed; "" when refreshed
     detail: str = ""
-
-
-def ladder_changed(changes: Mapping[int, tuple[AddressRow, AddressRow]]) -> bool:
-    """Return True if a Sync changed a name that CLICK's ladder can show.
-
-    *changes* maps each addr_key that the Sync wrote to a pair: the row before the Sync and
-    the row written. The ladder shows the nickname and the address comment of the addresses
-    that the program uses (``AddressRow.used``). It shows no unused address.
-    """
-    return any(
-        after.used and (before.nickname != after.nickname or before.comment != after.comment)
-        for before, after in changes.values()
-    )
 
 
 class _Stop(Exception):  # noqa: N818 - control flow, not an error
@@ -216,7 +202,9 @@ class _CancelledImport:
         dialog = self._wait("CLICK's Open dialog", {"dialog", "opening"}, self._lone, OPEN_TIMEOUT)
         cancel = self._cancel_button(self.desktop.controls(dialog.hwnd))
         self.desktop.press(cancel.hwnd)
-        self._wait("CLICK's Open dialog to close", {"dialog"}, lambda found: not found, CLOSE_TIMEOUT)
+        self._wait(
+            "CLICK's Open dialog to close", {"dialog"}, lambda found: not found, CLOSE_TIMEOUT
+        )
         return RedrawResult(RedrawOutcome.REFRESHED)
 
     def _lone(self, found: list[Window]) -> Window | None:

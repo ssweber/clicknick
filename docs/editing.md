@@ -12,9 +12,9 @@ The Address Editor opens different address sections in separate windows, takes p
 
 ![Address Editor demo](https://github.com/user-attachments/assets/ee7b1914-2f18-483a-ace1-84c2aa8eea98)
 
-After a Sync, CLICK redraws the renamed nicknames in its ladder. If CLICK had a dialog open, ClickNick tells you. Close the dialog, then choose **Tools > Redraw Nicknames in CLICK**.
+After a Sync, CLICK redraws the renamed nicknames and comments in its ladder. CLICK's Open dialog shows for a moment while it does. After the first redraw, ClickNick shows a notice that says what it did. If CLICK had a dialog open, ClickNick tells you. Close the dialog, then choose **Tools > Redraw Nicknames in CLICK**.
 
-If you turn off **Tools > Redraw Ladder on Sync**, CLICK does not redraw after a Sync. CLICK then shows the new names only after you choose **Tools > Redraw Nicknames in CLICK**. ClickNick turns the setting on again each time it starts.
+If you turn off **Tools > Redraw Ladder on Sync**, CLICK does not redraw after a Sync. CLICK then shows the new names only after you choose **Tools > Redraw Nicknames in CLICK**. ClickNick remembers the setting.
 
 ## Organize
 

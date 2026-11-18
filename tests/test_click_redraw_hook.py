@@ -1,8 +1,7 @@
 """Issue #36: after a Sync into CLICK's database, the connected CLICK window redraws.
 
-The window redraws its nicknames when the Sync changed a nickname or comment of a used
-address. After the first such redraw, a notice explains it, once per machine. Tools >
-Redraw Nicknames in CLICK redraws by hand and shows no notice.
+The window redraws its nicknames. After the first redraw, a notice explains it, once per
+machine. Tools > Redraw Nicknames in CLICK redraws by hand and shows no notice.
 """
 
 from __future__ import annotations
@@ -27,7 +26,6 @@ from clicknick.utils import win32_desktop
 
 CLICK = ClickConnection("111", 222, "Main.ckp")
 C1 = get_addr_key("C", 1)
-C2 = get_addr_key("C", 2)
 
 
 class FakeRoot:
@@ -65,8 +63,7 @@ class DatabaseSource:
     file_path = ""  # There is nothing to monitor.
 
     def __init__(self) -> None:
-        # The program uses C1, and not C2
-        self.rows: dict[int, AddressRow] = {C1: AddressRow(memory_type="C", address=1, used=True)}
+        self.rows: dict[int, AddressRow] = {}
         self.fail = False
 
     def load_all_addresses(self):
@@ -77,11 +74,7 @@ class DatabaseSource:
     def save_changes(self, rows):
         for row in rows:
             self.rows[row.addr_key] = AddressRow(
-                memory_type=row.memory_type,
-                address=row.address,
-                nickname=row.nickname,
-                comment=row.comment,
-                used=row.used,
+                memory_type=row.memory_type, address=row.address, nickname=row.nickname
             )
         return len(rows)
 
@@ -119,9 +112,9 @@ def _store(source: DatabaseSource) -> AddressStore:
     return store
 
 
-def _rename(store: AddressStore, nickname: str = "Pump", addr_key: int = C1) -> None:
+def _rename(store: AddressStore, nickname: str = "Pump") -> None:
     with store.edit_session("Rename") as session:
-        session.set_field(addr_key, "nickname", nickname)
+        session.set_field(C1, "nickname", nickname)
 
 
 # -- The Sync hook -----------------------------------------------------------------------
@@ -210,31 +203,6 @@ def test_with_redraw_ladder_on_sync_off_a_sync_says_how_to_redraw(redraws) -> No
     )
 
 
-def test_a_sync_of_unused_addresses_only_redraws_nothing(redraws) -> None:
-    app = _app()
-    store = _store(DatabaseSource())
-    app._open_data(store)
-    _rename(store, addr_key=C2)
-    app._update_status.reset_mock()
-
-    assert store.save_all_changes() == {C2}
-
-    redraws.assert_not_called()
-    app._update_status.assert_not_called()
-
-
-def test_a_comment_change_on_a_used_address_redraws(redraws) -> None:
-    app = _app()
-    store = _store(DatabaseSource())
-    app._open_data(store)
-    with store.edit_session("Comment") as session:
-        session.set_field(C1, "comment", "Main pump")
-
-    store.save_all_changes()
-
-    redraws.assert_called_once_with(after_sync=True)
-
-
 # -- The notice after the first redraw ---------------------------------------------------
 
 
@@ -260,10 +228,10 @@ def fresh(tk_root, tmp_path, desktop) -> SimpleNamespace:
     return SimpleNamespace(app=app, store=store, path=path, desktop=desktop)
 
 
-def _sync(fresh: SimpleNamespace, nickname: str, addr_key: int = C1, result=None) -> None:
-    """Rename *addr_key* and Sync. A redraw that runs ends with *result* (REFRESHED)."""
+def _sync(fresh: SimpleNamespace, nickname: str, result=None) -> None:
+    """Rename C1 and Sync. A redraw that runs ends with *result* (REFRESHED)."""
     fresh.desktop.results.append(result or RedrawResult(RedrawOutcome.REFRESHED))
-    _rename(fresh.store, nickname, addr_key)
+    _rename(fresh.store, nickname)
     fresh.store.save_all_changes()
     fresh.app.root.run(100)
 
@@ -290,8 +258,8 @@ def test_the_notice_waits_for_a_redraw_that_shows_the_names(notices, fresh) -> N
     assert len(notices) == 1
 
 
-def test_a_sync_of_unused_addresses_only_shows_no_notice(notices, fresh) -> None:
-    _sync(fresh, "Spare", addr_key=C2)
+def test_a_sync_that_writes_nothing_shows_no_notice(notices, fresh) -> None:
+    fresh.store.save_all_changes()  # No edits
 
     assert fresh.desktop.calls == []
     assert notices == []

@@ -51,10 +51,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Receives, for each addr_key that a Sync wrote, the database's row before the write and the
-# row written (add_sync_listener)
-type SyncListener = Callable[[dict[int, tuple[AddressRow, AddressRow]]], None]
-
 # One row's unsaved edits, as content field -> the value the user set. It is read-only.
 # After _derive has run, it holds only the fields that differ from base.
 RowOverride = Mapping[str, str | bool]
@@ -177,7 +173,7 @@ class AddressStore:
         # Observer callbacks - called with set of affected addr_keys
         self._observers: list[Callable[[object, set[int] | None], None]] = []
         # Called after a Sync writes rows into CLICK's database (add_sync_listener)
-        self._sync_listeners: list[SyncListener] = []
+        self._sync_listeners: list[Callable[[set[int]], None]] = []
 
         self._initialized = False
 
@@ -1043,12 +1039,11 @@ class AddressStore:
         if callback in self._observers:
             self._observers.remove(callback)
 
-    def add_sync_listener(self, callback: SyncListener) -> None:
-        """Call *callback* after each Sync that writes rows into CLICK's database.
+    def add_sync_listener(self, callback: Callable[[set[int]], None]) -> None:
+        """Call *callback* with the addr_keys written after each Sync that writes rows.
 
-        *callback* receives a dict that maps each addr_key written to a pair: the row that
-        the database held before the write, and the row written. A CSV save, a Sync that
-        writes nothing and a Sync that fails do not call it.
+        The rows are written into CLICK's database. A CSV save, a Sync that writes nothing and
+        a Sync that fails do not call it.
         """
         if callback not in self._sync_listeners:
             self._sync_listeners.append(callback)
@@ -1120,12 +1115,6 @@ class AddressStore:
             self._data_source.save_changes(list(self.visible_state.values()))
         elif dirty_keys:
             self._data_source.save_changes([self.visible_state[key] for key in dirty_keys])
-        # The base holds the database's rows from the read above. Visible holds the rows written.
-        written = (
-            {key: (self.base_state[key], self.visible_state[key]) for key in dirty_keys}
-            if writes_dirty_rows
-            else {}
-        )
 
         # What was written is now the base.
         for key in dirty_keys:
@@ -1147,10 +1136,10 @@ class AddressStore:
         # It still picks up anything that CLICK wrote in the meantime.
         self._derive(affected_keys)
 
-        if written:
+        if writes_dirty_rows and dirty_keys:
             for listener in list(self._sync_listeners):
                 try:
-                    listener(dict(written))
+                    listener(set(dirty_keys))
                 except Exception:
                     # The rows are already written, so a listener's error must not fail the Sync.
                     logger.exception("AddressStore sync listener %r failed", listener)
