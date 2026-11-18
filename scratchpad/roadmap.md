@@ -576,10 +576,9 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
   address (Receive's `Edit20`, Send's `Edit16`), the flags and the exception field get the popup? ClickNick
   offers every function code's banks there.
 - Q10 (runner, non-English Windows): does the redraw after a Sync complete? The live runs were on an English
-  Windows. ClickNick recognises the Open dialog and its buttons by their control ids and the three import
-  modes. It recognises the "Completed!" box by its title, its text and its one button. So Windows' own "Open",
-  "OK" and "Cancel" can read otherwise. ClickNick assumes that CLICK's strings ("Merge (Project priority)",
-  "Completed!", "Import Database", "Import - Project priority") are English on every Windows.
+  Windows. ClickNick recognises the Open dialog and its Cancel button by their control ids and the three
+  import modes. So Windows' own "Open" and "Cancel" can read otherwise. ClickNick assumes that CLICK's mode
+  names ("Merge (Project priority)", "Merge (File priority)", "Delete Existing") are English on every Windows.
 - Q11 (not for the runner): when one of CLICK's dock panes is floated (Navigation, Output, Instruction List),
   CLICK's process shows another top-level window. Does every redraw, **Tools > Redraw Nicknames in CLICK**
   included, then report CLICK busy? If so, which window classes should the redraw tolerate besides the
