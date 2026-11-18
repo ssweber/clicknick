@@ -62,7 +62,7 @@ If a tag's comment declares a link, the Simulator shows it as a program link wit
 
 ### PLC data file
 
-The simulation starts from power-on defaults. To start from the controller's live values instead, save a data file in CLICK with **PLC > Read Data from PLC... > All > Save**, then pick it with **PLC Data...** in the Simulator. The Simulator also sets the switches and analog values from that file. The file is not the nickname CSV. CLICK writes a Text comma in the file without quotes, and lists Text addresses ten to a line. If one line holds a comma and also an empty address, the Simulator cannot tell which address holds the comma, and it does not start. The error message names the addresses. Replace the comma in the PLC's Text, then save the file again. Whenever the file changes, the simulation starts over from what the workspace holds now.
+The simulation starts from power-on defaults. To start from the controller's live values instead, save a data file in CLICK with **PLC > Read Data from PLC... > All > Save**, then pick it with **PLC Data...** in the Simulator. The Simulator also sets the switches and analog values from that file. The file is not the nickname CSV. CLICK writes a Text comma in the file without quotes, and lists Text addresses ten to a line. If one line holds a comma and also an empty address, the Simulator cannot tell which address holds the comma. It does not start from the file, and its message names the addresses. If the simulation is already running, it goes on running. Replace the comma in those Text values in CLICK, then save the file again. Or click **PLC Data** and choose another file. Whenever the file changes, the simulation starts over from what the workspace holds now.
 
 ## Workspaces
 

@@ -86,6 +86,8 @@ SAVE_DELAY_MS = 500
 MODBUS_POLL_S = 0.1
 #: A refusal to run lists this many rungs ClickNick cannot read and counts the rest.
 UNREADABLE_LISTED = 10
+#: A refusal of a PLC data file lists this many ranges of Text addresses and counts the rest.
+PLC_DATA_LISTED = 10
 
 
 SwitchPosition = Literal["stop", "step", "run"]
@@ -335,6 +337,32 @@ class _WriteTarget:
     generation: int
     names: tuple[Mapping[str, int], Mapping[int, str]]
     saves: int | None
+
+
+def _address_ranges(addresses: Iterable[str]) -> str:
+    """Return *addresses* as text, with each run of consecutive addresses as one range.
+
+    For example, TXT13 to TXT20 becomes ``TXT13-TXT20``. After :data:`PLC_DATA_LISTED` ranges,
+    the text counts the rest.
+    """
+    runs: list[tuple[str, int, int]] = []
+    for address in addresses:
+        memory_type, number = parse_address(address)
+        if runs and runs[-1][0] == memory_type and runs[-1][2] == number - 1:
+            runs[-1] = (memory_type, runs[-1][1], number)
+        else:
+            runs.append((memory_type, number, number))
+    parts = [
+        format_address_display(memory_type, first)
+        if first == last
+        else f"{format_address_display(memory_type, first)}-"
+        f"{format_address_display(memory_type, last)}"
+        for memory_type, first, last in runs
+    ]
+    text = ", ".join(parts[:PLC_DATA_LISTED])
+    if len(parts) > PLC_DATA_LISTED:
+        text += f" and {len(parts) - PLC_DATA_LISTED} more"
+    return text
 
 
 def _mtime(path: Path | None) -> float | None:
@@ -879,9 +907,40 @@ class SimulationSession:
         self._message(text, "progress")
         self._emit("desired")
 
+    def _plc_data_problem(self) -> str | None:
+        """Return why the simulation must not start from the PLC data file, or None if it may.
+
+        The only reason is a file that has more than one reading. pyrung reads the file again at
+        launch and would fail on it with pyclickplc's message, which is written for a programmer.
+        Any other failure to read the file is left to the launch, which reports it.
+        """
+        from pyclickplc import PlcDataReadError
+
+        path = self._plc_data_path
+        if path is None:
+            return None
+        try:
+            self._snapshot_reader(path)
+        except PlcDataReadError as exc:
+            return (
+                f"ClickNick cannot tell what {_address_ranges(exc.addresses)} hold in the PLC "
+                f"data file {path.name}. CLICK writes a Text comma without quotes. So a line of "
+                "Text addresses in the file that holds a comma and also an empty address can be "
+                "read in more than one way.\n"
+                "Replace the comma in those Text values in CLICK, then save the PLC data file "
+                "again. Or click PLC Data and choose another file."
+            )
+        except (OSError, ValueError):
+            return None
+        return None
+
     def _adopt_snapshot(self, path: Path) -> None:
+        from pyclickplc import PlcDataReadError
+
         try:
             snapshot = self._snapshot_reader(path)
+        except PlcDataReadError:
+            return  # start() and restart() refuse this file and say why.
         except (OSError, ValueError) as exc:
             self._message(f"Could not read PLC data {path}: {exc}", "error")
             return
@@ -1730,6 +1789,10 @@ class SimulationSession:
         if problem is not None:
             self._fail(*problem)
             return
+        plc_data_problem = self._plc_data_problem()
+        if plc_data_problem is not None:
+            self._fail(plc_data_problem)
+            return
         assert analysis is not None and analysis.project_dir is not None
         project_dir = analysis.project_dir
 
@@ -1806,7 +1869,7 @@ class SimulationSession:
                 reason = "CLICK's save is still being converted. Restart once it is done."
             else:
                 problem = self._workspace_problem(analysis)
-                reason = None if problem is None else problem[0]
+                reason = self._plc_data_problem() if problem is None else problem[0]
             if reason is not None:
                 self._refuse(
                     f"Cannot restart the simulation: {reason}\n"

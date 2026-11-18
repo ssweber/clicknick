@@ -381,6 +381,7 @@ class Harness:
         self.launch_hook = None
         self.saves = 0
         self.snapshot: dict = {}
+        self.read_snapshot = lambda _path: dict(self.snapshot)
         self.sim = SimulationSession(
             scheduler=self.scheduler,
             get_analysis=lambda: self.analysis,
@@ -390,7 +391,7 @@ class Harness:
             dap_factory=dap_factory,
             modbus_factory=modbus_factory,
             layout_reader=lambda _path, used: build_panel_layout([CPU], used),
-            snapshot_reader=lambda _path: dict(self.snapshot),
+            snapshot_reader=lambda path: self.read_snapshot(path),
             run_background=lambda target, _name: target(),
             run_serial=lambda job: job(),
             send_command=send_command,
@@ -1099,6 +1100,94 @@ def test_a_text_comma_in_plc_data_reads_back_as_a_comma(tmp_path):
         "Msg2": ",",
         "Msg3": "B",
     }
+
+
+def _plc_data_with_two_readings(tmp_path: Path) -> Path:
+    """Write a PLC data file in which TXT13 to TXT20 have more than one reading.
+
+    The TXT11 row holds "Hi," and then empty cells. CLICK writes the comma without quotes, so the
+    comma may be in any of TXT13 to TXT20.
+    """
+    lines = [
+        "<TXT=START>",
+        "Address,1,2,3,4,5,6,7,8,9,10,",
+        "TXT1,A,B,C,,,,,,,,",
+        "TXT11,H,i,,,,,,,,,,",
+        "</TXT=END>",
+        "",
+    ]
+    data = tmp_path / "data.csv"
+    data.write_bytes("\r\n".join(lines).encode("ascii"))
+    return data
+
+
+def _assert_one_refusal_of(harness: Harness, data: Path) -> None:
+    errors = harness.messages("error")
+    assert errors.count("TXT13-TXT20") == 1, errors
+    assert f"the PLC data file {data.name}" in errors
+    assert "Replace the comma in those Text values in CLICK" in errors
+    assert "values attribute" not in harness.messages()
+    assert "read_plc_data" not in harness.messages()
+
+
+def test_a_plc_data_file_with_two_readings_does_not_start_the_simulation(ready, tmp_path):
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    ready.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_two_readings(tmp_path)
+    ready.sim.set_plc_data_path(data)  # The simulation is off, so nothing starts yet.
+
+    ready.open()
+
+    assert ready.daps == []
+    assert ready.sim.status is SimStatus.FAILED
+    assert ready.sim.error is not None and "TXT13-TXT20" in ready.sim.error
+    _assert_one_refusal_of(ready, data)
+
+
+def test_a_plc_data_file_with_two_readings_leaves_the_running_simulation(ready, tmp_path):
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    ready.open()
+    ready.sim.toggle_switch("X001")
+    ready.read_snapshot = _default_snapshot_reader
+    data = _plc_data_with_two_readings(tmp_path)
+
+    ready.sim.set_plc_data_path(data)
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == 1, "the simulation does not restart"
+    assert ready.sim.status is not SimStatus.FAILED
+    assert ready.sim.switch_on("X001"), "the switches stay as they were"
+    assert "The simulation still runs the previous program." in ready.messages("error")
+    _assert_one_refusal_of(ready, data)
+
+
+def test_the_refusal_lists_runs_of_text_addresses_as_ranges():
+    from clicknick.simulation_session import PLC_DATA_LISTED, _address_ranges
+
+    assert _address_ranges(["TXT2", "TXT3", "TXT5", "TXT13", "TXT14"]) == (
+        "TXT2-TXT3, TXT5, TXT13-TXT14"
+    )
+    many = [f"TXT{n}" for n in range(1, 2 * (PLC_DATA_LISTED + 2), 2)]
+    assert _address_ranges(many).endswith(", TXT19 and 2 more")
+
+
+def test_a_plc_data_file_that_cannot_be_read_still_reaches_the_launch(ready, tmp_path):
+    """Only a file with more than one reading stops the launch. pyrung reports the rest."""
+
+    def unreadable(_path):
+        raise ValueError("TXT1 row has 9 cells, not 10.")
+
+    ready.read_snapshot = unreadable
+    data = tmp_path / "data.csv"
+    data.write_text("x", encoding="utf-8")
+    ready.sim.set_plc_data_path(data)
+
+    ready.open()
+
+    assert ready.dap.calls[0][2]["snapshot_path"] == data
+    assert "Could not read PLC data" in ready.messages("error")
 
 
 # ----------------------------------------------------------------------

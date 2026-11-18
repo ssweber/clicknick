@@ -156,6 +156,12 @@ A PLC data file change and a Modbus port change wait (`_restart_due`). If one is
 relaunch comes once the write is answered, unless the simulation relaunched meanwhile. If one is seen while a
 build runs, the relaunch comes once the build ends.
 
+Before a launch, the session reads the PLC data file (`_plc_data_problem`). pyclickplc raises
+`PlcDataReadError` when a line of Text addresses holds a comma and also an empty address. The session then
+does not launch, and it names the addresses in its own message. If a simulation is running, Restart refuses
+and that simulation goes on running. pyrung 0.16.0 does not catch this error at launch, so the session checks
+first. The session leaves any other failure to read the file to pyrung's launch, which reports it.
+
 A workspace move relaunches through `relaunch`, without Restart's check. So it stops the running simulation
 even when the moved workspace cannot run. It waits out the build.
 
