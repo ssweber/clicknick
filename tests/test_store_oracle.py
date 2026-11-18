@@ -22,7 +22,7 @@ from pyclickplc.blocks import parse_block_tag
 
 from clicknick.data.address_store import AddressStore
 from clicknick.models.address_row import AddressRow, initial_values_differ
-from clicknick.models.validation import EDGE_CHARACTERS, trim_entry
+from clicknick.models.validation import trim_entry, validate_comment
 from clicknick.services.block_service import (
     compute_block_colors,
     remove_block_tag,
@@ -69,6 +69,11 @@ COMMENTS = [
     "",
     "note",
     " note",
+    "note ",
+    "  ",
+    "<Blk>\nnote",
+    "note\r\n</Blk>",
+    " <Blk>\nnote",
     "<Blk> ",
     "<Blk>",
     "</Blk>",
@@ -235,16 +240,18 @@ def _assert_cascade_rules(
         if (key, "comment") not in caller_set and new.comment != old.comment:
             assert tag_changed, (step, key, "comment changed by a free-text edit")
             # A cascade may only add, rename or remove the block tag in a comment. The rest of
-            # the comment stays the same. A space or tab left at either end where the tag was
-            # is trimmed, so both sides are compared after strip(EDGE_CHARACTERS).
-            assert remove_block_tag(new.comment).strip(EDGE_CHARACTERS) == remove_block_tag(
-                old.comment
-            ).strip(EDGE_CHARACTERS), (
+            # the comment stays the same, the spaces at its ends included. remove_block_tag
+            # takes only the one space that add_block_tag puts before a tag. So the text
+            # without the tag is the same on both sides, space for space.
+            assert remove_block_tag(new.comment) == remove_block_tag(old.comment), (
                 step,
                 key,
                 old.comment,
                 new.comment,
             )
+            # A cascade never turns a valid comment invalid.
+            if validate_comment(old.comment)[0]:
+                assert validate_comment(new.comment)[0], (step, key, old.comment, new.comment)
 
 
 def _tied_keys(store: AddressStore, key: int) -> list[int]:

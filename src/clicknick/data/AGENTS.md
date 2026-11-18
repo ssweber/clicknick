@@ -37,12 +37,14 @@ is in its row's override.
 2. Whoever holds the session writes each change with `session.set_field(addr_key, field, value)`. The
    session keeps one `MutableRowBuilder` per row. All the changes in one session make one undo frame. Filling
    down 500 rows is one undo step.
-3. When the session exits cleanly, the store applies the cascades and freezes the builders into overrides.
-   It stores a nickname, a comment and an initial value of any type but Text without a space or a tab at
-   either end (`trim_entry`). CLICK stores them the same way. A Text initial value keeps its edges. If the
-   overrides changed, the store pushes an undo frame that holds the overrides from before, and it clears
-   redo. Then it runs `_derive()` and notifies the observers. A session that changes nothing is not an undo
-   step.
+3. When the session exits cleanly, the store applies the cascades and freezes the builders into overrides. It
+   stores a nickname and an initial value of any type but Text without a space or a tab at either end
+   (`trim_entry`). CLICK stores them the same way. A Text initial value keeps its edges. A comment is stored
+   as it was set. CLICK 4.00 stores a comment with the spaces that you type at its ends. ClickNick treats a
+   tab the same way. A space or a tab at either end of a comment is not a validation error. A line break or
+   another control code at either end is one. If the overrides changed, the store pushes an undo frame that
+   holds the overrides from before, and it clears redo. Then it runs `_derive()` and notifies the observers. A
+   session that changes nothing is not an undo step.
 4. If the session exits with an exception, the store commits nothing. If the commit itself fails,
    `_commit_session` restores the overrides and the undo and redo stacks, derives again from them, and
    raises the error again.
@@ -63,6 +65,19 @@ is in its row's override.
 - If only a tag's color or kind changes, `matching_tag_comment` leaves the matching open or close tag as it is.
   `pair_tag_comment` writes the new color and kind into the pair's tag. `matching_tag_comment` never changes
   the color or kind of the matching tag. It only renames or removes it.
+- A block tag has one separator beside it. `add_block_tag` always puts one space between a comment that is
+  not empty and the tag, whatever whitespace the comment ends with. `remove_block_tag` removes the tag and at
+  most one separator on the tag's side. That separator is one space if a space is there. Otherwise it is one
+  line break, and `\r\n` counts as one. `remove_block_tag` never removes a tab or a second separator. So if
+  you add a tag to a valid comment with no `<` and then remove it, you get back the exact comment, the spaces
+  at its ends included. A `<` in a comment can confuse the tag parser, and this is a known issue.
+  `"Level < 5 <Motor>"` parses as a tag named `5 <Motor`. Add Block, Remove Block, the cascades, Fill Down and
+  Import in Block Tag mode all use these two functions.
+- Removing a block tag never makes a valid comment invalid at an end. If the comment had no control code at
+  either end, and the separator rule would leave one there, `remove_block_tag` strips every code up to 0x20
+  from that end, spaces and tabs included. `" <T>\nx"` becomes `"x"`. It makes the test with
+  `control_code_edges`, the same test that `validate_comment` makes. A comment that already had a control code
+  at an end gets only the separator rule.
 - `_apply_cascades` records which fields the caller set before any cascade runs. A cascade never writes one
   of those fields.
 
@@ -137,9 +152,9 @@ validation errors (`AddressRow.should_ignore_validation_error`, `has_reportable_
 ## Trim spaces
 
 One edit session, "Trim spaces" (`_stage_trims`), trims a loaded value that has a space or a tab at either
-end. The values are the fields that `trim_entry` trims. It covers the rows that a load or a read of the data
-source changed. The file monitor and Sync's pre-read both read the data source. It also covers every row
-after a Discard.
+end. The values are nicknames and the initial values of any type but Text (`trim_entry`). It never trims a
+comment. It covers the rows that a load or a read of the data source changed. The file monitor and Sync's
+pre-read both read the data source. It also covers every row after a Discard.
 
 - Sync writes the trim.
 - An undone trim comes back only when the data source changes that row.

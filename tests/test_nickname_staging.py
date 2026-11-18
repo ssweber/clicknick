@@ -171,19 +171,19 @@ def test_a_file_without_a_retentive_column_leaves_retentive_alone() -> None:
 def test_a_nickname_with_an_edge_space_is_staged_and_done_without_it(
     tmp_path: Path, store: AddressStore
 ) -> None:
-    """CLICK stores a nickname or comment without a space at either end."""
+    """CLICK stores a nickname without a space at either end, and a comment with them."""
     path = tmp_path / "nicknames.csv"
     path.write_bytes(b'Address,Nickname,Address Comment\r\nX003,"Jog ","Hold "\r\n')
     rows = CsvDataSource(str(path)).load_all_addresses()
     plan = plan_nicknames(rows, store.visible_state)
     assert [(change.field, change.new) for change in plan.changes] == [
         ("nickname", "Jog"),
-        ("comment", "Hold"),
+        ("comment", "Hold "),
     ]
 
     stage_nicknames(store, plan, "Stage nicknames")
     row = store.visible_state[X3]
-    assert (row.nickname, row.comment) == ("Jog", "Hold")
+    assert (row.nickname, row.comment) == ("Jog", "Hold ")
     assert not row.has_reportable_error
     assert not plan_nicknames(rows, store.visible_state)
 
@@ -193,7 +193,10 @@ def test_a_nickname_with_an_edge_space_is_staged_and_done_without_it(
 
 @pytest.mark.parametrize("edge", [" {}", "{} ", "\t{}", "{}\t"])
 def test_a_value_with_an_edge_space_or_tab_is_staged_and_done_without_it(edge: str) -> None:
-    """CLICK stores a nickname, a comment and a number without a space or tab at either end."""
+    """CLICK stores a nickname and a number without a space or tab at either end.
+
+    A comment keeps them.
+    """
     ds1 = get_addr_key("DS", 1)
     store = AddressStore(_Database({}))
     store.load_initial_data()
@@ -212,13 +215,17 @@ def test_a_value_with_an_edge_space_or_tab_is_staged_and_done_without_it(edge: s
     plan = plan_nicknames(rows, store.visible_state)
     assert [(change.field, change.new) for change in plan.changes] == [
         ("nickname", "Speed"),
-        ("comment", "Setpoint"),
+        ("comment", edge.format("Setpoint")),
         ("initial_value", "5"),
         ("retentive", False),
     ]
 
     stage_nicknames(store, plan, "Stage nicknames")
     row = store.visible_state[ds1]
-    assert (row.nickname, row.comment, row.initial_value) == ("Speed", "Setpoint", "5")
+    assert (row.nickname, row.comment, row.initial_value) == (
+        "Speed",
+        edge.format("Setpoint"),
+        "5",
+    )
     assert not row.has_reportable_error
     assert not plan_nicknames(rows, store.visible_state)

@@ -90,7 +90,7 @@ def _flag_loaded_error(row: AddressRow) -> AddressRow:
     return replace(row, loaded_with_error=flagged)
 
 
-# The undo description of the edit that trims loaded nicknames and comments
+# The undo description of the edit that trims loaded values (_stage_trims)
 TRIM_DESCRIPTION = "Trim spaces"
 
 
@@ -555,10 +555,10 @@ class AddressStore:
             self._stage_trims(changed)
 
     def _stage_trims(self, keys: Iterable[int]) -> None:
-        """Stage the trim of each loaded value that has a space or a tab at either end.
+        """Stage the trim of each loaded value that trim_entry changes.
 
-        The values are nicknames, comments and initial values of any type but Text
-        (trim_entry). CLICK stores none of them with a space or a tab at either end. A value
+        The values are a nickname or an initial value of any type but Text with a space or a
+        tab at either end. CLICK stores neither with one. A comment is never trimmed. A value
         that was read with one, from a CSV or from a database that another tool wrote, becomes
         an unsaved edit that holds the trimmed value. It is one undo step, "Trim spaces", and
         Sync writes it. Undo puts the spaces and tabs back, and validation flags them again.
@@ -739,11 +739,11 @@ class AddressStore:
     def _freeze_session(self, session: EditSession) -> set[int]:
         """Freeze session builders' values into user_overrides.
 
-        A nickname, a comment and an initial value of any type but Text are frozen as CLICK
-        stores them, without a space or a tab at either end (trim_entry). Every edit passes
-        through here, cascades included. Values that the base row already holds are kept
-        here. _derive drops them (see _rebase_override), and that is the one place where
-        dirty is decided.
+        A nickname and an initial value of any type but Text are frozen as CLICK stores
+        them, without a space or a tab at either end (trim_entry). A comment is frozen as it
+        was set. Every edit passes through here, cascades included. Values that the base row
+        already holds are kept here. _derive drops them (see _rebase_override), and that is
+        the one place where dirty is decided.
 
         Returns:
             Set of affected addr_keys

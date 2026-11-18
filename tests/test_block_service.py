@@ -660,13 +660,109 @@ def test_rename_block_tag_changes_only_the_name(comment, renamed):
         ("text </Pumps>", "text"),
         ("a <Pumps /> b", "a b"),
         ("<Pumps>  two", " two"),
+        ("two  </Pumps>", "two "),
+        ("two \t</Pumps>", "two \t"),
+        ("two\t</Pumps>", "two\t"),
+        ("<Pumps>\ttwo", "\ttwo"),
+        ("<Pumps> two ", "two "),
+        (" one <Pumps>", " one"),
+        (" <Pumps> x", " x"),
+        ("a\t<Pumps> b", "a\t b"),
+        ("<Motor>\nMain pump", "Main pump"),
+        ("x\n<T>", "x"),
+        ("<Motor>\r\nMain pump", "Main pump"),
+        ("x\r\n<T>", "x"),
+        ("<Motor>\n\nMain pump", "Main pump"),
+        ("x \n<T>", "x "),
+        ("a\n<T>\nb", "a\nb"),
+        ("a\r\n<T>\r\nb", "a\r\nb"),
+        ("a <T>\nb", "a\nb"),
+        ("a\n<T> b", "a\nb"),
+        ("a\n<T>b", "a\nb"),
         ("<Pumps>", ""),
         ("x < 5 > y", "x < 5 > y"),
     ],
 )
 def test_remove_block_tag_takes_one_separator_with_it(comment, removed):
-    from clicknick.services.block_service import add_block_tag, remove_block_tag
+    """The tag takes at most one separator on its side: a space, or else one line break.
+
+    A tab or a second separator stays.
+    """
+    from clicknick.services.block_service import remove_block_tag
 
     assert remove_block_tag(comment) == removed
-    if removed and "<Pumps" in comment and comment.endswith(">"):
-        assert remove_block_tag(add_block_tag(removed, "<Pumps>")) == removed
+
+
+@pytest.mark.parametrize(
+    "comment",
+    [
+        "",
+        "preset",
+        "preset ",
+        " preset",
+        "note ",
+        " note",
+        "  ",
+        "\t",
+        "a  b",
+        "x\t",
+        "a\nb",
+        "a\r\nb",
+    ],
+)
+@pytest.mark.parametrize("tag", ["<Pumps>", "</Pumps>", "<Pumps />"])
+def test_removing_an_added_block_tag_gives_the_comment_back(comment, tag):
+    from clicknick.services.block_service import add_block_tag, remove_block_tag
+
+    assert remove_block_tag(add_block_tag(comment, tag)) == comment
+
+
+@pytest.mark.parametrize(
+    ("comment", "removed"),
+    [
+        (" <T>\nx", "x"),
+        ("\t<T>\nx", "x"),
+        ("x\n<T>  ", "x"),
+        ("<T> \nx", "x"),
+        ("<T>\t\r\nx", "x"),
+        ("<T>\r\n\nx", "x"),
+        ("x\r\n\r\n<T>", "x"),
+        ("x\r<T>", "x"),
+        ("<T>\r  x", "x"),
+        ("x\n <T>", "x"),
+    ],
+)
+def test_removing_a_tag_never_leaves_a_control_code_at_an_end(comment, removed):
+    """A valid comment stays valid. The end that would hold a control code is stripped."""
+    from clicknick.models.validation import validate_comment
+    from clicknick.services.block_service import remove_block_tag
+
+    assert validate_comment(comment) == (True, "")
+    assert remove_block_tag(comment) == removed
+    assert validate_comment(removed) == (True, "")
+
+
+@pytest.mark.parametrize(("comment", "removed"), [("\nx <T>", "\nx"), ("x <T>\r", "x \r")])
+def test_removing_a_tag_from_an_invalid_comment_takes_only_the_separator(comment, removed):
+    # In "x <T>\r", the lone carriage return after the tag is no separator. The space before
+    # the tag stays, because a tag in the middle takes a separator only if both sides have one.
+    from clicknick.services.block_service import remove_block_tag
+
+    assert remove_block_tag(comment) == removed
+
+
+def test_removing_a_tag_from_a_valid_comment_gives_a_valid_comment():
+    """Try every comment of up to three pieces on each side of a tag."""
+    from itertools import product
+
+    from clicknick.models.validation import validate_comment
+    from clicknick.services.block_service import remove_block_tag
+
+    pieces = [" ", "\t", "\n", "\r\n", "\r", "x"]
+    sides = ["".join(parts) for count in range(4) for parts in product(pieces, repeat=count)]
+    broken = []
+    for before, after in product(sides, sides):
+        comment = f"{before}<T>{after}"
+        if validate_comment(comment)[0] and not validate_comment(remove_block_tag(comment))[0]:
+            broken.append(comment)
+    assert broken == []

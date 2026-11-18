@@ -208,7 +208,6 @@ def test_analysis_filters_use_the_current_analysis(tk_root, store) -> None:
     ("col", "field", "stored"),
     [
         (COL_NICKNAME, "nickname", "Pump"),
-        (COL_COMMENT, "comment", "Pump"),
         (COL_INIT_VALUE, "initial_value", "5"),
     ],
 )
@@ -217,7 +216,7 @@ def test_a_cell_typed_with_an_edge_space_or_tab_shows_the_value_stored(
 ):
     """Typing "Pump\\t" over "Pump" changes nothing, and the cell says so.
 
-    CLICK keeps no space or tab at either end of a nickname, a comment or a number.
+    CLICK keeps no space or tab at either end of a nickname or a number.
     """
     _edit(store, "DS", 1, retentive=False, **{field: stored})
     row = _row_index(panel, "DS", 1)
@@ -230,6 +229,41 @@ def test_a_cell_typed_with_an_edge_space_or_tab_shows_the_value_stored(
     assert panel.sheet.get_cell_data(row, col) == stored
     assert getattr(store.visible_state[get_addr_key("DS", 1)], field) == stored
     assert len(store.undo_stack) == frames
+
+
+@pytest.mark.parametrize("edge", [" {}", "{} ", "\t{}", "{}\t"])
+def test_a_comment_typed_with_an_edge_space_or_tab_keeps_it(panel, store, edge):
+    """Typing "Pump\\t" over the comment "Pump" is an edit. The row and the cell keep the tab.
+
+    CLICK 4.00 keeps the spaces at either end of a comment.
+    """
+    _edit(store, "DS", 1, comment="Pump")
+    row = _row_index(panel, "DS", 1)
+    frames = len(store.undo_stack)
+    typed = edge.format("Pump")
+
+    panel.sheet.set_cell_data(row, COL_COMMENT, typed)
+    panel._on_sheet_modified(SimpleNamespace(cells={"table": {(row, COL_COMMENT): "Pump"}}))
+
+    assert panel.sheet.get_cell_data(row, COL_COMMENT) == typed
+    assert store.visible_state[get_addr_key("DS", 1)].comment == typed
+    assert not store.has_errors()
+    assert len(store.undo_stack) == frames + 1
+
+
+def test_pasted_comments_keep_their_edge_spaces(panel, store):
+    rows = [_row_index(panel, "DS", 1), _row_index(panel, "DS", 2)]
+    pasted = [" Note2 ", "\tNote3"]
+    for row, text in zip(rows, pasted, strict=True):
+        panel.sheet.set_cell_data(row, COL_COMMENT, text)
+
+    panel._on_sheet_modified(
+        SimpleNamespace(cells={"table": {(row, COL_COMMENT): "" for row in rows}})
+    )
+
+    keys = [get_addr_key("DS", 1), get_addr_key("DS", 2)]
+    assert [store.visible_state[key].comment for key in keys] == pasted
+    assert not store.has_errors()
 
 
 def test_the_footer_counts_only_the_rows_that_the_filter_shows() -> None:

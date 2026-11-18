@@ -1,9 +1,14 @@
 """A nickname, a comment and a non-Text initial value are stored as CLICK stores them.
 
-CLICK stores them without a space or a tab at either end. A loaded row that has one is
-trimmed by a staged edit, "Trim spaces". Sync writes that edit and Undo takes it back. A
-value that is entered with a space or a tab is stored without it. A Text initial value
-keeps its edges.
+CLICK stores a nickname and a non-Text initial value without a space or a tab at either end.
+A loaded row that has one is trimmed by a staged edit, "Trim spaces". Sync writes that edit
+and Undo takes it back. A value that is entered with a space or a tab is stored without it.
+A Text initial value keeps its edges.
+
+CLICK 4.00 stores a comment that you type in its Address Picker with the spaces at its ends.
+ClickNick keeps the spaces and tabs at the ends of a comment, wherever the comment comes from,
+and they are not an error. ClickNick trims nothing from a comment. A line break or another
+control code at either end is kept, and it is an error.
 """
 
 from __future__ import annotations
@@ -18,9 +23,9 @@ from pyclickplc.banks import DataType
 from clicknick.data.address_store import TRIM_DESCRIPTION, AddressStore
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
-from clicknick.models.validation import EDGE_CHARACTERS
+from clicknick.models.validation import CONTROL_EDGE_ERROR, EDGE_CHARACTERS
 from clicknick.services import ImportService
-from clicknick.services.block_service import remove_block_tag
+from clicknick.services.block_service import add_block_tag, remove_block_tag
 from clicknick.widgets.import_csv_dialog import detect_blocks_in_csv
 
 EDGE = "Cannot start or end with a space"
@@ -80,15 +85,16 @@ class TestTrimOnLoad:
         store, source = _store(_pump())
 
         row = store.visible_state[C1]
-        assert (row.nickname, row.comment) == ("Pump", "Main pump")
+        assert (row.nickname, row.comment) == ("Pump", " Main pump")
         assert not row.has_reportable_error
         assert store.get_dirty_keys() == {C1}
+        assert store.user_overrides[C1] == {"nickname": "Pump"}
         assert store.base_state[C1].nickname == "Pump "
         assert [frame.description for frame in store.undo_stack] == [TRIM_DESCRIPTION]
 
         assert store.save_all_changes() == {C1}
         written = source.saved[0]
-        assert [(row.nickname, row.comment) for row in written] == [("Pump", "Main pump")]
+        assert [(row.nickname, row.comment) for row in written] == [("Pump", " Main pump")]
         assert not store.has_unsaved_changes()
 
     def test_undo_puts_the_spaces_back_and_they_show_the_error(self):
@@ -98,7 +104,7 @@ class TestTrimOnLoad:
 
         row = store.visible_state[C1]
         assert (row.nickname, row.comment) == ("Pump ", " Main pump")
-        assert (row.nickname_error, row.comment_error) == (EDGE, EDGE)
+        assert (row.nickname_error, row.comment_error) == (EDGE, "")
         assert not store.has_unsaved_changes()
         assert store.redo()
         assert store.visible_state[C1].nickname == "Pump"
@@ -130,11 +136,14 @@ class TestTrimOnLoad:
         assert store.undo_stack == []
 
         source.rows[C1] = AddressRow("C", 1, nickname="Pump ")
+        source.rows[C2] = AddressRow("C", 2, nickname="Fan ")
         source.rows[C3] = AddressRow("C", 3, comment="Spare ")
         assert store._on_database_update()
 
         assert store.visible_state[C1].nickname == "Pump"
-        assert store.visible_state[C3].comment == "Spare"
+        assert store.visible_state[C2].nickname == "Fan"
+        assert store.visible_state[C3].comment == "Spare "
+        assert store.get_dirty_keys() == {C1, C2}
         assert [frame.description for frame in store.undo_stack] == [TRIM_DESCRIPTION]
 
     def test_a_reload_without_edge_spaces_pushes_no_undo_step(self):
@@ -152,12 +161,12 @@ class TestTrimOnLoad:
         with store.edit_session("Rename") as session:
             session.set_field(C1, "nickname", "Blower")
 
-        source.rows[C1] = AddressRow("C", 1, nickname="Pump ", comment="Main ")
+        source.rows[C1] = AddressRow("C", 1, nickname="Pump ", initial_value=" 1", comment="Main ")
         assert store._on_database_update()
 
         row = store.visible_state[C1]
-        assert (row.nickname, row.comment) == ("Blower", "Main")
-        assert store.user_overrides[C1] == {"nickname": "Blower", "comment": "Main"}
+        assert (row.nickname, row.initial_value, row.comment) == ("Blower", "1", "Main ")
+        assert store.user_overrides[C1] == {"nickname": "Blower", "initial_value": "1"}
 
     def test_a_sync_that_reads_new_edge_spaces_first_writes_them_trimmed(self):
         store, source = _store({C2: AddressRow("C", 2, nickname="Fan")})
@@ -187,11 +196,14 @@ class TestTrimOnLoad:
         assert [name for name in names if name != name.strip(EDGE_CHARACTERS)] == []
 
     def test_a_system_name_of_clicks_is_left_as_it_is(self):
-        store, _source = _store({SC1: AddressRow("SC", 1, nickname="_Always_ON", comment="On ")})
+        # The row's initial value is trimmed, and the trim leaves the nickname alone.
+        store, _source = _store(
+            {SC1: AddressRow("SC", 1, nickname="_Always_ON", initial_value="1 ")}
+        )
 
         assert store.visible_state[SC1].nickname == "_Always_ON"
-        assert store.visible_state[SC1].comment == "On"
-        assert store.user_overrides[SC1] == {"comment": "On"}
+        assert store.visible_state[SC1].initial_value == "1"
+        assert store.user_overrides[SC1] == {"initial_value": "1"}
 
     # A nickname that CLICK holds on X, SC or SD and that breaks ClickNick's nickname rules
     # is "exempt as loaded". The store flags it loaded_with_error and reports no error for it.
@@ -308,11 +320,11 @@ class TestTrimOnLoad:
         store.load_initial_data()
 
         row = store.visible_state[DS1]
-        assert (row.nickname, row.comment) == ("Speed", "Setpoint")
+        assert (row.nickname, row.comment) == ("Speed", " Setpoint")
         assert [frame.description for frame in store.undo_stack] == [TRIM_DESCRIPTION]
 
         store.save_all_changes()
-        assert b'DS1,INT,"Speed",0,Yes,"Setpoint"' in path.read_bytes()
+        assert b'DS1,INT,"Speed",0,Yes," Setpoint"' in path.read_bytes()
 
     def test_a_trim_read_while_a_session_is_open_is_staged_when_it_ends(self):
         store, source = _store({C2: AddressRow("C", 2, nickname="Fan")})
@@ -353,6 +365,17 @@ class TestTrimOnLoad:
         assert store.get_dirty_keys() == {C1}
         assert [frame.description for frame in store.undo_stack] == [TRIM_DESCRIPTION]
 
+    @pytest.mark.parametrize("comment", [" a\n", "\r\n a ", "Note\x01", "a \n\t"])
+    def test_a_loaded_comment_with_a_line_break_at_an_end_stays_as_it_is(self, comment):
+        # ClickNick trims nothing from a comment. The line break or control code is an error.
+        store, _source = _store({C1: AddressRow("C", 1, comment=comment)})
+
+        row = store.visible_state[C1]
+        assert row.comment == comment
+        assert row.comment_error == CONTROL_EDGE_ERROR
+        assert store.undo_stack == []
+        assert not store.has_unsaved_changes()
+
     def test_a_load_without_edge_spaces_has_nothing_to_undo(self):
         store, _source = _store({C2: AddressRow("C", 2, nickname="Fan", comment="Blower")})
 
@@ -361,23 +384,34 @@ class TestTrimOnLoad:
 
 
 class TestTrimOnEntry:
-    @pytest.mark.parametrize(
-        ("field", "value", "stored"),
-        [
-            ("nickname", "Pump ", "Pump"),
-            ("nickname", "  Pump", "Pump"),
-            ("comment", " Main pump ", "Main pump"),
-            ("comment", "Two  spaces inside", "Two  spaces inside"),
-        ],
-    )
-    def test_a_value_is_stored_without_its_edge_spaces(self, field, value, stored):
+    @pytest.mark.parametrize(("value", "stored"), [("Pump ", "Pump"), ("  Pump", "Pump")])
+    def test_a_nickname_is_stored_without_its_edge_spaces(self, value, stored):
         store, _source = _store({})
         with store.edit_session("Edit") as session:
-            session.set_field(C1, field, value)
+            session.set_field(C1, "nickname", value)
 
         row = store.visible_state[C1]
-        assert getattr(row, field) == stored
+        assert row.nickname == stored
         assert not row.has_reportable_error
+
+    @pytest.mark.parametrize("comment", [" Note2 ", " Main pump", "Two  spaces inside ", "\tTab\t"])
+    def test_a_comment_is_stored_with_its_edge_spaces(self, comment):
+        store, _source = _store({})
+        with store.edit_session("Edit") as session:
+            session.set_field(C1, "comment", comment)
+
+        row = store.visible_state[C1]
+        assert row.comment == comment
+        assert not row.has_reportable_error
+
+    def test_a_comment_typed_with_a_line_break_at_its_end_keeps_it_and_shows_the_error(self):
+        store, _source = _store({})
+        with store.edit_session("Edit") as session:
+            session.set_field(C1, "comment", " Note2\n")
+
+        row = store.visible_state[C1]
+        assert row.comment == " Note2\n"
+        assert row.comment_error == CONTROL_EDGE_ERROR
 
     def test_entering_the_loaded_value_with_a_space_changes_nothing(self):
         store, _source = _store({C1: AddressRow("C", 1, nickname="Pump")})
@@ -387,32 +421,87 @@ class TestTrimOnEntry:
         assert not store.has_unsaved_changes()
         assert store.undo_stack == []
 
-    @pytest.mark.parametrize("comment", ["<Tm_D />  preset", "preset  <Tm_D />"])
-    def test_a_pair_cascade_that_leaves_a_space_is_trimmed(self, comment):
-        # Removing the block from T1 removes its tag on TD1 too. That would leave the
-        # second of two spaces beside the tag at an end of TD1's comment.
+    def test_adding_a_space_to_a_loaded_comment_is_an_edit(self):
+        store, source = _store({C1: AddressRow("C", 1, comment="Note2")})
+        with store.edit_session("Edit") as session:
+            session.set_field(C1, "comment", " Note2 ")
+
+        assert store.get_dirty_keys() == {C1}
+        assert [frame.description for frame in store.undo_stack] == ["Edit"]
+        assert store.save_all_changes() == {C1}
+        assert source.rows[C1].comment == " Note2 "
+
+    @pytest.mark.parametrize(
+        ("comment", "left"),
+        [
+            ("<Tm_D /> preset", "preset"),
+            ("preset <Tm_D />", "preset"),
+            ("<Tm_D />  preset", " preset"),
+            ("preset  <Tm_D />", "preset "),
+            ("preset\t<Tm_D />", "preset\t"),
+            ("<Tm_D />\npreset", "preset"),
+            ("preset\r\n<Tm_D />", "preset"),
+        ],
+    )
+    def test_a_pair_cascade_removes_the_tag_and_one_separator(self, comment, left):
+        # Removing the block from T1 removes its tag on TD1 too. The tag takes the one space,
+        # or else the one line break, that separates it from the text. A second separator or
+        # a tab belongs to the comment.
         store, _source = _store(
             {T1: AddressRow("T", 1, comment="<Tm />"), TD1: AddressRow("TD", 1, comment=comment)}
         )
         with store.edit_session("Remove block") as session:
             session.set_field(T1, "comment", "")
 
-        assert store.visible_state[TD1].comment == "preset"
+        assert store.visible_state[TD1].comment == left
         assert not store.has_errors()
 
-    @pytest.mark.parametrize("comment", ["<Motor>  Main pump", "Main pump  <Motor>"])
-    def test_removing_a_close_tag_trims_the_open_row_it_cascades_to(self, comment):
+    @pytest.mark.parametrize("comment", ["preset ", " preset", "  ", "preset", ""])
+    def test_a_pair_cascade_that_adds_and_removes_a_tag_gives_the_comment_back(self, comment):
+        store, source = _store(
+            {T1: AddressRow("T", 1, comment="delay"), TD1: AddressRow("TD", 1, comment=comment)}
+        )
+        with store.edit_session("Add block") as session:
+            session.set_field(T1, "comment", add_block_tag("delay", "<Tm />"))
+        assert store.visible_state[TD1].comment == add_block_tag(comment, "<Tm_D />")
+
+        with store.edit_session("Remove block") as session:
+            session.set_field(T1, "comment", remove_block_tag(store.visible_state[T1].comment))
+
+        assert store.visible_state[T1].comment == "delay"
+        assert store.visible_state[TD1].comment == comment
+        assert store.get_dirty_keys() == set()
+        assert source.rows[TD1].comment == comment
+
+    @pytest.mark.parametrize(
+        ("comment", "left"),
+        [
+            ("<Motor> Main pump", "Main pump"),
+            ("<Motor>  Main pump", " Main pump"),
+            ("Main pump  <Motor>", "Main pump "),
+            ("<Motor> Main pump ", "Main pump "),
+            ("<Motor>\nMain pump", "Main pump"),
+        ],
+    )
+    def test_removing_a_close_tag_removes_the_open_tag_and_one_separator(self, comment, left):
         store, _source = _store(
             {C1: AddressRow("C", 1, comment=comment), C3: AddressRow("C", 3, comment="</Motor>")}
         )
         with store.edit_session("Edit") as session:
             session.set_field(C3, "comment", "")
 
-        assert store.visible_state[C1].comment == "Main pump"
+        assert store.visible_state[C1].comment == left
         assert not store.has_errors()
 
-    @pytest.mark.parametrize("comment", ["<Motor>  Main pump", "Main pump  <Motor>"])
-    def test_remove_block_trims_what_the_tag_leaves(self, comment):
+    @pytest.mark.parametrize(
+        ("comment", "left"),
+        [
+            ("<Motor> Main pump", "Main pump"),
+            ("<Motor>  Main pump", " Main pump"),
+            (" Main pump <Motor>", " Main pump"),
+        ],
+    )
+    def test_remove_block_removes_the_tag_and_one_space(self, comment, left):
         store, _source = _store(
             {C1: AddressRow("C", 1, comment=comment), C3: AddressRow("C", 3, comment="</Motor>")}
         )
@@ -420,14 +509,18 @@ class TestTrimOnEntry:
         with store.edit_session("Remove block tag") as session:
             session.set_field(C1, "comment", remove_block_tag(comment))
 
-        assert store.visible_state[C1].comment == "Main pump"
+        assert store.visible_state[C1].comment == left
         assert store.visible_state[C3].comment == ""
         assert not store.has_errors()
 
-    def test_an_import_in_block_tag_mode_trims_the_comment_it_composes(self):
+    @pytest.mark.parametrize(
+        ("comment", "composed"),
+        [("<Old> Motor note", "Motor note <New>"), (" Note2 <Old>", " Note2 <New>")],
+    )
+    def test_an_import_in_block_tag_mode_replaces_the_tag_and_its_space(self, comment, composed):
         store, _source = _store(
             {
-                C1: AddressRow("C", 1, comment="<Old> Motor note"),
+                C1: AddressRow("C", 1, comment=comment),
                 C3: AddressRow("C", 3, comment="</Old>"),
             }
         )
@@ -438,7 +531,7 @@ class TestTrimOnEntry:
         with store.edit_session("Import") as session:
             ImportService.merge_blocks(store, session, blocks, options)
 
-        assert store.visible_state[C1].comment == "Motor note <New>"
+        assert store.visible_state[C1].comment == composed
         assert store.visible_state[C3].comment == "</New>"
         assert not store.has_errors()
 
@@ -446,7 +539,7 @@ class TestTrimOnEntry:
 # A space or a tab at the start or the end of a value, and the value that CLICK stores
 EDGES = [" 5", "5 ", "\t5", "5\t"]
 # The fields that lose their edge spaces and tabs, on DS1 (an INT)
-DS_FIELDS = ["nickname", "comment", "initial_value"]
+DS_FIELDS = ["nickname", "initial_value"]
 TXT1 = get_addr_key("TXT", 1)
 
 
@@ -460,8 +553,9 @@ def _ds_row(field: str, value: str) -> AddressRow:
 
 
 class TestEdgeTabsAndInitialValues:
-    """A nickname, a comment and an initial value of any type but Text lose a space or a tab
-    at either end. A Text initial value keeps them, because CLICK keeps them in a quoted one.
+    """A nickname and an initial value of any type but Text lose a space or a tab at either
+    end. A Text initial value keeps them, because CLICK keeps them in a quoted one. A comment
+    keeps them too.
     """
 
     @pytest.mark.parametrize("edge", EDGES)
@@ -488,6 +582,28 @@ class TestEdgeTabsAndInitialValues:
         assert store.save_all_changes() == {DS1}
         assert getattr(source.rows[DS1], field) == _edged(field, "5")
 
+    @pytest.mark.parametrize("edge", EDGES)
+    def test_a_loaded_comment_keeps_its_edge_through_an_edit_and_a_sync(self, edge):
+        comment = _edged("comment", edge)
+        store, source = _store({DS1: _ds_row("comment", comment)})
+
+        row = store.visible_state[DS1]
+        assert row.comment == comment
+        assert not row.has_reportable_error
+        assert store.undo_stack == []
+        assert not store.has_unsaved_changes()
+
+        with store.edit_session("Rename") as session:
+            session.set_field(DS1, "nickname", "Speed")
+        assert store.visible_state[DS1].comment == comment
+        assert store.user_overrides[DS1] == {"nickname": "Speed"}
+
+        assert store.save_all_changes() == {DS1}
+        assert [row.comment for row in source.saved[0]] == [comment]
+        assert source.rows[DS1].comment == comment
+        assert store.visible_state[DS1].comment == comment
+        assert not store.has_unsaved_changes()
+
     @pytest.mark.parametrize("value", [" ", "\t"])
     def test_a_text_initial_value_keeps_its_space_or_tab(self, value):
         store, _source = _store(
@@ -501,7 +617,7 @@ class TestEdgeTabsAndInitialValues:
         assert not store.has_errors()
 
     @pytest.mark.parametrize("edge", EDGES)
-    def test_a_csv_load_trims_each_field(self, tmp_path: Path, edge):
+    def test_a_csv_load_trims_each_field_but_the_comment(self, tmp_path: Path, edge):
         """File > Load Nicknames from CSV. pyclickplc's reader strips the initial value."""
         cells = [_edged(field, edge) for field in ("nickname", "initial_value", "comment")]
         path = tmp_path / "Nicknames.csv"
@@ -513,11 +629,14 @@ class TestEdgeTabsAndInitialValues:
         store.load_initial_data()
 
         row = store.visible_state[DS1]
-        assert (row.nickname, row.initial_value, row.comment) == ("Pump5", "5", "Pump5")
+        assert (row.nickname, row.initial_value, row.comment) == ("Pump5", "5", cells[2])
         assert not row.has_reportable_error
 
+        store.save_all_changes()
+        assert f'DS1,INT,"Pump5",5,No,"{cells[2]}"'.encode() in path.read_bytes()
+
     @pytest.mark.parametrize("edge", EDGES)
-    def test_an_import_from_csv_trims_each_field(self, tmp_path: Path, edge):
+    def test_an_import_from_csv_trims_each_field_but_the_comment(self, tmp_path: Path, edge):
         """The Address Editor's File > Import from CSV, with every field overwritten."""
         cells = [_edged(field, edge) for field in ("nickname", "initial_value", "comment")]
         path = tmp_path / "Import.csv"
@@ -536,5 +655,5 @@ class TestEdgeTabsAndInitialValues:
             )
 
         row = store.visible_state[DS1]
-        assert (row.nickname, row.initial_value, row.comment) == ("Pump5", "5", "Pump5")
+        assert (row.nickname, row.initial_value, row.comment) == ("Pump5", "5", cells[2])
         assert not row.has_reportable_error

@@ -10,7 +10,9 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key
-from pyclickplc.blocks import parse_block_tag, strip_block_tag
+from pyclickplc.blocks import parse_block_tag
+
+from .block_service import add_block_tag, remove_block_tag
 
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
@@ -127,12 +129,10 @@ class ImportService:
             else:
                 return
 
-            # Strip existing block tag from skeleton, rebuild with CSV's block tag
-            comment_no_tag = strip_block_tag(current)
-            if comment_no_tag:
-                session.set_field(addr_key, "comment", f"{comment_no_tag} {new_tag}")
-            else:
-                session.set_field(addr_key, "comment", new_tag)
+            # Replace the row's block tag with the CSV's. remove_block_tag also removes the
+            # separator that set the old tag apart from the text.
+            comment = add_block_tag(remove_block_tag(current), new_tag)
+            session.set_field(addr_key, "comment", comment)
 
     @staticmethod
     def _apply_first_scan(

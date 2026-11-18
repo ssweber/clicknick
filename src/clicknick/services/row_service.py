@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key
 from pyclickplc.banks import INTERLEAVED_PAIRS
-from pyclickplc.blocks import parse_block_tag, strip_block_tag
+from pyclickplc.blocks import parse_block_tag
+
+from .block_service import remove_block_tag
 
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore
@@ -74,22 +76,13 @@ class RowService:
     def _comment_without_block_tag(comment: str) -> str:
         """Return the comment with every block tag removed, so that a copy names no block.
 
-        Remove tags until none is left. The space on one side of each removed tag goes
-        with it, and the ends are trimmed. Whitespace elsewhere in the text stays as
-        written.
+        Remove tags with remove_block_tag until none is left. remove_block_tag removes at most
+        one separator beside each tag: a space, or else a line break. The rest of the comment
+        stays as written, its ends included.
         """
         text = comment
-        while True:
-            stripped = strip_block_tag(text)
-            if stripped == text:
-                break
-            # Find where the tag stood: the first position where the two texts differ
-            at = 0
-            while at < len(stripped) and at < len(text) and stripped[at] == text[at]:
-                at += 1
-            if 0 < at < len(stripped) and stripped[at - 1].isspace() and stripped[at].isspace():
-                stripped = stripped[:at] + stripped[at + 1 :]
-            text = stripped.strip()
+        while (stripped := remove_block_tag(text)) != text:
+            text = stripped
         return text
 
     @staticmethod

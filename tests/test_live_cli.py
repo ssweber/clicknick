@@ -66,6 +66,7 @@ def _comment(store, display: str) -> str:
         r"Path C:\temp\new",
         "Fill; then drain",
         "Pump #2",
+        " Note2 ",
     ],
 )
 def test_an_argument_reaches_the_store_as_typed(monkeypatch, store, comment):
