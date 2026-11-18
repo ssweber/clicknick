@@ -445,8 +445,36 @@ plans on 2026-11-17 and listed what follows. Nobody has checked the list against
   - `tests/test_live_rung_apply.py` line 38.
   - `tests/test_review_changes_window.py` line 40.
   - `tests/test_rung_diff.py` lines 41, 52 and 257.
-- `_extract_operand_candidates` in `program.py` (lines 169-212) will receive `Tee` cells. laddy expects them to
-  fall through to the `to_csv()` text match at the end. Unwrapping a `Tee` to its contact is safer.
+- Two functions in `program.py` must unwrap a `Tee` cell to its contact. Neither raises on a `Tee`.
+  - `_extract_operand_candidates` (lines 169-212) returns an empty list for a cell that is not a known
+    instruction and has no `to_csv`. laddy is adding `Tee.to_csv()`, which returns "T:" and then the contact's
+    text. If that lands, the text match at the end of the function finds the operands. Without it, a contact
+    with a wire down loses its operands.
+  - `_unreadable_instructions` (lines 420-427) skips a `Tee(UnknownCondition)`, with or without
+    `Tee.to_csv()`.
+  - Unwrap first in both, with `if isinstance(token, Tee): token = token.contact`. laddy and the planner
+    agree that the unwrap reads better, even where `to_csv()` would work. At the move, add a test of a contact
+    with a wire down.
+- laddercodec keeps `decoded_rung_to_rows`, and it writes a `Tee` cell as `T:...`. ClickNick calls it in
+  `program.py` lines 847-849.
+- laddercodec's main also renames instruction fields. Its CHANGELOG lists both changes under Unreleased.
+  - `Contact.type` and `Contact.edge_kind` become one field, `Contact.kind`. Its values are "no", "nc", "rise"
+    and "fall". The operand is the first argument: `Contact("X001", kind="nc")`.
+  - `Coil.type` becomes `Coil.kind`. Its values are "out", "latch" and "reset".
+- So six test files fail at collection against laddercodec's main, with `KeyError: 'type'`. Their helpers read
+  `typing.get_type_hints(Contact)["type"]` at import:
+  - `tests/ladder/test_cli.py` line 41.
+  - `tests/ladder/test_unreadable_rungs.py` line 32.
+  - `tests/test_compare_with_click_window.py` line 25.
+  - `tests/test_live_rung_apply.py` line 15.
+  - `tests/test_review_changes_window.py` line 38.
+  - `tests/test_rung_diff.py` line 35.
+  - `tests/test_analysis_service.py` line 1139 reads it inside a test, so that test fails when it runs.
+- On laddercodec's main, `typing.get_args(typing.get_type_hints(Contact)["kind"])` returns the contact kinds.
+  laddy plans to export `ContactKind`, `CoilKind` and `OutVariantKind` from `laddercodec`. If they are there at
+  the move, the helpers use `typing.get_args(laddercodec.ContactKind)` instead.
+- At the move, search `src` and `tests` for `.type`, for `edge_kind`, and for `Contact(` and `Coil(` calls
+  that use the old fields.
 - At the move, search for code that assigns to a field of an instruction or a rung. laddy found none.
 
 ## 10. Recording, ClickNick side (waits on pyrung's recording core and console commands for every change)
