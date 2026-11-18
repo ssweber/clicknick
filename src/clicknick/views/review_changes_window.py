@@ -2259,11 +2259,6 @@ class ReviewChangesWindow(tk.Toplevel):
         self._go_to_difference(offset)
         return "break"
 
-    def _on_skip(self) -> None:
-        if self._current_idx is None:
-            return
-        self._advance_to_next()
-
     def _show_first_time_tips(self) -> None:
         """Show how to paste, once per user."""
         seen = _tips_seen_path()
@@ -2518,8 +2513,6 @@ class ReviewChangesWindow(tk.Toplevel):
             btn_frame, text="Copy", command=self._on_action, width=-14, state="disabled"
         )
         self._action_btn.pack(side=tk.RIGHT, padx=(5, 0))
-
-        ttk.Button(btn_frame, text="Skip", command=self._on_skip, width=10).pack(side=tk.RIGHT)
 
         self._add_sub_btn = ttk.Button(
             btn_frame,

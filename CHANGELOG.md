@@ -24,6 +24,7 @@
 - A Sync or Save in the Address Editor no longer shows a box when it succeeds. The editor's status line says how many rows it wrote, such as "Synced 3 rows".
 - The Dataview Editor is now called the **Data View Editor**, and every title, menu and message writes **Data View** the way CLICK does.
 - The Tag Browser now shows a bit's Retentive setting after a comma, as in `BIT, Retentive`. It used to show `BIT = Retentive`, which read as the bit's value. An initial value still follows `=`, as in `BIT = ON, Non-retentive`.
+- Review Changes no longer has a **Skip** button. The button only went to the next program that was left to paste, and it skipped nothing. To go to another program, click its row in the list.
 
 ### Fixed
 

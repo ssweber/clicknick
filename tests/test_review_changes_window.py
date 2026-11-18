@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import dataclasses
+import tkinter as tk
 import typing
 from pathlib import Path
+from tkinter import ttk
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -2720,3 +2722,23 @@ def test_copying_needs_the_connected_click_window(monkeypatch, copies) -> None:
     assert copies == []
     assert window._copied is False
     assert "Not connected to CLICK" in _status(window)
+
+
+def test_button_row_has_no_skip(tk_root) -> None:
+    """The row list goes to any row, so the button row has no Skip button."""
+    window = ReviewChangesWindow.__new__(ReviewChangesWindow)
+    tk.Toplevel.__init__(window, tk_root)
+    try:
+        window.withdraw()
+        window._create_widgets()
+        row = window._action_btn.master
+        labels = {
+            str(child.cget("text"))
+            for child in row.winfo_children()
+            if isinstance(child, ttk.Button)
+        }
+    finally:
+        tk.Toplevel.destroy(window)
+
+    assert "Copy" in labels
+    assert "Skip" not in labels
