@@ -1,7 +1,7 @@
 """Static program analysis via pyrung's dependency graph.
 
-This module is pure Python and does not use tkinter. It builds a ProgramGraph from the
-Scr*.tmp files of the connected CLICK project. Its queries about tag roles and dependencies
+This module is pure Python and does not use tkinter. It builds pyrung's DataView of the
+program in the Scr*.tmp files of the connected CLICK project. Its queries about tag roles and dependencies
 return sets of addr_keys, and the address editor filters its rows by those sets.
 """
 
@@ -14,19 +14,17 @@ import shutil
 import tempfile
 import threading
 import traceback
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from pyclickplc.addresses import get_addr_key, iter_address_slots
-from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
-from pyrung.click.tag_map import OldCommentFormError
+from pyrung.click import OldCommentFormError, SystemNicknameRepair, SystemNicknameRepairRequired
 
 if TYPE_CHECKING:
-    from pyrung.core.analysis.pdg import ProgramGraph
-    from pyrung.core.program import Program
-    from pyrung.core.validation.report import ValidationReport
+    from pyrung import DataView, Program
+    from pyrung.validation import ValidationReport
 
     from ..models.address_row import AddressRow
     from .program_check_selection import ProgramCheckSelection
@@ -69,7 +67,7 @@ class AnalysisStatus(enum.Enum):
 class AnalysisResult:
     """Cached analysis output."""
 
-    graph: ProgramGraph
+    dataview: DataView
     program: Program
     tag_to_addr_key: dict[str, int] = field(default_factory=dict)
     addr_key_to_tag: dict[int, str] = field(default_factory=dict)
@@ -365,19 +363,18 @@ def _build_graph(
     *,
     workspace_kind: WorkspaceKind = "temporary",
     on_project_generated: Callable[[Path, _TagMaps], None] | None = None,
-) -> tuple[ProgramGraph, Program, Path | None, _TagMaps]:
-    """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> graph.
+) -> tuple[DataView, Program, Path | None, _TagMaps]:
+    """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> DataView.
 
     When *persist_dir* is provided, also writes the full pyrung project
     (src/plc/) to disk for consumption by DAP and
     rung apply commands.
 
-    Return the graph, the program, the persisted project folder, and the tag maps of the
+    Return the program's DataView, the program, the persisted project folder, and the tag maps of the
     nickname snapshot that the code was generated from. Without a database, the maps name
     every address by its display address.
     """
     from pyrung.click import ladder_to_pyrung
-    from pyrung.core.analysis import build_program_graph
 
     from ..ladder.program import program_save
 
@@ -414,7 +411,7 @@ def _build_graph(
     exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
     program = namespace["logic"]
 
-    from pyrung.core.program import Program
+    from pyrung import Program
 
     if not isinstance(program, Program):
         msg = (
@@ -423,8 +420,9 @@ def _build_graph(
         )
         raise TypeError(msg)
 
-    graph = build_program_graph(program)
-    return graph, program, project_dir, tag_maps
+    # The first dataview() call builds the dependency graph. Build it here, on the build
+    # worker, and not on the Tk thread at the first query.
+    return program.dataview(), program, project_dir, tag_maps
 
 
 class AnalysisService:
@@ -520,7 +518,7 @@ class AnalysisService:
         """Return the tag name -> addr_key map for the tag names in ``project_dir``'s source.
 
         It is the same as ``tag_to_addr_key`` unless a rebuild failed after it wrote the
-        workspace. In that case the graph and ``tag_to_addr_key`` stay the previous build's,
+        workspace. In that case the DataView and ``tag_to_addr_key`` stay the previous build's,
         while the workspace on disk already uses the new names.
         """
         return self._project_tags
@@ -726,7 +724,7 @@ class AnalysisService:
                     self._project_is_current = True
 
         try:
-            graph, program, project_dir, (tag_to_key, key_to_tag) = _build_graph(
+            dataview, program, project_dir, (tag_to_key, key_to_tag) = _build_graph(
                 scr_folder,
                 db_path,
                 persist_dir,
@@ -754,7 +752,7 @@ class AnalysisService:
             self._project_keys = key_to_tag
             self._project_is_current = True
             self._result = AnalysisResult(
-                graph=graph,
+                dataview=dataview,
                 program=program,
                 tag_to_addr_key=tag_to_key,
                 addr_key_to_tag=key_to_tag,
@@ -783,17 +781,15 @@ class AnalysisService:
             self._needs_comment_upgrade = False
 
     def known_tag_names(self) -> frozenset[str]:
-        """Tag names present in both the graph and the addr_key map."""
+        """Return the tag names that are both in the program's DataView and in the addr_key map."""
         if self._result is None:
             return frozenset()
-        graph_tags = frozenset(self._result.graph.tag_roles)
-        mapped_tags = frozenset(self._result.tag_to_addr_key)
-        return graph_tags & mapped_tags
+        return frozenset(self._result.dataview.tags) & frozenset(self._result.tag_to_addr_key)
 
     def get_role_keys(self, role: str) -> set[int]:
         """Return addr_keys for tags with the given role.
 
-        role is one of: "input", "output" (TERMINAL), "pivot", "isolated".
+        role is one of: "input", "output" (terminals), "pivot", "isolated".
         """
         if self._result is None:
             return set()
@@ -802,54 +798,52 @@ class AnalysisService:
         if cached is not None:
             return cached
 
-        from pyrung.core.analysis.pdg import TagRole
-
-        role_map = {
-            "input": TagRole.INPUT,
-            "output": TagRole.TERMINAL,
-            "pivot": TagRole.PIVOT,
-            "isolated": TagRole.ISOLATED,
+        dataview = self._result.dataview
+        role_views = {
+            "input": dataview.inputs,
+            "output": dataview.terminals,
+            "pivot": dataview.pivots,
+            "isolated": dataview.isolated,
         }
-        target_role = role_map.get(role)
-        if target_role is None:
+        role_view = role_views.get(role)
+        if role_view is None:
             return set()
 
-        keys: set[int] = set()
-        for tag_name, tag_role in self._result.graph.tag_roles.items():
-            if tag_role is target_role:
-                addr_key = self._result.tag_to_addr_key.get(tag_name)
-                if addr_key is not None:
-                    keys.add(addr_key)
+        keys = self._addr_keys(role_view().tags)
 
         self._result.role_cache[role] = keys
         return keys
 
     def get_upstream_keys(self, tag_name: str) -> set[int]:
-        """Return addr_keys for all tags transitively upstream of tag_name."""
+        """Return the addr_keys of the tags in pyrung's ``DataView.upstream()`` of *tag_name*.
+
+        For a tag that a subroutine writes, the cone stops at the conditions of the rungs that
+        call the subroutine.
+        """
         if self._result is None:
             return set()
-        upstream_tags = self._result.graph.upstream_slice(tag_name)
-        return {
-            self._result.tag_to_addr_key[t]
-            for t in upstream_tags
-            if t in self._result.tag_to_addr_key
-        }
+        return self._addr_keys(self._result.dataview.upstream(tag_name).tags)
 
     def get_downstream_keys(self, tag_name: str) -> set[int]:
-        """Return addr_keys for all tags transitively downstream of tag_name."""
+        """Return the addr_keys of the tags in pyrung's ``DataView.downstream()`` of *tag_name*.
+
+        If *tag_name* is in the condition of a rung that calls a subroutine, the cone includes
+        every tag that the subroutine writes.
+        """
         if self._result is None:
             return set()
-        downstream_tags = self._result.graph.downstream_slice(tag_name)
-        return {
-            self._result.tag_to_addr_key[t]
-            for t in downstream_tags
-            if t in self._result.tag_to_addr_key
-        }
+        return self._addr_keys(self._result.dataview.downstream(tag_name).tags)
+
+    def _addr_keys(self, tag_names: Iterable[str]) -> set[int]:
+        """Return the addr_keys of the names in *tag_names* that the addr_key map holds."""
+        assert self._result is not None
+        tag_to_addr_key = self._result.tag_to_addr_key
+        return {tag_to_addr_key[name] for name in tag_names if name in tag_to_addr_key}
 
     def run_validation(self) -> ValidationReport | None:
         if self._result is None:
             return None
-        from pyrung.core.validation.config import CheckConfig, load_check_config
+        from pyrung.validation import CheckConfig, load_check_config
 
         if self.check_selection is not None:
             config = self.check_selection.load()

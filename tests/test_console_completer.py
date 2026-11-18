@@ -79,8 +79,9 @@ def _make_completer() -> ConsoleCompleter:
             "bounds": CommandSpec(
                 "bounds", (SlotSpec("choices", False, choices=("clear",)),), "data"
             ),
-            "prove": CommandSpec(
-                "prove",
+            # A made-up command with a choice, an expression and a flag.
+            "inspect": CommandSpec(
+                "inspect",
                 (
                     SlotSpec("choices", True, choices=("always", "never")),
                     SlotSpec("expression", True, label="expression"),
@@ -93,7 +94,7 @@ def _make_completer() -> ConsoleCompleter:
                 (SlotSpec("choices", True, choices=("install", "remove", "status")),),
                 "capture",
             ),
-            # Mirrors pyrung's declared grammar for `how` (see pyrung.dap.grammar):
+            # Mirrors pyrung's declared grammar for `how` (see pyrung.live.command_grammar):
             # comma-separated targets, plus the keyword-introduced avoid clause.
             "how": CommandSpec(
                 "how",
@@ -128,7 +129,7 @@ class TestComplete:
             "force",
             "continue",
             "bounds",
-            "prove",
+            "inspect",
             "harness",
             "how",
         }
@@ -176,7 +177,7 @@ class TestComplete:
         assert "clear" in r.candidates
 
     def test_choices_prefix(self, completer: ConsoleCompleter):
-        r = completer.complete("prove al", 8)
+        r = completer.complete("inspect al", 10)
         assert r.candidates == ["always"]
 
     def test_choices_all(self, completer: ConsoleCompleter):
@@ -202,7 +203,7 @@ class TestComplete:
         assert r.candidates == []
 
     def test_flag_slot_with_dash_prefix(self, completer: ConsoleCompleter):
-        r = completer.complete("prove always expr --", 20)
+        r = completer.complete("inspect always expr --", 22)
         assert r.slot_kind == "flag"
         assert "--settled" in r.candidates
         assert "--paced" in r.candidates
@@ -221,8 +222,8 @@ class TestComplete:
         assert r.slot_kind == "expression"
         assert r.candidates == ["Pump_On"]
 
-    def test_prove_expression_after_choices(self, completer: ConsoleCompleter):
-        r = completer.complete("prove always Mot", 16, _tag_provider)
+    def test_expression_after_choices(self, completer: ConsoleCompleter):
+        r = completer.complete("inspect always Mot", 18, _tag_provider)
         assert r.slot_kind == "expression"
         assert "Motor_Run" in r.candidates
 
@@ -293,12 +294,20 @@ class TestGrammarLoading:
         spec = c._specs["get"]
         assert spec.slots[0].kind == "tag"
 
-    def test_prove_has_choices(self):
+    def test_mode_has_choices(self):
         c = ConsoleCompleter()
         c.load_grammar()
-        spec = c._specs["prove"]
+        spec = c._specs["mode"]
         assert spec.slots[0].kind == "choices"
-        assert "always" in spec.slots[0].choices
+        assert "run" in spec.slots[0].choices
+
+    def test_no_verb_that_pyrung_dropped_is_offered(self):
+        """pyrung 0.17.0 dropped these console commands. The completer must not offer one."""
+        c = ConsoleCompleter()
+        c.load_grammar()
+        dropped = {"log", "note", "candidates", "accept", "deny", "suppress", "spec", "prove"}
+        assert dropped.isdisjoint(c._verbs)
+        assert dropped.isdisjoint(c._specs)
 
     def test_how_slots_all_offer_tags(self):
         """Every `how` slot — target and avoid — must complete tags.

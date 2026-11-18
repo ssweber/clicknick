@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pyrung.click.tag_map import comment_needs_upgrade, old_form_tokens, upgrade_comment
+from pyrung.click import comment_needs_upgrade, old_form_tokens, upgrade_comment
 
 from .annotation_service import AnnotationService
 

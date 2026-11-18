@@ -7,12 +7,14 @@ so these tests focus on the mapping and query layers using a mock graph.
 from __future__ import annotations
 
 import shutil
+from dataclasses import dataclass, replace
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from pyclickplc.addresses import get_addr_key, iter_address_slots, parse_address
-from pyclickplc.banks import DataType
+from pyclickplc.banks import MEMORY_TYPE_TO_DATA_TYPE, DataType
+from pyrung import Program
 from pyrung.click import SystemNicknameRepair, SystemNicknameRepairRequired
 
 from clicknick.models.address_row import AddressRow
@@ -56,7 +58,7 @@ class TestBuildTagAddrKeyMap:
 
     def test_names_are_the_tags_pyrung_reads_from_the_snapshot(self, tmp_path):
         """The tag map names each tag as the installed pyrung does, whatever it does with spaces."""
-        from pyrung.click.tag_map import TagMap
+        from pyrung.click import TagMap
 
         rows = {
             get_addr_key("C", 1): AddressRow(memory_type="C", address=1, nickname="Pump "),
@@ -120,6 +122,73 @@ class TestBuildTagAddrKeyMap:
         assert len(key_to_tag) == sum(1 for _ in iter_address_slots())
         assert len(tag_to_key) == len(key_to_tag)
 
+    def test_pyrung_reads_a_row_at_every_address_that_the_snapshot_can_hold(self, tmp_path):
+        """pyrung refuses a row whose Address or Data Type CLICK would not write.
+
+        Each address here has its bank's type, as CLICK's SC_.mdb gives it. The comments keep
+        a space or a tab at their ends, and hold a comma, a double quote and a line break. The
+        Text values are a space, a comma, a double quote and a tab.
+        """
+        from pyrung.click import TagMap
+
+        comments = [" lead", "trail ", "\tTab", "a,b", 'say "hi"', "line1\r\nline2", ""]
+        texts = [" ", ",", '"', "\t", "a", ""]
+        rows = {}
+        for n, (memory_type, address) in enumerate(iter_address_slots()):
+            data_type = MEMORY_TYPE_TO_DATA_TYPE[memory_type]
+            rows[get_addr_key(memory_type, address)] = AddressRow(
+                memory_type,
+                address,
+                nickname=f"Tag{n}",
+                comment=comments[n % len(comments)],
+                data_type=data_type,
+                initial_value=texts[n % len(texts)] if data_type == DataType.TXT else "",
+            )
+
+        tag_map = TagMap.from_nickname_file(_write_nicknames_csv(tmp_path, rows))
+
+        names = {
+            get_addr_key(*parse_address(entry.hardware.name)): entry.logical.name
+            for entry in tag_map.tags()
+        }
+        assert names.items() <= {key: row.nickname for key, row in rows.items()}.items()
+        # pyrung keeps its own names for some of CLICK's SC and SD system points, and lists no tag
+        # there.
+        assert {rows[key].memory_type for key in rows.keys() - names.keys()} == {"SC", "SD"}
+
+
+@dataclass(frozen=True)
+class _FakeDataView:
+    """The part of pyrung's ``DataView`` that AnalysisService queries."""
+
+    roles: dict[str, str]
+    cones: dict[str, dict[str, frozenset[str]]]
+    tags: frozenset[str] = frozenset()
+
+    def _of(self, tags) -> _FakeDataView:
+        return replace(self, tags=frozenset(tags))
+
+    def _role(self, role: str) -> _FakeDataView:
+        return self._of(tag for tag in self.tags if self.roles[tag] == role)
+
+    def inputs(self) -> _FakeDataView:
+        return self._role("input")
+
+    def terminals(self) -> _FakeDataView:
+        return self._role("terminal")
+
+    def pivots(self) -> _FakeDataView:
+        return self._role("pivot")
+
+    def isolated(self) -> _FakeDataView:
+        return self._role("isolated")
+
+    def upstream(self, tag: str) -> _FakeDataView:
+        return self._of(self.cones["upstream"].get(tag, frozenset()))
+
+    def downstream(self, tag: str) -> _FakeDataView:
+        return self._of(self.cones["downstream"].get(tag, frozenset()))
+
 
 def _make_service_with_mock_graph(
     tag_roles: dict[str, str],
@@ -127,26 +196,18 @@ def _make_service_with_mock_graph(
     upstream: dict[str, frozenset[str]] | None = None,
     downstream: dict[str, frozenset[str]] | None = None,
 ) -> AnalysisService:
-    """Create an AnalysisService with a mock ProgramGraph."""
-    from pyrung.core.analysis.pdg import TagRole
-
-    role_map = {
-        "input": TagRole.INPUT,
-        "terminal": TagRole.TERMINAL,
-        "pivot": TagRole.PIVOT,
-        "isolated": TagRole.ISOLATED,
-    }
-
-    graph = MagicMock()
-    graph.tag_roles = {tag: role_map[role] for tag, role in tag_roles.items()}
-    graph.upstream_slice = lambda t: (upstream or {}).get(t, frozenset())
-    graph.downstream_slice = lambda t: (downstream or {}).get(t, frozenset())
+    """Create an AnalysisService whose program's DataView is a fake."""
+    dataview = _FakeDataView(
+        roles=dict(tag_roles),
+        cones={"upstream": upstream or {}, "downstream": downstream or {}},
+        tags=frozenset(tag_roles),
+    )
 
     addr_key_to_tag = {v: k for k, v in tag_to_addr_key.items()}
 
     svc = AnalysisService()
     svc._result = AnalysisResult(
-        graph=graph,
+        dataview=dataview,
         program=MagicMock(),
         tag_to_addr_key=dict(tag_to_addr_key),
         addr_key_to_tag=addr_key_to_tag,
@@ -225,6 +286,53 @@ class TestAnalysisServiceGraphQueries:
             upstream={"B": frozenset({"A", "Unmapped"})},
         )
         assert svc.get_upstream_keys("B") == {100}
+
+
+_SUBROUTINE_PROGRAM = """from pyrung import Bool, Program, call, out, rung, subroutine
+
+with Program(strict=False) as logic:
+    with rung(Bool("Permit")):
+        out(Bool("Enable"))
+    with rung(Bool("Enable")):
+        call("Fill")
+    with subroutine("Fill"):
+        with rung(Bool("Level")):
+            out(Bool("Valve"))
+"""
+
+
+class TestAnalysisServiceCallSiteCones:
+    """``upstream:`` and ``downstream:`` stop at the rung that calls a subroutine."""
+
+    @pytest.fixture()
+    def svc(self) -> AnalysisService:
+        namespace: dict[str, object] = {}
+        exec(compile(_SUBROUTINE_PROGRAM, "<program>", "exec"), namespace)  # noqa: S102
+        program = namespace["logic"]
+        assert isinstance(program, Program)
+        tag_to_addr_key = {"Permit": 1, "Enable": 2, "Level": 3, "Valve": 4}
+        svc = AnalysisService()
+        svc._result = AnalysisResult(
+            dataview=program.dataview(),
+            program=program,
+            tag_to_addr_key=tag_to_addr_key,
+            addr_key_to_tag={key: tag for tag, key in tag_to_addr_key.items()},
+        )
+        return svc
+
+    def test_upstream_of_a_subroutine_write_stops_at_the_call_condition(self, svc):
+        # Enable is the call rung's condition. Permit, which writes Enable, is left out.
+        assert svc.get_upstream_keys("Valve") == {2, 3}
+
+    def test_downstream_of_a_call_condition_reaches_what_the_subroutine_writes(self, svc):
+        assert svc.get_downstream_keys("Enable") == {4}
+        # Only the tag that you start from crosses into the subroutine.
+        assert svc.get_downstream_keys("Permit") == {2}
+
+    def test_roles_come_from_the_dataview(self, svc):
+        assert svc.get_role_keys("input") == {1, 3}
+        assert svc.get_role_keys("output") == {4}
+        assert svc.known_tag_names() == frozenset({"Permit", "Enable", "Level", "Valve"})
 
 
 class TestAnalysisServiceLifecycle:
@@ -308,7 +416,7 @@ class TestAnalysisStatus:
     def test_a_build_refusing_an_old_comment_form_asks_for_upgrade_project(
         self, monkeypatch, tmp_path, wrapped
     ):
-        from pyrung.click.tag_map import OldCommentFormError
+        from pyrung.click import OldCommentFormError
 
         svc = AnalysisService()
 
@@ -546,8 +654,7 @@ class TestBuildValidation:
             lambda *_a, **_k: "from pyrung import Program\nwith Program() as logic:\n    pass\n",
         )
         monkeypatch.setattr(
-            "pyrung.core.analysis.build_program_graph",
-            MagicMock(side_effect=ValueError("unsupported instruction")),
+            Program, "dataview", MagicMock(side_effect=ValueError("unsupported instruction"))
         )
         project = tmp_path / "workspace"
         regenerate = MagicMock(return_value=project)
@@ -693,7 +800,7 @@ class TestProjectExport:
     def _ready_service(project_dir):
         svc = AnalysisService()
         svc._result = AnalysisResult(
-            graph=MagicMock(),
+            dataview=MagicMock(),
             program=MagicMock(),
             project_dir=project_dir,
         )

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from pyrung.click.tag_map import TagMeta, format_tag_meta
-from pyrung.core import PHYSICAL_KEYS, PHYSICAL_KINDS
+from pyrung import PHYSICAL_KEYS, PHYSICAL_KINDS
+from pyrung.click import TagMeta, format_tag_meta
 
 from clicknick.services.physical_response import (
     cli_option,

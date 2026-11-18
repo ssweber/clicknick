@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pyclickplc.blocks import format_block_tag, parse_block_tag
-from pyrung.click.tag_map import TagMeta, format_tag_meta, parse_tag_meta
+from pyrung.click import TagMeta, format_tag_meta, parse_tag_meta
 
 from .physical_response import meta_response, response_check
 

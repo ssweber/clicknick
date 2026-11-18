@@ -9,35 +9,15 @@ from typing import TYPE_CHECKING
 from .project_workspace import NO_WINDOW, headless_python, project_environment
 
 if TYPE_CHECKING:
-    from pyrung.core.validation import FindingDisplay, ValidationReport
-
-
-def group_validation_findings(
-    report: ValidationReport | None,
-) -> dict[str, list[FindingDisplay]]:
-    """Group findings exactly as the Check Program window does."""
-    from pyrung.core.validation.stuck_bits import StuckBitFinding, StuckBitReport
-
-    grouped: dict[str, list[FindingDisplay]] = {}
-    if report is None:
-        return grouped
-
-    stuck: list[StuckBitFinding] = []
-    for finding in report:
-        if isinstance(finding, StuckBitFinding):
-            stuck.append(finding)
-        else:
-            grouped.setdefault(finding.code, []).append(finding.display)
-    for group in StuckBitReport(findings=tuple(stuck)).grouped():
-        grouped.setdefault(group.code, []).append(group.display)
-    return grouped
+    from pyrung.validation import ValidationReport
 
 
 def format_validation_report(report: ValidationReport) -> str:
     """Render Check Program findings as compact, agent-readable text."""
-    from pyrung.core.validation import ordered_rules
+    from pyrung.validation import ordered_rules
 
-    grouped = group_validation_findings(report)
+    # The Check Program window groups the findings the same way.
+    grouped = report.grouped()
     checked = getattr(report, "checked_rules", None)
     if not grouped:
         if checked is None:
@@ -122,14 +102,14 @@ def run_project_check(project_dir: Path) -> str:
 def _worker() -> None:
     """Import the proposal and print its validation report."""
     from plc.main import logic
-    from pyrung.core.program import Program
+    from pyrung import Program
 
     if not isinstance(logic, Program):
         raise TypeError(
             "src/plc/main.py must define logic as a pyrung Program. It defines a "
             f"{type(logic).__name__}."
         )
-    from pyrung.core.validation.config import CheckConfig, load_check_config
+    from pyrung.validation import CheckConfig, load_check_config
 
     config = load_check_config(Path.cwd() / "pyproject.toml") or CheckConfig()
     print(format_validation_report(logic.check(select=set(config.resolve()))))

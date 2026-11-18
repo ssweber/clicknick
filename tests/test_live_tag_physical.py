@@ -84,7 +84,7 @@ def test_clear_physical_drops_every_response_key():
 
 
 def test_help_lists_every_option():
-    from pyrung.core import PHYSICAL_KEYS
+    from pyrung import PHYSICAL_KEYS
 
     text = dispatch(DispatchContext(), "help")
     for name in PHYSICAL_KEYS:

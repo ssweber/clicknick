@@ -239,7 +239,7 @@ def _generated_workspace(tmp_path, monkeypatch, rows, *, project_ini: str | None
     click_folder.mkdir()
     if project_ini is not None:
         (click_folder / "Project.ini").write_text(project_ini, encoding="utf-8")
-    _graph, _program, project, _tag_maps = analysis_service._build_graph(
+    _dataview, _program, project, _tag_maps = analysis_service._build_graph(
         click_folder, click_folder / "SC_.mdb", tmp_path / "workspace"
     )
     store = AddressStore(RowsDataSource(rows))

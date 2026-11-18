@@ -11,17 +11,17 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from pyrung import Physical
-from pyrung.click.tag_map import TagMeta
-from pyrung.core import (
+from pyrung import (
     PHYSICAL_KEYS,
     PHYSICAL_KINDS,
     FeedbackType,
+    Physical,
     PhysicalKey,
     PhysicalKind,
     kind_of_keys,
     physical_kind,
 )
+from pyrung.click import TagMeta
 
 #: A response as a comment writes it, in table order, such as
 #: ``(("on_delay", "2s"), ("toggle", True))``. It is a tuple, so a link that holds one stays

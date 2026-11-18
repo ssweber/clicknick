@@ -842,11 +842,8 @@ class ClickNickApp:
             )
             return
 
-        from .services.program_check import group_validation_findings
-
-        # The GUI and clicknick-cli use the same finding grouping and pyrung
-        # presentation model; only their renderers differ.
-        grouped = group_validation_findings(report)
+        # clicknick-cli groups the findings the same way, with pyrung's grouped().
+        grouped = report.grouped() if report is not None else {}
 
         from .views.analysis_report_window import AnalysisReportData
 

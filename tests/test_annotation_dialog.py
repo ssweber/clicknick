@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from pyrung.click.tag_map import TagMeta
-from pyrung.core import PHYSICAL_KINDS
+from pyrung import PHYSICAL_KINDS
+from pyrung.click import TagMeta
 
 tk = pytest.importorskip("tkinter")
 
@@ -86,7 +86,7 @@ def test_a_text_tag_shows_no_response_row(open_dialog):
 
 
 def test_a_field_tooltip_names_the_key():
-    from pyrung.core import PHYSICAL_KEYS
+    from pyrung import PHYSICAL_KEYS
 
     from clicknick.services.physical_response import key_tooltip
 

@@ -18,6 +18,14 @@ The tests live in `tests/`, with `tests/ladder/`. pytest's `testpaths` lists `sr
 - `test_store_boundaries.py` checks three source rules. Only the store writes its layers. Nothing outside the
   store uses `_current_session`. `services/`, `data/` and `simulation_session.py` never import tkinter. A fourth
   test checks that the layer-write detector catches each form of write.
+- `test_pyrung_surface.py` checks that ClickNick imports pyrung only from its public modules: `pyrung`,
+  `pyrung.click`, `pyrung.validation`, `pyrung.live` and `pyrung.circuitpy`. It reads every import in `src`,
+  `tests` and `devtools`. It also reads the `from pyrung... import` and `import pyrung...` lines in program
+  text inside a string, and any other string that names an internal pyrung module, such as a
+  `monkeypatch.setattr` target. Each name must be in its module's `__all__`. `USED_NAMES` lists every pyrung
+  name that ClickNick uses. If a pyrung release drops one of them, this test fails. A test checks that
+  `USED_NAMES` lists exactly the names that the code imports. When you import a pyrung name or stop using one,
+  change `USED_NAMES` to match.
 - `test_data_session.py` tests the window lifecycle and the save prompts when data is closed or replaced.
 - `test_mutable_row_builder.py` tests the builder and its `changes()` output.
 - `test_address_model.py` covers address keys, the address range of each memory type, nickname, comment and

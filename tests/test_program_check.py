@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from pyrung.core.validation import FindingDisplay, ValidationReport
+from pyrung.validation import FindingDisplay, ValidationReport
 
 from clicknick.live.dispatch import DispatchContext, dispatch
 from clicknick.services.program_check import format_validation_report, run_project_check
@@ -100,7 +100,7 @@ def test_dispatch_check_lints_editable_project(tmp_path, monkeypatch) -> None:
 
 
 def test_dispatch_check_refreshes_app_defaults_before_running(tmp_path, monkeypatch):
-    from pyrung.core.validation.config import CheckConfig, load_check_config
+    from pyrung.validation import CheckConfig, load_check_config
 
     from clicknick.services.program_check_selection import ProgramCheckSelection
 

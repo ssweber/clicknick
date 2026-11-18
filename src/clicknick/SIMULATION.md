@@ -156,18 +156,19 @@ A PLC data file change and a Modbus port change wait (`_restart_due`). If one is
 relaunch comes once the write is answered, unless the simulation relaunched meanwhile. If one is seen while a
 build runs, the relaunch comes once the build ends.
 
-Before a launch, the session reads the PLC data file (`_plc_data_problem`). pyclickplc raises
-`PlcDataReadError` when it cannot tell what some Text addresses hold. This can happen when a Text comma is next
-to an empty Text address. The session then does not launch, and it names the addresses in its own message.
-pyrung 0.16.0 does not catch this error at launch, so the session checks first. The session leaves any other
-failure to read the file to pyrung's launch, which reports it.
+When you pick the PLC data file, when the watch tick sees it change, and at Start when it changed since the
+last read, the session sets the switches and analog inputs from it (`_adopt_snapshot`). A Restart reads it
+only through Start, when it changed. pyclickplc raises `PlcDataReadError` when it cannot tell what some Text
+addresses hold. The error's `values` has every other address, and its `addresses` lists the unclear ones. The
+session sets the switches from `values`. Once the next launch succeeds (`_on_launched`), the session's notice
+names `addresses`, as an error message. A launch that fails shows no such notice. At launch, pyrung 0.17.0
+skips the same addresses and loads the rest. It names them in an `output` event and in the launch response's
+`skippedAddresses`. The session ignores both, so you read only ClickNick's notice. The session leaves any
+other failure to read the file to pyrung's launch, which reports it.
 
-- If no simulation runs, the start fails. The watch tick does not restart a failed simulation when the file
-  changes, so the message tells the user to save the file again and click Retry. `start()` records the file's
-  modification time and reads a changed file into the switches (`_plc_data_changed`). So the next watch tick
-  does not restart the simulation a second time.
-- If a simulation runs, Restart refuses, and that simulation goes on. When the user saves the file again, the
-  watch tick restarts the simulation from it.
+`start()` records the file's modification time and reads a changed file into the switches
+(`_plc_data_changed`). So the next watch tick does not restart the simulation a second time. When the user
+saves the file again, the watch tick restarts the simulation from it.
 
 A workspace move relaunches through `relaunch`, without Restart's check. So it stops the running simulation
 even when the moved workspace cannot run. It waits out the build.

@@ -3,7 +3,7 @@
 Pure Python — no tkinter dependency. The grammar comes from pyrung at runtime, so
 clicknick stays in sync automatically when pyrung adds or changes commands.
 
-We read ``pyrung.dap.grammar.command_grammar()`` — the published, machine-readable
+We read ``pyrung.live.command_grammar()`` — the published, machine-readable
 contract, which pyrung tests against its own usage strings. It states what usage
 prose cannot: which clauses are keyword-introduced (such as ``avoid``), and which
 slots take comma-separated conjuncts (``how A, B``).
@@ -102,7 +102,7 @@ _PYRUNG_KINDS: dict[str, SlotKind] = {
 
 
 def _from_pyrung_slot(slot: object) -> SlotSpec:
-    """Convert a ``pyrung.dap.grammar.Slot`` into our :class:`SlotSpec`."""
+    """Convert a slot of ``pyrung.live.command_grammar()`` into our :class:`SlotSpec`."""
     kind = _PYRUNG_KINDS.get(getattr(slot, "kind", ""), "freeform")
     repeat = bool(getattr(slot, "repeat", False))
     if kind == "tag" and repeat:
@@ -138,11 +138,11 @@ class ConsoleCompleter:
         return self._loaded
 
     def load_grammar(self) -> None:
-        """Load the console grammar from pyrung's published ``pyrung.dap.grammar``."""
+        """Load the console grammar from ``pyrung.live.command_grammar()``."""
         if self._loaded:
             return
 
-        from pyrung.dap.grammar import command_grammar
+        from pyrung.live import command_grammar
 
         for verb, cg in command_grammar().items():
             self._specs[verb] = CommandSpec(

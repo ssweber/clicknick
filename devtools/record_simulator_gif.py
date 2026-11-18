@@ -72,7 +72,6 @@ from pyrung.click import (
     ladder_to_pyrung_project,
     pyrung_to_ladder,
 )
-from pyrung.core.analysis import build_program_graph
 
 from clicknick.app import ICON_PNG_BASE64  # Also makes the process DPI-aware, as the app is.
 from clicknick.services.analysis_service import (
@@ -263,7 +262,7 @@ def build_mock_project(root: Path) -> MockProject:
     tag_to_key, key_to_tag = _build_tag_addr_key_map(rows)
     analysis = AnalysisService()
     analysis._result = AnalysisResult(
-        graph=build_program_graph(generated),
+        dataview=generated.dataview(),
         program=generated,
         project_dir=project_dir,
         tag_to_addr_key=tag_to_key,

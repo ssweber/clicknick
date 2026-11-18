@@ -1,7 +1,7 @@
 """Show the Simulator's command console, a bottom pane that pops out into its own window.
 
 The panel observes the connection's SimulationSession like the rest of the Simulator. It
-sends commands to the pyrung LiveServer through ``pyrung.dap.live.send_command()``. The
+sends commands to the pyrung LiveServer through ``pyrung.live.send_command()``. The
 Simulator owns the transcript and the command history, so both survive when you move the
 console between its pane and its own window. Start, Retry and the PLC data file are on the
 Simulator's toolbar and banners, not here.
@@ -103,7 +103,7 @@ class ConsolePanel(ttk.Frame):
         on_progress: Callable[[str], None] | None = None,
     ) -> tuple[bool, str]:
         try:
-            from pyrung.dap.live import send_command
+            from pyrung.live import send_command
 
             return send_command(self._simulation.session_name, command, on_progress=on_progress)
         except FileNotFoundError:

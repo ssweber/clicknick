@@ -57,7 +57,7 @@ def _comment(store: AddressStore, bank: str, address: int) -> str:
 
 
 def test_pyrung_refuses_an_old_form_and_names_the_upgrade():
-    from pyrung.click.tag_map import OldCommentFormError
+    from pyrung.click import OldCommentFormError
 
     with pytest.raises(OldCommentFormError, match="Upgrade Project") as raised:
         AnnotationService.decompose_comment(ENCODER)

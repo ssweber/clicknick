@@ -26,7 +26,7 @@ How to use it:
 5. ConnectionSession owns the window and project (done)
 6. Split ClickNickApp (done)
 7. Onto pyclickplc's readers (done)
-8. Onto pyrung's named imports (waits on pyrung's deletions release)
+8. Onto pyrung's named imports (done, except the rule rename at the joint laddercodec release)
 9. The undecoded marker (waits on laddercodec, pyrung)
 10. Recording, ClickNick side (waits on pyrung's recording core and console commands for every change)
 
@@ -411,52 +411,36 @@ Left over (nothing): ClickNick's `read_mdb_csv` reads a blank DataType as BIT. T
 (`mdb_operations`) reads it as the bank's type. Nothing shows that CLICK writes a blank DataType. If it did,
 Save As CSV would write a file that ClickNick then refuses.
 
-## 8. Onto pyrung's named imports (waits on pyrung's deletions release)
+## 8. Onto pyrung's named imports (done, except the rule rename)
 
-Plan 3. ClickNick imports these internal paths today. Move each onto pyrung's named home. Add a test that
-fails when one disappears:
+Plan 3. ClickNick moved to pyrung 0.17.0 and imports every pyrung name from `pyrung`, `pyrung.click`,
+`pyrung.validation` or `pyrung.live`.
 
-- `pyrung.click.tag_map`
-- `pyrung.core` (`physical_response.py`: PHYSICAL_KEYS, FeedbackType and more)
-- `pyrung.core.program.Program`
-- `pyrung.core.analysis.build_program_graph`
-- `pyrung.core.analysis.pdg`
-- `pyrung.core.validation` and its `config`, `registry`, `report`, `stuck_bits` and `ordered_rules`
-- `pyrung.dap.live`, `pyrung.dap.grammar`, `pyrung.dap.protocol`, `pyrung.dap.adapter` (some only in tests)
+What it changed:
+- `program.dataview()` replaces `build_program_graph`, and `AnalysisResult.dataview` replaces `graph`.
+  `ValidationReport.grouped()` replaces ClickNick's `group_validation_findings`.
+- `tests/test_pyrung_surface.py` fails when code imports from a pyrung module that is not public, or when a name
+  that ClickNick uses leaves its module's `__all__`. It is a test and not a ruff rule, because ruff's banned-api
+  rule cannot read the program text that the tests hold in strings.
+- In the tests, the `pyrung_dap` fixture launches pyrung through DapService's subprocess launch in place of
+  `_adapter_dap_class`. The `_parsers` asserts in `test_add_block_dialog` are gone. Test program strings use
+  `from pyrung import`.
+- `upstream:` and `downstream:` stop at the call site, as Sam ruled on 2026-11-18 ("the call site is the
+  enable"). For a tag written in a subroutine, `upstream:` takes the conditions of every rung that calls it, at
+  every level of the call chain, and not those conditions' own upstream. A tag in a call rung's condition
+  reaches everything that the subroutine writes, and onward, only when it is the starting tag. The CHANGELOG
+  says so for the filter box and the Console.
+- The Simulator starts from a PLC data file with unclear Text values. pyrung skips those addresses, and
+  ClickNick's notice names them. ClickNick's refusal before launch (`_plc_data_problem`) is gone.
+- `dap_service.py` still matches pyrung's `Unsupported command` text, which 0.17.0 kept. That match goes with
+  the console commands for every change (item 10).
 
-`dap_service.py` matches on a pyrung error string. That match goes with the console commands for every change
-(item 10).
-
-pyrung's public-surface pass settles where each import goes. bobby's list is in
-`pyrung-wt/buildbot/jobs/public-surface/INVENTORY.md`:
-
-- `pyrung.click.tag_map` moves to `pyrung.click`, the physical table to `pyrung`, and `Program` to
-  `pyrung.Program`.
-- `build_program_graph`, `ProgramGraph` and `TagRole` give way to `program.dataview()` and `pyrung.DataView`.
-- `pyrung.core.validation` becomes one public module, `pyrung.validation` (Sam's choice), with `report.grouped()`
-  and `ordered_rules()`. A CLICK program is checked one way, `mapping.validate(logic)`. `logic.validate(dialect)`
-  and `validate_click_program` go. bobby says ClickNick uses neither; check that at the move.
-- `pyrung.dap.live` and `pyrung.dap.grammar` move to `pyrung.live`. `python -m pyrung.dap` stays.
-- In the tests, `_adapter_dap_class` moves to DapService's subprocess launch, the `_parsers` asserts in
-  `test_add_block_dialog` go, and test program strings use `from pyrung import`.
-
-What a user sees at the move:
-
-- **`upstream:` and `downstream:` stop at the call site.** Sam ruled it on 2026-11-18 ("the call site is the
-  enable"). The planner ruled the downstream half under his "make it not surprising". Both come from `DataView`
-  with no argument.
-  - For a tag written in a subroutine, `upstream:` takes the conditions of every rung that calls it, at every
-    level of the call chain. It doesn't follow those conditions' own upstream, unless the cone reads them too. So
-    `upstream:` gets narrower.
-  - `downstream:` is the exact reverse: X is in `upstream:Y` exactly when Y is in `downstream:X`. A tag in a call
-    rung's condition reaches everything the subroutine writes and onward, only when it is the starting tag. So
-    `downstream:` gets wider for those tags and stays the same for every other tag.
-  - Both go in the CHANGELOG.
-- **A saved check selection with an old rule name.** `load_check_config` raises on a rule code it doesn't know.
-  ClickNick meets it at `ProgramCheckSelection.load()` and `sync()` (`program_check_selection.py:48` and
-  `:61`). At the joint release the field-rule codes become laddercodec's names, so every saved selection of
-  those rules holds old names. ClickNick catches the error at those two calls, drops the names it doesn't know,
-  keeps the rest, writes the workspace's `pyproject.toml` without them, and says once which names it dropped.
+Left over (waits on the joint laddercodec release): a saved check selection with an old rule name.
+`load_check_config` raises on a rule code it doesn't know. ClickNick meets it at `ProgramCheckSelection.load()`
+and `sync()` (`program_check_selection.py:48` and `:61`). At the joint release the field-rule codes become
+laddercodec's names, so every saved selection of those rules holds old names. ClickNick catches the error at
+those two calls, drops the names it doesn't know, keeps the rest, writes the workspace's `pyproject.toml`
+without them, and says once which names it dropped.
 
 ## 9. The undecoded marker (waits on laddercodec, pyrung)
 

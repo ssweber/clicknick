@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 from ..services.program_check_preferences import ProgramCheckPreferences
 
 if TYPE_CHECKING:
-    from pyrung.core.validation import FindingDisplay
+    from pyrung.validation import FindingDisplay
 
 # Severity -> (text colour, leading glyph).  Severities come from pyrung's
 # registry; this palette is the only display knowledge clicknick owns.
@@ -77,7 +77,7 @@ def _rule_rows(grouped: dict[str, list[FindingDisplay]]) -> list[tuple[str, str,
     whose code the installed pyrung doesn't know is appended — never dropped —
     with the raw code as its title. Future severities use warning styling.
     """
-    from pyrung.core.validation import ordered_rules
+    from pyrung.validation import ordered_rules
 
     specs = ordered_rules()
     known = {s.code for s in specs}
