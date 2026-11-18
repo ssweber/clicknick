@@ -18,7 +18,6 @@ WM_NULL = 0x0000
 WM_COMMAND = 0x0111
 BM_CLICK = 0x00F5
 SMTO_ABORTIFHUNG = 0x0002
-GW_OWNER = 4
 _MESSAGE_TIMEOUT_MS = 5000
 _ULONG_PTR = ctypes.c_size_t
 
@@ -79,7 +78,6 @@ class Win32ClickDesktop:
                             hwnd=hwnd,
                             cls=win32gui.GetClassName(hwnd),
                             title=win32gui.GetWindowText(hwnd),
-                            owner=win32gui.GetWindow(hwnd, GW_OWNER),
                             enabled=bool(win32gui.IsWindowEnabled(hwnd)),
                         )
                     )

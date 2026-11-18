@@ -15,7 +15,6 @@ class Window:
     hwnd: int
     cls: str
     title: str
-    owner: int  # GW_OWNER, 0 for none
     enabled: bool
 
 

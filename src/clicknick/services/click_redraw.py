@@ -16,9 +16,7 @@ fake in tests). It starts only while CLICK shows its main window alone. So any w
 CLICK shows afterwards comes from the command. The redraw presses only Cancel in the Open
 dialog, and it leaves any other window to the user.
 
-CLICK makes the active window the owner of the Open dialog. When another program is active,
-the dialog has no owner. So the redraw does not look at a window's owner. Windows' own
-strings ("Open", "Cancel") differ by language. So the redraw recognises the dialog by
+Windows' own strings ("Open", "Cancel") differ by language. So the redraw recognises the dialog by
 CLICK's three import modes and by control ids. It blocks for up to about 20 seconds. Run
 it off the Tk thread.
 """

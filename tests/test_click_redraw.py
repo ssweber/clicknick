@@ -4,9 +4,6 @@ The fake follows what CLICK 2.60, 3.43, 3.71, 3.92 and 4.00 showed for File > Im
 Nickname in a live check (2026-11-18). CLICK shows an Open dialog with three import modes,
 the File name edit (1148 in ComboBox 1148), Open (1) and Cancel (2). A BM_CLICK on Cancel
 closes the dialog, and CLICK shows no other window.
-
-CLICK's main window owns the Open dialog only if CLICK was active at the command. When
-another program was active, the dialog had no owner.
 """
 
 from __future__ import annotations
@@ -46,8 +43,6 @@ class FakeClick:
         self.open_shown = False
         self.opens_dialog = True
         self.open_title = "Open"
-        # The owner of the Open dialog: CLICK's main window if CLICK was active, else none
-        self.open_owner = MAIN
         self.button_texts = {OPEN_BUTTON: "&Open", CANCEL: "Cancel"}
         self.radios = dict(MODES)
         self.has_file_name = True
@@ -59,11 +54,11 @@ class FakeClick:
 
     def windows(self, pid: int) -> list[Window]:
         assert pid == PID
-        found = [Window(MAIN, "Afx:main", "CLICK Programming Software", 0, self.main_enabled)]
+        found = [Window(MAIN, "Afx:main", "CLICK Programming Software", self.main_enabled)]
         found += self.extra
         if self.open_shown:
-            found.append(Window(OPEN, "#32770", self.open_title, self.open_owner, True))
-        found.append(Window(950, "tooltips_class32", "", 0, True))  # Let be
+            found.append(Window(OPEN, "#32770", self.open_title, True))
+        found.append(Window(950, "tooltips_class32", "", True))  # Let be
         return found
 
     def controls(self, hwnd: int) -> list[Control]:
@@ -130,17 +125,6 @@ def test_windows_own_strings_in_another_language_do_not_matter() -> None:
     assert click.pressed == [CANCEL]
 
 
-def test_the_redraw_runs_when_click_is_not_active() -> None:
-    """With another program active, CLICK's Open dialog has no owner."""
-    click = FakeClick()
-    click.open_owner = 0
-
-    result = _redraw(click)
-
-    assert result.outcome is RedrawOutcome.REFRESHED
-    assert click.pressed == [CANCEL]
-
-
 def test_an_open_dialog_that_shows_after_a_moment_is_waited_for() -> None:
     """Live, the dialog showed 0.15 to 0.26 s after the command."""
     click = FakeClick()
@@ -188,11 +172,11 @@ def test_import_modes_that_show_seconds_after_the_command_are_waited_for() -> No
     ("setup", "detail"),
     [
         (
-            lambda c: c.extra.append(Window(600, "#32770", "Out", MAIN, True)),
+            lambda c: c.extra.append(Window(600, "#32770", "Out", True)),
             'CLICK shows "Out"',
         ),
         (
-            lambda c: c.extra.append(Window(600, "TfrmPicker", "", MAIN, True)),
+            lambda c: c.extra.append(Window(600, "TfrmPicker", "", True)),
             "CLICK shows TfrmPicker",
         ),
         (lambda c: setattr(c, "main_enabled", False), "CLICK's window is disabled"),
@@ -226,14 +210,13 @@ def test_a_closed_click_window_fails_before_the_command() -> None:
 # -- What is left for the user -----------------------------------------------------------
 
 
-@pytest.mark.parametrize("owner", [MAIN, 0], ids=["owned by CLICK", "no owner"])
-def test_an_unexpected_box_instead_of_the_open_dialog_is_left_alone(owner) -> None:
+def test_an_unexpected_box_instead_of_the_open_dialog_is_left_alone() -> None:
     click = FakeClick()
     click.opens_dialog = False
 
     def box_instead(hwnd: int, command_id: int) -> None:
         click.commands.append((hwnd, command_id))
-        click.extra.append(Window(600, "#32770", "CLICK Programming Software", owner, True))
+        click.extra.append(Window(600, "#32770", "CLICK Programming Software", True))
 
     click.post_command = box_instead
 
@@ -246,14 +229,13 @@ def test_an_unexpected_box_instead_of_the_open_dialog_is_left_alone(owner) -> No
     assert click.time < click_redraw.OPEN_TIMEOUT + 1
 
 
-@pytest.mark.parametrize("owner", [MAIN, 0], ids=["owned by CLICK", "no owner"])
-def test_a_window_of_no_known_kind_fails_the_redraw_at_once(owner) -> None:
+def test_a_window_of_no_known_kind_fails_the_redraw_at_once() -> None:
     click = FakeClick()
     real_post = click.post_command
 
     def warning_too(hwnd: int, command_id: int) -> None:
         real_post(hwnd, command_id)
-        click.extra.append(Window(600, "TMessageForm", "Warning", owner, True))
+        click.extra.append(Window(600, "TMessageForm", "Warning", True))
 
     click.post_command = warning_too
 
@@ -314,7 +296,7 @@ def test_a_second_dialog_beside_the_open_dialog_leaves_both_for_the_user() -> No
 
     def two_dialogs(hwnd: int, command_id: int) -> None:
         real_post(hwnd, command_id)
-        click.extra.append(Window(600, "#32770", "Open", OPEN, True))
+        click.extra.append(Window(600, "#32770", "Open", True))
 
     click.post_command = two_dialogs
 
@@ -332,7 +314,7 @@ def test_a_window_after_cancel_is_left_for_the_user() -> None:
 
     def press(hwnd: int) -> None:
         real_press(hwnd)
-        click.extra.append(Window(400, "#32770", "Import Database", MAIN, True))
+        click.extra.append(Window(400, "#32770", "Import Database", True))
 
     click.press = press
 

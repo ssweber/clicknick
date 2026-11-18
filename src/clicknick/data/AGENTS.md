@@ -88,7 +88,7 @@ SC_.mdb stays as it was. CLICK then counts the project as changed.
 
 The redraw starts only while CLICK shows its main window alone, enabled and answering. So every window that
 CLICK shows after the command comes from the import. The redraw recognises the Open dialog by its three import
-modes and its control ids, never by Windows' own strings or by the dialog's owner. Until `OPEN_TIMEOUT`
+modes and its control ids, never by Windows' own strings. Until `OPEN_TIMEOUT`
 passes, it treats a dialog that does not show the modes yet as the Open dialog still being built. A window of
 any other kind fails the redraw. The redraw presses Cancel only while the Open dialog is the only other window
 open. If the redraw fails while that is so, it presses Cancel too. It leaves any other window to the user,
