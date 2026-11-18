@@ -424,6 +424,99 @@ subroutine). `encode()` refuses the marker. On ClickNick's side:
 - Review Changes can never paste the marker back, because `encode()` refuses it. Check the whole-program copy
   path that keeps CLICK's rungs, and the legacy-encoding paths.
 
+The move to the next laddercodec release also changes how ClickNick builds a `Rung`. laddy, the agent that works
+on laddercodec, listed the laddercodec changes on 2026-11-17 and 2026-11-18. Those facts are laddy's reading.
+laddercodec's CHANGELOG on its main (2eaf985) lists most of them under Unreleased. The facts about ClickNick were
+checked against ClickNick's main at c232d31, and the line numbers are from there.
+
+- Nothing breaks while ClickNick pins `laddercodec==0.4.0`.
+- On laddercodec's main since #110, instructions are frozen and hashable. Assigning to a field raises
+  `FrozenInstanceError`. `laddercodec.replace(inst, **changes)` is public. When no value changes, `replace`
+  returns an instruction that still encodes to the same bytes and carries the same warnings. When a value
+  changes, it checks the instruction again. No code in ClickNick's `src` or `tests` assigns to a field of an
+  instruction or a rung.
+- Sam decided on two more changes. laddercodec built them on its `api/rung-grid` branch, and its CHANGELOG on
+  main lists them.
+  1. A down wire under a contact becomes a cell token, `Tee(Contact(...))`. `Contact.wire_down` and
+     `CompareContact.wire_down` go away. The CSV form `T:X001` stays the same. Nothing in ClickNick reads
+     `wire_down`.
+  2. `Rung` is frozen, with tuple fields. `logical_rows` becomes a read-only property, and laddercodec refuses
+     a constructor call that passes `logical_rows`.
+- These calls pass `logical_rows`:
+  - `src/clicknick/ladder/program.py`: `empty_rung` (lines 519-525, `logical_rows=1`).
+  - `tests/ladder/test_cli.py` lines 108 and 135.
+  - `tests/ladder/test_unreadable_rungs.py` lines 41, 210 and 255.
+  - `tests/test_analysis_service.py` line 1143, which passes it by position.
+  - `tests/test_compare_with_click_window.py` line 30.
+  - `tests/test_live_rung_apply.py` line 38.
+  - `tests/test_review_changes_window.py`, in `_coils`.
+  - `tests/test_rung_diff.py` lines 41, 52 and 257.
+- Two functions in `program.py` must unwrap a `Tee` cell to its contact. Neither raises on a `Tee`. No other
+  code in `src` looks inside a condition cell.
+  - `_extract_operand_candidates` (lines 169-212) returns an empty list for a cell that is not a known
+    instruction and has no `to_csv`. laddy is adding `Tee.to_csv()`, which returns "T:" and then the contact's
+    text. If that lands, the text match at the end of the function finds the operands. Without it, a contact
+    with a wire down loses its operands.
+  - `_unreadable_instructions` (lines 420-427) skips a `Tee(UnknownCondition)`, with or without
+    `Tee.to_csv()`.
+  - Unwrap first in both, with `if isinstance(token, Tee): token = token.contact`. laddy and the agent that
+    planned this move agree that the unwrap reads better, even where `to_csv()` would work. At the move, add a
+    test of a contact with a wire down.
+- laddercodec keeps `decoded_rung_to_rows`, and it writes a `Tee` cell as `T:...`. ClickNick calls it in
+  `program.py` lines 847-849.
+- On laddercodec's main, `decode()` always returns a list. Its CHANGELOG says to remove any
+  `isinstance(result, list)` check. `_decode_to_rungs` (`program.py` lines 241-244) has one. At the move, the
+  fallback can never run, so remove it (rule 7).
+- laddercodec's main renames many instruction fields. Its CHANGELOG lists them under Unreleased. Read that
+  section whole at the move. These renames touch ClickNick:
+  - `Contact.type` and `Contact.edge_kind` become one field, `Contact.kind`. Its values are "no", "nc", "rise"
+    and "fall". The operand is the first argument: `Contact("X001", kind="nc")`.
+  - `Coil.type` becomes `Coil.kind`. Its values are "out", "latch" and "reset".
+  - `Timer.done_bit` becomes `done`, `current` becomes `accumulator`, and `setpoint` becomes `preset`.
+    `_extract_operand_candidates` reads all three (`program.py` lines 194-196).
+- Against laddercodec's main, five test files fail at collection with `KeyError: 'type'`. Their helpers read
+  `typing.get_type_hints(Contact)["type"]` at import:
+  - `tests/ladder/test_cli.py` line 41.
+  - `tests/ladder/test_unreadable_rungs.py` line 32.
+  - `tests/test_compare_with_click_window.py` line 25.
+  - `tests/test_live_rung_apply.py` line 15.
+  - `tests/test_rung_diff.py` line 35.
+- Two more read it inside a function, so only the tests that call the function fail: `_coils` in
+  `tests/test_review_changes_window.py`, and `tests/test_analysis_service.py` line 1139.
+- At the move, the helpers call `Coil(coil)` and `Contact("X001")`. `Coil` defaults to `kind="out"` and
+  `Contact` to `kind="no"`, so the helpers no longer read a type. laddercodec's main (#112) also exports a
+  `Literal` alias for each fixed set of field values, such as `ContactKind` and `CoilKind`. The helpers need
+  none of them.
+- Nothing in ClickNick reads `edge_kind`. At the move, search `src` and `tests` for `.type`, and for
+  `Contact(` and `Coil(` calls that pass an `InstructionType` first.
+- laddercodec's main has `write_bundle()` and `read_bundle()` (#114). A bundle is `main.csv` and one
+  `subroutines/<name>.csv` for each subroutine. The name is the subroutine's name with the whitespace stripped
+  from both ends.
+  - `write_bundle` refuses two subroutine names that differ only in case. It also refuses control characters
+    and the names that `check_program_name` refuses. It never adds a suffix.
+  - CLICK 4.00 refuses such a name too. Once a subroutine `Pump` exists, CLICK refuses `pump` with GUI-036,
+    "The Program Name already exists. Please choose another name." It shows the same box as for a second
+    `Pump`. The CLICK runner showed this on its own CLICK 4.00 on 2026-11-18. So `write_bundle`'s case refusal
+    matches CLICK.
+  - laddercodec's `check_program_name` follows CLICK.exe's Add New Subroutine dialog, by laddy's reading.
+    CLICK refuses `<>:"/\|?*` and the Windows device names, such as `CON`, with GUI-040. It accepts a trailing
+    dot. If CLICK accepts both `Foo.` and `Foo` as subroutines, `_slugify` gives both the stem `Foo`, and
+    `program_save` writes the second as `Foo (2).csv`. Nobody has tried the pair in CLICK.
+  - ClickNick's `program_save` writes its own bundle (`program.py` lines 696-717). `_slugify` (lines 461-466)
+    removes only `<>:"/\|?*`. It keeps a control character, though Windows refuses one in a file name and
+    `write_bundle` refuses it. `_slugify` also collapses runs of spaces, strips dots and spaces from the end,
+    and returns "Untitled" for a name that comes out empty.
+  - When two names give the same stem with case ignored, `_dedupe_filename_stem` adds " (2)", then " (3)",
+    and so on. The test of `program_save` (`TestProgramSave`, `tests/ladder/test_cli.py` lines 638-680) uses
+    made-up names.
+- On laddercodec's main, `parse_bundle` returns main first, as "Main Program", then the subroutines sorted by
+  name with case ignored. ClickNick never calls `parse_bundle`. Its own readers, `list_program_bundle`
+  (`program.py` line 881) and `rung_diff.load_bundle` (`rung_diff.py` line 75), list the subroutines first and
+  main last. Review Changes pastes the subroutines before main, so that they exist in CLICK before main's Call
+  instructions. A move to `read_bundle` would reverse that order.
+- laddercodec's main also has `csv_rows(rungs, *, index=False, stop="end")` and `CSV_HEADER` (#113).
+  `write_csv` builds every row before it opens the file.
+
 ## 10. Recording, ClickNick side (waits on pyrung's recording core and console commands for every change)
 
 Plan 1, step 4. pyrung, ClickNick and the VS Code extension release together.
@@ -499,6 +592,18 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
 - Edit two nicknames, let CLICK save one first, Sync -> "Synced 1 changes", main window "1 tags synced".
 - Edit a nickname, save the same in CLICK, Sync -> "CLICK already has these changes. There is nothing to write."
 - (4b) CSV Save reports the number of rows edited.
+
+### Database helper messages (Sync without Access ODBC)
+- Not a check in CLICK. Sam decides the wording. `src/clicknick/utils/jet_sidecar.py` line 95: when the changes
+  that a Sync sends come to more than 8 MB, the Sync fails with "There are too many address changes to save at
+  once." The message gives no advice. Only the Jet path has this cap, because `MAX_REQUEST_BYTES` appears only
+  in `jet_sidecar.py`. Installing Microsoft's Access ODBC driver avoids it. Should the message say so, or give
+  other advice?
+- `jet_sidecar.py` line 121: the database helper stopped answering during a save. The message says that
+  ClickNick cannot tell whether the changes were saved. After this failure, the Address Editor still shows the
+  edits as not synced. If the user chooses the same CLICK window again in ClickNick's window list, does
+  ClickNick read SC_.mdb again and show which edits reached it? If so, the message can tell the user to do
+  that.
 
 ### Tag Browser, Dataview, Overlay
 - x1 / XD0u from the Tag Browser.
