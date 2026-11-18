@@ -62,7 +62,7 @@ docs = [
 requires-dist = [
     { name = "executing", specifier = "==2.2.1" },
     { name = "laddercodec", specifier = "==0.4.0" },
-    { name = "pyclickplc", specifier = "==0.9.1" },
+    { name = "pyclickplc", specifier = "==0.10.0" },
     { name = "pymodbus", specifier = "==3.12.1" },
     { name = "pyodbc", specifier = "==5.3.0" },
     { name = "pyrsistent", specifier = "==0.20.0" },
@@ -229,14 +229,14 @@ wheels = [
 
 [[package]]
 name = "pyclickplc"
-version = "0.9.1"
+version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pymodbus" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/f9/0d3b25918e4e66c0756ee7d2d546cfcd9a4dfb8e4ffa09f9a8992ffdc680/pyclickplc-0.9.1.tar.gz", hash = "sha256:84f96c974670b5b821dcabaed3e775356d2e546a295ec37830af3055a6519efb", size = 267488, upload-time = "2026-11-18T15:25:38.958Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/2c/4bb1c2e3635f586be89a7323d6ba3f9f5677fef6e80bb034b6aaf316f489/pyclickplc-0.10.0.tar.gz", hash = "sha256:35021fe2dff976b0f2edd7fe69a7dd11bdfa6753917416be8ac981dc7247fd88", size = 268634, upload-time = "2026-11-18T17:33:05.574Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/39/75c398232eeaadc7bdf67bea9c81e969e818404c9743d51b09d8e07bea67/pyclickplc-0.9.1-py3-none-any.whl", hash = "sha256:57145f10c70d772f1b1049e46d84f9f4ebc19071d42039b64e540195eb6c3132", size = 90912, upload-time = "2026-11-18T15:25:37.332Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/a1/813fcb29e1ff7acccf1cc74802c071d6311a9379941a100e0a1866ec653f/pyclickplc-0.10.0-py3-none-any.whl", hash = "sha256:ccf2d954a438b56e2b87f05cef91c6c8e49b79ead7a9704813645a6a4647f41d", size = 91471, upload-time = "2026-11-18T17:33:03.909Z" },
 ]
 
 [[package]]

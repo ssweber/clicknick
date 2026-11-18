@@ -8,3 +8,5 @@
 *.tmp binary
 # CLICK's own nickname export, read with the line ends CLICK wrote
 tests/NicknameExportTxtSpecials.csv -text
+# Project.ini as CLICK 4.00 wrote it, with its mixed line ends
+tests/fixtures/Project_click4_new.ini -text

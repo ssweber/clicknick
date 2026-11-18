@@ -164,6 +164,114 @@ def test_workspace_setup_writes_the_plc_name_where_click_4_reads_it(
     assert app._workspace.plc_name() == "Line 1"
 
 
+# The Project.ini that CLICK 4.00 wrote for a new project, before anyone saved its hardware
+# configuration. It has no [Sec20], [Sec21] or [PLCName] section.
+_NEW_CLICK_4_PROJECT_INI = (
+    Path(__file__).parent / "fixtures" / "Project_click4_new.ini"
+).read_bytes()
+
+
+def test_name_plc_writes_the_name_where_a_new_click_4_project_shows_it(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from pyclickplc.project import read_plc_name
+
+    _click_temp(monkeypatch, tmp_path, _NEW_CLICK_4_PROJECT_INI)
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.simpledialog.askstring", MagicMock(return_value="Line 1")
+    )
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.showinfo", MagicMock())
+    app = _app(ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True))
+
+    assert app._workspace._ensure_plc_name() == "Line 1"
+    project_ini = tmp_path / "Project.ini"
+    assert project_ini.read_bytes() == _NEW_CLICK_4_PROJECT_INI + b"[Sec20]\r\nKey1=Line 1\r\n"
+    assert read_plc_name(project_ini) == "Line 1"
+
+
+def test_workspace_setup_moves_an_old_plc_name_to_where_click_4_shows_it(
+    monkeypatch, tmp_path: Path
+) -> None:
+    # ClickNick 0.24.1 named a new CLICK 4 project in [PLCName], and CLICK 4 showed no name.
+    old = _NEW_CLICK_4_PROJECT_INI + b"[PLCName]\r\nPLCName=Legacy\r\n"
+    _click_temp(monkeypatch, tmp_path, old)
+    ask_name = MagicMock()
+    monkeypatch.setattr("clicknick.workspace_controller.simpledialog.askstring", ask_name)
+    app = _app(ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True))
+    project_ini = tmp_path / "Project.ini"
+
+    assert app._workspace._ensure_plc_name() == "Legacy"
+    healed = project_ini.read_bytes()
+    assert healed == old + b"[Sec20]\r\nKey1=Legacy\r\n"
+    written = project_ini.stat().st_mtime_ns
+
+    assert app._workspace._ensure_plc_name() == "Legacy"
+    assert project_ini.read_bytes() == healed
+    assert project_ini.stat().st_mtime_ns == written
+    ask_name.assert_not_called()
+    app._update_status.assert_not_called()
+
+
+def test_workspace_setup_leaves_project_ini_alone_until_the_database_is_read(
+    monkeypatch, tmp_path: Path
+) -> None:
+    old = _NEW_CLICK_4_PROJECT_INI + b"[PLCName]\r\nPLCName=Legacy\r\n"
+    _click_temp(monkeypatch, tmp_path, old)
+    app = _app(ConnectionSession(ClickConnection("1", 123, "Example.ckp")))
+
+    assert app._workspace._ensure_plc_name() == "Legacy"
+    assert (tmp_path / "Project.ini").read_bytes() == old
+
+
+@pytest.mark.parametrize("error", [OSError("Access is denied"), ValueError("bad line")])
+def test_a_failed_move_of_an_old_plc_name_does_not_stop_workspace_setup(
+    monkeypatch, tmp_path: Path, error: Exception
+) -> None:
+    _click_temp(
+        monkeypatch, tmp_path, _NEW_CLICK_4_PROJECT_INI + b"[PLCName]\r\nPLCName=Legacy\r\n"
+    )
+    monkeypatch.setattr("pyclickplc.project.write_plc_name", MagicMock(side_effect=error))
+    ask_name = MagicMock()
+    monkeypatch.setattr("clicknick.workspace_controller.simpledialog.askstring", ask_name)
+    app = _app(ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True))
+
+    assert app._workspace._ensure_plc_name() == "Legacy"
+    ask_name.assert_not_called()
+    app._update_status.assert_called_once()
+    message, style = app._update_status.call_args.args
+    assert str(error) in message
+    assert style == "error"
+
+
+@pytest.mark.parametrize(
+    ("project_ini", "expected"),
+    [
+        pytest.param(
+            b"[PLCName]\r\nPLCName=Line 1\r\n[Next]\r\nValue=1\r\n", "Line 1", id="click3"
+        ),
+        # validate_click_name rejects the dot. ClickNick never wrote such a name.
+        pytest.param(b"[PLCName]\r\nPLCName=Line.1\r\n", "Line.1", id="click3-dot"),
+        pytest.param(
+            b"[Sec21]\r\nKey1=1\r\n[Sec20]\r\nKey1=Line.1\r\n[Sec22]\r\n",
+            "Line.1",
+            id="click4-dot",
+        ),
+    ],
+)
+def test_workspace_setup_leaves_a_plc_name_that_click_shows_alone(
+    monkeypatch, tmp_path: Path, project_ini: bytes, expected: str
+) -> None:
+    _click_temp(monkeypatch, tmp_path, project_ini)
+    path = tmp_path / "Project.ini"
+    written = path.stat().st_mtime_ns
+    app = _app(ConnectionSession(ClickConnection("1", 123, "Example.ckp"), has_database=True))
+
+    assert app._workspace._ensure_plc_name() == expected
+    assert path.read_bytes() == project_ini
+    assert path.stat().st_mtime_ns == written
+    app._update_status.assert_not_called()
+
+
 def test_workspace_selection_uses_plc_name(tmp_path: Path) -> None:
     assert (
         workspace_path_for_selection(tmp_path, "Laser Ball")
