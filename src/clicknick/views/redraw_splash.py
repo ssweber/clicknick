@@ -1,6 +1,6 @@
 """Show a notice over CLICK's main window while ClickNick redraws CLICK's nicknames.
 
-The redraw (``services/click_redraw.py``) needs CLICK to stay the active window. So the
+The redraw (``services/click_redraw.py``) leaves the foreground window as it is. So the
 notice never takes the focus and never becomes the active window.
 """
 
@@ -71,8 +71,8 @@ def _click_rect(top: tk.Misc, click_hwnd: int) -> tuple[int, int, int, int]:
     """Return the screen rectangle to centre the notice in.
 
     A minimized CLICK window sits off screen, at about (-32000, -32000). Its import still
-    shows its dialogs on screen (live run on CLICK v4.00, 2026-11-17). So for a minimized
-    window, return the rectangle that it has when restored. If the window is gone, return
+    shows its Open dialog on screen (live check on CLICK 2.60 to 4.00, 2026-11-18). So for a
+    minimized window, return the rectangle that it has when restored. If the window is gone, return
     the screen.
     """
     try:

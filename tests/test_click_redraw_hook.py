@@ -1,6 +1,8 @@
-"""Issue #36: after every Sync into CLICK's database, the connected CLICK window redraws.
+"""Issue #36: after a Sync into CLICK's database, the connected CLICK window redraws.
 
-The window redraws its nicknames. Tools > Redraw Nicknames in CLICK does the same by hand.
+The window redraws its nicknames when the Sync changed a nickname or comment of a used
+address. After the first such redraw, a notice explains it, once per machine. Tools >
+Redraw Nicknames in CLICK redraws by hand and shows no notice.
 """
 
 from __future__ import annotations
@@ -13,16 +15,19 @@ import pytest
 from pyclickplc.addresses import get_addr_key
 
 from clicknick.app import ClickNickApp
-from clicknick.connection_controller import ConnectionController
+from clicknick.config import AppSettings
+from clicknick.connection_controller import REDRAW_NOTICE, ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data.address_store import AddressStore
 from clicknick.models.address_row import AddressRow
 from clicknick.services import click_redraw
 from clicknick.services.click_redraw import RedrawOutcome, RedrawResult
+from clicknick.services.settings_file import SavedSettings, read_settings, write_settings
 from clicknick.utils import win32_desktop
 
 CLICK = ClickConnection("111", 222, "Main.ckp")
 C1 = get_addr_key("C", 1)
+C2 = get_addr_key("C", 2)
 
 
 class FakeRoot:
@@ -60,7 +65,8 @@ class DatabaseSource:
     file_path = ""  # There is nothing to monitor.
 
     def __init__(self) -> None:
-        self.rows: dict[int, AddressRow] = {}
+        # The program uses C1, and not C2
+        self.rows: dict[int, AddressRow] = {C1: AddressRow(memory_type="C", address=1, used=True)}
         self.fail = False
 
     def load_all_addresses(self):
@@ -71,7 +77,11 @@ class DatabaseSource:
     def save_changes(self, rows):
         for row in rows:
             self.rows[row.addr_key] = AddressRow(
-                memory_type=row.memory_type, address=row.address, nickname=row.nickname
+                memory_type=row.memory_type,
+                address=row.address,
+                nickname=row.nickname,
+                comment=row.comment,
+                used=row.used,
             )
         return len(rows)
 
@@ -81,12 +91,20 @@ class CsvSource(DatabaseSource):
     is_database = False
 
 
+class FakeSettings:
+    """AppSettings' Redraw Ladder on Sync, without Tk. The notice has already shown."""
+
+    def __init__(self, redraw_on_sync: bool = True) -> None:
+        self.redraw_on_sync = redraw_on_sync
+        self.redraw_notice_due = False
+
+
 def _app(click: ClickConnection | None = CLICK) -> ClickNickApp:
     app = ClickNickApp.__new__(ClickNickApp)
     app.__dict__["_ui_refresh_id"] = None
     app._request_ui_refresh = MagicMock()
     app.root = FakeRoot()
-    app.settings = SimpleNamespace(redraw_on_sync=True)
+    app.settings = FakeSettings()
     app._session = ConnectionSession(click) if click is not None else None
     app._data = None
     app._update_status = MagicMock()
@@ -101,9 +119,9 @@ def _store(source: DatabaseSource) -> AddressStore:
     return store
 
 
-def _rename(store: AddressStore, nickname: str = "Pump") -> None:
+def _rename(store: AddressStore, nickname: str = "Pump", addr_key: int = C1) -> None:
     with store.edit_session("Rename") as session:
-        session.set_field(C1, "nickname", nickname)
+        session.set_field(addr_key, "nickname", nickname)
 
 
 # -- The Sync hook -----------------------------------------------------------------------
@@ -192,6 +210,141 @@ def test_with_redraw_ladder_on_sync_off_a_sync_says_how_to_redraw(redraws) -> No
     )
 
 
+def test_a_sync_of_unused_addresses_only_redraws_nothing(redraws) -> None:
+    app = _app()
+    store = _store(DatabaseSource())
+    app._open_data(store)
+    _rename(store, addr_key=C2)
+    app._update_status.reset_mock()
+
+    assert store.save_all_changes() == {C2}
+
+    redraws.assert_not_called()
+    app._update_status.assert_not_called()
+
+
+def test_a_comment_change_on_a_used_address_redraws(redraws) -> None:
+    app = _app()
+    store = _store(DatabaseSource())
+    app._open_data(store)
+    with store.edit_session("Comment") as session:
+        session.set_field(C1, "comment", "Main pump")
+
+    store.save_all_changes()
+
+    redraws.assert_called_once_with(after_sync=True)
+
+
+# -- The notice after the first redraw ---------------------------------------------------
+
+
+@pytest.fixture
+def notices(monkeypatch) -> list:
+    """Return the title and text of each notice that ClickNick shows."""
+    shown: list = []
+    monkeypatch.setattr(
+        "clicknick.connection_controller.messagebox.showinfo",
+        lambda title, message, **_kwargs: shown.append((title, message)),
+    )
+    return shown
+
+
+@pytest.fixture
+def fresh(tk_root, tmp_path, desktop) -> SimpleNamespace:
+    """Return an app with real AppSettings, read from a settings file that does not exist."""
+    path = tmp_path / "settings.json"
+    app = _app()
+    app.settings = AppSettings(path)
+    store = _store(DatabaseSource())
+    app._open_data(store)
+    return SimpleNamespace(app=app, store=store, path=path, desktop=desktop)
+
+
+def _sync(fresh: SimpleNamespace, nickname: str, addr_key: int = C1, result=None) -> None:
+    """Rename *addr_key* and Sync. A redraw that runs ends with *result* (REFRESHED)."""
+    fresh.desktop.results.append(result or RedrawResult(RedrawOutcome.REFRESHED))
+    _rename(fresh.store, nickname, addr_key)
+    fresh.store.save_all_changes()
+    fresh.app.root.run(100)
+
+
+def test_the_first_redraw_after_a_sync_shows_the_notice_once(notices, fresh) -> None:
+    _sync(fresh, "Pump")
+    _sync(fresh, "Valve")
+
+    assert fresh.desktop.calls == [(111, 222), (111, 222)]
+    assert notices == [("Redraw Ladder on Sync", REDRAW_NOTICE)]
+    assert read_settings(fresh.path) == SavedSettings(redraw_notice_shown=True)
+    # The next start reads the file and shows no notice.
+    again = AppSettings(fresh.path)
+    assert not again.redraw_notice_due
+    assert again.redraw_on_sync
+
+
+def test_the_notice_waits_for_a_redraw_that_shows_the_names(notices, fresh) -> None:
+    _sync(fresh, "Pump", result=RedrawResult(RedrawOutcome.BUSY, "CLICK does not answer"))
+    assert notices == []
+
+    _sync(fresh, "Valve")
+
+    assert len(notices) == 1
+
+
+def test_a_sync_of_unused_addresses_only_shows_no_notice(notices, fresh) -> None:
+    _sync(fresh, "Spare", addr_key=C2)
+
+    assert fresh.desktop.calls == []
+    assert notices == []
+    assert fresh.app.settings.redraw_notice_due
+    assert not fresh.path.exists()
+
+
+@pytest.mark.parametrize("value", [True, False], ids=["on", "off"])
+def test_setting_the_menu_entry_first_means_no_notice(notices, fresh, value) -> None:
+    fresh.app.settings.redraw_on_sync_var.set(value)  # Tools > Redraw Ladder on Sync
+
+    _sync(fresh, "Pump")
+
+    assert notices == []
+    assert read_settings(fresh.path) == SavedSettings(redraw_on_sync=value)
+    assert fresh.desktop.calls == ([(111, 222)] if value else [])
+
+
+def test_turning_the_setting_off_lasts_across_starts(notices, tk_root, tmp_path) -> None:
+    path = tmp_path / "settings.json"
+    AppSettings(path).redraw_on_sync_var.set(False)
+
+    again = AppSettings(path)
+
+    assert not again.redraw_on_sync
+    assert not again.redraw_notice_due
+
+
+def test_the_menu_command_shows_no_notice(notices, fresh) -> None:
+    fresh.desktop.results.append(RedrawResult(RedrawOutcome.REFRESHED))
+
+    fresh.app._connection.redraw_nicknames(after_sync=False)
+    fresh.app.root.run(100)
+
+    assert fresh.desktop.calls == [(111, 222)]
+    assert notices == []
+    assert fresh.app.settings.redraw_notice_due
+
+
+def test_a_saved_notice_is_not_shown_again(notices, tk_root, tmp_path, desktop) -> None:
+    path = tmp_path / "settings.json"
+    assert write_settings(SavedSettings(redraw_notice_shown=True), path)
+    app = _app()
+    app.settings = AppSettings(path)
+    store = _store(DatabaseSource())
+    app._open_data(store)
+
+    _sync(SimpleNamespace(app=app, store=store, desktop=desktop), "Pump")
+
+    assert desktop.calls == [(111, 222)]
+    assert notices == []
+
+
 # -- Running the redraw off the Tk thread ------------------------------------------------
 
 
@@ -214,7 +367,7 @@ def desktop(monkeypatch) -> SimpleNamespace:
     """
     found = SimpleNamespace(results=[], calls=[], threads=0, log=[])
 
-    def redraw(_desktop, pid, main, *, own_pid):
+    def redraw(_desktop, pid, main):
         found.calls.append((pid, main))
         result = found.results.pop(0)
         if isinstance(result, Exception):

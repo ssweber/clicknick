@@ -1370,7 +1370,9 @@ class TestSyncListeners:
         store, source = _live_store({})
         heard = []
         store.add_sync_listener(
-            lambda keys: heard.append((keys, store.has_unsaved_changes(), len(source.saved)))
+            lambda written: heard.append(
+                (set(written), store.has_unsaved_changes(), len(source.saved))
+            )
         )
         self._rename(store, c1)
         self._rename(store, c2, "Other")
@@ -1380,6 +1382,22 @@ class TestSyncListeners:
         assert store.save_all_changes() == {c2}
 
         assert heard == [({c2}, False, 1)]
+
+    def test_called_with_the_row_before_and_the_row_written(self):
+        c1 = get_addr_key("C", 1)
+        store, source = _live_store({c1: AddressRow(memory_type="C", address=1, used=True)})
+        heard = []
+        store.add_sync_listener(heard.append)
+        self._rename(store, c1)
+        # CLICK writes a comment after the edit. The Sync reads it before writing.
+        source.rows[c1] = AddressRow(memory_type="C", address=1, comment="Pump", used=True)
+
+        store.save_all_changes()
+
+        [written] = heard
+        before, after = written[c1]
+        assert (before.nickname, before.comment, before.used) == ("", "Pump", True)
+        assert (after.nickname, after.comment, after.used) == ("Typed", "Pump", True)
 
     def test_not_called_after_a_csv_save(self):
         c1 = get_addr_key("C", 1)
@@ -1440,7 +1458,7 @@ class TestSyncListeners:
 
         assert store.save_all_changes() == {c1}
 
-        assert heard == [{c1}]
+        assert [set(written) for written in heard] == [{c1}]
         assert not store.has_unsaved_changes()
         assert "redraw broke" in caplog.text
 

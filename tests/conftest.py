@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import itertools
 import time
 import tkinter as tk
 
 import pytest
+
+_settings_paths = itertools.count()
 
 
 def _new_root() -> tk.Tk:
@@ -35,3 +38,20 @@ def tk_root():
         root.destroy()
     except tk.TclError:
         pass
+
+
+@pytest.fixture(scope="session")
+def _settings_root(tmp_path_factory):
+    return tmp_path_factory.mktemp("settings")
+
+
+@pytest.fixture(autouse=True)
+def _own_settings_file(_settings_root, monkeypatch):
+    """Give each test a settings.json of its own, away from the user's %LOCALAPPDATA%.
+
+    The file does not exist until the test writes it.
+    """
+    from clicknick.services import settings_file
+
+    path = _settings_root / str(next(_settings_paths)) / "settings.json"
+    monkeypatch.setattr(settings_file, "default_settings_path", lambda: path)
