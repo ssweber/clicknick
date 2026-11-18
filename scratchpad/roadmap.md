@@ -494,10 +494,10 @@ checked against ClickNick's main at c232d31, and the line numbers are from there
   from both ends.
   - `write_bundle` refuses two subroutine names that differ only in case. It also refuses control characters
     and the names that `check_program_name` refuses. It never adds a suffix.
-  - CLICK 4.00 refuses the same case. Once a subroutine `Pump` exists, CLICK refuses `pump` with GUI-036, "The
-    Program Name already exists. Please choose another name." It shows the same box as for a second `Pump`. A
-    live run on the CLICK runner's own CLICK 4.00 saw this on 2026-11-18. So `write_bundle`'s case refusal
-    matches CLICK.
+  - CLICK 4.00 refuses such a name too. Once a subroutine `Pump` exists, CLICK refuses `pump` with GUI-036,
+    "The Program Name already exists. Please choose another name." It shows the same box as for a second
+    `Pump`. A live run on the CLICK runner's own CLICK 4.00 saw this on 2026-11-18. So `write_bundle`'s case
+    refusal matches CLICK.
   - laddy settled `<>:"/\|?*` and a trailing dot from laddercodec's code. `check_program_name` refuses
     `<>:"/\|?*`.
   - ClickNick's `program_save` writes its own bundle (`program.py` lines 696-715). `_slugify` (lines 461-466)
