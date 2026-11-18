@@ -1,21 +1,29 @@
 from collections.abc import Callable, Mapping
 
+from pyclickplc.banks import DataType
 from pyclickplc.validation import validate_comment as _pyclickplc_validate_comment
 from pyclickplc.validation import validate_nickname as _pyclickplc_validate_nickname
 
-# The fields CLICK stores without a space at either end: its editor strips them.
-TRIMMED_FIELDS = ("nickname", "comment")
+# The fields that CLICK stores without a space or a tab at either end. A Text initial value
+# is the exception. CLICK keeps its edges when the value is quoted.
+TRIMMED_FIELDS = ("nickname", "comment", "initial_value")
+
+# The characters that trim_entry strips from either end.
+EDGE_CHARACTERS = " \t"
 
 
-def trim_entry(field: str, value: str | bool) -> str | bool:
-    """Return *value* as CLICK stores it in *field*.
+def trim_entry(field: str, value: str | bool, data_type: int) -> str | bool:
+    """Return *value* as CLICK stores it in *field* of a row of *data_type*.
 
-    A nickname or comment loses the spaces at either end, so ``"Pump "`` is stored as
-    ``"Pump"``. Every other field, and a value that is not text, is returned as it is.
+    A nickname, a comment and an initial value of any type but Text lose the spaces and tabs
+    at either end, so ``"Pump\\t"`` is stored as ``"Pump"`` and ``" 5"`` as ``"5"``. A Text
+    initial value, every other field, and a value that is not text are returned as they are.
     """
-    if field in TRIMMED_FIELDS and isinstance(value, str):
-        return value.strip(" ")
-    return value
+    if field not in TRIMMED_FIELDS or not isinstance(value, str):
+        return value
+    if field == "initial_value" and data_type == DataType.TXT:
+        return value
+    return value.strip(EDGE_CHARACTERS)
 
 
 def validate_comment(
@@ -23,7 +31,7 @@ def validate_comment(
     is_block_name_duplicate: Callable[[str, int], bool] | None = None,
     current_addr_key: int = 0,
 ) -> tuple[bool, str]:
-    """Validate a comment's format (length, no space at either end) and block name uniqueness.
+    """Validate a comment's format (length, no space or tab at either end) and block name uniqueness.
 
     Args:
         comment: The comment to validate

@@ -38,10 +38,11 @@ is in its row's override.
    session keeps one `MutableRowBuilder` per row. All the changes in one session make one undo frame. Filling
    down 500 rows is one undo step.
 3. When the session exits cleanly, the store applies the cascades and freezes the builders into overrides.
-   It stores a nickname or comment without a space at either end (`trim_entry`). CLICK stores them the same
-   way. If the overrides changed, the store pushes an undo frame that holds the overrides from before, and it
-   clears redo. Then it runs `_derive()` and notifies the observers. A session that changes nothing is not
-   an undo step.
+   It stores a nickname, a comment and an initial value of any type but Text without a space or a tab at
+   either end (`trim_entry`). CLICK stores them the same way. A Text initial value keeps its edges. If the
+   overrides changed, the store pushes an undo frame that holds the overrides from before, and it clears
+   redo. Then it runs `_derive()` and notifies the observers. A session that changes nothing is not an undo
+   step.
 4. If the session exits with an exception, the store commits nothing. If the commit itself fails,
    `_commit_session` restores the overrides and the undo and redo stacks, derives again from them, and
    raises the error again.
@@ -130,9 +131,10 @@ validation errors (`AddressRow.should_ignore_validation_error`, `has_reportable_
 
 ## Trim spaces
 
-One edit session, "Trim spaces" (`_stage_trims`), trims a loaded nickname or comment that has a space at either
-end. It covers the rows that a load or a read of the data source changed. The file monitor and Sync's
-pre-read both read the data source. It also covers every row after a Discard.
+One edit session, "Trim spaces" (`_stage_trims`), trims a loaded value that has a space or a tab at either
+end. The values are the fields that `trim_entry` trims. It covers the rows that a load or a read of the data
+source changed. The file monitor and Sync's pre-read both read the data source. It also covers every row
+after a Discard.
 
 - Sync writes the trim.
 - An undone trim comes back only when the data source changes that row.
@@ -140,8 +142,8 @@ pre-read both read the data source. It also covers every row after a Discard.
 - It trims a nickname flagged `loaded_with_error` too. Once the row shows the trimmed nickname, the flag is
   off. `_validate_row` then skips only the format check for it, so its duplicates are reported
   (`_is_trimmed_loaded_nickname`).
-- No SC or SD name in pyclickplc's table has a space at either end. CLICK generates the X `_IO` names. No
-  table lists them, so nothing shows that they have no space at either end.
+- No SC or SD name in pyclickplc's table has a space or a tab at either end. CLICK generates the X `_IO`
+  names. No table lists them, so nothing shows that they have neither at either end.
 - Rows that the store reads while a session is open wait until that session ends (`_pending_trims`).
 
 ## Undo and redo

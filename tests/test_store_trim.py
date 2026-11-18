@@ -1,8 +1,9 @@
-"""A nickname or comment is stored as CLICK stores it, without a space at either end.
+"""A nickname, a comment and a non-Text initial value are stored as CLICK stores them.
 
-A loaded row that has a space at either end is trimmed by a staged edit, "Trim spaces".
-Sync writes that edit and Undo takes it back. A value that is entered with a space is
-stored without it.
+CLICK stores them without a space or a tab at either end. A loaded row that has one is
+trimmed by a staged edit, "Trim spaces". Sync writes that edit and Undo takes it back. A
+value that is entered with a space or a tab is stored without it. A Text initial value
+keeps its edges.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from pyclickplc.banks import DataType
 from clicknick.data.address_store import TRIM_DESCRIPTION, AddressStore
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
+from clicknick.models.validation import EDGE_CHARACTERS
 from clicknick.services import ImportService
 from clicknick.services.block_service import remove_block_tag
 from clicknick.widgets.import_csv_dialog import detect_blocks_in_csv
@@ -170,8 +172,8 @@ class TestTrimOnLoad:
         assert source.rows[C2].nickname == "Blower"
         assert store.undo_stack == []
 
-    def test_no_system_name_of_clicks_has_an_edge_space(self):
-        """No system name of CLICK's has a space at either end.
+    def test_no_system_name_of_clicks_has_an_edge_space_or_tab(self):
+        """No system name of CLICK's has a space or a tab at either end.
 
         Trimming every loaded nickname therefore never changes one of CLICK's own names.
         """
@@ -182,7 +184,7 @@ class TestTrimOnLoad:
         ]
 
         assert names
-        assert [name for name in names if name != name.strip(" ")] == []
+        assert [name for name in names if name != name.strip(EDGE_CHARACTERS)] == []
 
     def test_a_system_name_of_clicks_is_left_as_it_is(self):
         store, _source = _store({SC1: AddressRow("SC", 1, nickname="_Always_ON", comment="On ")})
@@ -439,3 +441,100 @@ class TestTrimOnEntry:
         assert store.visible_state[C1].comment == "Motor note <New>"
         assert store.visible_state[C3].comment == "</New>"
         assert not store.has_errors()
+
+
+# A space or a tab at the start or the end of a value, and the value that CLICK stores
+EDGES = [" 5", "5 ", "\t5", "5\t"]
+# The fields that lose their edge spaces and tabs, on DS1 (an INT)
+DS_FIELDS = ["nickname", "comment", "initial_value"]
+TXT1 = get_addr_key("TXT", 1)
+
+
+def _edged(field: str, edge: str) -> str:
+    """Return *edge* as a value of *field*. A nickname cannot be a bare number."""
+    return edge.replace("5", "Pump5") if field != "initial_value" else edge
+
+
+def _ds_row(field: str, value: str) -> AddressRow:
+    return AddressRow("DS", 1, data_type=DataType.INT, retentive=False, **{field: value})
+
+
+class TestEdgeTabsAndInitialValues:
+    """A nickname, a comment and an initial value of any type but Text lose a space or a tab
+    at either end. A Text initial value keeps them, because CLICK keeps them in a quoted one.
+    """
+
+    @pytest.mark.parametrize("edge", EDGES)
+    @pytest.mark.parametrize("field", DS_FIELDS)
+    def test_an_entered_value_is_stored_without_the_edge(self, field, edge):
+        store, _source = _store({})
+        with store.edit_session("Edit") as session:
+            session.set_field(DS1, field, _edged(field, edge))
+
+        row = store.visible_state[DS1]
+        assert getattr(row, field) == _edged(field, "5")
+        assert not row.has_reportable_error
+
+    @pytest.mark.parametrize("edge", EDGES)
+    @pytest.mark.parametrize("field", DS_FIELDS)
+    def test_a_loaded_value_is_trimmed_by_the_staged_edit(self, field, edge):
+        store, source = _store({DS1: _ds_row(field, _edged(field, edge))})
+
+        row = store.visible_state[DS1]
+        assert getattr(row, field) == _edged(field, "5")
+        assert not row.has_reportable_error
+        assert [frame.description for frame in store.undo_stack] == [TRIM_DESCRIPTION]
+
+        assert store.save_all_changes() == {DS1}
+        assert getattr(source.rows[DS1], field) == _edged(field, "5")
+
+    @pytest.mark.parametrize("value", [" ", "\t"])
+    def test_a_text_initial_value_keeps_its_space_or_tab(self, value):
+        store, _source = _store(
+            {TXT1: AddressRow("TXT", 1, data_type=DataType.TXT, initial_value=value)}
+        )
+        with store.edit_session("Edit") as session:
+            session.set_field(TXT1, "initial_value", value)
+
+        assert store.visible_state[TXT1].initial_value == value
+        assert store.undo_stack == []
+        assert not store.has_errors()
+
+    @pytest.mark.parametrize("edge", EDGES)
+    def test_a_csv_load_trims_each_field(self, tmp_path: Path, edge):
+        """File > Load Nicknames from CSV. pyclickplc's reader strips the initial value."""
+        cells = [_edged(field, edge) for field in ("nickname", "initial_value", "comment")]
+        path = tmp_path / "Nicknames.csv"
+        path.write_bytes(
+            b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
+            + 'DS1,INT,"{}","{}",No,"{}"\r\n'.format(*cells).encode()
+        )
+        store = AddressStore(CsvDataSource(str(path)))
+        store.load_initial_data()
+
+        row = store.visible_state[DS1]
+        assert (row.nickname, row.initial_value, row.comment) == ("Pump5", "5", "Pump5")
+        assert not row.has_reportable_error
+
+    @pytest.mark.parametrize("edge", EDGES)
+    def test_an_import_from_csv_trims_each_field(self, tmp_path: Path, edge):
+        """The Address Editor's File > Import from CSV, with every field overwritten."""
+        cells = [_edged(field, edge) for field in ("nickname", "initial_value", "comment")]
+        path = tmp_path / "Import.csv"
+        path.write_bytes(
+            b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
+            + 'DS1,INT,"{}","{}",No,"{}"\r\n'.format(*cells).encode()
+        )
+        csv_rows = list(CsvDataSource(str(path)).load_all_addresses().values())
+        blocks = detect_blocks_in_csv(csv_rows)
+        overwrite = {"nickname": "Overwrite", "comment": "Overwrite", "first_scan": "Overwrite"}
+        store, _source = _store({})
+
+        with store.edit_session("Import from CSV") as session:
+            ImportService.merge_blocks(
+                store, session, blocks, {id(block): overwrite for block in blocks}
+            )
+
+        row = store.visible_state[DS1]
+        assert (row.nickname, row.initial_value, row.comment) == ("Pump5", "5", "Pump5")
+        assert not row.has_reportable_error

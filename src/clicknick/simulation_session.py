@@ -9,7 +9,8 @@ its methods. Neither of them owns the simulation.
 
 Two channels reach the simulated PLC. The session reads values over Modbus, exactly as from
 real hardware. Inputs (switches, analog values), mode, speed, stepping, forces and bench
-links go over DAP. X stays read-only over Modbus, as on a real CLICK.
+links go over DAP. pyclickplc's Modbus client refuses an X write. The Simulator's Modbus
+server accepts one, as a CLICK does, so a client outside ClickNick can change an input.
 
 Every public method runs on the UI thread. Work that blocks runs on worker threads, and the
 results come back through ``scheduler.after(0, ...)``.
@@ -2349,7 +2350,7 @@ class SimulationSession:
             self._update_poll()
 
     def _write(self, values: dict[str, PlcValue], what: str) -> None:
-        """Patch inputs over DAP. X is read-only over Modbus, as on a real CLICK."""
+        """Patch inputs over DAP. pyclickplc's client refuses an X write."""
         dap = self._dap
         if dap is None:
             return  # The values are applied when the simulation (re)starts or enters RUN.

@@ -28,7 +28,7 @@ import shlex
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot, parse_address
+from pyclickplc.addresses import get_addr_key, iter_address_slots, parse_address
 from pyclickplc.banks import BANKS
 
 from ..services.annotation_service import AnnotationService
@@ -199,26 +199,20 @@ def _cmd_set(ctx: DispatchContext, identifier: str, field_name: str, raw_value: 
     with ctx.store.edit_session(f"AI: set {identifier} {field_name}") as session:
         session.set_field(addr_key, field_name, value)
 
-    # Report the value as stored. The store trims a space from either end of a nickname
-    # or comment. CLICK does the same.
+    # Report the value as stored. The store strips spaces and tabs from either end of a
+    # nickname, a comment and a non-Text initial value. CLICK also trims a space from either
+    # end of a nickname or a comment.
     stored = getattr(ctx.store.get_visible_row(addr_key), field_name)
     return f"OK: {identifier} {field_name} = {stored!r} (staged change)"
 
 
 def _iter_bank_addresses(memory_type: str, start: int | None):
-    """Yield MDB addresses for *memory_type* in ascending order.
+    """Yield the MDB addresses of *memory_type* that CLICK shows, in ascending order.
 
-    Skips hidden XD/YD slots. If *start* is given, addresses below it are
-    skipped (used to resume scanning from a specific address).
+    If *start* is given, skip the addresses below it, so that a scan can resume there.
     """
-    bank = BANKS[memory_type]
-    ranges = bank.valid_ranges or ((bank.min_addr, bank.max_addr),)
-    for lo, hi in ranges:
-        for addr in range(lo, hi + 1):
-            if start is not None and addr < start:
-                continue
-            if is_xd_yd_hidden_slot(memory_type, addr):
-                continue
+    for slot_type, addr in iter_address_slots():
+        if slot_type == memory_type and (start is None or addr >= start):
             yield addr
 
 

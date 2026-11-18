@@ -305,7 +305,11 @@ class ConnectionSession:
         return config.workspace_path.resolve() if config is not None else None
 
     def plc_name(self) -> str | None:
-        """Return CLICK's PLC name for the project from Project.ini (None without one)."""
+        """Return CLICK's PLC name for the project from Project.ini.
+
+        Return None when the project has no PLC name, or when Project.ini cannot be read or is
+        not valid INI.
+        """
         from pyclickplc.project import read_plc_name
 
         try:

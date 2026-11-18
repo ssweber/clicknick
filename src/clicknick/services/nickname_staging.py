@@ -12,7 +12,7 @@ Only the fields that the file has a column for are set.
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ..models.address_row import AddressRow, initial_values_differ
@@ -109,9 +109,10 @@ def plan_nicknames(
     store's base rows, to see what CLICK's database still lacks. The plan leaves out
     addresses that the store does not track. It compares only *fields*. Pass the fields that
     the file has a column for (``CsvDataSource.fields``), so a column that the file lacks
-    leaves that field as it is. A nickname or comment is taken as CLICK stores it, without a
-    space at either end (``trim_entry``). So ``"Jog "`` is staged as ``"Jog"``, and it is
-    done once the database holds ``"Jog"``.
+    leaves that field as it is. A nickname, a comment and an initial value of any type but
+    Text are taken as CLICK stores them, without a space or a tab at either end
+    (``trim_entry``). So ``"Jog\\t"`` is staged as ``"Jog"``, and it is done once the database
+    holds ``"Jog"``.
     """
     changes: list[FieldChange] = []
     compared = [field for field in _FIELDS if field in fields]
@@ -121,9 +122,9 @@ def plan_nicknames(
         if old is None:
             continue
         for field in compared:
-            value = trim_entry(field, getattr(new, field))
+            value = trim_entry(field, getattr(new, field), old.data_type)
             if field == "initial_value":
-                differs = initial_values_differ(old, new)
+                differs = initial_values_differ(old, replace(new, initial_value=value))
             else:
                 differs = getattr(old, field) != value
             if differs:

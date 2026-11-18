@@ -22,7 +22,7 @@ from pyclickplc.blocks import parse_block_tag
 
 from clicknick.data.address_store import AddressStore
 from clicknick.models.address_row import AddressRow, initial_values_differ
-from clicknick.models.validation import trim_entry
+from clicknick.models.validation import EDGE_CHARACTERS, trim_entry
 from clicknick.services.block_service import (
     compute_block_colors,
     remove_block_tag,
@@ -205,7 +205,9 @@ def _assert_cascade_rules(
     Other rows change only as cascades may."""
     for (key, name), value in caller_set.items():
         assert not _differs(
-            replace(before[key], **{name: trim_entry(name, value)}), store.visible_state[key], name
+            replace(before[key], **{name: trim_entry(name, value, before[key].data_type)}),
+            store.visible_state[key],
+            name,
         ), (
             step,
             key,
@@ -233,11 +235,11 @@ def _assert_cascade_rules(
         if (key, "comment") not in caller_set and new.comment != old.comment:
             assert tag_changed, (step, key, "comment changed by a free-text edit")
             # A cascade may only add, rename or remove the block tag in a comment. The rest of
-            # the comment stays the same. A space left at either end where the tag was is
-            # trimmed, so both sides are compared after strip(" ").
-            assert remove_block_tag(new.comment).strip(" ") == remove_block_tag(old.comment).strip(
-                " "
-            ), (
+            # the comment stays the same. A space or tab left at either end where the tag was
+            # is trimmed, so both sides are compared after strip(EDGE_CHARACTERS).
+            assert remove_block_tag(new.comment).strip(EDGE_CHARACTERS) == remove_block_tag(
+                old.comment
+            ).strip(EDGE_CHARACTERS), (
                 step,
                 key,
                 old.comment,
@@ -441,7 +443,7 @@ def test_incremental_state_matches_full_rebuild(seed: int) -> None:
             if not user_has_field:
                 # A Sync that writes reads the database first. That read stages the trim of a
                 # value with an edge space, and Sync writes the trim too.
-                written = trim_entry(name, value) if wrote else value
+                written = trim_entry(name, value, source.rows[key].data_type) if wrote else value
                 assert getattr(source.rows[key], name) == written, (key, name, "overwritten")
             store._on_database_update()  # the next poll
             step = f"CLICK writes {key}.{name}={value!r} unpolled, then save"
