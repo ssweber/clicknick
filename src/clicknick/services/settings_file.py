@@ -59,8 +59,8 @@ def write_settings(settings: SavedSettings, path: Path | None = None) -> bool:
 
     Write *path*, or ``default_settings_path()`` if *path* is None. Leave out
     ``redraw_on_sync`` while the user has not set it. Write a staging file first and then
-    replace the settings file with it. So a failed write leaves the old file as it was. It
-    also removes the staging file.
+    replace the settings file with it. A failed write leaves the old file as it was and
+    removes the staging file.
     """
     payload: dict[str, bool] = {REDRAW_NOTICE_SHOWN: settings.redraw_notice_shown}
     if settings.redraw_on_sync is not None:

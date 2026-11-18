@@ -86,11 +86,21 @@ class AppSettings:
         """Use *changes* from now on and write them to the settings file.
 
         Read the file again first and change only the values in *changes*. So another
-        ClickNick that saved a value since this one started keeps it. If the write fails,
-        log a warning. ClickNick then uses *changes* until it closes.
+        ClickNick that saved a value since this one started keeps it. Where the file leaves a
+        value unset, or cannot be read, keep this ClickNick's value. So a value that has
+        been set never goes back to unset. If the write fails, log a warning. ClickNick then
+        uses *changes* until it closes.
         """
-        self._saved = replace(self._saved, **changes)
-        saved = replace(settings_file.read_settings(self._settings_path), **changes)
+        own = self._saved
+        on_file = settings_file.read_settings(self._settings_path)
+        merged = settings_file.SavedSettings(
+            redraw_on_sync=own.redraw_on_sync
+            if on_file.redraw_on_sync is None
+            else on_file.redraw_on_sync,
+            redraw_notice_shown=on_file.redraw_notice_shown or own.redraw_notice_shown,
+        )
+        self._saved = replace(own, **changes)
+        saved = replace(merged, **changes)
         if not settings_file.write_settings(saved, self._settings_path):
             logger.warning("Could not save ClickNick's settings file")
 

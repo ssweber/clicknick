@@ -128,6 +128,18 @@ def test_two_clicknicks_keep_each_others_values(tk_root, tmp_path) -> None:
     assert read_settings(path) == SavedSettings(redraw_on_sync=False, redraw_notice_shown=True)
 
 
+def test_a_file_unreadable_at_a_save_keeps_the_setting_that_was_saved(tk_root, tmp_path) -> None:
+    """Another ClickNick may be replacing the file at that moment."""
+    path = tmp_path / "settings.json"
+    settings = AppSettings(path)
+    settings.redraw_on_sync_var.set(False)
+    path.write_text("{garbled", encoding="utf-8")
+
+    settings.mark_redraw_notice_shown()
+
+    assert read_settings(path) == SavedSettings(redraw_on_sync=False, redraw_notice_shown=True)
+
+
 def test_a_failed_write_keeps_the_values_until_closing(tk_root, tmp_path, caplog) -> None:
     path = tmp_path / "settings.json"
     path.mkdir()

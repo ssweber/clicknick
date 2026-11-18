@@ -92,8 +92,8 @@ its control ids, never by Windows' own strings. Until `OPEN_TIMEOUT` passes, it 
 the modes yet as the Open dialog still being built. A window of any other kind fails the redraw. The redraw presses
 Cancel only while the Open dialog is the only other window open. If the redraw fails while that is so, it presses
 Cancel too. If the user closes the Open dialog before the redraw presses Cancel, the redraw presses nothing and
-ends as done, because CLICK reloads the table either way. The redraw leaves any other window to the user, including
-an Open dialog that it did not recognise. It never sets the foreground window.
+returns REFRESHED, because CLICK reloads the table either way. The redraw leaves any other window to the user,
+including an Open dialog that it did not recognise. It never sets the foreground window.
 
 The tests drive the redraw through a fake `ClickDesktop`. A live check on CLICK 2.60, 3.43, 3.71, 3.92 and
 4.00 (2026-11-18) ran the same steps with CLICK active, with another program active and with CLICK minimized.
