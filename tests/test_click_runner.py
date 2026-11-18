@@ -36,6 +36,13 @@ RUNG_CSV = (
     "marker,A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,AA,AB,AC,AD,AE,AF\n"
     "R,X001,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,out(Y001)\n"
 )
+# The start of the text of the box that CLICK showed at Connect in a live run on 2026-11-18,
+# when the PLC still held the connection of a CLICK that had crashed
+CPU_TYPE_TEXT = (
+    "CLICK Programming Software could not read the CPU type. Please check these 3 possible "
+    "causes:\n\n1) If the CPU is powered through USB (Low Power mode) and a C2-Slot Module "
+    "Unknown is installed, please supply the CPU with 24VDC."
+)
 MAIN_CLASS = "Afx:002E0000:8:00010003:00000000:10D30AE3"
 OUTPUT_BAR = "Afx:ControlBar:2e0000:8:10003:10"
 
@@ -190,13 +197,19 @@ class FakeClick(cd.Desktop):
     in the temp folder before CLICK starts. An earlier CLICK whose main window had the same
     hwnd would leave them there. *error_on* names an event after which CLICK shows its
     PTC-013 error box. After "connect", the Connect dialog owns the box and no Login
-    follows. After any other event, the main window owns the box.
+    follows. After any other event, the main window owns the box. CLICK answers the first
+    *cpu_type* presses of Connect with a box that the Connect dialog owns. By default the box
+    is the one that says CLICK could not read the CPU type (``CPU_TYPE_TEXT``, one OK).
+    *cpu_type_box* gives the box another text and other buttons. *cpu_type_extra* adds a
+    control to the box, as a class and a text. Each of the box's buttons closes it and
+    enables the Connect dialog again. With *cpu_type_slow*, each takes that many polls.
 
     The ribbon's Math, Copy, Out, Contact(NO), Compare and Search commands open their
     dialogs as CLICK lays them out. *judge* decides what happens when OK is pressed in one
     of these dialogs. It returns None to accept, ``(code, message)`` to refuse with an error
     box, ``("warn", code, message)`` to show the box and then place the instruction, or
-    ``"question"`` to show a Yes/No box with no code. ``rung`` lists the instructions placed
+    ``"question"`` to show a Yes/No box with no code. It returns ``"crash"`` to make CLICK exit,
+    as real CLICK did after OK on some cases. ``rung`` lists the instructions placed
     in rung 1, in order. After a contact (``CONTACT_TITLES``) the cursor is at column B, and
     after any other instruction it is at AF. Syntax Check lists the line that
     *syntax_lines* gives for each placed instruction, keyed by the dialog's title. It also
@@ -283,6 +296,10 @@ class FakeClick(cd.Desktop):
         splash: bool = False,
         surprise: str | None = None,
         error_on: str | None = None,
+        cpu_type: int = 0,
+        cpu_type_box: tuple[str, tuple[str, ...]] | None = None,
+        cpu_type_extra: tuple[str, str] | None = None,
+        cpu_type_slow: int = 0,
         stall: str | None = None,
         interrupt: str | None = None,
         fail: str | None = None,
@@ -342,6 +359,12 @@ class FakeClick(cd.Desktop):
         self.surprise, self.stall = surprise, stall
         self.error_on = error_on
         self.error_answered = False
+        self.cpu_type = cpu_type
+        self.cpu_type_box = cpu_type_box or (CPU_TYPE_TEXT, ("OK",))
+        self.cpu_type_extra = cpu_type_extra
+        self.cpu_type_slow = cpu_type_slow
+        self.cpu_type_shown = 0
+        self.cpu_type_closed_at: list[float] = []  # The runner's clock as each box closed
         self.went_offline = False
         self.interrupt, self.fail = interrupt, fail
         self.lag = lag
@@ -615,10 +638,48 @@ class FakeClick(cd.Desktop):
         self.connect_dialog.enabled = False
         if self.error_on == "connect":
             return  # The PLC did not answer, and CLICK shows its error box in place of Login
+        if self.cpu_type_shown < self.cpu_type:
+            self._show_cpu_type_box()
+            return
         if self.options["login"]:
             self._show_login()
         else:
             self._show_read_prompt()
+
+    def _show_cpu_type_box(self) -> None:
+        """Show the box that says CLICK could not read the CPU type, as the Connect dialog's.
+
+        Its OK closes it, and the Connect dialog is enabled again. With *cpu_type_slow*, the
+        box closes that many polls after the press, and the dialog is enabled that many polls
+        after the box closes."""
+        self.cpu_type_shown += 1
+        text, buttons = self.cpu_type_box
+        box = self._window("#32770", "CLICK Programming Software", self.connect_dialog.hwnd)
+        slow = self.cpu_type_slow or None
+
+        def enabled() -> None:
+            self.connect_dialog.enabled = True
+
+        def closed() -> None:
+            self._drop(box)
+            self.cpu_type_closed_at.append(cr.time.monotonic())
+            if slow is None:
+                enabled()
+            else:
+                self._later("cpu_type_enabled", enabled, slow)
+
+        for number, label in enumerate(buttons, 2):
+            self._control(
+                box,
+                "Button",
+                label,
+                number,
+                on_press=lambda: self._later("cpu_type_ok", closed, slow),
+            )
+        self._control(box, "Static", "", 20)
+        self._control(box, "Static", text, 65535)
+        if self.cpu_type_extra is not None:
+            self._control(box, self.cpu_type_extra[0], self.cpu_type_extra[1], 1001)
 
     def _show_login(self) -> None:
         login = self._window("#32770", "Login", self.connect_dialog.hwnd)
@@ -1170,6 +1231,9 @@ class FakeClick(cd.Desktop):
             answer = self.judge(title, mode, values)
             if answer is None:
                 place()
+            elif answer == "crash":
+                self.is_running = False
+                self.wins.clear()
             elif answer == "question":
                 box = self._window("#32770", "CLICK Programming Software", dialog.hwnd)
                 self._control(box, "Static", "Replace the instruction?", 65535)
@@ -1952,6 +2016,7 @@ def fast_poll(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(cr, "IMPORT_SETTLE", 0.1)
     monkeypatch.setattr(cr, "FILL_SETTLE", 0.02)
     monkeypatch.setattr(cr, "OPTION_WAIT", 0.2)
+    monkeypatch.setattr(cr, "CPU_TYPE_WAIT", 0.5)
 
 
 def assert_aborted(fake: FakeClick, out: Path, code: int, result: dict, reason: str) -> None:
@@ -2358,6 +2423,109 @@ def test_a_click_error_box_aborts_with_its_code(tmp_path, setup, event, step):
     assert fake.commands.count("Disconnect") <= 1  # The cleanup sends no second Disconnect
     if event == "connect":
         assert "login" not in fake.events and result["plc"] is None
+
+
+def pressed_at(fake: FakeClick) -> list[tuple[str, float]]:
+    """Return a list that gets the text of each button that the runner presses in *fake*, and
+    the runner's clock at the press."""
+    times: list[tuple[str, float]] = []
+    real = fake.press
+
+    def press(hwnd: int) -> None:
+        times.append((fake._find(hwnd).text, cr.time.monotonic()))
+        real(hwnd)
+
+    fake.press = press
+    return times
+
+
+def test_a_cpu_type_box_at_connect_is_answered_and_connect_pressed_again(tmp_path, setup):
+    """CLICK answers the first Connect with the box that says it could not read the CPU type.
+
+    The runner presses the box's OK, waits ``CPU_TYPE_WAIT`` and presses Connect again. The
+    second Connect gets the Login, and the paste goes on."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, cpu_type=1)
+    times = pressed_at(fake)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.cpu_type_shown == 1 and fake.events.count("cpu_type_ok") == 1
+    assert fake.saved and not fake.read_from_plc and result["plc"]
+    connects = [at for text, at in times if text == "Connect"]
+    box_ok = next(at for text, at in times if text == "OK")
+    assert len(connects) == 2 and connects[0] < box_ok < connects[1]
+    assert connects[1] - box_ok >= cr.CPU_TYPE_WAIT
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "CLICK could not read the PLC's CPU type (Connect press 1 of 3)" in log
+
+
+def test_a_cpu_type_box_that_closes_slowly_is_waited_for(tmp_path, setup):
+    """The box stays open for a few polls after its OK, and the Connect dialog is enabled a
+    few polls after the box closes. The runner waits for both before ``CPU_TYPE_WAIT``
+    starts, so no window is open that the pause does not expect."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, cpu_type=1, cpu_type_slow=5)
+    times = pressed_at(fake)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.events.count("cpu_type_ok") == 1 and "cpu_type_enabled" in fake.events
+    connects = [at for text, at in times if text == "Connect"]
+    assert len(connects) == 2
+    assert connects[1] - fake.cpu_type_closed_at[0] >= cr.CPU_TYPE_WAIT
+
+
+def test_a_cpu_type_box_on_every_press_of_connect_aborts(tmp_path, setup):
+    """The box answers all ``CPU_TYPE_TRIES`` presses of Connect. The run stops with a reason that
+    names the box, and the runner leaves the last box open."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, cpu_type=cr.CPU_TYPE_TRIES)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert_aborted(fake, out, code, result, "could not read the PLC's CPU type after 3 presses")
+    assert "'CLICK Programming Software'" in result["reason"]
+    assert cr.CPU_TYPE_LINE in result["reason"]
+    assert result["step"] == "connect" and result["click_error"] is None
+    assert fake.cpu_type_shown == 3 and fake.events.count("cpu_type_ok") == 2
+    assert fake.pressed.count("Connect") == 3 and "login" not in fake.events
+    log = (out / "run.log").read_text(encoding="utf-8")
+    assert "(Connect press 1 of 3)" in log and "(Connect press 2 of 3)" in log
+
+
+@pytest.mark.parametrize(
+    ("box", "extra"),
+    [
+        (("Another message.", ("OK",)), None),
+        ((CPU_TYPE_TEXT, ("OK", "Cancel")), None),
+        ((CPU_TYPE_TEXT, ("&Yes",)), None),
+        (("Note\n" + CPU_TYPE_TEXT, ("OK",)), None),
+        ((CPU_TYPE_TEXT, ("OK",)), ("Static", "Another message.")),
+        ((CPU_TYPE_TEXT, ("OK",)), ("Edit", "Another message.")),
+        ((CPU_TYPE_TEXT, ("OK",)), ("SysLink", "")),
+    ],
+    ids=[
+        "other text",
+        "two buttons",
+        "no OK",
+        "other first line",
+        "a second text",
+        "text in an Edit",
+        "a control of another class",
+    ],
+)
+def test_an_unknown_box_at_connect_aborts_and_is_not_pressed(tmp_path, setup, box, extra):
+    """A box at Connect with the CPU-type box's title and owner, but another text, other
+    buttons or another control, stops the run. The runner presses nothing in it."""
+    csv, exe = setup
+    fake = FakeClick(tmp_path, cpu_type=1, cpu_type_box=box, cpu_type_extra=extra)
+    out = tmp_path / "out"
+    code, result = run(fake, out, csv, exe)
+    assert_aborted(fake, out, code, result, "unexpected window while waiting for Login")
+    assert "'CLICK Programming Software'" in result["reason"] and result["step"] == "connect"
+    assert fake.cpu_type_shown == 1 and "cpu_type_ok" not in fake.events
+    assert not set(box[1]) & set(fake.pressed)
+    assert fake.pressed.count("Connect") == 1
 
 
 def test_an_error_box_met_by_the_cleanup_is_not_what_stopped_the_run(tmp_path, setup):
@@ -4375,6 +4543,120 @@ def test_a_case_that_stopped_two_runs_is_not_tried_again(tmp_path, setup):
     assert third["cases"][3]["outcome"] is None and len(third["cases"][3]["stops"]) == 2
     assert third["carried"] == 4 and third["left"] == 1
     assert [entry[0] for entry in fake.entered] == ["Copy", "Out"]
+
+
+def crashes_on(*values: str) -> Callable[[str, str | None, dict[str, str]], object]:
+    """Return a judge that makes CLICK exit on OK when a field holds one of *values*.
+
+    It answers every other case as ``judge_like_click`` does."""
+
+    def judge(title: str, mode: str | None, entered: dict[str, str]) -> object:
+        if set(values) & set(entered.values()):
+            return "crash"
+        return judge_like_click(title, mode, entered)
+
+    return judge
+
+
+# TRY_CASES's third case holds this formula and its fifth this destination
+THIRD, FIFTH = "DH1 + DH2", "YD1"
+CRASH_REASON = "CLICK exited while waiting for CLICK's answer to case {}"
+
+
+def test_a_case_that_crashed_click_is_recorded_as_crashed_on_resume(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    judge = crashes_on(THIRD)
+    _, code, first = try_again(tmp_path, exe, "a", cases, judge=judge)
+    prev = tmp_path / "a" / "out"
+    # The crash stops the run. That run gives the case no outcome, and its stop says crashed
+    assert code == cr.EXIT_ABORTED and first["step"] == "try"
+    assert first["reason"].startswith(CRASH_REASON.format(3))
+    assert first["stopped_at"] == {"index": 3, "id": TRY_CASES[2]["case"]}
+    assert first["cases"][2]["outcome"] is None and first["crashed"] == [] and first["left"] == 4
+    assert first["cases"][2]["stops"] == [
+        {"out": str(prev), "reason": first["reason"], "crashed": True}
+    ]
+    assert first["click"]["closed"] is True
+    fake, code, result = try_again(tmp_path, exe, "b", cases, "--resume", str(prev), judge=judge)
+    assert code == cr.EXIT_OK, result["reason"]
+    # The resume records the crash and goes on at the next case
+    crashed = result["cases"][2]
+    assert crashed["outcome"] == "crashed" and crashed["message"] == first["reason"]
+    assert crashed["out"] == str(prev) and crashed["stops"] == first["cases"][2]["stops"]
+    assert result["crashed"] == [{"index": 3, "id": TRY_CASES[2]["case"]}]
+    assert (result["carried"], result["left"], result["stopped_at"]) == (3, 0, None)
+    assert [entry[0] for entry in fake.entered] == ["Copy", "Copy", "Out"]
+    assert [c["outcome"] for c in result["cases"]][3:] == ["accepted", "refused", "refused"]
+    assert last_lines(tmp_path / "b" / "out")[TRY_CASES[2]["case"]] == crashed
+    log = (tmp_path / "b" / "out" / "run.log").read_text(encoding="utf-8")
+    assert f"case 3 ({TRY_CASES[2]['case']}) crashed CLICK in {prev}." in log
+
+
+def test_a_second_crash_after_a_resume_is_recorded_on_the_next_resume(tmp_path, setup):
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    judge = crashes_on(THIRD, FIFTH)
+    a, code, _ = try_again(tmp_path, exe, "a", cases, judge=judge)
+    assert code == cr.EXIT_ABORTED
+    b, code, second = try_again(
+        tmp_path, exe, "b", cases, "--resume", str(tmp_path / "a" / "out"), judge=judge
+    )
+    # The resume records case 3 as crashed, accepts case 4, and case 5 crashes CLICK
+    assert code == cr.EXIT_ABORTED and second["reason"].startswith(CRASH_REASON.format(5))
+    assert second["crashed"] == [{"index": 3, "id": TRY_CASES[2]["case"]}]
+    assert second["cases"][4]["stops"][-1]["crashed"] is True
+    c, code, third = try_again(
+        tmp_path, exe, "c", cases, "--resume", str(tmp_path / "b" / "out"), judge=judge
+    )
+    assert code == cr.EXIT_OK, third["reason"]
+    assert third["crashed"] == [
+        {"index": 3, "id": TRY_CASES[2]["case"]},
+        {"index": 5, "id": TRY_CASES[4]["case"]},
+    ]
+    assert [c["outcome"] for c in third["cases"]] == [
+        "accepted",
+        "refused",
+        "crashed",
+        "accepted",
+        "crashed",
+        "refused",
+    ]
+    assert third["cases"][2]["out"] == str(tmp_path / "a" / "out")
+    assert third["cases"][4]["out"] == str(tmp_path / "b" / "out")
+    assert third["cases"][4]["message"] == second["reason"] and third["left"] == 0
+    # Each case was tried once, the crashing ones too
+    entered = a.entered + b.entered + c.entered
+    assert [entry[0] for entry in entered] == ["Math", "Math", "Math", "Copy", "Copy", "Out"]
+
+
+def test_click_exiting_after_it_answered_is_not_a_crash_of_the_case(tmp_path, setup):
+    """CLICK closes the first case's dialog and then exits during the Syntax Check that
+    follows. CLICK had answered the OK, so the case's stop does not have ``crashed``, and a
+    resume tries the case again."""
+    _, exe = setup
+    cases = {"cases": TRY_CASES}
+    (tmp_path / "a").mkdir()
+    fake = FakeClick(tmp_path / "a")
+    real = fake._post_command
+    checks = [0]
+
+    def exit_on_second_check(hwnd: int, command_id: int) -> None:
+        if command_id == cd.SYNTAX_CHECK:
+            checks[0] += 1
+            if checks[0] == 2:
+                fake.is_running = False
+                return
+        real(hwnd, command_id)
+
+    fake._post_command = exit_on_second_check
+    prev = tmp_path / "a" / "out"
+    code, first = run_try(fake, tmp_path, exe, cases, out=prev)
+    assert code == cr.EXIT_ABORTED and "CLICK exited while waiting for" in first["reason"]
+    assert first["stopped_at"]["index"] == 1
+    assert first["cases"][0]["stops"] == [{"out": str(prev), "reason": first["reason"]}]
+    again, code, result = try_again(tmp_path, exe, "b", cases, "--resume", str(prev))
+    assert code == cr.EXIT_OK and result["crashed"] == [] and len(again.entered) == 6
 
 
 def test_a_last_line_cut_short_is_left_out(tmp_path, setup):

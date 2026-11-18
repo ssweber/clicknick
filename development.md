@@ -234,6 +234,11 @@ The runner follows these rules:
 - It never writes to the PLC. An allowlist of commands in `devtools/click_desktop.py` enforces this.
 - It never deletes CLICK's temp folder.
 - It stops at any window it does not expect.
+- After a crash, CLICK may say at Connect that it could not read the CPU type. The runner then
+  presses OK in that box, waits 20 s and presses Connect again. It presses Connect at most
+  three times.
+- If CLICK exits after the runner presses a case's OK in `try`, a run with `--resume` records
+  the case as `crashed` and does not try it again.
 - If a CLICK error box appears, it stops and puts the box's code in `click_error`. The code is
   "PTC-013" when the PLC did not answer. The caller can then decide whether to run it again.
 
