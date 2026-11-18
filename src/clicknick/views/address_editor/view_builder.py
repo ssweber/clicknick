@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot
+from pyclickplc.addresses import get_addr_key, iter_address_slots
 from pyclickplc.banks import BANKS, PAIRED_RETENTIVE_TYPES
 
 from ...models.address_row import AddressRow
@@ -71,25 +71,13 @@ def build_single_type_rows(
     Returns:
         The rows from all_rows, in display order
     """
-    bank = BANKS[mem_type]
     rows = []
-
-    # Use valid_ranges for sparse banks (X/Y), full range for contiguous
-    if bank.valid_ranges is not None:
-        ranges = bank.valid_ranges
-    else:
-        ranges = ((bank.min_addr, bank.max_addr),)
-
-    for lo, hi in ranges:
-        for addr in range(lo, hi + 1):
-            # Skip hidden XD/YD slots (odd addresses >= 3 are upper bytes not displayed)
-            if is_xd_yd_hidden_slot(mem_type, addr):
-                continue
-
-            addr_key = get_addr_key(mem_type, addr)
-            if addr_key in all_rows:
-                rows.append(all_rows[addr_key])
-
+    for slot_type, addr in iter_address_slots():
+        if slot_type != mem_type:
+            continue
+        addr_key = get_addr_key(mem_type, addr)
+        if addr_key in all_rows:
+            rows.append(all_rows[addr_key])
     return rows
 
 
