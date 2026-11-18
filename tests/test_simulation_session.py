@@ -1059,6 +1059,48 @@ def test_loading_plc_data_sets_switches_and_analog_values(ready, tmp_path):
     assert ready.dap.calls[0][2]["snapshot_path"] == data
 
 
+def test_a_text_comma_in_plc_data_reads_back_as_a_comma(tmp_path):
+    """Read a PLC data file whose TXT2 holds a comma, as both readers of the Simulator do.
+
+    CLICK writes the comma without quotes, so the TXT1 row has 11 cells. The session reads the
+    file for the switches and analog inputs. pyrung reads it again at launch for every value.
+    """
+    from pyclickplc.banks import DataType
+    from pyrung.click.tag_map import TagMap
+
+    from clicknick.services.analysis_service import _write_nicknames_csv
+    from clicknick.simulation_session import _default_snapshot_reader
+
+    lines = [
+        "<DS=START>",
+        "Address,1,2,3,4,5,6,7,8,9,10,",
+        "DS1,7,0,0,0,0,0,0,0,0,0,",
+        "</DS=END>",
+        "",
+        "<TXT=START>",
+        "Address,1,2,3,4,5,6,7,8,9,10,",
+        "TXT1,A,,,B,C,D,E,F,G,H,I,",
+        "</TXT=END>",
+        "",
+    ]
+    data = tmp_path / "data.csv"
+    data.write_bytes("\r\n".join(lines).encode("ascii"))
+    named = [AddressRow("TXT", n, nickname=f"Msg{n}", data_type=DataType.TXT) for n in (1, 2, 3)]
+    rows = {row.addr_key: row for row in named}
+    mapping = TagMap.from_nickname_file(_write_nicknames_csv(tmp_path, rows))
+
+    snapshot = _default_snapshot_reader(data)
+    state = mapping.load_snapshot(data)
+
+    assert [snapshot[f"TXT{n}"] for n in range(1, 5)] == ["A", ",", "B", "C"]
+    assert snapshot["DS1"] == 7
+    assert {name: state.tags[name] for name in ("Msg1", "Msg2", "Msg3")} == {
+        "Msg1": "A",
+        "Msg2": ",",
+        "Msg3": "B",
+    }
+
+
 # ----------------------------------------------------------------------
 # Bench links
 # ----------------------------------------------------------------------
