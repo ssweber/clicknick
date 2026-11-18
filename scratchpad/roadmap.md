@@ -470,9 +470,9 @@ plans on 2026-11-17 and listed what follows. Nobody has checked the list against
   - `tests/test_review_changes_window.py` line 38.
   - `tests/test_rung_diff.py` line 35.
   - `tests/test_analysis_service.py` line 1139 reads it inside a test, so that test fails when it runs.
-- On laddercodec's main, `typing.get_args(typing.get_type_hints(Contact)["kind"])` returns the contact kinds.
-  laddy plans to export `ContactKind`, `CoilKind` and `OutVariantKind` from `laddercodec`. If they are there at
-  the move, the helpers use `typing.get_args(laddercodec.ContactKind)` instead.
+- The helpers use `typing.get_args(laddercodec.ContactKind)`. laddercodec's main (#112) exports an alias for
+  each fixed set of field values, from `laddercodec` and `laddercodec.instructions`: `ContactKind`, `CoilKind`,
+  `OutVariantKind` and 17 more, such as `CompareOp`, `TimerKind` and `CounterKind`.
 - At the move, search `src` and `tests` for `.type`, for `edge_kind`, and for `Contact(` and `Coil(` calls
   that use the old fields.
 - At the move, search for code that assigns to a field of an instruction or a rung. laddy found none.
