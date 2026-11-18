@@ -117,12 +117,12 @@ Tools > Redraw Nicknames in CLICK works the same way, whatever the setting. A re
 request belong to the CLICK window (its hwnd). If another window is connected, or none, ClickNick drops them.
 A skipped or failed redraw shows as a status line and never fails the Sync.
 
-The first time a redraw after a Sync shows the names, ClickNick shows a notice with an OK button. The notice
-says what the redraw does, and how to turn it off. ClickNick shows it once per machine. It never shows it once
-the user has set Tools > Redraw Ladder on Sync. `AppSettings` (`config.py`) saves the setting and whether the
-notice has shown in `%LOCALAPPDATA%\ClickNick\settings.json` (`services/settings_file.py`). It writes the file
-each time either value changes. A missing or unreadable file counts as a new machine. The tests point the file
-at a temp folder (`tests/conftest.py`).
+The first time a redraw after a Sync shows the names, ClickNick shows a message box with an OK button
+(`REDRAW_NOTICE` in `connection_controller.py`). It says what the redraw does and how to turn it off. ClickNick
+shows it once per machine. It never shows it once the user has set Tools > Redraw Ladder on Sync. `AppSettings`
+(`config.py`) saves the setting and whether the message has shown in `%LOCALAPPDATA%\ClickNick\settings.json`
+(`services/settings_file.py`). It writes the file each time either value changes. A missing or unreadable file
+counts as a new machine. The tests point the file at a temp folder (`tests/conftest.py`).
 
 ## Nicknames loaded with an error
 

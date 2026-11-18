@@ -72,8 +72,8 @@ def _click_rect(top: tk.Misc, click_hwnd: int) -> tuple[int, int, int, int]:
 
     A minimized CLICK window sits off screen, at about (-32000, -32000). Its import still
     shows its Open dialog on screen (live check on CLICK 2.60 to 4.00, 2026-11-18). So for a
-    minimized window, return the rectangle that it has when restored. If the window is gone, return
-    the screen.
+    minimized window, return the rectangle that it has when restored. If the window is gone,
+    return the screen.
     """
     try:
         if win32gui.IsIconic(click_hwnd):
