@@ -219,14 +219,14 @@ class RowsDataSource(MockDataSource):
 
 def _generated_workspace(tmp_path, monkeypatch, rows, *, project_ini: str | None = None):
     """Generate a workspace from *rows* the way a CLICK save does; return (store, ctx)."""
-    from pyrung import Program, Rung, copy
+    from pyrung import Program, copy, rung
     from pyrung.click import ClickBlocks, TagMap, pyrung_to_ladder
 
     from clicknick.services import analysis_service
 
     blocks = ClickBlocks()
     with Program() as program:
-        with Rung():
+        with rung():
             copy(blocks.ds[1], blocks.ds[10])
             copy(blocks.df[1], blocks.df[10])
     bundle = pyrung_to_ladder(program, TagMap([], include_system=False))

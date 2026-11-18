@@ -1,7 +1,7 @@
 """Analog source classification reaches both in-memory and persisted checks."""
 
 import pytest
-from pyrung import Program, Rung, copy
+from pyrung import Program, copy, rung
 from pyrung.click import ClickBlocks, TagMap, pyrung_to_ladder
 
 from clicknick.services.analysis_service import (
@@ -25,7 +25,7 @@ def test_invalid_channel_configuration_is_not_silently_ignored(tmp_path):
 def test_channel_inputs_reach_analysis_and_generated_workspace(tmp_path, monkeypatch):
     blocks = ClickBlocks()
     with Program() as program:
-        with Rung():
+        with rung():
             copy(blocks.df[1], blocks.df[10])
     bundle = pyrung_to_ladder(program, TagMap([], include_system=False))
 
