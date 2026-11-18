@@ -89,7 +89,9 @@ OK again (``ok_presses``). If CLICK closed the dialog, the runner runs Syntax Ch
 entry keeps the lines of that check whose code the empty program's check did not report. The case is
 ``accepted`` only when that check names rung 2 for the missing END, as it does when an instruction
 sits in rung 1. Otherwise it is ``other``, and that stops the run. Edit > Delete then removes the
-instruction, and the next Syntax Check must read as the empty program's did.
+instruction, and the next Syntax Check must read as the empty program's did. CLICK may also exit
+after OK, before it answers. The run then stops, and the case has no outcome in that run.
+``--resume`` records the case as ``crashed``.
 
 All cases run in one CLICK. The runner then disconnects it and ends it, as ``record`` does.
 result.json holds one entry per case under ``cases``, in the file's order. After an abort it
@@ -122,6 +124,15 @@ stop caused by Ctrl+C does not count. It tries the other cases again, in a CLICK
 own, and writes each one's line with its earlier stops. If a run stopped after a case was
 answered (Delete or the save failed), the answer moves into the stop and the case has no
 outcome. With ``--keep``, an accepted case without its save counts as unanswered.
+
+If CLICK exited after a case's OK and before it answered, the case's stop has ``crashed``.
+``--resume`` then gives the case the outcome ``crashed`` and carries it over. The runner does
+not try the case again, however many times you resume. The entry's ``message`` is the reason
+that the crashed run gave ("CLICK exited while waiting for CLICK's answer to case N"). Its
+``out`` is the folder of that run. Like ``refused``, the outcome ``crashed`` records what CLICK
+did with the case. ``crashed`` in result.json lists the index and id of each case with that
+outcome.
+
 ``--stop-after N`` ends the run cleanly once it has tried N cases (``stopped_after``).
 ``left`` counts the cases with no outcome. An unexpected window still stops the run.
 Nothing starts a CLICK again by itself.
@@ -236,6 +247,15 @@ Rules (scratchpad/roadmap.md, item 4):
   as ``plc``, and with ``--plc NAME`` it must be that PLC. If the bar cannot be read in that
   time, the connection stays unconfirmed and the run goes on. If ``--plc`` is given, the
   run stops instead.
+- After a CLICK crashes, the PLC may still hold that CLICK's connection for a while. Connect
+  may then show a box titled "CLICK Programming Software" that the Connect dialog owns. Its
+  only text starts with the line ``CPU_TYPE_LINE`` ("CLICK Programming Software could not
+  read the CPU type. ..."). Its one button is OK. The runner presses OK only in a box that
+  matches all of these. It then waits until the Connect dialog is enabled, waits
+  ``CPU_TYPE_WAIT`` seconds more and presses Connect again. It logs each press. If the box
+  shows after the ``CPU_TYPE_TRIES``-th press too, the run stops with a reason that names the
+  box. A box with that title and any other text or buttons stops the run, and the runner
+  presses nothing in it.
 - If a Scr*.tmp is in CLICK's temp folder before the paste (``scr_before_paste``) and the
   save does not rewrite it, the run stops. Otherwise the runner would decode it with the
   project.
@@ -356,6 +376,18 @@ FILL_SETTLE = 1.0
 CASES_LOG = "cases.jsonl"
 # A case that stopped this many runs before CLICK answered it is not tried again by --resume
 MAX_STOPS = 2
+# After CLICK crashes, the PLC may still hold the dead CLICK's connection. Connect then shows a
+# box, about 30 s after the press, saying that CLICK could not read the CPU type. In the live
+# runs on 2026-11-18, a Connect pressed about 9 s after a crash got the box, and one pressed
+# about 47 s after a crash connected. The runner presses the box's OK, waits CPU_TYPE_WAIT
+# seconds and presses Connect again, up to CPU_TYPE_TRIES presses in all. The second press then
+# comes about 60 s after the crash, and the third about 110 s after it
+CPU_TYPE_TRIES = 3
+CPU_TYPE_WAIT = 20.0
+# The first line of that box's text. The box has one OK button and no error code
+CPU_TYPE_LINE = (
+    "CLICK Programming Software could not read the CPU type. Please check these 3 possible causes:"
+)
 # What ``choose`` returns for a list not open for entry
 _CLOSED = "closed"
 # The runner presses an option button up to this many times, and gives each press this many
@@ -427,6 +459,14 @@ class ClickErrorBox(Aborted):
         self.code = code
 
 
+class ClickExited(Aborted):
+    """Raised when CLICK exits during a wait that does not expect it to exit."""
+
+
+class CaseCrashed(Aborted):
+    """Raised when CLICK exits after OK in an instruction dialog, before it answers the case."""
+
+
 class _Unconfirmed(Exception):
     """Raised when the status bar cannot be read during the wait to confirm the connection."""
 
@@ -454,6 +494,11 @@ STARTUP = Expect("startup", "TfrmStartup", "Startup", MAIN)
 CONNECT = Expect("connect", "#32770", "Connect to CLICK PLC", "startup")
 LOGIN = Expect("login", "#32770", "Login", "connect")
 READ_PROMPT = Expect("read_prompt", "#32770", "Connect", "connect")
+# The box that Connect may show when the PLC still holds a crashed CLICK's connection
+# (CPU_TYPE_LINE). Only its text tells it apart from other boxes with this title
+CPU_TYPE_BOX = Expect("cpu_type_box", "#32770", "CLICK Programming Software", "connect")
+# What the runner waits for after it presses Connect. A reason that stops the run names it
+CONNECT_ANSWER = "Login or the read-project question"
 SAVE_AS = Expect("save_as", "#32770", "Save As", MAIN)
 DISCONNECT_PROMPT = Expect("disconnect_prompt", "#32770", "CLICK Programming Software", MAIN)
 # File > Import > Nickname, as live runs on 2026-11-15 dumped it. It opens an Open dialog
@@ -1184,6 +1229,27 @@ def click_error(window: Window, controls: list[Control]) -> tuple[str, str] | No
     return None
 
 
+def cpu_type_ok(controls: list[Control]) -> Control | None:
+    """Return the OK button of the box that says CLICK could not read the CPU type, or None.
+
+    *controls* are those of a ``CPU_TYPE_BOX`` window. A live run on 2026-11-18 dumped the
+    box. It had one Static whose text starts with ``CPU_TYPE_LINE`` on a line of its own, an
+    empty Static for the icon, and one Button, OK (id 2). The function returns None if the
+    window has a control of any other class, any other text or any other button, or if OK
+    is hidden or disabled.
+    """
+    if any(c.cls not in ("Static", "Button") for c in controls):
+        return None
+    texts = [c.text for c in controls if c.cls == "Static" and c.text]
+    buttons = [c for c in controls if c.cls == "Button"]
+    if len(texts) != 1 or texts[0].splitlines()[0] != CPU_TYPE_LINE or len(buttons) != 1:
+        return None
+    ok = buttons[0]
+    if ok.text != "OK" or ok.id != 2 or not (ok.visible and ok.enabled):
+        return None
+    return ok
+
+
 def _child(
     controls: list[Control], *, cls: str, id: int, text: str | None = None
 ) -> Control | None:
@@ -1600,6 +1666,7 @@ class Run:
                 stopped_after=None,
                 stopped_at=None,
                 left=None,
+                crashed=[],
                 nicknames=None,
                 baseline_syntax_check=None,
                 cases=[],
@@ -1713,7 +1780,7 @@ class Run:
             if not self.desktop.alive(self.pid):
                 if exits:
                     return True  # pyright: ignore[reportReturnType]
-                raise Aborted(f"CLICK exited while waiting for {what}")
+                raise ClickExited(f"CLICK exited while waiting for {what}")
             windows = self.desktop.windows(self.pid)
             self.check_error_boxes(
                 [w for w in windows if answering is None or w.owner != answering]
@@ -1995,81 +2062,12 @@ class Run:
             self.press(startup, max(buttons, key=lambda c: c.rect[0]))  # Connect to PLC
 
         with self.step("connect"):
-            connect = self.wait(
-                "Connect to CLICK PLC", [STARTUP, CONNECT], lambda f: f.get(CONNECT.name)
-            )
-            plc_list = _require(
-                self.wait(
-                    "the PLC list",
-                    [STARTUP, CONNECT],
-                    lambda f: _child(self.controls(connect), cls="SysListView32", id=20061),
-                ),
-                "the Connect dialog's PLC list",
-            )
-            last: list[int | None] = [None]
-            since = [time.monotonic()]
-
-            def lists(items: int | None) -> str:
-                if items is None:
-                    return "the Connect dialog's PLC list does not answer"
-                return f"the Connect dialog lists {items} PLC(s)"
-
-            def listed(_: dict[str, Window]) -> bool:
-                # Done when the list has one row, unchanged for PLC_SETTLE seconds, and
-                # Connect is enabled. Two or more rows stop the run. The list is owner-drawn.
-                # CLICK paints its own highlight and connects to its current row, and the
-                # list reports no selection. So the runner selects nothing.
-                items = self.desktop.list_view_items(plc_list.hwnd)
-                if items != last[0]:
-                    last[0], since[0] = items, time.monotonic()
-                    return False
-                if items is None or time.monotonic() - since[0] < PLC_SETTLE:
-                    return False
-                if items >= 2:
-                    raise Aborted(
-                        f"{lists(items)}, and the runner connects only when it lists exactly 1"
-                    )
-                button = _child(self.controls(connect), cls="Button", id=1, text="Connect")
-                return items == 1 and button is not None and button.enabled
-
-            self.wait(
-                "one PLC in the list",
-                [STARTUP, CONNECT],
-                listed,
-                on_timeout=lambda: lists(last[0]),
-            )
-            self.log(f"PLC list: 1 row for {PLC_SETTLE:g} s")
-            self.record("connect_dialog")
-            controls = self.controls(connect)
-            same_lan = _require(
-                _child(controls, cls="Button", id=20059),
-                "the Connect dialog's 'In the same LAN' (20059)",
-            )
-            if not (
-                same_lan.text.startswith("In the same LAN")
-                and same_lan.visible
-                and self.desktop.button_checked(same_lan.hwnd) == 1
-            ):
-                raise Aborted(
-                    "the Connect dialog does not scan the same LAN. The runner needs button 20059 to "
-                    "read 'In the same LAN', to be visible and to be checked. "
-                    f"It reads {same_lan.text!r}, and visible is {same_lan.visible}."
-                )
-            button = _require(
-                _child(controls, cls="Button", id=1, text="Connect"), "the Connect button"
-            )
-            items = self.desktop.list_view_items(plc_list.hwnd)
-            if items != 1:
-                raise Aborted(
-                    f"{lists(items)} as Connect is about to be pressed, and the runner connects "
-                    "only when it lists exactly 1"
-                )
-            self.press(connect, button)
-            found = self.wait(
-                "Login or the read-project question",
-                [STARTUP, CONNECT, LOGIN, READ_PROMPT],
-                lambda f: f if LOGIN.name in f or READ_PROMPT.name in f else None,
-            )
+            presses = 1
+            found = self.press_connect()
+            while CPU_TYPE_BOX.name in found:
+                self.answer_cpu_type_box(found[CPU_TYPE_BOX.name], presses)
+                presses += 1
+                found = self.press_connect()
 
         if LOGIN.name in found:
             with self.step("login"):
@@ -2113,6 +2111,136 @@ class Run:
             self.wait("the main window, connected", [STARTUP, CONNECT, READ_PROMPT], self.only_main)
             self.confirm_connected()
             self.record("connected")
+
+    def answer_cpu_type_box(self, box: Window, presses: int) -> None:
+        """Press OK in *box*, wait for the Connect dialog, then wait ``CPU_TYPE_WAIT`` seconds.
+
+        *presses* counts the presses of Connect so far. Raise Aborted if *box* is not the box that says CLICK could not read the CPU type
+        (``cpu_type_ok``). The runner presses nothing in it then. Also raise Aborted, and leave
+        the box open, if *presses* is ``CPU_TYPE_TRIES``. Any other window that shows before
+        Connect can be pressed again stops the run, as it does in every wait. That includes a
+        second box with the same title.
+        """
+        ok = cpu_type_ok(self.controls(box))
+        if ok is None:
+            raise Aborted(f"unexpected window while waiting for {CONNECT_ANSWER}: {_describe(box)}")
+        self.record(f"cpu_type_box{presses}")
+        if presses >= CPU_TYPE_TRIES:
+            raise Aborted(
+                f"CLICK could not read the PLC's CPU type after {presses} presses of Connect. "
+                f"Each press showed the box {box.title!r} that starts {CPU_TYPE_LINE!r}. "
+                "The PLC may still hold the connection of a CLICK that crashed. "
+                "Wait a few minutes, then run again."
+            )
+        self.log(
+            f"CLICK could not read the PLC's CPU type (Connect press {presses} of "
+            f"{CPU_TYPE_TRIES}). The runner presses the box's OK and presses Connect again in "
+            f"{CPU_TYPE_WAIT:g} s."
+        )
+        self.press(box, ok)
+
+        def closed(found: dict[str, Window]) -> bool:
+            shown = found.get(CPU_TYPE_BOX.name)
+            if shown is not None and shown.hwnd != box.hwnd:
+                raise Aborted(
+                    f"unexpected window while waiting for the CPU-type box to close: "
+                    f"{_describe(shown)}"
+                )
+            return shown is None and CONNECT.name in found and found[CONNECT.name].enabled
+
+        self.wait(
+            "the CPU-type box to close and the Connect dialog to be enabled",
+            [STARTUP, CONNECT, CPU_TYPE_BOX],
+            closed,
+        )
+        again = time.monotonic() + CPU_TYPE_WAIT
+        self.wait(
+            f"{CPU_TYPE_WAIT:g} s to pass before Connect is pressed again",
+            [STARTUP, CONNECT],
+            lambda _: time.monotonic() >= again,
+            timeout=CPU_TYPE_WAIT + self.s.timeout,
+        )
+
+    def press_connect(self) -> dict[str, Window]:
+        """Press Connect once the dialog lists one PLC, and return the windows that answer it.
+
+        The answer is the Login dialog, the read-project question or ``CPU_TYPE_BOX``.
+        """
+        connect = self.wait(
+            "Connect to CLICK PLC", [STARTUP, CONNECT], lambda f: f.get(CONNECT.name)
+        )
+        plc_list = _require(
+            self.wait(
+                "the PLC list",
+                [STARTUP, CONNECT],
+                lambda f: _child(self.controls(connect), cls="SysListView32", id=20061),
+            ),
+            "the Connect dialog's PLC list",
+        )
+        last: list[int | None] = [None]
+        since = [time.monotonic()]
+
+        def lists(items: int | None) -> str:
+            if items is None:
+                return "the Connect dialog's PLC list does not answer"
+            return f"the Connect dialog lists {items} PLC(s)"
+
+        def listed(_: dict[str, Window]) -> bool:
+            # Done when the list has one row, unchanged for PLC_SETTLE seconds, and
+            # Connect is enabled. Two or more rows stop the run. The list is owner-drawn.
+            # CLICK paints its own highlight and connects to its current row, and the
+            # list reports no selection. So the runner selects nothing.
+            items = self.desktop.list_view_items(plc_list.hwnd)
+            if items != last[0]:
+                last[0], since[0] = items, time.monotonic()
+                return False
+            if items is None or time.monotonic() - since[0] < PLC_SETTLE:
+                return False
+            if items >= 2:
+                raise Aborted(
+                    f"{lists(items)}, and the runner connects only when it lists exactly 1"
+                )
+            button = _child(self.controls(connect), cls="Button", id=1, text="Connect")
+            return items == 1 and button is not None and button.enabled
+
+        self.wait(
+            "one PLC in the list",
+            [STARTUP, CONNECT],
+            listed,
+            on_timeout=lambda: lists(last[0]),
+        )
+        self.log(f"PLC list: 1 row for {PLC_SETTLE:g} s")
+        self.record("connect_dialog")
+        controls = self.controls(connect)
+        same_lan = _require(
+            _child(controls, cls="Button", id=20059),
+            "the Connect dialog's 'In the same LAN' (20059)",
+        )
+        if not (
+            same_lan.text.startswith("In the same LAN")
+            and same_lan.visible
+            and self.desktop.button_checked(same_lan.hwnd) == 1
+        ):
+            raise Aborted(
+                "the Connect dialog does not scan the same LAN. The runner needs button 20059 to "
+                "read 'In the same LAN', to be visible and to be checked. "
+                f"It reads {same_lan.text!r}, and visible is {same_lan.visible}."
+            )
+        button = _require(
+            _child(controls, cls="Button", id=1, text="Connect"), "the Connect button"
+        )
+        items = self.desktop.list_view_items(plc_list.hwnd)
+        if items != 1:
+            raise Aborted(
+                f"{lists(items)} as Connect is about to be pressed, and the runner connects "
+                "only when it lists exactly 1"
+            )
+        self.press(connect, button)
+        return self.wait(
+            CONNECT_ANSWER,
+            [STARTUP, CONNECT, LOGIN, READ_PROMPT, CPU_TYPE_BOX],
+            lambda f: f if {LOGIN.name, READ_PROMPT.name, CPU_TYPE_BOX.name} & f.keys() else None,
+        )
 
     def confirm_connected(self) -> None:
         """Wait for the status bar to name the PLC (the one ``--plc`` names, if given).
@@ -2390,7 +2518,10 @@ class Run:
         Raise Refused if they do not fit the cases file. The last line for a case is its
         entry. Each entry must name a case of the file by its id and ask what that case asks.
         It must also have been tried with ``--wire`` if this run uses it, and without if not.
-        The run carries over an entry that has an outcome, and an entry whose case stopped
+        If an entry has no outcome and one of its stops has ``crashed``, CLICK exited after
+        that case's OK. The entry then gets the outcome ``crashed``. Its ``message`` becomes
+        that stop's reason, and its ``out`` becomes the folder of the run that the crash
+        stopped. The run carries over an entry that has an outcome, and an entry whose case stopped
         ``MAX_STOPS`` runs, where a stop caused by Ctrl+C does not count. To carry an entry
         over is to copy it into this run and not try its case again. With ``keep``, an
         accepted entry without its save (``kept``) counts as having no outcome. The run tries
@@ -2437,6 +2568,13 @@ class Run:
             entry["index"] = by_id[case_id][0]
             stops = list(entry.get("stops", []))
             counted = [stop for stop in stops if not stop.get("interrupted")]
+            crash = next((stop for stop in reversed(stops) if stop.get("crashed")), None)
+            if entry.get("outcome") is None and crash is not None:
+                entry.update(outcome="crashed", message=crash["reason"], out=crash["out"])
+                self.log(
+                    f"case {entry['index']} ({case_id}) crashed CLICK in {crash['out']}. "
+                    "The runner records it as crashed and does not try it again."
+                )
             answered = entry.get("outcome") is not None
             if answered and self.s.keep and entry["outcome"] == "accepted":
                 answered = entry.get("kept") is not None
@@ -2500,7 +2638,8 @@ class Run:
         The case's entry in ``cases`` has these keys. ``index`` is its number in the file and
         ``id`` is its ``case``. Then come the keys for what it asks (row, case, instruction,
         mode, fields, choices, options). ``wired`` says whether it was tried with ``--wire``.
-        ``outcome`` is ``accepted``, ``refused``, ``not_taken`` or ``other``. ``code`` and
+        ``outcome`` is ``accepted``, ``refused``, ``not_taken`` or ``other``. Only
+        ``load_resume`` gives a case the outcome ``crashed``. ``code`` and
         ``message`` come from the box. An accepted case has them only if CLICK showed a box
         and closed the dialog along with it. For a ``not_taken`` case, ``message`` says why
         the case was not taken. ``limits`` holds each field's EM_GETLIMITTEXT. ``read_back``
@@ -2515,7 +2654,8 @@ class Run:
         None otherwise. ``seconds`` is how long the case took. ``out`` is the run it was
         tried in.
         ``stops`` lists each run that the case stopped. Each stop has that run's ``out`` and
-        ``reason``. A stop that Ctrl+C caused also has ``interrupted``. If the case had an
+        ``reason``. A stop that Ctrl+C caused also has ``interrupted``. If CLICK exited after
+        the dialog's OK and before it answered, the stop also has ``crashed``. If the case had an
         answer other than ``other`` when it stopped, the stop holds that answer as its own
         ``outcome``, and the case's ``outcome`` is None. A case that stops the run is the
         result's ``stopped_at``.
@@ -2552,6 +2692,8 @@ class Run:
             stop: dict[str, Any] = {"out": self.s.out, "reason": reason}
             if interrupted:
                 stop["interrupted"] = True
+            if isinstance(exc, CaseCrashed):
+                stop["crashed"] = True
             # If the run stopped after CLICK answered (Delete or a save failed), the answer
             # moves into the stop and the case is left without an outcome, so that --resume
             # tries it again. An ``other`` answer is itself what stopped the run, so it stays
@@ -2818,7 +2960,12 @@ class Run:
                 return found[ANSWER_BOX]
             return DIALOG not in found and self.only_main(found)
 
-        answer = self.wait(f"CLICK's answer to {what}", expected, answered, answering=dialog.hwnd)
+        try:
+            answer = self.wait(
+                f"CLICK's answer to {what}", expected, answered, answering=dialog.hwnd
+            )
+        except ClickExited as exc:
+            raise CaseCrashed(str(exc)) from exc
         self.record(f"{label}_answer")
         if isinstance(answer, Window) and not self.answer_box(
             what, entry, dialog, answer, expected
@@ -4624,6 +4771,11 @@ class Run:
             self.result["cases"].sort(key=lambda entry: entry["index"])
             answered = sum(entry["outcome"] is not None for entry in self.result["cases"])
             self.result["left"] = len(self.cases) - answered
+            self.result["crashed"] = [
+                {"index": entry["index"], "id": entry["id"]}
+                for entry in self.result["cases"]
+                if entry["outcome"] == "crashed"
+            ]
         if write:
             self.result["files"]["result"] = self.s.out / "result.json"
         text = json.dumps(self.result, indent=2, default=_json_default)
