@@ -69,25 +69,28 @@ class AppSettings:
     def redraw_notice_due(self) -> bool:
         """Return True if the next redraw after a Sync should show the notice about it.
 
-        The notice shows once per machine. It never shows once the user has set Redraw
-        Ladder on Sync in the Tools menu.
+        The notice shows once for each Windows user. It never shows once the user has set
+        Redraw Ladder on Sync in the Tools menu.
         """
         return not self._saved.redraw_notice_shown and self._saved.redraw_on_sync is None
 
     def mark_redraw_notice_shown(self) -> None:
         """Save that the notice about the redraw after a Sync has shown."""
-        self._save(replace(self._saved, redraw_notice_shown=True))
+        self._save(redraw_notice_shown=True)
 
     def _on_redraw_on_sync_set(self, *_args: object) -> None:
         """Save Redraw Ladder on Sync each time the user sets it in the Tools menu."""
-        self._save(replace(self._saved, redraw_on_sync=self.redraw_on_sync))
+        self._save(redraw_on_sync=self.redraw_on_sync)
 
-    def _save(self, saved: settings_file.SavedSettings) -> None:
-        """Keep *saved* and write it to the settings file.
+    def _save(self, **changes: bool) -> None:
+        """Use *changes* from now on and write them to the settings file.
 
-        If the file cannot be written, the values hold until ClickNick closes.
+        Read the file again first and change only the values in *changes*. So another
+        ClickNick that saved a value since this one started keeps it. If the write fails,
+        log a warning. ClickNick then uses *changes* until it closes.
         """
-        self._saved = saved
+        self._saved = replace(self._saved, **changes)
+        saved = replace(settings_file.read_settings(self._settings_path), **changes)
         if not settings_file.write_settings(saved, self._settings_path):
             logger.warning("Could not save ClickNick's settings file")
 

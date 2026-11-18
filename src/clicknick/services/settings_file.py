@@ -42,7 +42,7 @@ def read_settings(path: Path | None = None) -> SavedSettings:
     """Return the settings saved in *path*, or in ``default_settings_path()`` if it is None."""
     try:
         payload = json.loads((path or default_settings_path()).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):  # A deeply nested file raises RecursionError
         return SavedSettings()
     if not isinstance(payload, dict):
         return SavedSettings()
@@ -59,7 +59,8 @@ def write_settings(settings: SavedSettings, path: Path | None = None) -> bool:
 
     Write *path*, or ``default_settings_path()`` if *path* is None. Leave out
     ``redraw_on_sync`` while the user has not set it. Write a staging file first and then
-    replace the settings file with it. So a failed write leaves the old file as it was.
+    replace the settings file with it. So a failed write leaves the old file as it was. It
+    also removes the staging file.
     """
     payload: dict[str, bool] = {REDRAW_NOTICE_SHOWN: settings.redraw_notice_shown}
     if settings.redraw_on_sync is not None:
@@ -71,5 +72,6 @@ def write_settings(settings: SavedSettings, path: Path | None = None) -> bool:
         staging.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         staging.replace(target)
     except OSError:
+        staging.unlink(missing_ok=True)
         return False
     return True

@@ -80,19 +80,20 @@ writes nothing and raises `RuntimeError`. This holds for every caller. For the d
 SC_.mdb, because CLICK writes that file while it is connected. So the rows that it writes hold CLICK's current
 values in the fields that the user did not change.
 
-CLICK's ladder paints nicknames and address comments from a table in CLICK's memory. CLICK shows the names
-from a Sync only after that table reloads, and no window message reloads it. `services/click_redraw.py` forces
-the reload. It posts CLICK's File > Import > Nickname (WM_COMMAND 32900, CLICK 2.60-4.00) and presses Cancel
-in the Open dialog. CLICK reloads the table when that dialog closes, after Cancel too. Nothing is imported, and
-SC_.mdb stays as it was. CLICK then counts the project as changed.
+CLICK's ladder paints nicknames from a table in CLICK's memory. CLICK shows the names from a Sync only after that
+table reloads, and no window message reloads it. `services/click_redraw.py` forces the reload. It posts CLICK's
+File > Import > Nickname (WM_COMMAND 32900, CLICK 2.60-4.00) and presses Cancel in the Open dialog. CLICK reloads
+the table when that dialog closes, after Cancel too. Nothing is imported, and SC_.mdb stays as it was. CLICK then
+counts the project as changed.
 
-The redraw starts only while CLICK shows its main window alone, enabled and answering. So every window that
-CLICK shows after the command comes from the import. The redraw recognises the Open dialog by its three import
-modes and its control ids, never by Windows' own strings. Until `OPEN_TIMEOUT`
-passes, it treats a dialog that does not show the modes yet as the Open dialog still being built. A window of
-any other kind fails the redraw. The redraw presses Cancel only while the Open dialog is the only other window
-open. If the redraw fails while that is so, it presses Cancel too. It leaves any other window to the user,
-including an Open dialog that it did not recognise. The redraw never sets the foreground window.
+The redraw starts only while CLICK shows its main window alone, enabled and answering. So every window that CLICK
+shows after the command comes from the import. The redraw recognises the Open dialog by its three import modes and
+its control ids, never by Windows' own strings. Until `OPEN_TIMEOUT` passes, it treats a dialog that does not show
+the modes yet as the Open dialog still being built. A window of any other kind fails the redraw. The redraw presses
+Cancel only while the Open dialog is the only other window open. If the redraw fails while that is so, it presses
+Cancel too. If the user closes the Open dialog before the redraw presses Cancel, the redraw presses nothing and
+ends as done, because CLICK reloads the table either way. The redraw leaves any other window to the user, including
+an Open dialog that it did not recognise. It never sets the foreground window.
 
 The tests drive the redraw through a fake `ClickDesktop`. A live check on CLICK 2.60, 3.43, 3.71, 3.92 and
 4.00 (2026-11-18) ran the same steps with CLICK active, with another program active and with CLICK minimized.
@@ -119,10 +120,12 @@ A skipped or failed redraw shows as a status line and never fails the Sync.
 
 The first time a redraw after a Sync shows the names, ClickNick shows a message box with an OK button
 (`REDRAW_NOTICE` in `connection_controller.py`). It says what the redraw does and how to turn it off. ClickNick
-shows it once per machine. It never shows it once the user has set Tools > Redraw Ladder on Sync. `AppSettings`
-(`config.py`) saves the setting and whether the message has shown in `%LOCALAPPDATA%\ClickNick\settings.json`
-(`services/settings_file.py`). It writes the file each time either value changes. A missing or unreadable file
-counts as a new machine. The tests point the file at a temp folder (`tests/conftest.py`).
+shows it once for each Windows user. It never shows it once the user has set Tools > Redraw Ladder on Sync.
+`AppSettings` (`config.py`) saves the setting and whether the message has shown in
+`%LOCALAPPDATA%\ClickNick\settings.json` (`services/settings_file.py`). Each time either value changes, it reads
+the file again and writes it with only that value changed. So two ClickNicks that run at once keep each other's
+values. A missing or unreadable file counts as never set. The tests point the file at a temp folder
+(`tests/conftest.py`).
 
 ## Nicknames loaded with an error
 

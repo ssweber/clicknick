@@ -1,8 +1,7 @@
 """Make CLICK redraw its nicknames from SC_.mdb (issue #36).
 
-CLICK's ladder paints nicknames and address comments from a table in CLICK's memory. After
-a Sync writes SC_.mdb, CLICK still shows the old names, and no window message reloads that
-table.
+CLICK's ladder paints nicknames from a table in CLICK's memory. After a Sync writes SC_.mdb,
+CLICK still shows the old names, and no window message reloads that table.
 
 CLICK reloads the table from SC_.mdb each time its File > Import > Nickname dialog closes,
 after Cancel too. So ``redraw_nicknames`` posts that command to the connected CLICK window
@@ -199,12 +198,23 @@ class _CancelledImport:
     def _run(self) -> RedrawResult:
         self.desktop.post_command(self.main, IMPORT_NICKNAME)
         dialog = self._wait("CLICK's Open dialog", {"dialog", "opening"}, self._lone, OPEN_TIMEOUT)
-        cancel = self._cancel_button(self.desktop.controls(dialog.hwnd))
-        self.desktop.press(cancel.hwnd)
+        try:
+            cancel = self._cancel_button(self.desktop.controls(dialog.hwnd))
+        except _Stop:
+            if self._is_shown(dialog.hwnd):
+                raise
+            # The user closed the Open dialog first. CLICK reloads the table all the same.
+            cancel = None
+        if cancel is not None:
+            self.desktop.press(cancel.hwnd)
         self._wait(
             "CLICK's Open dialog to close", {"dialog"}, lambda found: not found, CLOSE_TIMEOUT
         )
         return RedrawResult(RedrawOutcome.REFRESHED)
+
+    def _is_shown(self, hwnd: int) -> bool:
+        """Return True if CLICK still shows the window *hwnd*."""
+        return any(w.hwnd == hwnd for w in self.desktop.windows(self.pid))
 
     def _lone(self, found: list[Window]) -> Window | None:
         """Return the Open dialog once it is enabled, or None before that.

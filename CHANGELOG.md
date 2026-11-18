@@ -18,10 +18,6 @@
 - The Simulator no longer starts from a PLC data file in which a Text address holds a comma. CLICK writes the comma without quotes, so ClickNick cannot tell which address each value after it belongs to. 0.24.1 started the simulation with that address blank and each Text value after it moved to the next address. Replace the comma in the PLC's Text, then save the data file in CLICK again.
 - The Data View Editor no longer accepts a New Value on SC50 (`_PLC_Mode_Change_to_STOP`) or SC51 (`_Watchdog_Timer_Reset`). 0.24.1 accepted one, and then showed an error when you wrote it. Set these bits from the ladder program instead. A .cdv file that holds a New Value on them still opens, and **Verify MDB & CDV** reports the value.
 
-### Added
-
-- The first time CLICK redraws its ladder after a Sync, ClickNick shows a notice. It says what ClickNick did and how to turn it off. The notice shows once on each computer.
-
 ### Changed
 
 - The Simulator's Modbus server now accepts a write to an X, T or CT bit, the same as a CLICK PLC. So an HMI or another Modbus client can now change a simulated input. It used to refuse the write with exception 02. The Data View Editor still does not write X.
@@ -38,7 +34,7 @@
 
 ### Fixed
 
-- After a Sync, CLICK's ladder now shows the new nicknames. ClickNick opens CLICK's **File > Import > Nickname** and cancels it. CLICK then reads the names again. CLICK's Open dialog shows for a moment, and the window that you were in stays in front. CLICK also counts the project as changed. So when you close CLICK, it asks you to save the project with the new nicknames. If a CLICK dialog is in the way, close it and choose **Tools > Redraw Nicknames in CLICK**. To redraw only when you choose that command, turn off **Tools > Redraw Ladder on Sync**. ClickNick remembers the setting.
+- After a Sync, CLICK's ladder now shows the new nicknames. ClickNick opens CLICK's **File > Import > Nickname** and cancels it. CLICK then reads the names again. CLICK's Open dialog shows for a moment, and the window that you were in stays in front. CLICK also counts the project as changed. So when you close CLICK, it asks you to save the project with the new nicknames. If a CLICK dialog is in the way, close it and choose **Tools > Redraw Nicknames in CLICK**. To redraw only when you choose that command, turn off **Tools > Redraw Ladder on Sync**. ClickNick remembers the setting. The first time CLICK redraws after a Sync, ClickNick shows a notice. The notice says what ClickNick did and how to turn the redraw off.
 - In CLICK 4's Receive and Send, autocomplete now appears in Starting Master Address, the status flags and Exception Response. On a Modbus TCP port it used to appear in the IP address field. Starting Master Address now offers only the memory types that the selected Function Code accepts. In CLICK 2 and 3, the local address field of Receive and Send now offers the memory types that any of its Function Codes accepts.
 - In CLICK 4, autocomplete now offers DS and TD nicknames in Out's Delay Setting. In every version, it no longer offers X, T or CT in Out, Set and Reset, because CLICK rejects them there.
 - The Simulator now starts from a PLC data file that has a DF value CLICK shows as `Err-Format`. An analog input on that DF keeps the value it had.

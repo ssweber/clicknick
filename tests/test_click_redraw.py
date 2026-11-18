@@ -248,7 +248,7 @@ def test_a_window_of_no_known_kind_fails_the_redraw_at_once() -> None:
 
 
 def test_a_file_dialog_without_the_import_modes_is_never_cancelled() -> None:
-    """The user's own File > Open, or another CLICK's import dialog, is left as it is."""
+    """A dialog that shows only two of the import modes is never cancelled."""
     click = FakeClick()
     click.radios = {PROJECT: "Merge (Project priority)", FILE: "Merge (File priority)"}
 
@@ -287,6 +287,27 @@ def test_a_dialog_that_loses_its_import_modes_is_not_cancelled() -> None:
     result = _redraw(click)
 
     assert result.outcome is RedrawOutcome.FAILED
+    assert click.pressed == []
+
+
+def test_an_open_dialog_that_the_user_closes_first_still_redraws() -> None:
+    """CLICK reloads its nicknames when the dialog closes, whoever closes it."""
+    click = FakeClick()
+    real_controls = click.controls
+    looks: list[int] = []
+
+    def controls(hwnd: int) -> list[Control]:
+        looks.append(hwnd)
+        if len(looks) > 1:  # The user closed the dialog after the redraw found it
+            click.open_shown = False
+            return []
+        return real_controls(hwnd)
+
+    click.controls = controls
+
+    result = _redraw(click)
+
+    assert result.outcome is RedrawOutcome.REFRESHED
     assert click.pressed == []
 
 

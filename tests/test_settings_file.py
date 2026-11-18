@@ -52,8 +52,9 @@ def test_the_default_path_is_under_localappdata(monkeypatch, tmp_path) -> None:
         "[true]",
         '{"redraw_on_sync": "no", "redraw_notice_shown": 1}',
         "",
+        "[" * 200_000 + "]" * 200_000,
     ],
-    ids=["not json", "a list", "not booleans", "empty"],
+    ids=["not json", "a list", "not booleans", "empty", "deeply nested"],
 )
 def test_an_unreadable_file_counts_as_never_set(tmp_path, text) -> None:
     path = tmp_path / "settings.json"
@@ -68,6 +69,7 @@ def test_a_folder_in_place_of_the_file_counts_as_never_set(tmp_path) -> None:
 
     assert read_settings(path) == SavedSettings()
     assert not write_settings(SavedSettings(redraw_on_sync=False), path)
+    assert not path.with_suffix(".json.staging").exists()
 
 
 def test_a_missing_file_counts_as_never_set(tmp_path) -> None:
@@ -77,7 +79,7 @@ def test_a_missing_file_counts_as_never_set(tmp_path) -> None:
 # -- AppSettings -------------------------------------------------------------------------
 
 
-def test_the_setting_is_on_and_the_notice_due_on_a_new_machine(tk_root, tmp_path) -> None:
+def test_the_setting_is_on_and_the_notice_due_with_no_settings_file(tk_root, tmp_path) -> None:
     settings = AppSettings(tmp_path / "settings.json")
 
     assert settings.redraw_on_sync
@@ -95,7 +97,7 @@ def test_the_setting_is_read_back_at_start(tk_root, tmp_path, value) -> None:
     assert not settings.redraw_notice_due
 
 
-def test_an_unreadable_file_starts_like_a_new_machine(tk_root, tmp_path) -> None:
+def test_an_unreadable_file_starts_as_never_set(tk_root, tmp_path) -> None:
     path = tmp_path / "settings.json"
     path.write_text("{not json", encoding="utf-8")
 
@@ -111,6 +113,17 @@ def test_the_notice_and_the_setting_are_saved_together(tk_root, tmp_path) -> Non
 
     settings.mark_redraw_notice_shown()
     settings.redraw_on_sync_var.set(False)
+
+    assert read_settings(path) == SavedSettings(redraw_on_sync=False, redraw_notice_shown=True)
+
+
+def test_two_clicknicks_keep_each_others_values(tk_root, tmp_path) -> None:
+    path = tmp_path / "settings.json"
+    first = AppSettings(path)
+    second = AppSettings(path)
+
+    second.redraw_on_sync_var.set(False)
+    first.mark_redraw_notice_shown()
 
     assert read_settings(path) == SavedSettings(redraw_on_sync=False, redraw_notice_shown=True)
 

@@ -1,7 +1,8 @@
 """Show a notice over CLICK's main window while ClickNick redraws CLICK's nicknames.
 
-The redraw (``services/click_redraw.py``) leaves the foreground window as it is. So the
-notice never takes the focus and never becomes the active window.
+The redraw (``services/click_redraw.py``) leaves the foreground window as it is. The notice
+never takes the focus and never becomes the active window, so that it does not change the
+foreground either.
 """
 
 from __future__ import annotations

@@ -52,7 +52,8 @@ logger = logging.getLogger(__name__)
 REDRAW_COMMAND = "Redraw Nicknames in CLICK"
 # The Tools menu setting that redraws them after each Sync
 REDRAW_ON_SYNC = "Redraw Ladder on Sync"
-# The notice after the first redraw that a Sync makes, unless the user set the setting
+# The notice after the first redraw that follows a Sync. It does not show once the user has
+# set Tools > Redraw Ladder on Sync.
 REDRAW_NOTICE = (
     "CLICK doesn't redraw its ladder when ClickNick syncs nicknames. So after a Sync, "
     "ClickNick opens CLICK's File > Import > Nickname and cancels it. CLICK then shows the "
@@ -748,7 +749,7 @@ class ConnectionController:
         self._app.root.after(100, finish)
 
     def _show_redraw_notice(self) -> None:
-        """Explain the redraw after a Sync, the first time that one redraws, on this machine.
+        """Show the notice that explains the redraw after a Sync, unless it is not due.
 
         Show nothing if the notice has shown before, or if the user has set Tools > Redraw
         Ladder on Sync. The notice is saved as shown before it shows. So a redraw that ends

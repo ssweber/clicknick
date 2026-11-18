@@ -1,7 +1,7 @@
 """Issue #36: after a Sync into CLICK's database, the connected CLICK window redraws.
 
-The window redraws its nicknames. After the first redraw, a notice explains it, once per
-machine. Tools > Redraw Nicknames in CLICK redraws by hand and shows no notice.
+The window redraws its nicknames. After the first redraw, a notice explains it, once for
+each Windows user. Tools > Redraw Nicknames in CLICK redraws by hand and shows no notice.
 """
 
 from __future__ import annotations
