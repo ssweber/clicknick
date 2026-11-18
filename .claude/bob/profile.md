@@ -24,17 +24,19 @@ check `/plugins` before dispatching builders.
 
 ## Environment (put in every builder and reviewer brief)
 
-- ClickNick is developed against the local `pyclickplc`, `pyrung` and `laddercodec` checkouts
-  beside it (development.md). A new worktree needs, once:
-  `make install install-dev SIBLINGS=C:/Users/Sam/Documents/GitHub`. After that every
-  `make lint`, `make test` and `uv run` runs with `UV_NO_SYNC=1`, or uv re-syncs and drops the
-  local checkouts.
-- Test a branch that needs an unreleased sibling locally. It merges only after that sibling's
-  release. Its pull request says so and stays open until then.
-- Never run a bare `make`. It runs `make install`, whose `uv sync` drops the local checkouts. Run
-  `make lint UV_NO_SYNC=1` and `timeout 900 make test UV_NO_SYNC=1`. The hook wraps `make` in a
-  600 s timeout unless a leading `timeout N` says otherwise, and the suite can pass 600 s under
-  load. With no queue, nothing but this rule refuses a bare `make`.
+- Each worktree has its own `.venv`, made from its `uv.lock` with the released pyclickplc, pyrung and
+  laddercodec. The orchestrator makes it after `worktree new`:
+  `env -u UV_PROJECT_ENVIRONMENT uv sync --locked --all-extras --dev --project <worktree>`. A builder or
+  reviewer never uses the main checkout's `.venv`, and never runs `uv run`, `uv sync` or `make` in the main
+  checkout. The main checkout's `.venv` holds Sam's `make install-dev` (the local sibling checkouts), and a sync
+  there puts the released packages back. Agents from other repos that work in this one follow the same rule.
+- A branch that needs an unreleased sibling installs it into its own `.venv`:
+  `uv pip install --python <worktree>/.venv/Scripts/python.exe <sibling checkout or worktree>`. It merges only
+  after that sibling's release. Its pull request says so and stays open until then. With a sibling installed,
+  every `uv run` also takes `UV_NO_SYNC=1`.
+- Run `make lint UV_NO_SYNC=1` and `timeout 900 make test UV_NO_SYNC=1`, never a bare `make`, which runs
+  `make install`. The hook wraps `make` in a 600 s timeout unless a leading `timeout N` says otherwise, and the
+  suite can pass 600 s under load. With no queue, nothing but this rule refuses a bare `make`.
 - Use `make` commands for the suite, not a bare `uv run pytest`. Targeted pytest is fine. Do not
   put `cd` before commands in the main checkout. Do not inline multi-line content in shell
   commands (heredocs, `python -c`). Write a file with Write, then run it.
@@ -45,8 +47,8 @@ check `/plugins` before dispatching builders.
 
 `make lint UV_NO_SYNC=1` and `timeout 900 make test UV_NO_SYNC=1` in the worktree, both green on
 the last commit with a clean worktree. The full suite is about 2 minutes, serial. Where a branch
-touches the docs, also `timeout 900 make docs-check` (it re-syncs the environment, so run it
-last).
+touches the docs, also `timeout 900 make docs-check`, last. Its `uv run` syncs the worktree's `.venv` to the
+lock with the docs group, which replaces any sibling installed there.
 
 ## Correctness contract (put in every builder and reviewer brief)
 

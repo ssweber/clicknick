@@ -413,6 +413,37 @@ fails when one disappears:
 `dap_service.py` matches on a pyrung error string. That match goes with the console commands for every change
 (item 10).
 
+pyrung's public-surface pass settles where each import goes. bobby's list is in
+`pyrung-wt/buildbot/jobs/public-surface/INVENTORY.md`:
+
+- `pyrung.click.tag_map` moves to `pyrung.click`, the physical table to `pyrung`, and `Program` to
+  `pyrung.Program`.
+- `build_program_graph`, `ProgramGraph` and `TagRole` give way to `program.dataview()` and `pyrung.DataView`.
+- `pyrung.core.validation` becomes one public module, `pyrung.validation` (Sam's choice), with `report.grouped()`
+  and `ordered_rules()`. A CLICK program is checked one way, `mapping.validate(logic)`. `logic.validate(dialect)`
+  and `validate_click_program` go. bobby says ClickNick uses neither; check that at the move.
+- `pyrung.dap.live` and `pyrung.dap.grammar` move to `pyrung.live`. `python -m pyrung.dap` stays.
+- In the tests, `_adapter_dap_class` moves to DapService's subprocess launch, the `_parsers` asserts in
+  `test_add_block_dialog` go, and test program strings use `from pyrung import`.
+
+What a user sees at the move:
+
+- **`upstream:` and `downstream:` stop at the call site.** Sam ruled it on 2026-11-18 ("the call site is the
+  enable"). The planner ruled the downstream half under his "make it not surprising". Both come from `DataView`
+  with no argument.
+  - For a tag written in a subroutine, `upstream:` takes the conditions of every rung that calls it, at every
+    level of the call chain. It doesn't follow those conditions' own upstream, unless the cone reads them too. So
+    `upstream:` gets narrower.
+  - `downstream:` is the exact reverse: X is in `upstream:Y` exactly when Y is in `downstream:X`. A tag in a call
+    rung's condition reaches everything the subroutine writes and onward, only when it is the starting tag. So
+    `downstream:` gets wider for those tags and stays the same for every other tag.
+  - Both go in the CHANGELOG.
+- **A saved check selection with an old rule name.** `load_check_config` raises on a rule code it doesn't know.
+  ClickNick meets it at `ProgramCheckSelection.load()` and `sync()` (`program_check_selection.py:48` and
+  `:61`). At the joint release the field-rule codes become laddercodec's names, so every saved selection of
+  those rules holds old names. ClickNick catches the error at those two calls, drops the names it doesn't know,
+  keeps the rest, writes the workspace's `pyproject.toml` without them, and says once which names it dropped.
+
 ## 9. The undecoded marker (waits on laddercodec, pyrung)
 
 Plan 2, last bullet. laddercodec replaces a rung that it cannot decode with a marker rung. The marker rung has
