@@ -476,6 +476,18 @@ plans on 2026-11-17 and listed what follows. Nobody has checked the list against
 - At the move, search `src` and `tests` for `.type`, for `edge_kind`, and for `Contact(` and `Coil(` calls
   that use the old fields.
 - At the move, search for code that assigns to a field of an instruction or a rung. laddy found none.
+- laddercodec's main has `write_bundle()` and `read_bundle()` (#114): `main.csv` plus `subroutines/<name>.csv`,
+  named by the stripped subroutine name. `write_bundle` refuses two names equal with case ignored, control
+  characters, and the names `check_program_name` refuses. It adds no suffix. ClickNick's `program_save` writes
+  its own bundle (`program.py` ~690-715): `_slugify` drops the characters Windows refuses in a file name and the
+  trailing dots and spaces, and `_dedupe_filename_stem` adds " (2)" when two names give the same stem (case
+  ignored, as Windows file names are). Before ClickNick moves to `write_bundle`, find out which names CLICK
+  accepts for a subroutine: `<>:"/\|?*`, a trailing dot, and two names that differ only in case. Nobody has
+  tried them in CLICK. The test (`tests/ladder/test_cli.py` ~640-680) uses made-up names.
+- `parse_bundle` now returns main first, as "Main Program", then the subroutines sorted by name with case
+  ignored. Check what in ClickNick relies on the order.
+- laddercodec's main also has `csv_rows(rungs, *, index=False, stop="end")` and `CSV_HEADER` (#113).
+  `write_csv` builds every row before it opens the file.
 
 ## 10. Recording, ClickNick side (waits on pyrung's recording core and console commands for every change)
 
