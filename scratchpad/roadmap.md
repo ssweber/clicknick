@@ -424,6 +424,31 @@ subroutine). `encode()` refuses the marker. On ClickNick's side:
 - Review Changes can never paste the marker back, because `encode()` refuses it. Check the whole-program copy
   path that keeps CLICK's rungs, and the legacy-encoding paths.
 
+The move to the next laddercodec release also changes how ClickNick builds a `Rung`. laddy read laddercodec's
+plans on 2026-11-17 and listed what follows. Nobody has checked the list against the code yet.
+
+- Nothing breaks while ClickNick pins `laddercodec==0.4.0`. On laddercodec's main since #110, instructions are
+  frozen and hashable. Assigning to a field raises `FrozenInstanceError`. `laddercodec.replace(inst,
+  **changes)` is public. When nothing changes, it keeps the decoded blob and the refusals. When a value
+  changes, it checks the instruction again.
+- Sam decided on two more changes. laddercodec is building them on its `api/rung-grid` branch.
+  1. A down wire under a contact becomes a cell token, `Tee(Contact(...))`. `Contact.wire_down` and
+     `CompareContact.wire_down` go away. The CSV form `T:X001` stays the same.
+  2. `Rung` is frozen, with tuple fields. `logical_rows` becomes a read-only property, and laddercodec refuses
+     a constructor call that passes `logical_rows`.
+- These calls pass `logical_rows`, by laddy's reading. Line numbers are from main at c232d31.
+  - `src/clicknick/ladder/program.py`: `empty_rung` (lines 519-525, `logical_rows=1`).
+  - `tests/ladder/test_cli.py` lines 108 and 135.
+  - `tests/ladder/test_unreadable_rungs.py` lines 41, 210 and 255.
+  - `tests/test_analysis_service.py` line 1143, which passes it by position.
+  - `tests/test_compare_with_click_window.py` line 30.
+  - `tests/test_live_rung_apply.py` line 38.
+  - `tests/test_review_changes_window.py` line 40.
+  - `tests/test_rung_diff.py` lines 41, 52 and 257.
+- `_extract_operand_candidates` in `program.py` (lines 169-212) will receive `Tee` cells. laddy expects them to
+  fall through to the `to_csv()` text match at the end. Unwrapping a `Tee` to its contact is safer.
+- At the move, search for code that assigns to a field of an instruction or a rung. laddy found none.
+
 ## 10. Recording, ClickNick side (waits on pyrung's recording core and console commands for every change)
 
 Plan 1, step 4. pyrung, ClickNick and the VS Code extension release together.
@@ -499,6 +524,14 @@ waits on the CLICK runner (item 4). A check that is walked or automated is delet
 - Edit two nicknames, let CLICK save one first, Sync -> "Synced 1 changes", main window "1 tags synced".
 - Edit a nickname, save the same in CLICK, Sync -> "CLICK already has these changes. There is nothing to write."
 - (4b) CSV Save reports the number of rows edited.
+
+### Database helper messages (Sync without Access ODBC)
+- `src/clicknick/utils/jet_sidecar.py` line 95: when the changes that a Sync sends come to more than 8 MB, the Sync fails with
+  "There are too many address changes to save at once." The message gives no advice. What can the user do?
+- `jet_sidecar.py` line 121: the database helper stopped answering during a save. The message says that
+  ClickNick cannot tell whether the changes were saved. Suppose edits are unsaved, and the user chooses the
+  same window again in ClickNick's CLICK window list. Does ClickNick then reload the database safely? If so,
+  the message can tell the user to do that.
 
 ### Tag Browser, Dataview, Overlay
 - x1 / XD0u from the Tag Browser.
