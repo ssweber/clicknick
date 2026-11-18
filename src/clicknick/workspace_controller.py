@@ -276,15 +276,21 @@ class WorkspaceController:
         return session is self._app._session and session.setup_window is window
 
     def _ensure_plc_name(self) -> str | None:
-        """Prompt for a missing PLC name only when durable setup is requested."""
+        """Return the project's PLC name.
+
+        If the project has none, prompt for one and write it to Project.ini. If the project
+        has a name, also write it where CLICK 4 reads it (``_show_plc_name_in_click``).
+        Return None if the user cancels the prompt or the project closes. If the project has
+        no name, also return None when ClickNick has not read CLICK's database or cannot
+        write the name. The status line then says why.
+        """
         plc_name = self.plc_name()
         if plc_name:
+            self._show_plc_name_in_click(plc_name)
             return plc_name
 
         from pyclickplc.project import write_plc_name
         from pyclickplc.validation import validate_click_name
-
-        from .utils.click_temp import click_temp_dir
 
         app = self._app
         session = app._project_session()
@@ -312,10 +318,7 @@ class WorkspaceController:
                 messagebox.showerror("Invalid PLC Name", error, parent=parent)
                 continue
             try:
-                write_plc_name(
-                    click_temp_dir(session.click.hwnd) / "Project.ini",
-                    plc_name,
-                )
+                write_plc_name(session.project_ini, plc_name)
             except (OSError, ValueError) as exc:
                 messagebox.showerror("Name PLC", str(exc), parent=parent)
                 app._update_status(f"PLC name could not be set: {exc}", "error")
@@ -328,6 +331,37 @@ class WorkspaceController:
                 parent=parent,
             )
             return plc_name
+
+    def _show_plc_name_in_click(self, plc_name: str) -> None:
+        """Write *plc_name* to Project.ini where CLICK shows it, if it is not there yet.
+
+        ClickNick 0.24.1 wrote the name of a new CLICK 4 project to ``[PLCName]``. CLICK 4
+        ignores that section and shows ``[Sec20] Key1``. ``write_plc_name`` writes the name
+        to ``[Sec20] Key1`` and leaves ``[PLCName]`` as it was. It leaves the file alone when
+        ``[Sec20]`` already holds the name. If the write fails, the status line reports it
+        and Workspace setup goes on. ClickNick already has the name that it needs.
+
+        The method writes nothing if ``validate_click_name`` rejects the name. ClickNick
+        never wrote such a name, and ``write_plc_name`` would raise ``ValueError`` for it.
+        """
+        from pyclickplc.project import write_plc_name
+        from pyclickplc.validation import validate_click_name
+
+        app = self._app
+        session = app._project_session()
+        if session is None or not validate_click_name(plc_name)[0]:
+            return
+        try:
+            write_plc_name(session.project_ini, plc_name)
+        except (OSError, ValueError) as exc:
+            reason = str(exc).rstrip()
+            if not reason.endswith("."):
+                reason += "."
+            app._update_status(
+                f"Could not write the PLC name to Project.ini: {reason} CLICK may show no "
+                "name. Enter the name in CLICK's System Configuration.",
+                "error",
+            )
 
     def _set_pending(self, session: ConnectionSession, config: ProjectWorkspaceConfig) -> None:
         """Show one candidate configuration in *session*'s setup form."""
