@@ -617,6 +617,14 @@ class SimulationSession:
         return self._error
 
     @property
+    def write_error(self) -> str | None:
+        """Return why the last program write failed, or None if it did not fail.
+
+        :attr:`program_change` shows this text until a write succeeds or the simulation stops.
+        """
+        return self._write_error
+
+    @property
     def error_detail(self) -> str | None:
         return self._error_detail
 
@@ -908,7 +916,10 @@ class SimulationSession:
         self._emit("desired")
 
     def _plc_data_changed(self) -> bool:
-        """Return True if the PLC data file is newer than the last time recorded, and record it."""
+        """Return True if the PLC data file changed since the session last recorded its time.
+
+        Record the new modification time.
+        """
         mtime = _mtime(self._plc_data_path)
         if mtime is None or (self._plc_data_mtime is not None and mtime <= self._plc_data_mtime):
             return False
