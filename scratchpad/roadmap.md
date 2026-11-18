@@ -349,9 +349,9 @@ Runs of 2026-11-16 (job A):
 
 The Read Data dump and Project.ini's section case, left here before, ran as jobs D and C (item 4). These runs
 answer the open check "(4b) CSV TXT quoting import", which is deleted. One finding went to pyclickplc.
-Its writer wrote a Text value of a tab, or with an edge space, bare, and CLICK's import stored that value
-trimmed. pyclickplc 0.8.0 fixed it. Its writer quotes such a value, and CLICK's import keeps a quoted one
-(`test_a_txt_value_with_a_tab_or_edge_space_is_quoted`).
+pyclickplc 0.7.0 wrote a Text value without quotes when the value was a tab or had a space at either end.
+CLICK's import then stored the value without that tab or space. pyclickplc 0.8.0 quotes such a value, and
+CLICK's import keeps a quoted value (`test_a_txt_value_with_a_tab_or_edge_space_is_quoted`).
 
 ## 5. ConnectionSession owns the window and project (done)
 

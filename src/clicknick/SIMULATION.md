@@ -32,8 +32,9 @@ Dataview Editor's link to the simulation.
   patches go with `set_mode("run")`.
 - ClickNick reads values over Modbus. Inputs (switch and analog patches), mode, speed, stepping, forces and
   links go over DAP.
-- The Dataview reads and writes values over Modbus, with the same client as for a real CLICK. X stays read-only
-  there, as on a real CLICK. The Dataview's Force column goes through the simulation.
+- The Data View reads and writes values over Modbus, with the same client as for a real CLICK. That client
+  refuses an X write. The Simulator's Modbus server accepts one, as a CLICK does, so a client outside
+  ClickNick can change an input. The Data View's Force column goes through the simulation.
 - A frame is an update that pyrung sends about the mode, the scan, the forces and the links. Mode, speed and
   forces follow the frames, because the Console and agents can drive the same simulation. The last command
   takes effect.

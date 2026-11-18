@@ -308,8 +308,7 @@ class ConnectionSession:
         """Return CLICK's PLC name for the project from Project.ini.
 
         Return None when the project has no PLC name, or when Project.ini cannot be read or is
-        not valid INI. The main window then shows the PLC name as "Not available", and ClickNick
-        pairs no workspace. Workspace setup asks the user for a name.
+        not valid INI.
         """
         from pyclickplc.project import read_plc_name
 
