@@ -29,34 +29,51 @@ SD13. Then it runs Syntax Check on the empty main program (``baseline_syntax_che
 check must name rung 1 for the missing END (C0201).
 
 Then, for each case, ``try`` opens the instruction's dialog from the ribbon's command at the
-ladder's cursor. It checks that the buttons and lists that no case sets are in the state
-that every case assumes: One Shot off, Out's type Out/Toggle, Receive's CPU Port2 and
-Function Code 01. It picks the mode, and it picks in each list the item that the case's
-``choices`` name. It does not press a mode button that is already checked, because Math
-empties its fields on any click on a type button. To pick an item in a list, it sends Up
-and Down keys to the list control only. It fills the fields by WM_SETTEXT. It picks the
-operator of Compare and Search (the mode) after the fields, because a TXT address hides some
-operators.
+ladder's cursor. It checks that the buttons and lists that no case sets are in the state that every
+case assumes. Each instruction's ``opens_with`` and ``opens_listing`` give that state, such as One
+Shot off, Out's type Out/Toggle and Send's CPU Port2. The run stops if the dialog opens in another
+state. The runner picks the mode. Then it picks in each list the item that the case's ``choices``
+name, in the order of the instruction's lists. A pick in Send's Com Port sets its Function Code
+again. The runner does not press a mode button that is already checked, because Math empties its
+fields on any click on a type button. To pick an item in a list, it sends Up and Down keys to the
+list control only. It fills the fields by WM_SETTEXT, and Send's Server IP Address by
+IPM_SETADDRESS. It never sets a field that CLICK fills itself (a timer's or a counter's current
+value). It picks the operator of Compare and Search (the mode) after the fields, because a TXT
+address hides some operators.
 
-Then it sets the case's ``options``. The case names each option by the label that its
-button shows at that moment, or by its id. CLICK relabels Copy's buttons as the fields
-change. The runner sets the options that the case wants checked (1) before those it wants
-unchecked (0). Pressing a radio button unchecks its pair, so by the time the runner reaches
-a radio button that should be unchecked, it already is. A field that the case asks for may
-open only after such a press (Copy's Termination code, once its option is checked). The
-runner fills that field then.
+Then it sets the case's ``options``. The case names each option by the label that its button shows
+at that moment, by its id, or by the name of its flag in laddercodec (``retained``, ``oneshot``).
+CLICK relabels Copy's buttons as the fields change. The runner sets the options that the case wants
+checked (1) before those it wants unchecked (0). Pressing a radio button unchecks its pair, so by
+the time the runner reaches a radio button that should be unchecked, it already is. A field that the
+case asks for may open only after such a press (Copy's Termination code, once its option is
+checked). The runner fills that field then.
 
-It reads back the fields, every list and every option it set. For Receive it reads back
-every open field, including the ones that the case leaves as the dialog filled them. It
-waits until the dialog is alone and presses OK.
+Once the fields and options are set, the runner reads every list and the mode's radio button again,
+because filling a field may change them. If a list no longer shows the item that the case chose, the
+runner picks the item once more and reads the list again. A list that the case does not choose must
+show what it showed after the picks. The runner does not pick in it. It never presses the mode
+again, because Math would empty its fields. The case's ``lists`` holds each list's items, its
+selected index, and whether it is visible and enabled. It holds them after the picks (``picked``),
+once the fields are filled (``filled``) and after a second pick (``picked_again``). The runner reads
+back the fields, every option it set and each field that CLICK fills itself. ``filled_by_click``
+names the fields that the case gives but the runner never typed, because CLICK fills them. For
+Receive and Send the runner reads back every open field, including the ones that the case leaves as
+the dialog filled them. It waits until the dialog is alone and presses OK.
 
 A case is ``not_taken`` when any of these is true:
 
 - a field, list, mode or option is closed for entry (hidden or disabled);
 - no option button shows the label that the case names, or more than one visible one does;
 - the case asks for a checked radio button to be unchecked;
-- a field, list or option reads back something other than what the case asked for;
-- a list lacks the item that the case asked for.
+- a field, list or option reads back something other than what the case asked for, even
+  after a list is picked again;
+- the mode's radio button is no longer checked once the fields are filled;
+- a list lacks the item that the case asked for (Send's Slot0 and Slot1 ports, on a PLC
+  without those modules);
+- the case names a field that no control holds (a cell of Drum's pattern), or a field that
+  has no control in the case's mode;
+- a field that CLICK fills itself does not read what the case names.
 
 In that case the runner closes the dialog with Cancel and does not press OK.
 The run stops if CLICK does not answer when a field is set or read, because CLICK may have
@@ -64,29 +81,32 @@ stalled. It also stops if an option does not read as asked after ``OPTION_PRESSE
 In one live run, a press was lost. The case's ``controls`` list the dialog's visible buttons,
 statics and edits as they are when OK (or Cancel) is pressed.
 
-After OK, CLICK either shows an error box owned by the dialog or closes the dialog. If it
-shows the box, the case is ``refused``, and its entry holds the box's code and message. The
-box's OK and the dialog's Cancel then close both. If CLICK closed the dialog, the runner
-runs Syntax Check. The case's entry keeps the lines of that check whose code the empty
-program's check did not report. The case is ``accepted`` only when that check names rung 2
-for the missing END, as it does when an instruction sits in rung 1. Otherwise it is
-``other``, and that stops the run. Edit > Delete then removes the instruction, and the next
-Syntax Check must read as the empty program's did.
+After OK, CLICK either shows an error box owned by the dialog or closes the dialog. If it shows the
+box, the case is ``refused``, and its entry holds the box's code and message. The box's OK and the
+dialog's Cancel then close both. CLICK may show a second box after the first box's OK, and the
+entry's ``boxes`` then lists them all. If a box is still open 10 s after its OK, the runner presses
+OK again (``ok_presses``). If CLICK closed the dialog, the runner runs Syntax Check. The case's
+entry keeps the lines of that check whose code the empty program's check did not report. The case is
+``accepted`` only when that check names rung 2 for the missing END, as it does when an instruction
+sits in rung 1. Otherwise it is ``other``, and that stops the run. Edit > Delete then removes the
+instruction, and the next Syntax Check must read as the empty program's did.
 
 All cases run in one CLICK. The runner then disconnects it and ends it, as ``record`` does.
 result.json holds one entry per case under ``cases``, in the file's order. After an abort it
 keeps the entries that were done before.
 
-``try --wire`` tries each case in a rung of its own, as a program holds it. An output
-instruction (Copy, Math, Out, Receive, Search) is placed behind a contact ``X001`` (the
-ribbon's Contact(NO), whose OK leaves the cursor at column B). A contact instruction
-(Compare, which ``try`` accepts only with ``--wire``) gets an Out coil ``Y001`` once its
-dialog closes. The Syntax Check of an accepted case must then report no code that the empty
-program's check did not. After each case the whole rung is deleted. That includes a contact
-placed for a case that CLICK refused or that was not taken. The runner posts a click on
-rung 1's number in the ladder view, which selects the rung (``Desktop.click_ladder``), then
-runs Edit > Delete. ``--resume`` refuses an earlier run that used ``--wire`` when this run
-does not, and the other way round.
+``try --wire`` tries each case in a rung of its own, as a program holds it. An output instruction
+(Copy, Math, Out, Receive, Search, Send, Timer) is placed behind a contact ``X001``. That contact is
+the ribbon's Contact(NO), whose OK leaves the cursor at column B. A contact instruction (Compare,
+which ``try`` accepts only with ``--wire``) gets an Out coil ``Y001`` once its dialog closes. ``try
+--wire`` wires only the first input and places no Next. So it refuses a cases file that holds a
+Counter, Shift Register, Drum or For case, or a retentive Timer case. CLICK's Syntax Check would
+report an error for each of them (C0202 for an unwired Reset), and the run would stop. The Syntax
+Check of an accepted case must then report no code that the empty program's check did not. After
+each case the whole rung is deleted. That includes a contact placed for a case that CLICK refused or
+that was not taken. The runner posts a click on rung 1's number in the ladder view, which selects
+the rung (``Desktop.click_ladder``), then runs Edit > Delete. ``--resume`` refuses an earlier run
+that used ``--wire`` when this run does not, and the other way round.
 
 A case's id is its ``case``, unique in its file. The runner appends each case's entry to
 ``DIR/cases.jsonl`` as one line as soon as it is known. A run that stops therefore keeps
@@ -272,10 +292,14 @@ from click_desktop import (
     COMPARE_DIALOG,
     CONTACT_NO_DIALOG,
     COPY_DIALOG,
+    COUNTER_DIALOG,
     DELETE,
     DISCONNECT,
+    DRUM_DIALOG,
     EDIT_COPY,
+    FOR_DIALOG,
     IMPORT_NICKNAME,
+    IP_ADDRESS_CLASS,
     MATH_DIALOG,
     OPEN_PROJECT,
     OUT_DIALOG,
@@ -284,8 +308,11 @@ from click_desktop import (
     RECEIVE_DIALOG,
     SAVE_PROJECT_AS,
     SEARCH_DIALOG,
+    SEND_DIALOG,
+    SHIFT_DIALOG,
     SYNTAX_CHECK,
     SYSTEM_CONFIGURATION,
+    TIMER_DIALOG,
     Control,
     Desktop,
     LadderViewError,
@@ -337,6 +364,19 @@ _CLOSED = "closed"
 # BM_CLICK left the button unchecked. The next BM_CLICK checked it
 OPTION_PRESSES = 3
 OPTION_WAIT = 3.0
+# After OK in an instruction dialog, CLICK may show several error boxes in a row, each after
+# the last one's OK. In a live run on 2026-11-16, a Pack of T1..T33 into DS1 showed OBJ-041 and
+# then OBJ-024. The runner takes up to MAX_BOXES boxes for one OK. In another live run, a box
+# stayed open for 60 s after its OK was pressed. So if a box is still open REPRESS_AFTER
+# seconds after its OK, the runner presses OK once more
+MAX_BOXES = 5
+REPRESS_AFTER = 10.0
+# How long the runner keeps trying to put data on the clipboard or to empty it while another
+# program holds it open. In a live run on 2026-11-18, ClickNick's clipboard code gave up after
+# its 20 tries in 1 s, twice, and the run stopped. No run has shown how long another program
+# holds the clipboard. The runner waits 30 s. That is a guess. It is about the time of four
+# cases under --wire --keep in that run
+CLIPBOARD_WAIT = 30.0
 # try --wire: rung 1's number in the ladder view, as a client point at CLICK v4.00's default
 # zoom. A click posted there selects the rung and moves the cursor to 1:1:A. Edit > Delete
 # then removes the whole rung. A live run on 2026-11-17 showed this
@@ -456,8 +496,12 @@ SYSTEM_CONFIG_NOTICE = Expect(
 # The instruction dialog ``try`` has open, and the error box it may own after OK
 DIALOG = "dialog"
 ANSWER_BOX = "answer_box"
-# The classes of an instruction dialog's fields (Math's formula is a RichEdit)
-_FIELD_CLASSES = ("Edit", "RichEdit20W")
+# The classes of an instruction dialog's fields (Math's formula is a RichEdit, Send's Server
+# IP Address an IP address control)
+_FIELD_CLASSES = ("Edit", "RichEdit20W", IP_ADDRESS_CLASS)
+# Four numbers of one to three digits, joined by dots. ``_ip_numbers`` also checks that each
+# is at most 255
+_IP_ADDRESS = re.compile(r"\A([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\Z")
 
 
 # ---------------------------------------------------------------------------
@@ -487,7 +531,20 @@ class Instruction:
     contact with ``--wire``) or ``contact`` (at A, driving a coil with ``--wire``).
     *option_radios* are the options that are radio buttons. Pressing a radio button checks
     it. Only a press on its pair unchecks it, so the runner never presses a radio button to
-    uncheck it.
+    uncheck it. *flags* names some options by the name of laddercodec's flag (``retained``,
+    ``oneshot``), and a case may name an option that way too.
+
+    *read_only* are the fields that CLICK fills itself, such as a timer's current value. The
+    runner never sets them. It reads each one back whenever it shows. A case may name one,
+    and the case is then taken only if the field reads what the case names. *mode_fields*
+    gives the fields whose control depends on the mode. For each mode it maps a field to its
+    control there. A field that the case names and that the mode does not list has no
+    control in that mode. *no_control* names the fields that a case may name but that no
+    control holds, each with the reason. A case that names one is not taken.
+
+    *wire_refusal* says why ``try --wire`` cannot place the instruction, such as an input
+    besides the first. ``try --wire`` wires only the first input and places no Next. If
+    *wire_refusal_flag* is set, the refusal applies only to a case that checks that flag.
     """
 
     command: int
@@ -504,6 +561,51 @@ class Instruction:
     mode_after_fields: bool = False
     kind: str = "output"  # OUTPUT or CONTACT
     option_radios: tuple[int, ...] = ()
+    flags: dict[str, int] = field(default_factory=dict)  # A flag's name -> its option's id
+    read_only: dict[str, int] = field(default_factory=dict)  # A field's name -> its edit's id
+    # A mode's name -> the fields whose control depends on the mode, each with that control
+    mode_fields: dict[str, dict[str, int]] = field(default_factory=dict)
+    no_control: dict[str, str] = field(default_factory=dict)  # A field's name -> the reason
+    wire_refusal: str = ""
+    wire_refusal_flag: str = ""
+
+    def option_ids(self, key: str) -> tuple[int, ...]:
+        """Return the ids of the option buttons that a case's option *key* may name.
+
+        An id or a flag's name names one button. A label may name any of the instruction's
+        ``options``, because only the open dialog shows which button has the label.
+        """
+        if _is_id(key):
+            return (int(key),)
+        if key in self.flags:
+            return (self.flags[key],)
+        return self.options
+
+    def refuses_wire(self, case: Case) -> bool:
+        """Return whether ``try --wire`` cannot place *case* (``wire_refusal``).
+
+        With ``wire_refusal_flag``, the case is refused if any option that it checks may
+        name the flag's button. That includes an option that the case names by a label.
+        """
+        if not self.wire_refusal:
+            return False
+        if not self.wire_refusal_flag:
+            return True
+        button = self.flags[self.wire_refusal_flag]
+        return any(
+            state == 1 and button in self.option_ids(key) for key, state in case.options.items()
+        )
+
+    def fields_in(self, mode: str | None) -> dict[str, int]:
+        """Return the fields that a case may set in *mode*, each with its control's id."""
+        return {**self.fields, **self.mode_fields.get(mode or "", {})}
+
+    def field_names(self) -> set[str]:
+        """Return every field name that a case may give, in any mode."""
+        names = set(self.fields) | set(self.read_only) | set(self.no_control)
+        for fields in self.mode_fields.values():
+            names |= set(fields)
+        return names
 
 
 OUTPUT = "output"
@@ -521,7 +623,9 @@ INSTRUCTIONS = {
     ),
     # The "to" fields are the end of a range. Block and Pack take a source range. Unpack takes
     # a destination range. Block shows the destination's end, which CLICK works out itself.
-    # Fill (5002) is left out, because no live run has picked it. One Shot (5024) is off.
+    # Fill (5002) takes a value in Source and a destination range. A live run on 2026-11-18
+    # picked it and found all three fields open, and the option radios disabled. One Shot
+    # (5024) is off.
     # As the fields change, CLICK relabels the option radios 5019 and 5020 with one of these
     # pairs: "Copy Value"/"Copy Binary", "Real Numbering"/"Exponential Numbering", "Copy
     # Character Value"/"Copy ASCII Code Value", "Suppress zero"/"Do not suppress zero". 5036
@@ -538,7 +642,7 @@ INSTRUCTIONS = {
             "destination_end": 5017,
             "termination_code": 5023,
         },
-        {"single": 5000, "block": 5001, "pack": 5003, "unpack": 5004},
+        {"single": 5000, "block": 5001, "pack": 5003, "unpack": 5004, "fill": 5002},
         {5024: 0},
         options=(5019, 5020, 5036, 5037, 5021, 5024),
         option_radios=(5019, 5020, 5036, 5037),
@@ -608,6 +712,137 @@ INSTRUCTIONS = {
         options=(5021, 5022),
         mode_after_fields=True,
     ),
+    # The dialogs below, as a live run on 2026-11-18 dumped them. Each name is the one that
+    # laddercodec's editor grids give the field, list, mode or flag.
+    #
+    # A live run on 2026-11-16 showed that CLICK's Syntax Check reports C0202 (Missing line
+    # connection) for a Counter or a Timer whose Reset input is unwired. ``try --wire`` wires
+    # only the first input, so it refuses Counter and a retentive Timer. Shift Register and
+    # Drum have a Reset input too, and For needs a Next. No live run has tried them under
+    # --wire, so ``try --wire`` refuses them as well.
+    #
+    # Timer opens on ON Delay (5008) and ms, with "Current value will not be retained" (5010)
+    # checked. Retentive is its radio pair 5011. OFF Delay (5009) disables both. When Timer
+    # Number (5001) is set to T1, CLICK fills Current Value (5007, read-only) with TD1
+    "timer": Instruction(
+        TIMER_DIALOG,
+        "Timer",
+        {"done": 5001, "preset": 5004},
+        {"on_delay": 5008, "off_delay": 5009},
+        {5010: 1, 5011: 0},
+        lists={"unit": 5006},
+        opens_listing={5006: "ms"},
+        options=(5011,),
+        option_radios=(5011,),
+        flags={"retained": 5011},
+        read_only={"accumulator": 5007},
+        wire_refusal="A retentive Timer has a Reset input.",
+        wire_refusal_flag="retained",
+    ),
+    # Counter opens on Count Up (5009). When Counter Number (5001) is set to CT1, CLICK fills
+    # Current Value (5006) with CTD1 and Completion Bit (5007) with CT1. Both are read-only.
+    # laddercodec's Counter has no field for the Completion Bit, so the runner names it
+    # ``completion_bit``
+    "counter": Instruction(
+        COUNTER_DIALOG,
+        "Counter",
+        {"done": 5001, "preset": 5004},
+        {"count_up": 5009, "count_down": 5010, "count_up_down": 5011},
+        {},
+        read_only={"accumulator": 5006, "completion_bit": 5007},
+        wire_refusal="Counter has a Reset input.",
+    ),
+    "shift": Instruction(
+        SHIFT_DIALOG,
+        "Shift Register",
+        {"start_bit": 5002, "end_bit": 5003},
+        {},
+        {},
+        wire_refusal="Shift Register has a Clock input and a Reset input.",
+    ),
+    # For's One Shot (5003) is a check box. It opens unchecked
+    "for": Instruction(
+        FOR_DIALOG,
+        "For",
+        {"count": 5001},
+        {},
+        {5003: 0},
+        options=(5003,),
+        flags={"oneshot": 5003},
+        wire_refusal="For needs a Next after it.",
+    ),
+    # Drum opens on Time Base (5000) and ms. Number of Steps (5021) and Number of Outputs
+    # (5022) are Edits with up-down controls, from 1 to 16, and both open reading 1. All 16
+    # rows of outputs, durations and events stay open whatever the numbers. Output i is
+    # 5043 + i. In Time Base a step's duration is 5094 + i. In Event Base the same Edit is the
+    # step's event, and Unit and Elapsed Time (5010) are disabled. In Time and Event (5127) a
+    # step's duration is 5130 + i and its event 5094 + i. Load New Step Number (5017) enables
+    # its step's field (5019). The pattern of outputs is a grid control whose cells have no ids
+    "drum": Instruction(
+        DRUM_DIALOG,
+        "Drum",
+        {
+            "num_steps": 5021,
+            "num_outputs": 5022,
+            "current_step": 5006,
+            "accumulator": 5010,
+            "completion_flag": 5014,
+            "jump_step": 5019,
+            **{f"outputs[{i}]": 5043 + i for i in range(16)},
+        },
+        {"time_drum": 5000, "event_drum": 5001, "time_event_drum": 5127},
+        {5016: 0, 5017: 0},
+        lists={"unit": 5003},
+        opens_listing={5003: "ms"},
+        options=(5016, 5017),
+        flags={"jog_enabled": 5016, "jump_enabled": 5017},
+        mode_fields={
+            "time_drum": {f"presets[{i}]": 5094 + i for i in range(16)},
+            "event_drum": {f"events[{i}]": 5094 + i for i in range(16)},
+            "time_event_drum": {
+                **{f"presets[{i}]": 5130 + i for i in range(16)},
+                **{f"events[{i}]": 5094 + i for i in range(16)},
+            },
+        },
+        no_control={
+            f"pattern[{step}][{output}]": "the Drum dialog's pattern is a grid whose cells "
+            "have no control ids, so the runner cannot set a cell"
+            for step in range(16)
+            for output in range(16)
+        },
+        wire_refusal="Drum has a Reset input.",
+    ),
+    # Send opens on CPU Port2, Function Code 05 and Modbus 984 Addressing, with Slave ID 0. A
+    # pick in Com Port sets the Function Code to 06 again, so the runner picks the lists in
+    # this entry's order. Number of Bits (5017) is disabled under Function Code 05 and 06.
+    # Word Swap (5003) is enabled only under 16. CPU Port1 and WLAN Port show the Server IP
+    # Address (5036, an IP address control) and the Server Port Number (5039, which opens at
+    # 502). The runner never presses COM Port Setup (5013)
+    "send": Instruction(
+        SEND_DIALOG,
+        "Send",
+        {
+            "slave_id": 5014,
+            "slave_address": 5015,
+            "master_address": 5016,
+            "count": 5017,
+            "sending": 5020,
+            "success": 5023,
+            "error": 5026,
+            "exception": 5029,
+            "ip": 5036,
+            "server_port": 5039,
+        },
+        {},
+        {},
+        lists={"port": 5000, "function": 5001, "addressing": 5002, "word_swap": 5003},
+        opens_listing={
+            5000: "CPU Port2",
+            5001: "05 - Write Single Coil",
+            5002: "Modbus 984 Addressing",
+        },
+        reads_every_field=True,
+    ),
 }
 # try --wire: the contact that an output instruction is placed behind, and the Out coil
 # that a contact instruction drives. The contact's dialog comes from Inst_ContactNO.dll. A
@@ -671,6 +906,21 @@ def _is_id(key: str) -> bool:
     return key.isascii() and key.isdecimal()
 
 
+def _ip_numbers(text: str) -> tuple[int, int, int, int] | None:
+    """Return the four numbers of the IP address *text* ("192.168.1.10"), or None.
+
+    Return None unless *text* is four numbers from 0 to 255, joined by dots. That is all
+    that an IP address control takes.
+    """
+    match = _IP_ADDRESS.match(text)
+    if match is None:
+        return None
+    first, second, third, fourth = (int(part) for part in match.groups())
+    if any(number > 255 for number in (first, second, third, fourth)):
+        return None
+    return first, second, third, fourth
+
+
 def load_cases(path: Path) -> tuple[list[Case], list[str]]:
     """Return the cases in *path* and the addresses whose nicknames to read.
 
@@ -679,8 +929,9 @@ def load_cases(path: Path) -> tuple[list[Case], list[str]]:
     "nicknames": ["SD21", ...]}``. ``mode`` is required where the dialog has modes, and
     rejected where it has none. ``fields`` names the dialog's fields, each with its text. An
     optional ``choices`` names the dialog's lists, each with the item to pick. An optional
-    ``options`` names the dialog's option buttons, each by the label it shows or by its id
-    (a decimal string, one of the instruction's ``options``), with 1 (checked) or 0. A label
+    ``options`` names the dialog's option buttons, each with 1 (checked) or 0. It names a
+    button by its id (a decimal string, one of the instruction's ``options``), by the name
+    of its flag (one of the instruction's ``flags``) or by the label that it shows. A label
     is checked only against the open dialog, because CLICK relabels some buttons. ``case`` is
     the case's id and must be unique in the file.
     """
@@ -730,11 +981,14 @@ def load_cases(path: Path) -> tuple[list[Case], list[str]]:
             or not all(isinstance(v, str) for v in fields.values())
         ):
             raise ValueError(f"{where}: 'fields' must name at least one field, each with text")
-        unknown = set(fields) - set(instruction.fields)
+        unknown = set(fields) - instruction.field_names()
         if unknown:
+            listed = [*instruction.fields, *instruction.read_only]
+            for more in instruction.mode_fields.values():
+                listed += [key for key in more if key not in listed]
             raise ValueError(
                 f"{where}: {instruction.title} has no field {', '.join(sorted(unknown))} "
-                f"(its fields: {', '.join(instruction.fields)})"
+                f"(its fields: {', '.join(listed)})"
             )
         choices = entry.get("choices", {})
         if not isinstance(choices, dict) or not all(
@@ -1648,6 +1902,17 @@ class Run:
                 raise Refused(
                     f"{', '.join(sorted(contacts))} is a contact. Run try with --wire to try it."
                 )
+            unwired = [c for c in self.cases if INSTRUCTIONS[c.instruction].refuses_wire(c)]
+            if unwired and self.s.wire:
+                # Syntax Check would report the inputs that --wire leaves unwired, and the
+                # run would stop at the first such case that CLICK accepts
+                reasons = dict.fromkeys(INSTRUCTIONS[c.instruction].wire_refusal for c in unwired)
+                raise Refused(
+                    f"try --wire cannot place {len(unwired)} case(s). The first is "
+                    f"{unwired[0].name!r}. {' '.join(reasons)} --wire wires only an "
+                    "instruction's first input, and it places no Next. CLICK's Syntax Check "
+                    "would then report an error. Run try without --wire to try these cases."
+                )
             if self.s.resume is not None:
                 if self.s.resume.resolve() == self.s.out.resolve():
                     raise Refused(
@@ -1952,7 +2217,10 @@ class Run:
                 self.result["scr_before_paste"] = names
                 self.log(f"CLICK's temp folder holds {', '.join(names)} before the first save")
             before = self.status_bar("before_paste")
-            self.desktop.set_clipboard(prepared.payload, self.main)
+            main = self.main
+            self.on_clipboard(
+                "paste", "set", lambda: self.desktop.set_clipboard(prepared.payload, main)
+            )
             self.command(PASTE)
             how = self.wait(
                 "CLICK to finish the paste",
@@ -2343,7 +2611,14 @@ class Run:
           one does;
         - the case asks for a checked radio button to be unchecked;
         - a field, list or option reads back something other than what the case asked for;
-        - a list lacks the item that the case asked for.
+        - a list lacks the item that the case asked for;
+        - the case names a field that no control holds (``no_control``, a Drum's pattern),
+          or a field that has no control in the case's mode;
+        - a read-only field does not read what the case names;
+        - the case gives an IP address control a text that is not four numbers from 0 to 255.
+
+        The runner picks the items of the lists in the order of the instruction's ``lists``.
+        It never sets a read-only field. It reads each one back while it shows.
 
         The run stops (``Aborted``) if CLICK does not answer for a field, or if an option
         does not read as asked after ``OPTION_PRESSES`` presses. A closed dialog is
@@ -2380,8 +2655,12 @@ class Run:
             # fields are filled
             self.press_mode(what, dialog, dialog_expect, instruction, case.mode)
         in_mode = f" in {mode} mode" if mode else ""
-        for name, item in case.choices.items():
-            missing = self.choose(what, dialog, dialog_expect, instruction.lists[name], item)
+        # Pick in the instruction's order, because a pick may set a later list again (Send's
+        # Com Port sets its Function Code)
+        for name, list_id in instruction.lists.items():
+            if name not in case.choices:
+                continue
+            missing = self.choose(what, dialog, dialog_expect, list_id, case.choices[name])
             if missing is not None:
                 if missing == _CLOSED:
                     message = f"list {name} is closed for entry{in_mode}"
@@ -2389,21 +2668,52 @@ class Run:
                     message = f"{name}: {missing}"
                 self.not_taken(what, dialog, dialog_expect, entry, message)
                 return
-        names = list(instruction.fields if instruction.reads_every_field else case.fields)
-        fields = self.field_controls(dialog, instruction, names)
-        entry["limits"] = {name: self.desktop.edit_limit(c.hwnd) for name, c in fields.items()}
-        closed = [
-            name
-            for name, c in fields.items()
-            if name in case.fields and not (c.visible and c.enabled)
-        ]
-        typed: dict[str, str] = {}
-        for name, text in case.fields.items():
-            if name not in closed:
-                typed[name] = self.fill(what, title, name, fields[name], text)
-        # Collect why the mode pressed after the fields, or an option, cannot be set. The
-        # filled fields may have closed either of them
+        if instruction.lists:
+            entry["lists"] = {"picked": self.list_states(dialog, instruction)}
+        # Collect why a field, the mode pressed after the fields, or an option cannot be set.
+        # The filled fields may close the mode or an option
         shut: list[str] = []
+        settable = instruction.fields_in(case.mode)
+        wanted = [name for name in case.fields if name in settable]
+        uncontrolled: dict[str, list[str]] = {}
+        for name in case.fields:
+            if name in instruction.no_control:
+                uncontrolled.setdefault(instruction.no_control[name], []).append(name)
+        shut += [f"{reason}: {', '.join(names)}" for reason, names in uncontrolled.items()]
+        absent = [
+            name
+            for name in case.fields
+            if name not in settable
+            and name not in instruction.read_only
+            and name not in instruction.no_control
+        ]
+        if absent:
+            shut.append(f"these fields have no control in {case.mode} mode: {', '.join(absent)}")
+        names = list(settable) if instruction.reads_every_field else list(wanted)
+        names += list(instruction.read_only)
+        fields = self.field_controls(dialog, instruction, names, case.mode)
+        entry["limits"] = {
+            name: self.desktop.edit_limit(c.hwnd)
+            for name, c in fields.items()
+            if c.cls != IP_ADDRESS_CLASS
+        }
+        closed = [name for name in wanted if not (fields[name].visible and fields[name].enabled)]
+        typed: dict[str, str] = {}
+
+        def fill(name: str) -> None:
+            # Set the field *name* to the case's text, unless its control cannot take the text
+            text = case.fields[name]
+            if fields[name].cls == IP_ADDRESS_CLASS and _ip_numbers(text) is None:
+                shut.append(
+                    f"{name} {text!r} is not four numbers from 0 to 255, and an IP address "
+                    "control takes nothing else"
+                )
+                return
+            typed[name] = self.fill(what, title, name, fields[name], text)
+
+        for name in wanted:
+            if name not in closed:
+                fill(name)
         pressed = False
         if case.mode is not None and instruction.mode_after_fields:
             radio = self.mode_button(dialog, instruction, case.mode)
@@ -2425,11 +2735,11 @@ class Run:
                 options[key] = (option.button, state)
         # Fill a field that a press after the fields (an option, the mode) has opened
         if pressed:
-            fields = self.field_controls(dialog, instruction, names)
+            fields = self.field_controls(dialog, instruction, names, case.mode)
             for name in list(closed):
                 if fields[name].visible and fields[name].enabled:
                     self.log(f"{what}: {title}'s {name} field opened after a press. Filling it.")
-                    typed[name] = self.fill(what, title, name, fields[name], case.fields[name])
+                    fill(name)
                     closed.remove(name)
         # Check that each option still reads as asked, because a later option or field may
         # change it
@@ -2441,12 +2751,23 @@ class Run:
                 shut.append(f"{name} is closed for entry once the dialog is filled")
             elif (got := self.desktop.button_checked(button.hwnd)) != state:
                 shut.append(f"{name} reads {got} once the dialog was filled, not {state}")
-        # Read the fields and then every list again, as OK will find them. With
+        # A filled field may change a list or the mode that was set before it
+        shut += self.check_lists(what, dialog, dialog_expect, instruction, case, entry)
+        if case.mode is not None and not instruction.mode_after_fields:
+            checked = self.checked_mode(dialog, instruction)
+            if checked != case.mode:
+                shut.append(
+                    f"mode {case.mode} is not checked once the fields are filled. The dialog "
+                    f"shows mode {checked}"
+                )
+        # Read the fields as OK will find them. Read each read-only field that shows. With
         # ``reads_every_field``, read every open field
         read = [
             name
             for name, c in fields.items()
-            if name in typed or (name not in case.fields and c.visible and c.enabled)
+            if name in typed
+            or (name in instruction.read_only and c.visible)
+            or (name not in case.fields and c.visible and c.enabled)
         ]
         entry["read_back"] = {
             name: self.read_field(what, title, name, fields[name]) for name in read
@@ -2456,11 +2777,18 @@ class Run:
             for name, text in typed.items()
             if text != case.fields[name] or entry["read_back"][name] != case.fields[name]
         ]
-        shown = {name: instruction.opens_listing.get(i) for name, i in instruction.lists.items()}
-        shown.update(case.choices)
-        for name, item in shown.items():
-            if item is not None and self.list_item(dialog, instruction.lists[name]) != item:
-                off.append(name)
+        # A read-only field that the case names must read what the case names. The runner
+        # never sets it
+        for name in instruction.read_only:
+            if name not in case.fields:
+                continue
+            if name not in entry["read_back"]:
+                closed.append(name)
+            elif (got := entry["read_back"][name]) != case.fields[name]:
+                shut.append(f"{name} is read-only, and CLICK filled it with {got!r}")
+        filled_by_click = [name for name in instruction.read_only if name in case.fields]
+        if filled_by_click:
+            entry["filled_by_click"] = filled_by_click
         # If CLICK showed a box while the fields were filled, the run aborts here. The box is
         # then not mistaken for CLICK's answer to OK
         self.wait(
@@ -2524,22 +2852,47 @@ class Run:
                 )
 
     def field_controls(
-        self, dialog: Window, instruction: Instruction, names: list[str]
+        self, dialog: Window, instruction: Instruction, names: list[str], mode: str | None = None
     ) -> dict[str, Control]:
-        """Return the edits of *dialog*'s fields *names*, as they are now."""
+        """Return the controls of *dialog*'s fields *names* in *mode*, as they are now.
+
+        A field's control is an edit, or an IP address control. The four Edits inside an IP
+        address control have its id, and they are not fields.
+        """
         controls = self.controls(dialog)
+        inside = {c.hwnd for c in controls if c.cls == IP_ADDRESS_CLASS}
+        ids = {**instruction.fields_in(mode), **instruction.read_only}
         found = {}
         for name in names:
-            field_id = instruction.fields[name]
+            field_id = ids[name]
             found[name] = _require(
-                next((c for c in controls if c.id == field_id and c.cls in _FIELD_CLASSES), None),
+                next(
+                    (
+                        c
+                        for c in controls
+                        if c.id == field_id and c.cls in _FIELD_CLASSES and c.parent not in inside
+                    ),
+                    None,
+                ),
                 f"{instruction.title}'s {name} field ({field_id})",
             )
         return found
 
     def fill(self, what: str, title: str, name: str, control: Control, text: str) -> str:
-        """Set *title*'s field *name* to *text* by WM_SETTEXT. Return the text it then reads."""
-        if not self.desktop.set_text(control.hwnd, text):
+        """Set *title*'s field *name* to *text*. Return the text it then reads.
+
+        The runner sets an edit by WM_SETTEXT, and an IP address control by
+        ``Desktop.set_ip_address``. *text* for an IP address control must be four numbers
+        from 0 to 255, joined by dots.
+        """
+        if control.cls == IP_ADDRESS_CLASS:
+            numbers = _ip_numbers(text)
+            if numbers is None:
+                raise ValueError(f"not an IP address: {text!r}")
+            answered = self.desktop.set_ip_address(control.hwnd, numbers)
+        else:
+            answered = self.desktop.set_text(control.hwnd, text)
+        if not answered:
             raise Aborted(f"{what}: CLICK did not answer setting {title}'s {name} field")
         return self.read_field(what, title, name, control)
 
@@ -2591,7 +2944,9 @@ class Run:
         key: str,
         state: int,
     ) -> OptionSet:
-        """Set the option button *key* (the label it shows now, or its id) to *state*.
+        """Set the option button *key* to *state*.
+
+        *key* is the button's id, the name of its flag, or the label that it shows now.
 
         The runner looks only at the buttons that *instruction* lists as its ``options``. Of
         those that show the label, it looks at the visible one. The result names the button,
@@ -2607,10 +2962,11 @@ class Run:
         buttons = [
             c for c in self.controls(dialog) if c.cls == "Button" and c.id in instruction.options
         ]
-        if _is_id(key):
-            found = [c for c in buttons if c.id == int(key)]
+        if _is_id(key) or key in instruction.flags:
+            (button_id,) = instruction.option_ids(key)
+            found = [c for c in buttons if c.id == button_id]
             if not found:
-                raise Aborted(f"{what}: {title}'s option button {key} not found")
+                raise Aborted(f"{what}: {title}'s option button {button_id} not found")
         else:
             found = [c for c in buttons if c.text == key]
             if not found:
@@ -2782,10 +3138,14 @@ class Run:
     def read_field(self, what: str, title: str, name: str, control: Control) -> str:
         """Return the text of *title*'s field *name*.
 
-        Raise Aborted if CLICK does not answer. A stalled CLICK says nothing about what the
-        dialog accepts, so the case cannot count it as an answer.
+        The runner reads an IP address control by ``Desktop.ip_address`` and an edit by
+        WM_GETTEXT. Raise Aborted if CLICK does not answer. A stalled CLICK says nothing
+        about what the dialog accepts, so the case cannot count it as an answer.
         """
-        text = self.desktop.read_text(control.hwnd)
+        if control.cls == IP_ADDRESS_CLASS:
+            text = self.desktop.ip_address(control.hwnd)
+        else:
+            text = self.desktop.read_text(control.hwnd)
         if text is None:
             raise Aborted(f"{what}: CLICK did not answer reading {title}'s {name} field")
         return text
@@ -2815,8 +3175,104 @@ class Run:
         items, selected = read
         return items[selected] if 0 <= selected < len(items) else None
 
+    def list_states(self, dialog: Window, instruction: Instruction) -> dict[str, dict[str, Any]]:
+        """Return the state of each of *instruction*'s lists in *dialog*, by the list's name.
+
+        A state holds the list's ``items``, its ``selected`` index (-1 for none) and whether
+        it is ``visible`` and ``enabled``.
+        """
+        controls = self.controls(dialog)
+        states = {}
+        for name, list_id in instruction.lists.items():
+            combo = _require(
+                _child(controls, cls="ComboBox", id=list_id), f"{dialog.title}'s list {list_id}"
+            )
+            read = self.desktop.combo_box(combo.hwnd)
+            if read is None:
+                raise Aborted(f"{dialog.title}'s list {list_id} does not answer")
+            items, selected = read
+            states[name] = {
+                "items": items,
+                "selected": selected,
+                "visible": combo.visible,
+                "enabled": combo.enabled,
+            }
+        return states
+
+    def check_lists(
+        self,
+        what: str,
+        dialog: Window,
+        expect: Expect,
+        instruction: Instruction,
+        case: Case,
+        entry: dict[str, Any],
+    ) -> list[str]:
+        """Pick again each list that no longer shows the case's item. Return why any differs.
+
+        The runner picks the case's item again once, in the order of the instruction's
+        lists, and then reads the list once more. It records the lists' states in the case's
+        ``lists``, under ``filled`` before it picks again and under ``picked_again`` after.
+        If a list that the case chooses is hidden or disabled, it is closed for entry, and
+        the runner does not pick in it. A list that the case does not choose must still show
+        the item that it showed after the picks (``picked``). The runner's own picks may have
+        set it, and its item then is CLICK's default for the case. The runner does not pick
+        in that list.
+        """
+        if not instruction.lists:
+            return []
+        problems: list[str] = []
+        picked = entry["lists"]["picked"]
+        states = self.list_states(dialog, instruction)
+        entry["lists"]["filled"] = states
+        again = False
+        for name, list_id in instruction.lists.items():
+            state = states[name]
+            items, selected = state["items"], state["selected"]
+            shown = items[selected] if 0 <= selected < len(items) else None
+            if name not in case.choices:
+                before = picked[name]
+                if (before["items"], before["selected"]) != (items, selected):
+                    was = before["items"][before["selected"]] if before["selected"] >= 0 else None
+                    problems.append(
+                        f"list {name} shows {shown!r} once the fields are filled. It showed "
+                        f"{was!r} after the picks, and the case does not choose it"
+                    )
+                continue
+            item = case.choices[name]
+            if not (state["visible"] and state["enabled"]):
+                problems.append(f"list {name} is closed for entry once the fields are filled")
+                continue
+            if shown == item:
+                continue
+            self.log(
+                f"{what}: {dialog.title}'s list {list_id} shows {shown!r} once the fields are "
+                f"filled. Picking {item!r} again."
+            )
+            again = True
+            missing = self.choose(what, dialog, expect, list_id, item, confirm=False)
+            if missing is not None:
+                problems.append(f"{name}: {missing}")
+            elif (got := self.list_item(dialog, list_id)) != item:
+                problems.append(
+                    f"list {name} shows {got!r} once the fields are filled, and again after "
+                    f"the runner picked {item!r} once more"
+                )
+            # The pick may set a later list again (Send's Com Port sets its Function Code)
+            states = self.list_states(dialog, instruction)
+        if again:
+            entry["lists"]["picked_again"] = states
+        return problems
+
     def choose(
-        self, what: str, dialog: Window, expect: Expect, list_id: int, item: str
+        self,
+        what: str,
+        dialog: Window,
+        expect: Expect,
+        list_id: int,
+        item: str,
+        *,
+        confirm: bool = True,
     ) -> str | None:
         """Pick *item* in the drop-down list *list_id* with Up and Down keys.
 
@@ -2825,7 +3281,9 @@ class Run:
         such item. The runner sends each key to the list control only (WM_KEYDOWN, WM_KEYUP),
         as ``picker`` sends its keys. Each key moves the selection one item. The list then
         notifies the dialog itself, as it does when a user picks an item. If the list shows
-        no item, the runner sends Home first.
+        no item, the runner sends Home first. The runner then waits until the list shows
+        *item*. With *confirm* off, it waits only until the dialog is idle, and the caller
+        reads the list.
         """
         combo = _require(
             _child(self.controls(dialog), cls="ComboBox", id=list_id),
@@ -2850,17 +3308,20 @@ class Run:
             if not self.desktop.send_key(combo.hwnd, vk):
                 raise Aborted(f"{what}: {dialog.title}'s list {list_id} did not answer a key")
         self.wait(
-            f"{dialog.title}'s list {list_id} to show {item!r}",
+            f"{dialog.title}'s list {list_id} to show {item!r}"
+            if confirm
+            else f"{dialog.title} to be idle after a pick in its list {list_id}",
             [expect],
             lambda f: (
                 len(f) == 2
                 and DIALOG in f
                 and f[DIALOG].enabled
-                and self.list_item(dialog, list_id) == item
+                and (not confirm or self.list_item(dialog, list_id) == item)
                 and self.desktop.idle(dialog.hwnd, IDLE_TIMEOUT)
             ),
         )
-        self.log(f"{what}: {dialog.title}'s list {list_id} shows {item!r}")
+        if confirm:
+            self.log(f"{what}: {dialog.title}'s list {list_id} shows {item!r}")
         return None
 
     def cancel(self, dialog: Window, expect: Expect) -> None:
@@ -2974,10 +3435,7 @@ class Run:
         clipboard within ``Settings.timeout``.
         """
         self.select_rung(f"{label}'s Edit > Copy")
-        try:
-            self.desktop.empty_clipboard()
-        except (OSError, RuntimeError) as exc:  # Another program holds the clipboard
-            raise Aborted(f"{label}: the clipboard could not be emptied: {exc}") from exc
+        self.on_clipboard(label, "emptied", self.desktop.empty_clipboard)
         self.command(EDIT_COPY)
         failures: set[str] = set()
 
@@ -3005,6 +3463,36 @@ class Run:
         )
         return path
 
+    def on_clipboard(self, label: str, done: str, act: Callable[[], None]) -> None:
+        """Call *act*, which sets or empties the clipboard, until it no longer fails.
+
+        Another program may hold the clipboard open, and ClickNick's clipboard code gives up
+        after about 1 s. The runner calls *act* again at each poll, for up to
+        ``CLIPBOARD_WAIT`` seconds. It logs each new failure. If *act* still fails then, the
+        run stops with the last failure, which says that the clipboard could not be *done*.
+        """
+        failures: list[str] = []
+
+        def acted(found: dict[str, Window]) -> bool:
+            try:
+                act()
+            except (OSError, RuntimeError) as exc:  # Another program holds the clipboard
+                if str(exc) not in failures:
+                    self.log(f"{label}: the clipboard could not be {done}: {exc}. Trying again.")
+                failures.append(str(exc))
+                return False
+            if failures:
+                self.log(f"{label}: the clipboard was {done} after {len(failures)} failure(s)")
+            return True
+
+        self.wait(
+            f"the clipboard to be {done}",
+            [],
+            acted,
+            timeout=CLIPBOARD_WAIT,
+            on_timeout=lambda: f"{label}: the clipboard could not be {done}: {failures[-1]}",
+        )
+
     def answer_box(
         self,
         what: str,
@@ -3013,32 +3501,82 @@ class Run:
         box: Window,
         expected: list[Expect],
     ) -> bool:
-        """Take CLICK's error box after OK as the case's answer and close it.
+        """Take CLICK's error boxes after OK as the case's answer and close them.
 
-        Return whether CLICK closed the dialog along with the box. If it did not, the runner
-        closes the dialog by its Cancel. Any other box, one that is not a CLICK error box
-        with a single OK button, is a question that the runner does not answer. The case is
-        then ``other`` and the run stops.
+        Return whether CLICK closed the dialog along with the last box. If it did not, the
+        runner closes the dialog by its Cancel. The runner presses each box's OK. If CLICK
+        then shows another box over the dialog, the runner takes that box too, up to
+        ``MAX_BOXES`` boxes. The first box's code and message are the case's ``code`` and
+        ``message``. When there is more than one box, ``boxes`` lists each box's code and
+        message, in order. If a box is still open ``REPRESS_AFTER`` seconds after its OK,
+        the runner presses OK once more. ``ok_presses`` then counts every press. If the box
+        closes just before that second press, the case's answer stands. Any other
+        box, one that is not a CLICK error box with a single OK button, is a question that
+        the runner does not answer. The case is then ``other`` and the run stops.
         """
-        controls = self.controls(box)
-        error = click_error(box, controls)
-        buttons = [c for c in controls if c.cls == "Button"]
-        if error is None or [b.text for b in buttons] != ["OK"]:
-            texts = [c.text for c in controls if c.cls == "Static" and c.text]
-            entry.update(outcome="other", message=" | ".join(texts))
-            raise Aborted(
-                f"{what}: CLICK asked something the runner does not answer: {texts!r}, "
-                f"buttons {[b.text for b in buttons]!r}"
-            )
-        entry.update(code=error[0], message=error[1])
-        self.log(f"{what}: {error[0]} {error[1]}")
-        self.press(box, buttons[0])
-        after = self.wait(
-            "the error box to close",
-            expected,
-            lambda f: f if ANSWER_BOX not in f and (DIALOG not in f or f[DIALOG].enabled) else None,
-            answering=dialog.hwnd,
-        )
+        boxes: list[list[str]] = []
+        presses = 0
+        while True:
+            controls = self.controls(box)
+            error = click_error(box, controls)
+            buttons = [c for c in controls if c.cls == "Button"]
+            if error is None or [b.text for b in buttons] != ["OK"]:
+                texts = [c.text for c in controls if c.cls == "Static" and c.text]
+                entry.update(outcome="other", message=" | ".join(texts))
+                raise Aborted(
+                    f"{what}: CLICK asked something the runner does not answer: {texts!r}, "
+                    f"buttons {[b.text for b in buttons]!r}"
+                )
+            if not boxes:
+                entry.update(code=error[0], message=error[1])
+            boxes.append([error[0], error[1]])
+            number = f" (box {len(boxes)})" if len(boxes) > 1 else ""
+            self.log(f"{what}: {error[0]} {error[1]}{number}")
+            after = None
+            for again in (False, True):
+                try:
+                    self.press(box, buttons[0])
+                    presses += 1
+                except (Aborted, OSError):
+                    # The box may close between the last poll and the second press. CLICK
+                    # has then taken the first press, and the case's answer stands
+                    if not again or self.desktop.exists(buttons[0].hwnd):
+                        raise
+                    self.log(f"{what}: the box closed before the runner pressed OK again")
+
+                def closed(
+                    found: dict[str, Window],
+                    current: int = box.hwnd,
+                    deadline: float | None = None if again else time.monotonic() + REPRESS_AFTER,
+                ) -> dict[str, Window] | str | None:
+                    # Done when this box has gone and another box shows, the dialog is
+                    # enabled again, or the dialog has gone. A second box may follow a moment
+                    # after the first closes, so a disabled dialog alone means wait
+                    if ANSWER_BOX in found and found[ANSWER_BOX].hwnd == current:
+                        late = deadline is not None and time.monotonic() > deadline
+                        return "late" if late else None
+                    if ANSWER_BOX in found or DIALOG not in found or found[DIALOG].enabled:
+                        return found
+                    return None
+
+                got = self.wait("the error box to close", expected, closed, answering=dialog.hwnd)
+                if got != "late":
+                    after = got
+                    break
+                self.log(
+                    f"{what}: the box is still open {REPRESS_AFTER:g} s after its OK. "
+                    "Pressing OK again."
+                )
+            assert isinstance(after, dict)
+            if ANSWER_BOX not in after:
+                break
+            if len(boxes) == MAX_BOXES:
+                raise Aborted(f"{what}: CLICK showed more than {MAX_BOXES} error boxes for one OK")
+            box = after[ANSWER_BOX]
+        if len(boxes) > 1:
+            entry["boxes"] = boxes
+        if presses > len(boxes):
+            entry["ok_presses"] = presses
         if DIALOG not in after:
             return True
         cancel = _require(
