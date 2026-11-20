@@ -22,7 +22,7 @@ from clicknick.models.address_row import AddressRow
 from clicknick.services import click_redraw
 from clicknick.services.click_redraw import RedrawOutcome, RedrawResult
 from clicknick.services.settings_file import SavedSettings, read_settings, write_settings
-from clicknick.utils import win32_desktop
+from clicknick.utils import mdb_operations, win32_desktop
 
 CLICK = ClickConnection("111", 222, "Main.ckp")
 C1 = get_addr_key("C", 1)
@@ -58,6 +58,7 @@ class DatabaseSource:
     """CLICK's database, as the store sees it."""
 
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     is_database = True
     is_read_only = False
     file_path = ""  # There is nothing to monitor.
@@ -81,6 +82,7 @@ class DatabaseSource:
 
 class CsvSource(DatabaseSource):
     supports_used_field = False
+    stored_row = staticmethod(mdb_operations.stored_row)
     is_database = False
 
 

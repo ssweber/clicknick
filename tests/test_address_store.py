@@ -9,6 +9,7 @@ from pyclickplc.banks import DataType
 from clicknick.data.address_store import AddressStore
 from clicknick.data.undo_frame import MAX_UNDO_DEPTH
 from clicknick.models.address_row import AddressRow
+from clicknick.utils import mdb_operations
 from clicknick.views.address_editor.view_builder import build_unified_view
 
 
@@ -16,6 +17,7 @@ class MockDataSource:
     """Mock data source for testing."""
 
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
 
@@ -1141,7 +1143,7 @@ class TestDerivedStateStaysConsistent:
 
         def save_changes(rows):
             for row in rows:
-                source._initial_rows[row.addr_key] = row
+                source._initial_rows[row.addr_key] = mdb_operations.stored_row(row)
             return len(rows)
 
         source.save_changes = save_changes
@@ -1163,6 +1165,7 @@ class LiveSource:
     """A database that CLICK also writes. Its rows change without the store being told."""
 
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "live.mdb"
     is_read_only = False
     is_database = True
@@ -1186,7 +1189,7 @@ class LiveSource:
                 address=row.address,
                 nickname=row.nickname,
                 comment=row.comment,
-                initial_value=row.initial_value,
+                initial_value=mdb_operations.stored_row(row).initial_value,
                 retentive=row.retentive,
                 used=row.used,
                 data_type=row.data_type,
@@ -1404,6 +1407,7 @@ class CsvSource(LiveSource):
     """A nickname CSV. Sync rewrites the whole file, and the CSV has no Used field."""
 
     supports_used_field = False
+    stored_row = staticmethod(mdb_operations.stored_row)
     is_database = False
 
 

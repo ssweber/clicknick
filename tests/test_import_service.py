@@ -8,6 +8,7 @@ from pyclickplc.addresses import get_addr_key
 from clicknick.data.address_store import AddressStore
 from clicknick.models.address_row import AddressRow
 from clicknick.services import ImportService
+from clicknick.utils import mdb_operations
 from clicknick.widgets.import_csv_dialog import detect_blocks_in_csv
 
 
@@ -32,6 +33,7 @@ class MockDataSource:
     """Mock data source - the store builds an empty skeleton from it."""
 
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
 

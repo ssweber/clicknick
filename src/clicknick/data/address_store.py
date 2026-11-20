@@ -1123,10 +1123,13 @@ class AddressStore:
         elif dirty_keys:
             self._data_source.save_changes([self.visible_state[key] for key in dirty_keys])
 
-        # What was written is now the base.
+        # The base is what the data source holds after the save. ``stored_row`` says what
+        # that is, so the next read changes nothing.
         for key in dirty_keys:
             self.base_state[key] = _flag_loaded_error(
-                replace(self.base_state[key], **self.user_overrides[key])
+                self._data_source.stored_row(
+                    replace(self.base_state[key], **self.user_overrides[key])
+                )
             )
 
         affected_keys = set(self.user_overrides.keys())

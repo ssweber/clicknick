@@ -16,6 +16,7 @@ from clicknick.services.comment_upgrade_service import (
     find_comment_upgrades,
     stage_comment_upgrades,
 )
+from clicknick.utils import mdb_operations
 
 ENCODER = "[link=Run, profile=pulse:on_dwell=8ms|off_dwell=8ms] Encoder"
 LEVEL = "<Tank:block> [profile=ramp:up=0.8|down=-0.05, link=Fill] Level"
@@ -24,6 +25,7 @@ STUCK = "[link=Heat, profile=approach:toward=180] Oven"
 
 class MockDataSource:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
     is_database = True

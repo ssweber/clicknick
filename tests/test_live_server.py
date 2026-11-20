@@ -14,10 +14,12 @@ from clicknick.live.dispatch import DispatchContext, dispatch
 from clicknick.live.server import LiveServer, _Request
 from clicknick.models.address_row import AddressRow
 from clicknick.services.analysis_service import AnalysisService, AnalysisStatus
+from clicknick.utils import mdb_operations
 
 
 class MockDataSource:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
     is_database = True
@@ -34,6 +36,7 @@ class MockDataSource:
 
 class CsvSource(MockDataSource):
     supports_used_field = False
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "nicknames.csv"
     is_database = False
 

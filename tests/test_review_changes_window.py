@@ -29,6 +29,7 @@ from clicknick.services.rung_diff import (
     ProposedProgram,
     compare_rungs,
 )
+from clicknick.utils import mdb_operations
 from clicknick.views.review_changes_window import ProposalSource, ReviewChangesWindow
 
 MODULE = "clicknick.views.review_changes_window"
@@ -1326,6 +1327,7 @@ class _Database:
     """CLICK's database as an AddressStore data source."""
 
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     is_database = True
     is_read_only = False
     file_path = "SC_.mdb"

@@ -158,7 +158,7 @@ def test_writes_are_read_identically_by_both_backends(oracle_db, writer):
 
     expected = dict(original)
     for row in (*edited, new_bit, new_word):
-        expected[row.addr_key] = row
+        expected[row.addr_key] = mdb_operations.stored_row(row)
     del expected[doomed.addr_key]
 
     after = _assert_backends_agree(oracle_db)
@@ -185,7 +185,7 @@ def test_backends_can_update_each_others_rows(oracle_db, first_writer, second_wr
         assert mdb_operations.save_changes(connection, [row]) == 1
     finally:
         connection.close()
-    assert _assert_backends_agree(oracle_db)[row.addr_key] == row
+    assert _assert_backends_agree(oracle_db)[row.addr_key] == mdb_operations.stored_row(row)
 
     updated = replace(row, comment="second", retentive=not row.retentive)
     connection = _open(second_writer, oracle_db)
@@ -193,7 +193,7 @@ def test_backends_can_update_each_others_rows(oracle_db, first_writer, second_wr
         assert mdb_operations.save_changes(connection, [updated]) == 1
     finally:
         connection.close()
-    assert _assert_backends_agree(oracle_db)[row.addr_key] == updated
+    assert _assert_backends_agree(oracle_db)[row.addr_key] == mdb_operations.stored_row(updated)
 
     removed = replace(row, nickname="", comment="")
     assert removed.needs_full_delete(is_dirty=True)

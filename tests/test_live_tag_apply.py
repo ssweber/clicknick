@@ -19,10 +19,12 @@ from clicknick.data.address_store import AddressStore
 from clicknick.live import tag_commands
 from clicknick.live.dispatch import DispatchContext, dispatch
 from clicknick.live.tag_commands import _compute_tag_changes
+from clicknick.utils import mdb_operations
 
 
 class MockDataSource:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
     is_database = True

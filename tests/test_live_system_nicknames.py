@@ -7,10 +7,12 @@ from clicknick.data.address_store import AddressStore
 from clicknick.live.dispatch import DispatchContext, dispatch
 from clicknick.models.address_row import AddressRow
 from clicknick.services.system_nickname_service import find_system_nickname_repairs
+from clicknick.utils import mdb_operations
 
 
 class MockDataSource:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
     is_database = True

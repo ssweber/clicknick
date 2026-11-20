@@ -17,6 +17,7 @@ from clicknick.data.address_store import AddressStore
 from clicknick.data.shared_dataview import SharedDataviewData
 from clicknick.data_session import DataSession
 from clicknick.models.address_row import AddressRow
+from clicknick.utils import mdb_operations
 from clicknick.views.dataview_editor import window as window_module
 from clicknick.views.dataview_editor.panel import COL_ADDRESS, COL_NEW_VALUE, DataviewPanel
 from clicknick.views.dataview_editor.window import DataviewEditorWindow
@@ -46,6 +47,7 @@ def tk_root():
 
 class _MockDataSource:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
 

@@ -11,6 +11,7 @@ import pytest
 from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
+from clicknick.utils import mdb_operations
 from clicknick.views.address_editor.panel import AddressPanel
 from clicknick.views.address_editor.panel_constants import (
     COL_COMMENT,
@@ -26,6 +27,7 @@ from clicknick.widgets.custom_notebook import CustomNotebook
 
 class _DataSource:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
 
