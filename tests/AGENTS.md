@@ -5,6 +5,8 @@ The root `AGENTS.md` says how to run the tests.
 The tests live in `tests/`, with `tests/ladder/`. pytest's `testpaths` lists `src` and `tests`, and
 `python_files` is `*.py`. So pytest also imports every module under `src`, but `src` holds no tests.
 
+A test never writes to the real `%LOCALAPPDATA%\ClickNick`. `conftest.py` points `LOCALAPPDATA` at a temp folder for every test, and a session guard fails the run if a file in the real folder changes.
+
 ## Core data tests
 
 - `test_address_store.py` covers edit sessions, undo and redo, dirty state, no-op edits, base and overlay

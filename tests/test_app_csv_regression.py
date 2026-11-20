@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -11,6 +12,7 @@ from clicknick.app import ClickNickApp
 from clicknick.connection_controller import ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data_session import DataSession
+from clicknick.services.workspace_mirror import ProjectWorkspaceConfig
 
 
 class FakeVar:
@@ -236,3 +238,31 @@ def test_a_sync_rebuilds_a_build_that_needed_upgrade_project():
     app._on_editor_synced({1})
 
     app._start_analysis_build.assert_called_once_with()
+
+
+def test_handle_window_closed_warns_when_workspace_setup_held_a_choice_not_applied(monkeypatch):
+    warning = MagicMock()
+    monkeypatch.setattr("clicknick.connection_controller.messagebox.showwarning", warning)
+    app = _make_app_stub()
+    app._session.setup_window = MagicMock()
+    app._session.pending_workspace = ProjectWorkspaceConfig("MyProject", Path("Chosen"))
+    app.root = SimpleNamespace(after=MagicMock())
+
+    app._connection._handle_window_closed()
+
+    warning.assert_called_once()
+    assert warning.call_args.args[0] == "Workspace"
+    assert "was not applied" in warning.call_args.args[1]
+    assert warning.call_args.kwargs["parent"] is app.root
+
+
+def test_handle_window_closed_shows_no_warning_without_a_pending_choice(monkeypatch):
+    warning = MagicMock()
+    monkeypatch.setattr("clicknick.connection_controller.messagebox.showwarning", warning)
+    app = _make_app_stub()
+    app.root = SimpleNamespace(after=MagicMock())
+
+    app._connection._handle_window_closed()
+
+    warning.assert_not_called()
+    app._update_status.assert_called_once_with("⚠ The CLICK window closed", "error")

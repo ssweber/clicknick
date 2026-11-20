@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import itertools
+import os
 import time
 import tkinter as tk
+from pathlib import Path
 
 import pytest
 
@@ -45,13 +47,60 @@ def _settings_root(tmp_path_factory):
     return tmp_path_factory.mktemp("settings")
 
 
-@pytest.fixture(autouse=True)
-def _own_settings_file(_settings_root, monkeypatch):
-    """Give each test a settings.json of its own, away from the user's %LOCALAPPDATA%.
+def _real_clicknick_files() -> dict[str, tuple[int, int]]:
+    """Return the size and mtime of every file under the real %LOCALAPPDATA%/ClickNick."""
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if not local_app_data:
+        return {}
+    root = Path(local_app_data) / "ClickNick"
+    files = {}
+    for path in root.rglob("*"):
+        # A running ClickNick writes live/ and compare/ itself.
+        if path.relative_to(root).parts[0] in ("live", "compare"):
+            continue
+        try:
+            if path.is_file():
+                stat = path.stat()
+                files[str(path)] = (stat.st_size, stat.st_mtime_ns)
+        except OSError:
+            continue
+    return files
 
-    The file does not exist until the test writes it.
+
+@pytest.fixture(scope="session", autouse=True)
+def _real_local_app_data_is_untouched():
+    """Fail the run if a test created, changed or deleted a file under the real ClickNick folder.
+
+    The snapshot is taken before any fixture changes LOCALAPPDATA. It leaves out live/ and
+    compare/, which a running ClickNick writes.
     """
-    from clicknick.services import settings_file
+    before = _real_clicknick_files()
+    yield
+    after = _real_clicknick_files()
+    changed = sorted(
+        path for path in before.keys() | after.keys() if before.get(path) != after.get(path)
+    )
+    if changed:
+        pytest.fail(
+            "Tests touched the real %LOCALAPPDATA%/ClickNick folder: "
+            + ", ".join(changed)
+            + ". A ClickNick that is running can change these files too. "
+            "If it was open, rerun the tests.",
+            pytrace=False,
+        )
 
-    path = _settings_root / str(next(_settings_paths)) / "settings.json"
-    monkeypatch.setattr(settings_file, "default_settings_path", lambda: path)
+
+@pytest.fixture(autouse=True)
+def _own_local_app_data(_settings_root, monkeypatch):
+    """Point LOCALAPPDATA and APPDATA at a folder of the test's own.
+
+    ClickNick keeps its settings, workspace index, simulator state, snapshots and popup
+    flags under %LOCALAPPDATA%/ClickNick. Nothing is created until the test writes it.
+    """
+    from clicknick.live import session as live_session
+
+    root = _settings_root / str(next(_settings_paths))
+    root.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(root))
+    monkeypatch.setenv("APPDATA", str(root))
+    monkeypatch.setattr(live_session, "_LOCALAPPDATA", root)

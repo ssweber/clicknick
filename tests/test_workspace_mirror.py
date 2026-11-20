@@ -747,6 +747,9 @@ def test_choose_new_home_previews_plc_named_paths(monkeypatch, tmp_path: Path) -
         "clicknick.workspace_controller.filedialog.askdirectory", MagicMock(return_value=str(home))
     )
 
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.messagebox.askyesno", MagicMock(return_value=False)
+    )
     app = _app(ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp")))
     app._workspace._ensure_plc_name = MagicMock(return_value="LaserBall")
 
@@ -768,6 +771,12 @@ def test_find_existing_workspace_selects_a_folder_not_a_config_file(
         MagicMock(return_value=str(config.workspace_path)),
     )
 
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.messagebox.askyesno", MagicMock(return_value=False)
+    )
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.messagebox.askokcancel", MagicMock(return_value=False)
+    )
     app = _app(ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp")))
     app._workspace._ensure_plc_name = MagicMock(return_value="LaserBall")
 
@@ -797,6 +806,190 @@ def test_workspace_setup_prompts_for_and_writes_a_missing_plc_name(monkeypatch) 
     assert ask_name.call_count == 2
     write_name.assert_called_once_with(Path("CLICK-temp") / "Project.ini", "Line 1")
     app.plc_name_var.set.assert_called_once_with("Line 1")
+
+
+def _setup_after_picking(monkeypatch, folder: Path, *, answer: bool = True):
+    """Return (app, session, askyesno, askokcancel) with the folder picker set to *folder*."""
+    askyesno = MagicMock(return_value=answer)
+    askokcancel = MagicMock(return_value=True)
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.askyesno", askyesno)
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.askokcancel", askokcancel)
+    monkeypatch.setattr(
+        "clicknick.workspace_controller.filedialog.askdirectory",
+        MagicMock(return_value=str(folder)),
+    )
+    session = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"), has_database=True)
+    session.setup_window = MagicMock()
+    session.use_workspace = MagicMock()
+    app = _app(session)
+    app._workspace._ensure_plc_name = MagicMock(return_value="LaserBall")
+    app._workspace.source_dir = MagicMock(return_value=None)
+    return app, session, askyesno, askokcancel
+
+
+def test_choosing_a_new_location_asks_to_create_the_workspace_and_yes_creates_it(
+    monkeypatch, tmp_path: Path
+) -> None:
+    app, session, askyesno, askokcancel = _setup_after_picking(monkeypatch, tmp_path)
+    workspace = tmp_path / "LaserBall Workspace"
+
+    app._workspace._select_location()
+
+    assert askyesno.call_args.args[1] == f"Create the LaserBall workspace at {workspace}?"
+    askokcancel.assert_not_called()
+    assert load_project_workspace_config(sidecar_path_for(workspace)).plc_name == "LaserBall"
+    session.use_workspace.assert_called_once_with(_config(tmp_path, "LaserBall"))
+
+
+def test_answering_no_leaves_the_chosen_location_in_the_form(monkeypatch, tmp_path: Path) -> None:
+    app, session, askyesno, _ = _setup_after_picking(monkeypatch, tmp_path, answer=False)
+
+    app._workspace._select_location()
+
+    askyesno.assert_called_once()
+    assert session.pending_workspace == _config(tmp_path, "LaserBall")
+    assert not (tmp_path / "LaserBall Workspace").exists()
+    session.use_workspace.assert_not_called()
+
+
+def test_finding_an_existing_workspace_asks_once_and_names_the_workspace(
+    monkeypatch, tmp_path: Path
+) -> None:
+    config = _config(tmp_path, "LaserBall")
+    config.workspace_path.mkdir(parents=True)
+    save_project_workspace_config(config)
+    app, session, askyesno, askokcancel = _setup_after_picking(monkeypatch, config.workspace_path)
+
+    app._workspace._select_existing()
+
+    askyesno.assert_not_called()
+    askokcancel.assert_called_once()
+    assert askokcancel.call_args.args[1].startswith(
+        f"Use the workspace at {config.workspace_path}?"
+    )
+    session.use_workspace.assert_called_once_with(config)
+
+
+def test_choosing_the_paired_workspace_again_asks_nothing(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path, "LaserBall")
+    config.workspace_path.mkdir(parents=True)
+    save_project_workspace_config(config)
+    app, session, askyesno, askokcancel = _setup_after_picking(monkeypatch, config.workspace_path)
+    session.pairing = WorkspacePairing(config, [config])
+
+    app._workspace._select_existing()
+
+    askyesno.assert_not_called()
+    askokcancel.assert_not_called()
+    session.use_workspace.assert_not_called()
+
+
+def test_choosing_a_paired_workspace_whose_folder_is_gone_offers_to_apply_it(
+    monkeypatch, tmp_path: Path
+) -> None:
+    config = _config(tmp_path, "LaserBall")
+    app, session, askyesno, _ = _setup_after_picking(monkeypatch, tmp_path)
+    session.pairing = WorkspacePairing(config, [config])
+
+    app._workspace._select_location()
+
+    assert (
+        askyesno.call_args.args[1] == f"Create the LaserBall workspace at {config.workspace_path}?"
+    )
+    session.use_workspace.assert_called_once_with(config)
+
+
+def test_no_offer_is_made_when_the_earlier_saves_build_error_refuses_the_move(
+    monkeypatch, tmp_path: Path
+) -> None:
+    app, session, askyesno, _ = _setup_after_picking(monkeypatch, tmp_path)
+    app._workspace.source_dir = MagicMock(return_value=tmp_path / "temp-workspace")
+    app._workspace.earlier_save_build_error = MagicMock(return_value="boom")
+    shown = MagicMock()
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.showerror", shown)
+
+    app._workspace._select_location()
+
+    askyesno.assert_not_called()
+    shown.assert_called_once()
+    session.use_workspace.assert_not_called()
+
+
+def test_a_folder_with_files_gets_one_question_not_two(monkeypatch, tmp_path: Path) -> None:
+    workspace = tmp_path / "LaserBall Workspace"
+    workspace.mkdir()
+    (workspace / "notes.txt").write_text("kept\n", encoding="utf-8")
+    app, session, askyesno, askokcancel = _setup_after_picking(monkeypatch, tmp_path)
+
+    app._workspace._select_location()
+
+    askyesno.assert_not_called()
+    askokcancel.assert_called_once()
+    session.use_workspace.assert_called_once()
+
+
+def test_a_folder_with_files_stays_pending_when_the_one_question_is_declined(
+    monkeypatch, tmp_path: Path
+) -> None:
+    workspace = tmp_path / "LaserBall Workspace"
+    workspace.mkdir()
+    (workspace / "notes.txt").write_text("kept\n", encoding="utf-8")
+    app, session, askyesno, askokcancel = _setup_after_picking(monkeypatch, tmp_path)
+    askokcancel.return_value = False
+
+    app._workspace._select_location()
+
+    askyesno.assert_not_called()
+    askokcancel.assert_called_once()
+    assert session.pending_workspace == _config(tmp_path, "LaserBall")
+    session.use_workspace.assert_not_called()
+
+
+def test_selecting_a_known_workspace_in_the_combobox_does_not_ask(
+    monkeypatch, tmp_path: Path
+) -> None:
+    config = _config(tmp_path, "LaserBall")
+    ask = MagicMock()
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.askyesno", ask)
+    monkeypatch.setattr("clicknick.workspace_controller.messagebox.askokcancel", ask)
+    session = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"))
+    session.pairing = WorkspacePairing(None, [config])
+    app = _app(session)
+    app.mirror_project_selection_var.get.return_value = str(config.workspace_path)
+
+    app._workspace._on_config_selected()
+
+    ask.assert_not_called()
+    assert session.pending_workspace == config
+
+
+def test_closing_the_session_reports_a_choice_that_was_not_applied(tmp_path: Path) -> None:
+    session = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"))
+    session.setup_window = MagicMock()
+    session.pending_workspace = _config(tmp_path, "LaserBall")
+    app = _app(session)
+
+    assert ConnectionController(app).close_session() is True
+    assert app._session is None
+
+
+def test_closing_the_session_reports_nothing_when_the_choice_is_the_paired_workspace(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path, "LaserBall")
+    session = ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp"))
+    session.use_workspace(config)
+    session.setup_window = MagicMock()
+    session.pending_workspace = config
+    app = _app(session)
+
+    assert ConnectionController(app).close_session() is False
+
+
+def test_closing_the_session_reports_nothing_when_no_setup_window_is_open() -> None:
+    app = _app(ConnectionSession(ClickConnection("1", 2, "LaserBall.ckp")))
+
+    assert ConnectionController(app).close_session() is False
 
 
 def test_a_folder_chosen_after_the_click_window_showed_another_project_is_dropped(
