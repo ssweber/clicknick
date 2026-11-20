@@ -87,12 +87,14 @@ def _read_nickname_rows(db_path: Path) -> dict[int, AddressRow]:
         return load_all_addresses(conn)
 
 
-def _write_nicknames_csv(csv_dir: Path, nickname_rows: Mapping[int, AddressRow]) -> Path:
-    """Write the nickname snapshot to csv_dir/nicknames.csv in cp1252, for pyrung."""
-    from ..data.data_source import CsvDataSource
+def check_cp1252(rows: Iterable[AddressRow]) -> None:
+    """If a row has a character that CLICK cannot hold, raise ``ValueError``.
+
+    The message lists at most ``_CP1252_LISTED`` such rows and ends with where to change them.
+    """
     from ..models.validation import cp1252_problems
 
-    problems = cp1252_problems(nickname_rows.values())
+    problems = cp1252_problems(rows)
     if problems:
         shown = problems[:_CP1252_LISTED]
         if len(problems) > len(shown):
@@ -100,6 +102,13 @@ def _write_nicknames_csv(csv_dir: Path, nickname_rows: Mapping[int, AddressRow])
         raise ValueError(
             "\n".join(shown) + "\nChange the characters in the Address Editor and Sync."
         )
+
+
+def _write_nicknames_csv(csv_dir: Path, nickname_rows: Mapping[int, AddressRow]) -> Path:
+    """Write the nickname snapshot to csv_dir/nicknames.csv in cp1252, for pyrung."""
+    from ..data.data_source import CsvDataSource
+
+    check_cp1252(nickname_rows.values())
     nick_dest = csv_dir / "nicknames.csv"
     # pyclickplc's format_csv refuses a character that CLICK cannot hold. The check above
     # names every such row first.

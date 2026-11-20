@@ -1304,6 +1304,7 @@ def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
     nicknames = persist / "csv" / "nicknames.csv"
     assert row.nickname in nicknames.read_bytes().decode("cp1252")
     assert row.nickname in (persist / "nicknames.csv").read_bytes().decode("cp1252")
+    assert (b"Caf\xe9" if row.nickname == "Caf\u00e9" else b"50\xb0C") in nicknames.read_bytes()
 
 
 def test_every_row_click_cannot_hold_is_listed_before_the_nickname_csv_is_written(

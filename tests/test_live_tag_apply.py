@@ -258,6 +258,23 @@ def test_load_export_rows_keeps_its_advice_for_an_older_workspaces_nickname_csv(
         tag_commands._load_export_rows(tmp_path)
 
 
+def test_load_export_rows_passes_an_unreadable_nickname_csv_error_through(tmp_path):
+    """The advice is for a character that cp1252 lacks. A UTF-16 file needs other advice."""
+    (tmp_path / "src" / "plc").mkdir(parents=True)
+    csv_dir = tmp_path / "csv"
+    csv_dir.mkdir()
+    (csv_dir / "analog_inputs.json").write_text("[]\n", encoding="utf-8")
+    (csv_dir / "nicknames.csv").write_text(
+        "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n",
+        encoding="utf-16",
+    )
+
+    with pytest.raises(ValueError, match="UTF-16") as caught:
+        tag_commands._load_export_rows(tmp_path)
+
+    assert "Address Editor" not in str(caught.value)
+
+
 # --- a real workspace generated from CLICK's nicknames -----------------------
 
 

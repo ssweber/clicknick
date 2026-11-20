@@ -144,8 +144,8 @@ def _is_read_only(path: Path) -> bool:
     return bool(attributes & stat.FILE_ATTRIBUTE_READONLY) or not os.access(path, os.W_OK)
 
 
-def _write_file(path: Path, data: str, encoding: str = CSV_ENCODING) -> None:
-    """Write *data* to *path* in *encoding*, keeping an existing file's identity and attributes.
+def _write_file(path: Path, data: str) -> None:
+    """Write *data* to *path* in cp1252, keeping an existing file's identity and attributes.
 
     This function encodes the text before it opens the file. An encoding error therefore
     leaves the file as it was. It overwrites an existing file in place and truncates it to
@@ -154,7 +154,7 @@ def _write_file(path: Path, data: str, encoding: str = CSV_ENCODING) -> None:
     Explorer's preview pane, antivirus and OneDrive. A program that locks the file, such as
     Excel, does stop it.
     """
-    encoded = data.encode(encoding)
+    encoded = data.encode(CSV_ENCODING)
     try:
         if path.exists():
             with open(path, "r+b") as csvfile:
@@ -244,21 +244,16 @@ class CsvDataSource(DataSource):
         csv_path: str,
         *,
         required: Sequence[str] = REQUIRED_COLUMNS,
-        encoding: str = CSV_ENCODING,
     ):
         """Initialize CSV data source.
 
         Args:
             csv_path: Path to the CSV file
-            encoding: The encoding that a save writes. The default is cp1252, as CLICK
-                exports it. ClickNick writes every nickname CSV in cp1252, and a load
-                reads either encoding.
             required: Columns the file must have to load (Import from CSV needs
                 only Address)
         """
         self._csv_path = csv_path
         self._required = tuple(required)
-        self._encoding = encoding
         self._fields: frozenset[str] = frozenset()
         # The reason the file could not be read the last time it was loaded
         self._unreadable: str | None = None
@@ -339,7 +334,7 @@ class CsvDataSource(DataSource):
 
         # The whole file is rewritten, with every row that has content
         records = [_record(row) for row in rows if row.has_content]
-        _write_file(Path(self._csv_path), format_csv(records), self._encoding)
+        _write_file(Path(self._csv_path), format_csv(records))
         return len(records)
 
 

@@ -405,21 +405,19 @@ def _load_export_rows(project_dir):
     from pathlib import Path
 
     from ..data.data_source import CsvDataSource
-    from ..services.analysis_service import read_analog_inputs
+    from ..services.analysis_service import check_cp1252, read_analog_inputs
     from ..services.project_workspace import plc_source_dir
     from .rung_commands import _get_before_files
 
     analog_inputs = read_analog_inputs(project_dir / "csv")
-    try:
-        baseline_src = _get_before_files(project_dir, analog_inputs=analog_inputs).get(
-            "src/plc/tags.py"
-        )
-    except ValueError as exc:
-        # An older workspace's csv/nicknames.csv can hold a character that CLICK cannot hold.
-        # pyclickplc refuses it while pyrung reads the file.
-        if "cp1252" not in str(exc):
-            raise
-        raise ValueError(f"{exc} {_FIX_IN_ADDRESS_EDITOR}") from exc
+    # A 0.25.0 workspace can hold a character in csv/nicknames.csv that CLICK cannot hold.
+    # pyrung would refuse it with a message that does not say where to change it.
+    nickname_csv = project_dir / "csv" / "nicknames.csv"
+    if nickname_csv.exists():
+        check_cp1252(CsvDataSource(str(nickname_csv)).load_all_addresses().values())
+    baseline_src = _get_before_files(project_dir, analog_inputs=analog_inputs).get(
+        "src/plc/tags.py"
+    )
     if not baseline_src:
         raise ValueError(
             "tag apply: could not rebuild the original tags.py from the workspace's csv folder."
