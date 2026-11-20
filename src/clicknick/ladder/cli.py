@@ -20,8 +20,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from laddercodec.csv.writer import WriterError
-
 from ..utils.mdb_shared import find_click_database
 from .clipboard import copy_to_clipboard, find_click_hwnd, is_click_v4, read_from_clipboard
 from .program import (
@@ -34,6 +32,7 @@ from .program import (
     prepare_bin_load,
     prepare_csv_load,
     program_save,
+    stand_in_fix,
 )
 
 # ---------------------------------------------------------------------------
@@ -620,10 +619,12 @@ def main() -> None:
                 for item in legacy:
                     print(f"  {describe_legacy_encoding(item)}")
             if unreadable:
+                fix = stand_in_fix(
+                    unreadable, one=len({(item.file, item.rung) for item in unreadable}) == 1
+                )
                 print(
-                    "\nClickNick cannot read these rungs. Each CSV holds an empty rung in place of"
-                    " each of these rungs. Paste them into CLICK again from your own copy of the"
-                    " program, or fix them in CLICK:"
+                    "\nClickNick cannot copy these rungs from CLICK as they are. Each CSV holds an"
+                    " empty rung in place of each of them." + (f" {fix}" if fix else "")
                 )
                 for item in unreadable:
                     print(f"  {describe_legacy_encoding(item)}")
@@ -694,7 +695,7 @@ def main() -> None:
         elif suffix == ".csv":
             try:
                 decode_to_csv(data, file_path)
-            except (WriterError, Exception) as exc:
+            except Exception as exc:
                 print(f"Error: could not decode to CSV: {exc}", file=sys.stderr)
                 sys.exit(1)
             print(f"Saved {file_path}")
@@ -709,7 +710,7 @@ def main() -> None:
             try:
                 decode_to_csv(data, csv_path)
                 print(f"Saved {csv_path}")
-            except (WriterError, Exception) as exc:
+            except Exception as exc:
                 print(
                     f"Warning: could not write CSV: {exc}",
                     file=sys.stderr,

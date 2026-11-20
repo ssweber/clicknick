@@ -841,6 +841,7 @@ class ClickNickApp:
                 parent=self.root,
             )
             return
+        self._report_dropped_checks()
 
         # clicknick-cli groups the findings the same way, with pyrung's grouped().
         grouped = report.grouped() if report is not None else {}
@@ -871,6 +872,7 @@ class ClickNickApp:
             messagebox.showerror(
                 "Choose Checks", f"Could not open Choose Checks: {exc}", parent=parent
             )
+        self._report_dropped_checks(parent)
 
     def _analyze_program(self) -> None:
         """Run program validation and show a report that you can refresh in place."""
@@ -1838,7 +1840,7 @@ class ClickNickApp:
         ``ConnectionSession.legacy_encodings_to_report`` returns nothing unless a finding is
         new. So the message shows once for each set of findings.
         """
-        from .ladder.program import describe_legacy_encoding
+        from .ladder.program import describe_legacy_encoding, stand_in_fix
 
         found = self._session.legacy_encodings_to_report() if self._session else ()
         if not found:
@@ -1855,12 +1857,16 @@ class ClickNickApp:
         copies = [item for item in found if item.unreadable and item.rung is None]
         parts: list[str] = []
         if unreadable:
+            one = len({(item.file, item.rung) for item in unreadable}) == 1
+            fix = stand_in_fix(unreadable, one=one)
+            if fix.startswith(("Paste", "Where")):
+                them = "it" if one else "them"
+                fix += f" Ladder > Compare with > Folder on that copy lists {them} in red."
             parts.append(
-                "ClickNick cannot read these rungs in CLICK:\n\n"
+                "ClickNick cannot copy these rungs from CLICK as they are:\n\n"
                 + _listed(unreadable)
-                + "\n\nThe workspace holds an empty rung in place of each. Paste them again "
-                "from your own copy of the program, or fix them in CLICK. Ladder > Compare with > "
-                "Folder on that copy lists them in red."
+                + "\n\nThe workspace holds an empty rung in place of each."
+                + (f" {fix}" if fix else "")
             )
         if copies:
             parts.append(
@@ -1884,11 +1890,19 @@ class ClickNickApp:
         if messagebox.askyesno("Paste Again", message, icon=messagebox.WARNING, parent=self.root):
             self._workspace.review_changes()
 
+    def _report_dropped_checks(self, parent: tk.Misc | None = None) -> None:
+        """Tell the user which rule names ClickNick removed from a saved check selection."""
+        found = self._session.dropped_checks_to_report() if self._session else ()
+        if found:
+            message = "\n\n".join(item.describe() for item in found)
+            messagebox.showwarning("Check Program", message, parent=parent or self.root)
+
     def _on_build_finished(self) -> None:
         """Show the build's result. This runs on the build worker's thread."""
         try:
             self.root.after(0, self._request_ui_refresh)
             self.root.after(0, self._report_legacy_encodings)
+            self.root.after(0, self._report_dropped_checks)
         except (RuntimeError, tk.TclError):
             pass  # The window closed while the build ran
 

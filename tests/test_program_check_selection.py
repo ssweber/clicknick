@@ -112,3 +112,71 @@ def test_report_does_not_call_unselected_checks_passed():
     )
     assert "the 1 selected check passed" in selected
     assert "not run" in selected
+
+
+# Names that pyrung does not know, such as a rule's name before pyrung renamed the rule
+_OLD = '[tool.pyrung.check]\nselect = ["CMP", "OLD_RULE"]\nextend-select = ["RUNG_TAUTOLOGY"]\n'
+
+
+def test_a_saved_name_that_pyrung_does_not_know_is_removed_and_reported_once(tmp_path):
+    path = tmp_path / "pyproject.toml"
+    path.write_text(
+        '# keep this\n[project]\nname="mixer"\n\n'
+        + _OLD
+        + 'ignore = ["GONE", "CMP_ALWAYS_TRUE"]\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="OLD_RULE"):
+        load_check_config(path)
+    selection = ProgramCheckSelection(tmp_path, appdata=tmp_path / "settings")
+
+    kept = CheckConfig(
+        select=("CMP",), extend_select=("RUNG_TAUTOLOGY",), ignore=("CMP_ALWAYS_TRUE",)
+    )
+    assert selection.load() == kept
+    # The file holds the rest of the selection, and everything else in it stays
+    assert load_check_config(path) == kept
+    assert "# keep this" in path.read_text(encoding="utf-8")
+    assert 'name="mixer"' in path.read_text(encoding="utf-8")
+    [dropped] = selection.take_dropped()
+    assert (dropped.path, dropped.names) == (path, ("OLD_RULE", "GONE"))
+    assert dropped.describe() == (
+        f"pyrung has no checks named OLD_RULE or GONE, so ClickNick removed them from the check "
+        f"selection in {path}. The other checks in the selection stay. Open Choose Checks to "
+        "see which checks run."
+    )
+    # Said once: the file no longer holds the names
+    selection.sync(tmp_path)
+    assert selection.load() == kept
+    assert selection.take_dropped() == ()
+
+
+def test_sync_removes_an_unknown_name_from_the_app_defaults_too(tmp_path):
+    appdata = tmp_path / "settings"
+    appdata.mkdir()
+    (appdata / "check-defaults.toml").write_text(_OLD, encoding="utf-8")
+    selection = ProgramCheckSelection(appdata=appdata)
+
+    selection.sync(tmp_path / "generated")
+
+    kept = CheckConfig(select=("CMP",), extend_select=("RUNG_TAUTOLOGY",))
+    assert load_check_config(appdata / "check-defaults.toml") == kept
+    assert load_check_config(tmp_path / "generated" / "pyproject.toml") == kept
+    [dropped] = selection.take_dropped()
+    assert dropped.names == ("OLD_RULE",)
+    assert dropped.describe().startswith("pyrung has no check named OLD_RULE, so ClickNick ")
+
+
+def test_a_selection_left_with_no_check_says_so(tmp_path):
+    path = tmp_path / "pyproject.toml"
+    path.write_text('[tool.pyrung.check]\nselect = ["OLD_RULE"]\n', encoding="utf-8")
+    selection = ProgramCheckSelection(tmp_path, appdata=tmp_path / "settings")
+
+    assert selection.load() == CheckConfig(select=())
+
+    [dropped] = selection.take_dropped()
+    assert dropped.describe() == (
+        f"pyrung has no check named OLD_RULE, so ClickNick removed it from the check selection "
+        f"in {path}. No checks are left in the selection, so Check Program runs none. Open "
+        "Choose Checks to choose the checks to run."
+    )

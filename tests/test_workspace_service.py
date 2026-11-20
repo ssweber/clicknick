@@ -265,15 +265,18 @@ def test_app_refreshes_on_the_tk_thread_when_a_build_finishes() -> None:
     app.root = MagicMock()
     app._request_ui_refresh = MagicMock()
     app._report_legacy_encodings = MagicMock()
+    app._report_dropped_checks = MagicMock()
 
     app._on_build_finished()
 
     assert app.root.after.call_args_list == [
         call(0, app._request_ui_refresh),
         call(0, app._report_legacy_encodings),
+        call(0, app._report_dropped_checks),
     ]
     app._request_ui_refresh.assert_not_called()
     app._report_legacy_encodings.assert_not_called()
+    app._report_dropped_checks.assert_not_called()
 
 
 def test_failure_before_the_build_starts_does_not_stay_preparing(tmp_path, monkeypatch) -> None:
@@ -949,3 +952,33 @@ def test_superseded_build_reports_failure_and_skips_selection_sync(tmp_path, mon
     selection.sync.assert_not_called()
     ok, error = callback.call_args.args
     assert ok is False and "changed while ClickNick was building the workspace" in error
+
+
+def test_a_build_keeps_the_check_names_it_removed_until_they_are_reported(
+    tmp_path, monkeypatch
+) -> None:
+    from clicknick.services.program_check_selection import ProgramCheckSelection
+
+    appdata = tmp_path / "settings"
+    appdata.mkdir()
+    defaults = appdata / "check-defaults.toml"
+    defaults.write_text('[tool.pyrung.check]\nselect = ["CMP", "OLD_RULE"]\n', encoding="utf-8")
+    monkeypatch.setattr(
+        "clicknick.services.program_check_selection.ProgramCheckSelection",
+        lambda workspace: ProgramCheckSelection(workspace, appdata=appdata),
+    )
+    monkeypatch.setattr("clicknick.connection_session.threading.Thread", _InlineThread)
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), has_database=True)
+    session.analysis = MagicMock()
+    session.analysis.build.return_value = True
+
+    session._start_analysis_thread(tmp_path, tmp_path / "db")
+    # A second build replaces the selection before the app asks
+    defaults.write_text('[tool.pyrung.check]\nselect = ["GONE"]\n', encoding="utf-8")
+    session._start_analysis_thread(tmp_path, tmp_path / "db")
+
+    assert [item.names for item in session.dropped_checks_to_report()] == [
+        ("OLD_RULE",),
+        ("GONE",),
+    ]
+    assert session.dropped_checks_to_report() == ()

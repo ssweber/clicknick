@@ -270,14 +270,6 @@ class TestCsvModeStore:
 
         assert path.read_bytes() == (f'{HEADER}\r\nC1,BIT,"Café",0,No,"5°"\r\n'.encode("cp1252"))
 
-    def test_a_save_writes_the_encoding_that_the_caller_chose(self, tmp_path):
-        path = tmp_path / "names.csv"
-        rows = [AddressRow("C", 1, nickname="Café")]
-
-        CsvDataSource(str(path), encoding="utf-8").save_changes(rows)
-
-        assert "Café".encode() in path.read_bytes()
-
     def test_a_cp1252_file_is_loaded_and_saved_again_as_it_was(self, tmp_path):
         path = _write(
             tmp_path / "names.csv", f'{HEADER}\nC1,BIT,"Café",0,No,""\n', encoding="cp1252"

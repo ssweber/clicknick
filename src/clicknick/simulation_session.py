@@ -1339,7 +1339,11 @@ class SimulationSession:
         the program's CSV back. No stand-in rung was written, the CSV still holds every rung,
         and pyrung parses that CSV itself.
         """
-        from .ladder.program import describe_legacy_encoding, read_legacy_encodings
+        from .ladder.program import (
+            describe_legacy_encoding,
+            read_legacy_encodings,
+            stand_in_fix,
+        )
 
         found = [
             item
@@ -1352,11 +1356,13 @@ class SimulationSession:
         if len(found) > UNREADABLE_LISTED:
             lines.append(f"  ...and {len(found) - UNREADABLE_LISTED} more")
         one = len({(item.file, item.rung) for item in found}) == 1
-        head = "this rung" if one else "these rungs"
+        head = "this rung from CLICK as it is" if one else "these rungs from CLICK as they are"
         without = "it" if one else "them"
+        fix = stand_in_fix(found, one=one)
         return (
-            f"ClickNick cannot read {head} in CLICK, so the simulation would run without "
-            f"{without}.\n" + "\n".join(lines) + f"\nPaste {without} again."
+            f"ClickNick cannot copy {head}, so the simulation would run without {without}.\n"
+            + "\n".join(lines)
+            + (f"\n{fix}" if fix else "")
         )
 
     def _workspace_problem(self, analysis: AnalysisService | None) -> tuple[str, str | None] | None:

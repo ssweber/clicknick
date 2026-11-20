@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import typing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from laddercodec import Coil, Contact, Rung, read_csv
-from laddercodec.model import Program
+from laddercodec import Coil, Program, Rung, read_csv
 
 from clicknick.app import ClickNickApp
 from clicknick.connection_controller import ConnectionController
@@ -22,14 +20,11 @@ from clicknick.services.click_snapshot import (
     snapshot_dir,
 )
 
-_IT = typing.get_type_hints(Contact)["type"]
-
 
 def _rung(coil: str) -> Rung:
     return Rung(
-        logical_rows=1,
         conditions=[["-"] * 31],
-        instructions=[Coil(_IT.COIL_OUT, coil)],
+        instructions=[Coil(coil)],
         comment=None,
     )
 
@@ -124,17 +119,17 @@ def test_a_database_that_cannot_be_read_leaves_only_the_nicknames_out(
     assert not (dest / "nicknames.csv").exists()
 
 
-def test_the_copy_writes_its_nicknames_as_utf8(
+def test_the_copy_writes_its_nicknames_as_cp1252(
     click_dir: Path, tmp_path: Path, monkeypatch
 ) -> None:
-    """pyrung reads the copy's nicknames.csv as UTF-8."""
+    """ClickNick writes the copy's nicknames.csv in cp1252, as CLICK exports it."""
     rows = {1: AddressRow("X", 1, nickname="Café", comment="5°")}
     monkeypatch.setattr("clicknick.utils.mdb_operations.load_all_addresses", lambda _conn: rows)
     dest = tmp_path / "copy"
 
     snapshot_click_program(click_dir, dest)
 
-    text = (dest / "nicknames.csv").read_bytes().decode("utf-8")
+    text = (dest / "nicknames.csv").read_bytes().decode("cp1252")
     assert "Café" in text
     assert "5°" in text
 

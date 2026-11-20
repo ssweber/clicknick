@@ -1206,23 +1206,20 @@ def test_regeneration_publishes_the_legacy_record_and_removes_it_after_a_clean_s
 ):
     import warnings
 
-    import laddercodec
-    from laddercodec.model import Program
+    from laddercodec import LegacyEncodingWarning, Program
 
     from clicknick.ladder.program import LEGACY_ENCODINGS_FILE, read_legacy_encodings
 
-    class FakeLegacyWarning(UserWarning):
-        def __init__(self, rung: int) -> None:
-            super().__init__("Math H70000")
-            self.instruction, self.token, self.rung, self.program = "Math", "H70000", rung, None
-            self.detail = "it is stored as 16-bit and CLICK runs it as 4464."
-
-    monkeypatch.setattr(laddercodec, "LegacyEncodingWarning", FakeLegacyWarning, raising=False)
     stale = [True]
 
     def decode_program(_data):
         if stale[0]:
-            warnings.warn(FakeLegacyWarning(0), stacklevel=2)
+            warnings.warn(
+                LegacyEncodingWarning(
+                    "Math", "H70000", "it is stored as 16-bit and CLICK runs it as 4464.", 0
+                ),
+                stacklevel=2,
+            )
         return Program(name="Main Program", prog_idx=1, rungs=[])
 
     def generate(_csv_dir, *, output_dir, **_kwargs):
@@ -1249,20 +1246,14 @@ def test_regeneration_publishes_the_legacy_record_and_removes_it_after_a_clean_s
 
 
 def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, monkeypatch):
-    """The build used to stop on WriterError, so the workspace and its csv/ went stale."""
-    import typing
-
-    from laddercodec import Coil, Contact, Rung
-    from laddercodec.instructions import UnknownCondition
-    from laddercodec.model import Program
+    """The build used to stop when write_csv refused a rung, and the workspace went stale."""
+    from laddercodec import Coil, Program, Rung, UnknownCondition
 
     from clicknick.ladder.program import STAND_IN_COMMENT, read_legacy_encodings
 
-    coil = typing.get_type_hints(Contact)["type"].COIL_OUT
-
     def _rung(output: str, first: object = "-") -> Rung:
         conditions = [first, *["-"] * 30]
-        return Rung(1, [conditions], [Coil(coil, output)], None)
+        return Rung([conditions], [Coil(output)], None)
 
     rungs = [_rung("C1"), _rung("C2", UnknownCondition(raw=b"Compare")), _rung("C3")]
     monkeypatch.setattr(
@@ -1298,20 +1289,11 @@ def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, 
 def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
     tmp_path, monkeypatch, row
 ) -> None:
-    """pyrung reads the workspace's nickname CSV as UTF-8, so ClickNick writes it as UTF-8."""
-    import typing
-
-    from laddercodec import Coil, Contact, Rung, write_csv
-
-    contact_type = typing.get_type_hints(Contact)["type"]
+    """A nickname or comment that cp1252 has, but ASCII lacks, builds through pyrung from the cp1252 file."""
+    from laddercodec import Coil, Rung, write_csv
 
     def fake_program_save(_scr_folder, csv_dir, *, index):
-        rung = Rung(
-            logical_rows=1,
-            conditions=[["-"] * 31],
-            instructions=[Coil(contact_type.COIL_OUT, "Y001")],
-            comment=None,
-        )
+        rung = Rung(conditions=[["-"] * 31], instructions=[Coil("Y001")], comment=None)
         write_csv(csv_dir / "main.csv", [rung], index=index)
 
     monkeypatch.setattr("clicknick.ladder.program.program_save", fake_program_save)
@@ -1320,7 +1302,9 @@ def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
     _regenerate_persisted_project(tmp_path, {1: row}, persist, analog_inputs=frozenset())
 
     nicknames = persist / "csv" / "nicknames.csv"
-    assert row.nickname in nicknames.read_text(encoding="utf-8")
+    assert row.nickname in nicknames.read_bytes().decode("cp1252")
+    assert row.nickname in (persist / "nicknames.csv").read_bytes().decode("cp1252")
+    assert (b"Caf\xe9" if row.nickname == "Caf\u00e9" else b"50\xb0C") in nicknames.read_bytes()
 
 
 def test_every_row_click_cannot_hold_is_listed_before_the_nickname_csv_is_written(

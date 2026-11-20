@@ -7,13 +7,29 @@ cell as ``UnknownCondition``, which has no CSV token.
 from __future__ import annotations
 
 import json
-import typing
+import warnings
 from pathlib import Path
 
 import pytest
-from laddercodec import Coil, CompareContact, Contact, Rung, encode, read_csv
-from laddercodec.instructions import UnknownCondition, UnknownInstruction
-from laddercodec.model import Program
+from laddercodec import (
+    Coil,
+    CompareContact,
+    Contact,
+    LegacyEncodingWarning,
+    Program,
+    RefusedFieldWarning,
+    Rung,
+    Tee,
+    Undecoded,
+    UndecodedCommentWarning,
+    UndecodedRungWarning,
+    UnknownCondition,
+    UnknownInstruction,
+    decode,
+    encode,
+    read_csv,
+    write_csv,
+)
 
 from clicknick.ladder.cli import main
 from clicknick.ladder.program import (
@@ -24,12 +40,12 @@ from clicknick.ladder.program import (
     decode_to_csv,
     describe_legacy_encoding,
     is_stand_in,
+    prepare_bin_load,
     prepare_rungs_load,
     program_save,
     read_legacy_encodings,
 )
 
-_IT = typing.get_type_hints(Contact)["type"]
 DETAIL = "ClickNick cannot read this Compare."
 
 
@@ -38,9 +54,8 @@ def _rung(coil: str, first=None, comment: str | None = None) -> Rung:
     if first is not None:
         conditions[0] = first
     return Rung(
-        logical_rows=1,
         conditions=[conditions],
-        instructions=[Coil(_IT.COIL_OUT, coil)],
+        instructions=[Coil(coil)],
         comment=comment,
     )
 
@@ -111,10 +126,10 @@ def test_each_unreadable_rung_becomes_an_empty_rung_so_the_rest_keep_their_numbe
     assert len(rungs) == 4
     assert [is_stand_in(rung) for rung in rungs] == [False, True, True, False]
     assert [rung.instructions for rung in rungs] == [
-        [Coil(_IT.COIL_OUT, "C10")],
-        [""],
-        [""],
-        [Coil(_IT.COIL_OUT, "C13")],
+        (Coil("C10"),),
+        ("",),
+        ("",),
+        (Coil("C13"),),
     ]
     # The rung's own comment stays below the note, so the user can tell which rung it was
     assert rungs[1].comment == (
@@ -170,7 +185,7 @@ def test_cli_save_lists_the_rungs_to_paste_again(scr: Path, monkeypatch, capsys)
     main()
 
     out = capsys.readouterr().out
-    assert "ClickNick cannot read these rungs" in out
+    assert "ClickNick cannot copy these rungs from CLICK as they are" in out
     assert f"  Conf_Compare rung 2, Compare: {DETAIL}" in out
     assert "old encoding" not in out
 
@@ -180,14 +195,14 @@ def test_cli_save_lists_the_rungs_to_paste_again(scr: Path, monkeypatch, capsys)
 # ---------------------------------------------------------------------------
 
 
-def _refused_payload() -> bytes:
-    """Return a clipboard rung that holds ``DH70 == DS39``, which CLICK's Compare dialog refuses.
+def _unknown_payload() -> bytes:
+    """Return a clipboard rung whose compare is of a class that laddercodec does not know.
 
-    laddercodec will not encode that compare. This encodes ``DH70 == DH71`` and
-    replaces the operand with one of the same length.
+    This encodes ``DH70 == DH71`` and renames its class from ``Compare`` to ``Comparx``.
+    laddercodec decodes the renamed cell as an unknown condition.
     """
     data = encode(_rung("C1", CompareContact("==", "DH70", "DH71")))
-    old, new = "DH71".encode("utf-16-le"), "DS39".encode("utf-16-le")
+    old, new = "Compare".encode("utf-16-le"), "Comparx".encode("utf-16-le")
     assert data.count(old) == 1
     return data.replace(old, new)
 
@@ -198,21 +213,20 @@ def test_clipboard_rung_laddercodec_cannot_read_is_named_and_nothing_is_written(
     path = tmp_path / "copied.csv"
 
     with pytest.raises(UnreadableRungError) as caught:
-        decode_to_csv(_refused_payload(), path)
+        decode_to_csv(_unknown_payload(), path)
 
-    assert f"  copied rung 1, Compare: {DETAIL}" in str(caught.value)
+    assert "  copied rung 1, Comparx: ClickNick cannot read this Comparx." in str(caught.value)
     assert not path.exists()
 
 
 def test_clipboard_output_laddercodec_cannot_read_is_named_too(tmp_path: Path, monkeypatch) -> None:
     # When laddercodec cannot find the end of an output instruction, it keeps the whole thing.
     copy = Rung(
-        logical_rows=1,
         conditions=[["-"] * 31],
         instructions=[UnknownInstruction(raw="Copy".encode("utf-16-le") + b"\0\0\x07")],
         comment=None,
     )
-    monkeypatch.setattr("clicknick.ladder.program._decode_to_rungs", lambda _data: [copy])
+    monkeypatch.setattr("clicknick.ladder.program.decode", lambda _data: [copy])
     path = tmp_path / "copied.csv"
 
     with pytest.raises(UnreadableRungError) as caught:
@@ -220,6 +234,31 @@ def test_clipboard_output_laddercodec_cannot_read_is_named_too(tmp_path: Path, m
 
     assert "  copied rung 1, Copy: ClickNick cannot read this Copy." in str(caught.value)
     assert not path.exists()
+
+
+def test_save_finds_an_unreadable_contact_with_a_wire_down(tmp_path: Path, monkeypatch) -> None:
+    # laddercodec decodes a cell that it cannot read, with a wire down from it, as a Tee
+    scr = tmp_path / "scr"
+    scr.mkdir()
+    (scr / "Scr1.tmp").write_bytes(b"Scr1.tmp")
+    tee = Rung(
+        conditions=[
+            [Tee(UnknownCondition(raw=b"Compare")), *["-"] * 30],
+            ["|", *["-"] * 30],
+        ],
+        instructions=[Coil("C2"), Coil("C3")],
+        comment=None,
+    )
+    monkeypatch.setattr(
+        "clicknick.ladder.program.decode_program",
+        lambda _data: Program("Main Program", 1, [_rung("C1"), tee]),
+    )
+    out = scr / "csv"
+
+    result = program_save(scr, out, index=True)
+
+    assert [(item.rung, item.instruction) for item in result.legacy_encodings] == [(2, "Compare")]
+    assert [is_stand_in(rung) for rung in read_csv(out / "main.csv")] == [False, True]
 
 
 def test_readable_clipboard_rung_is_written(tmp_path: Path) -> None:
@@ -252,13 +291,13 @@ def test_a_stand_in_is_an_empty_rung_with_the_note_old_or_new() -> None:
     empty = ["-"] * 31
 
     def rung(comment: str, instruction="NOP") -> Rung:
-        return Rung(logical_rows=1, conditions=[empty], instructions=[instruction], comment=comment)
+        return Rung(conditions=[empty], instructions=[instruction], comment=comment)
 
     assert is_stand_in(rung(f"{STAND_IN_COMMENT}\nmore"))
     assert is_stand_in(rung(old))
     assert not is_stand_in(rung("A comment rung"))
     # A rung that does something is not a stand-in, even when its comment is the note.
-    assert not is_stand_in(rung(STAND_IN_COMMENT, Coil(_IT.COIL_OUT, "C1")))
+    assert not is_stand_in(rung(STAND_IN_COMMENT, Coil("C1")))
 
 
 def test_a_stand_in_survives_pyrung_and_back_and_is_still_refused(
@@ -289,6 +328,437 @@ def test_a_stand_in_survives_pyrung_and_back_and_is_still_refused(
     assert [is_stand_in(rung) for rung in exported[:3]] == [False, True, False]
     with pytest.raises(UnreadableRungError, match=r"^Rung 2 is an empty rung"):
         prepare_rungs_load(exported, click_v4=True)
+
+
+def test_an_undecoded_marker_in_a_csv_is_never_copied(tmp_path: Path) -> None:
+    def marker(rung: int, error: str) -> Rung:
+        return Rung([["-"] * 31], [Undecoded(error, rung=rung, row=0)], None)
+
+    path = tmp_path / "main.csv"
+    write_csv(path, [_rung("C1"), marker(1, "bad bytes"), _rung("C3"), marker(3, "no end")])
+    rungs = read_csv(path)
+
+    with pytest.raises(UnreadableRungError) as refused:
+        prepare_rungs_load(rungs, click_v4=True)
+    assert str(refused.value) == (
+        "Rungs 2, 4 are UNDECODED markers. CLICK cannot hold a marker.\n"
+        "  rung 2: laddercodec cannot read this rung: bad bytes.\n"
+        "  rung 4: laddercodec cannot read this rung: no end.\n"
+        "Put the rung's logic in place of its marker, or remove the marker."
+    )
+    with pytest.raises(UnreadableRungError, match=r"^Rung 6 is an UNDECODED marker\. "):
+        prepare_rungs_load(rungs[1:2], click_v4=True, first_rung=6)
+
+
+# ---------------------------------------------------------------------------
+# Rungs that the CSV cannot hold as CLICK holds them
+# ---------------------------------------------------------------------------
+
+# A compare whose cell laddercodec reads back two ways, so write_csv writes a marker for it
+_TWO_WAYS = CompareContact("==", '"A"=="B"', '"C"')
+_TO_THE_END = "bad record; decoding stopped, so this marker stands for rung 1 to the end"
+
+
+def _marker_rung(error: str, rung: int) -> Rung:
+    """Return the rung that laddercodec's decoder returns for a rung that it cannot read."""
+    headline = f"UNDECODED: rung {rung}: {error}"
+    return Rung([["-"] * 31], [Undecoded(error, rung=rung)], f"{headline}\nMine")
+
+
+def _split_rung() -> Rung:
+    """Return a rung with a NOP fed from the rail beside two outputs.
+
+    CLICK keeps this rung whole after a paste, and after a save before Syntax Check. Only
+    Syntax Check splits it. write_csv writes it as two rungs.
+    """
+    return Rung(
+        [[Contact("X001"), *["-"] * 30], [Contact("X002"), *["-"] * 30], ["-"] * 31],
+        [Coil("Y003"), Coil("Y004"), "NOP"],
+        None,
+    )
+
+
+def _save_one_program(
+    tmp_path: Path, monkeypatch, rungs: list[Rung], warned: tuple[Warning, ...] = ()
+) -> tuple[Path, list]:
+    """Save a project whose one program holds *rungs*. The decoder issues *warned*."""
+    (tmp_path / "Scr1.tmp").write_bytes(b"Scr1.tmp")
+
+    def decode_program(_data: bytes) -> Program:
+        for warning in warned:
+            warnings.warn(warning, stacklevel=1)
+        return Program("Main Program", 1, rungs)
+
+    monkeypatch.setattr("clicknick.ladder.program.decode_program", decode_program)
+    out = tmp_path / "csv"
+    result = program_save(tmp_path, out, index=True)
+    return out, result.legacy_encodings
+
+
+@pytest.mark.parametrize(
+    ("bad", "detail"),
+    [
+        (
+            _rung("C2", _TWO_WAYS),
+            "laddercodec cannot write this rung to a CSV: no CSV cell reads back as this compare.",
+        ),
+        (
+            _marker_rung("a wire flag has no token", 1),
+            "laddercodec cannot read this rung: a wire flag has no token.",
+        ),
+        (
+            _split_rung(),
+            "CLICK's Syntax Check splits this rung into 2 rungs. Run Syntax Check in CLICK, "
+            "then save the project.",
+        ),
+    ],
+    ids=["compare-two-ways", "decoder-marker", "split"],
+)
+def test_save_puts_a_stand_in_for_a_rung_that_the_csv_cannot_hold(
+    tmp_path: Path, monkeypatch, recwarn, bad: Rung, detail: str
+) -> None:
+    out, found = _save_one_program(tmp_path, monkeypatch, [_rung("C1"), bad, _rung("C3")])
+
+    assert found == [LegacyEncoding("main.csv", "Main Program", 2, "", "", detail, unreadable=True)]
+    rungs = read_csv(out / "main.csv")
+    # The rungs keep CLICK's numbers, and nothing in the CSV is a marker
+    assert [is_stand_in(rung) for rung in rungs] == [False, True, False]
+    assert rungs[1].comment.split("\n")[:2] == [STAND_IN_COMMENT, detail]
+    assert read_legacy_encodings(out) == tuple(found)
+    assert not [w for w in recwarn if "undecoded" in str(w.message).lower()]
+
+
+def test_a_marker_for_the_rest_of_the_program_names_its_rung_from_1(
+    tmp_path: Path, monkeypatch
+) -> None:
+    out, found = _save_one_program(
+        tmp_path, monkeypatch, [_rung("C1"), _marker_rung(_TO_THE_END, 1)]
+    )
+
+    [finding] = found
+    assert finding.rung == 2
+    assert finding.detail == (
+        "laddercodec cannot read this rung, and it stopped reading the program there: bad "
+        "record. The rungs after it are missing too."
+    )
+    # The stand-in keeps the rung's own comment, without laddercodec's headline
+    assert read_csv(out / "main.csv")[1].comment.split("\n")[-1] == "Mine"
+
+
+def test_the_workspace_builds_from_a_save_with_a_rung_the_csv_cannot_hold(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from pyrung.click import ladder_to_pyrung
+
+    out, _found = _save_one_program(
+        tmp_path, monkeypatch, [_rung("C1"), _rung("C2", _TWO_WAYS), _marker_rung(_TO_THE_END, 2)]
+    )
+
+    code = ladder_to_pyrung(out)
+
+    assert "out(C1)" in code
+    assert "undecoded" not in code.lower()
+
+
+@pytest.mark.parametrize(
+    ("bad", "line"),
+    [
+        (
+            _rung("C2", _TWO_WAYS),
+            "  copied rung 2: laddercodec cannot write this rung to a CSV: no CSV cell reads "
+            "back as this compare.",
+        ),
+        (_split_rung(), "  copied rung 2: CLICK's Syntax Check splits this rung into 2 rungs."),
+    ],
+    ids=["compare-two-ways", "split"],
+)
+def test_clipboard_rung_that_the_csv_cannot_hold_writes_no_csv(
+    tmp_path: Path, bad: Rung, line: str
+) -> None:
+    path = tmp_path / "copied.csv"
+
+    with pytest.raises(UnreadableRungError) as refused:
+        decode_to_csv(encode([_rung("C1"), bad]), path)
+
+    assert line in str(refused.value)
+    assert not path.exists()
+
+
+def test_clipboard_marker_is_refused_before_the_csv_or_the_mdb(tmp_path: Path, monkeypatch):
+    marker = _marker_rung(_TO_THE_END, 1)
+    monkeypatch.setattr("clicknick.ladder.program.decode", lambda _data: [_rung("C1"), marker])
+    detail = (
+        "laddercodec cannot read this rung, and it stopped reading the program there: bad "
+        "record. The rungs after it are missing too."
+    )
+
+    with pytest.raises(UnreadableRungError, match=f"  copied rung 2: {detail}"):
+        decode_to_csv(b"clip", tmp_path / "copied.csv")
+    # clicknick-rung load takes its "could not decode" branch on this ValueError
+    with pytest.raises(ValueError, match=f"^rung 2: {detail}$"):
+        prepare_bin_load(b"clip", click_v4=True)
+
+
+def test_clipboard_value_that_clicks_editor_refuses_writes_no_csv(tmp_path: Path) -> None:
+    """laddercodec decodes DH70 == DS39 as a compare and warns that CLICK's editor refuses it.
+
+    A CSV of it would not read back, so ClickNick writes none, as 0.25.0 did.
+    """
+    data = encode(_rung("C1", CompareContact("==", "DH70", "DH71")))
+    data = data.replace("DH71".encode("utf-16-le"), "DS39".encode("utf-16-le"))
+    path = tmp_path / "copied.csv"
+
+    with pytest.raises(UnreadableRungError, match=r"copied rung 1: CompareContact\.left: 'DH70'"):
+        decode_to_csv(data, path)
+
+    assert not path.exists()
+
+
+def test_save_with_a_value_that_clicks_editor_refuses_pastes_the_program_whole(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The save writes the compare, which laddercodec cannot read back from the CSV.
+
+    So the finding is about the whole copy, and Review Changes pastes the program whole.
+    """
+    data = encode(_rung("C2", CompareContact("==", "DH70", "DH71")))
+    data = data.replace("DH71".encode("utf-16-le"), "DS39".encode("utf-16-le"))
+    with pytest.warns(RefusedFieldWarning) as caught:
+        [refused] = decode(data)
+    first = caught[0].message
+    # As decode_program warns: the rung is the second of its program
+    warning = RefusedFieldWarning(first.instruction, first.errors, 1, "Main Program")
+
+    _out, found = _save_one_program(tmp_path, monkeypatch, [_rung("C1"), refused], (warning,))
+
+    # One finding: the read-back of the CSV would say the same again
+    [finding] = found
+    assert (finding.rung, finding.unreadable) == (None, True)
+    assert finding.detail.startswith(
+        "ClickNick cannot read CLICK's copy of this program. CompareContact.left: 'DH70' (hex)"
+    )
+    assert "(at " not in finding.detail
+
+
+def test_a_marker_that_the_decoder_warns_about_gets_one_finding(tmp_path: Path, monkeypatch):
+    marker = _marker_rung("a wire flag has no token", 1)
+    warning = UndecodedRungWarning(marker.instructions[0], "Main Program")
+
+    _out, found = _save_one_program(tmp_path, monkeypatch, [_rung("C1"), marker], (warning,))
+
+    assert [(item.rung, item.detail) for item in found] == [
+        (2, "laddercodec cannot read this rung: a wire flag has no token.")
+    ]
+
+
+def test_a_comment_that_laddercodec_cannot_read_is_left_out_of_the_save(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The rung keeps its logic and loses its comment, with no finding, as in 0.25.0."""
+    rung = _rung("C2", comment="UNDECODED comment: bad RTF\nMixer start")
+    warning = UndecodedCommentWarning(1, "bad RTF", "Main Program")
+
+    out, found = _save_one_program(tmp_path, monkeypatch, [_rung("C1"), rung], (warning,))
+
+    assert found == []
+    assert read_csv(out / "main.csv") == [_rung("C1"), _rung("C2")]
+
+
+class _NewWarning(UserWarning):
+    """A warning that a later laddercodec might issue, which ClickNick has no rule for."""
+
+    def __init__(self, rung: int | None) -> None:
+        self.rung = rung
+        super().__init__("something new")
+
+
+_NewWarning.__module__ = "laddercodec.future"
+
+
+def test_a_laddercodec_warning_with_no_rule_counts_as_unreadable(tmp_path: Path, monkeypatch):
+    on_rung, on_program = _NewWarning(0), _NewWarning(None)
+
+    _out, found = _save_one_program(tmp_path, monkeypatch, [_rung("C1")], (on_rung, on_program))
+
+    detail = "laddercodec warned about this rung: something new."
+    assert [(item.rung, item.detail, item.unreadable) for item in found] == [
+        (None, f"ClickNick cannot read CLICK's copy of this program. {detail}", True),
+        (1, detail, True),
+    ]
+
+
+def test_an_empty_flag_on_the_clipboard_stays_a_warning(tmp_path: Path, monkeypatch) -> None:
+    legacy = LegacyEncodingWarning("Coil.oneshot", "", "the flag is stored empty.", 0)
+
+    def decode(_data: bytes) -> list[Rung]:
+        warnings.warn(legacy, stacklevel=1)
+        return [_rung("C1")]
+
+    monkeypatch.setattr("clicknick.ladder.program.decode", decode)
+    path = tmp_path / "copied.csv"
+
+    with pytest.warns(LegacyEncodingWarning, match="Coil.oneshot"):
+        decode_to_csv(b"clip", path)
+
+    assert read_csv(path)[0].instructions == (Coil("C1"),)
+
+
+def test_clipboard_comment_that_laddercodec_cannot_read_writes_no_csv(
+    tmp_path: Path, monkeypatch
+) -> None:
+    def decode(_data: bytes) -> list[Rung]:
+        warnings.warn(UndecodedCommentWarning(0, "bad RTF"), stacklevel=1)
+        return [_rung("C1", comment="UNDECODED comment: bad RTF")]
+
+    monkeypatch.setattr("clicknick.ladder.program.decode", decode)
+    path = tmp_path / "copied.csv"
+
+    with pytest.raises(UnreadableRungError, match="copied rung 1: laddercodec cannot read this"):
+        decode_to_csv(b"clip", path)
+    assert not path.exists()
+
+
+def test_a_bin_load_passes_on_warnings_other_than_a_marker(monkeypatch) -> None:
+    """The payload is CLICK's own bytes, and the operands are known, so the load goes on."""
+    data = encode(_rung("C1", CompareContact("==", "DH70", "DH71")))
+    data = data.replace("DH71".encode("utf-16-le"), "DS39".encode("utf-16-le"))
+    provisioned: list[list[str]] = []
+
+    def provision(addresses, *, mdb_path=None):
+        provisioned.append(addresses)
+        return 0, None, None
+
+    monkeypatch.setattr("clicknick.ladder.program._provision_mdb_addresses", provision)
+
+    with pytest.warns(RefusedFieldWarning):
+        result = prepare_bin_load(data, click_v4=True)
+
+    assert result.payload == data
+    assert provisioned == [result.addresses]
+    assert {"DH70", "DS39", "C1"} <= set(result.addresses)
+
+
+def test_a_bin_load_passes_on_a_comment_that_laddercodec_cannot_read(monkeypatch) -> None:
+    def decode(_data: bytes) -> list[Rung]:
+        warnings.warn(UndecodedCommentWarning(0, "bad RTF"), stacklevel=1)
+        return [_rung("C1", comment="UNDECODED comment: bad RTF")]
+
+    monkeypatch.setattr("clicknick.ladder.program.decode", decode)
+
+    with pytest.warns(UndecodedCommentWarning):
+        result = prepare_bin_load(b"clip", click_v4=True)
+
+    assert result.payload == b"clip"
+
+
+def test_paste_refuses_a_comment_that_laddercodec_could_not_read() -> None:
+    rungs = [_rung("C1"), _rung("C2", comment="UNDECODED comment: bad RTF\nMixer start")]
+
+    with pytest.raises(UnreadableRungError) as refused:
+        prepare_rungs_load(rungs, click_v4=True, first_rung=3)
+
+    assert str(refused.value) == (
+        'Rung 4 has a comment that starts with laddercodec\'s "UNDECODED comment:" line.'
+        " laddercodec could not read the comment that CLICK held there. Delete that line, or"
+        " put back the comment."
+    )
+
+
+def test_paste_refuses_rungs_that_laddercodec_warns_about_as_it_encodes(monkeypatch) -> None:
+    def encode(_rungs, **_kwargs) -> bytes:
+        warnings.warn(_NewWarning(1), stacklevel=1)
+        return b"payload"
+
+    monkeypatch.setattr("clicknick.ladder.program.encode", encode)
+
+    with pytest.raises(UnreadableRungError) as refused:
+        prepare_rungs_load([_rung("C1"), _rung("C2")], click_v4=True, first_rung=5)
+
+    assert str(refused.value) == (
+        "ClickNick cannot copy these rungs into CLICK as they are:\n"
+        "  rung 6: laddercodec warned about this rung: something new."
+    )
+
+
+def test_warnings_from_anything_but_laddercodec_pass_through() -> None:
+    from clicknick.ladder.codec_warnings import recording
+
+    with pytest.warns(DeprecationWarning, match="not laddercodec"):
+        with recording() as found:
+            warnings.warn("not laddercodec", DeprecationWarning, stacklevel=1)
+
+    assert found == []
+
+
+def test_a_python_warning_raised_inside_laddercodec_passes_through() -> None:
+    """Only a UserWarning is laddercodec's by where it was raised, not a DeprecationWarning."""
+    import laddercodec
+
+    from clicknick.ladder.codec_warnings import recording
+
+    inside = str(Path(laddercodec.__file__).resolve().parent / "decode.py")
+    with pytest.warns(DeprecationWarning, match="old call"):
+        with recording() as found:
+            warnings.warn_explicit("old call", DeprecationWarning, inside, 1)
+            warnings.warn_explicit("lost a row", UserWarning, inside, 1)
+
+    assert [str(warning) for warning in found] == ["lost a row"]
+
+
+def test_two_threads_never_record_at_once() -> None:
+    """The build worker and the Tk thread both call laddercodec. Neither takes the other's
+    warning, and the warning filters are as they were afterwards."""
+    import threading
+    import time
+
+    from clicknick.ladder.codec_warnings import recording
+
+    filters = list(warnings.filters)
+    showwarning = warnings.showwarning
+    build_in, tk_trying, tk_in = threading.Event(), threading.Event(), threading.Event()
+    lists: dict[str, list[Warning]] = {}
+    overlap: list[bool] = []
+
+    def build() -> None:
+        with recording() as found:
+            build_in.set()
+            assert tk_trying.wait(5)
+            time.sleep(0.05)  # the Tk thread is waiting for the lock by now
+            overlap.append(tk_in.is_set())
+            warnings.warn(UndecodedCommentWarning(3, "bad RTF", "Main Program"), stacklevel=1)
+        lists["build"] = found
+
+    def tk() -> None:
+        assert build_in.wait(5)
+        tk_trying.set()
+        with recording() as found:
+            tk_in.set()
+        lists["tk"] = found
+
+    threads = [threading.Thread(target=build), threading.Thread(target=tk)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+
+    assert overlap == [False]
+    assert [type(warning) for warning in lists["build"]] == [UndecodedCommentWarning]
+    assert lists["tk"] == []
+    assert warnings.filters == filters
+    assert warnings.showwarning is showwarning
+
+
+def test_a_fingerprint_passes_on_what_laddercodec_warns(monkeypatch) -> None:
+    from clicknick.ladder.program import rung_fingerprint
+
+    def csv_rows(_rungs, **_kwargs):
+        warnings.warn(_NewWarning(0), stacklevel=1)
+        return [["R", "-"]]
+
+    monkeypatch.setattr("clicknick.ladder.program.csv_rows", csv_rows)
+
+    with pytest.warns(_NewWarning):
+        assert rung_fingerprint(_rung("C1")) == (("R", "-"),)
 
 
 # ---------------------------------------------------------------------------
@@ -338,4 +808,4 @@ def test_save_names_a_program_whose_csv_laddercodec_cannot_read_back(
         "Paste these programs into CLICK again from your own copy, or fix them in CLICK:\n"
         f"  Main Program: {found.detail}"
     ) in printed
-    assert "ClickNick cannot read these rungs" not in printed
+    assert "ClickNick cannot copy these rungs" not in printed

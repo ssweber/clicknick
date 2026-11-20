@@ -61,12 +61,12 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "executing", specifier = "==2.2.1" },
-    { name = "laddercodec", specifier = "==0.4.0" },
+    { name = "laddercodec", specifier = "==0.5.0" },
     { name = "pyclickplc", specifier = "==0.11.1" },
     { name = "pymodbus", specifier = "==3.12.1" },
     { name = "pyodbc", specifier = "==5.3.0" },
     { name = "pyrsistent", specifier = "==0.20.0" },
-    { name = "pyrung", specifier = "==0.17.0" },
+    { name = "pyrung", specifier = "==0.18.0" },
     { name = "pywin32", specifier = "==311" },
     { name = "tksheet", specifier = "==7.6.0" },
     { name = "tomlkit", specifier = "==0.15.1" },
@@ -130,11 +130,11 @@ wheels = [
 
 [[package]]
 name = "laddercodec"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1c/2c/7c3792f1099eb1f3236d7fb5169a477692046852b9bcad1a4729d02040af/laddercodec-0.4.0.tar.gz", hash = "sha256:988957f9d568c7647becc848f6cb7c35f988e4ca798124e41db39130ed723f1e", size = 2188190, upload-time = "2026-11-14T19:43:08.571Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/89/e501a4dc2e7be08a1d393081a72c1101ae62dff51344611855df4823b835/laddercodec-0.5.0.tar.gz", hash = "sha256:56662e4176fa13c40fc89107b795abc2dd6dca6b23d3044b61d7ead72ebba6f3", size = 3189556, upload-time = "2026-11-20T15:20:25.506Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b8/2f/a2806a550c71dbe3fc44c21019b70a5a9b7999c9aceeedbd973141bf28ca/laddercodec-0.4.0-py3-none-any.whl", hash = "sha256:541f7f0059c94435d2f718754c7bfca88fbdaa0e7a21c8efa345eca21bb55b4c", size = 210802, upload-time = "2026-11-14T19:43:06.943Z" },
+    { url = "https://files.pythonhosted.org/packages/93/69/9f8d48d9e29976363ab5b642b6ff5ad9157a23c12dfa2b55840121233b2c/laddercodec-0.5.0-py3-none-any.whl", hash = "sha256:22452a03e717cfde569d77afd4accd4d82430b0805bb94ea97da442735063c3d", size = 383767, upload-time = "2026-11-20T15:20:23.538Z" },
 ]
 
 [[package]]
@@ -316,18 +316,19 @@ wheels = [
 
 [[package]]
 name = "pyrung"
-version = "0.17.0"
+version = "0.18.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "executing" },
+    { name = "laddercodec" },
     { name = "pyclickplc" },
     { name = "pymodbus" },
     { name = "pyrsistent" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a8/6a/2e0918f6f7db9fc9490cce693cc8567e9369a6fb94206c18646457819195/pyrung-0.17.0.tar.gz", hash = "sha256:045a7b66fb792791c0950e25ec6e36e055d1bee4ed477fccfa4660da13367155", size = 5366090, upload-time = "2026-11-18T19:48:59.685Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/79/a02681f746335cc99ad8c3cdff8c01d6a3a00d6d13b09d37ff507885945b/pyrung-0.18.0.tar.gz", hash = "sha256:f35e5c2fce0e2f0174ce5c0d4a5d5d58dafd6ab3c1b03700cd1ece9333bfbda8", size = 5479859, upload-time = "2026-11-20T18:09:21.895Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/22/eaef542573f46c4c2411640217b5c4afbe879368ff24f1fb0b0414f77242/pyrung-0.17.0-py3-none-any.whl", hash = "sha256:7c3fdf13e71149d6718ab94ae64b55768a85959a09dae1a01cc55a565c3a8367", size = 1996275, upload-time = "2026-11-18T19:48:57.457Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/6a/dcfcd363a31b5153302715a4674a26e5d4347cc77a75475186a3d41cb6bd/pyrung-0.18.0-py3-none-any.whl", hash = "sha256:8c03408528e9adb034cf15b1f64017bb3d0c1dbc4a553890577c218fae4558f9", size = 2046963, upload-time = "2026-11-20T18:09:20.231Z" },
 ]
 
 [[package]]

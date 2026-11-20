@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
     from .ladder.program import LegacyEncoding
     from .services.analysis_service import AnalysisService
+    from .services.program_check_selection import DroppedChecks
     from .services.scr_watcher import ScrWatcher
     from .services.workspace_mirror import ProjectWorkspaceConfig, WorkspacePairing
     from .simulation_session import SimulationSession
@@ -200,7 +201,9 @@ class ConnectionSession:
         # Called on the build worker's thread, not the Tk thread.
         self._on_build_finished = on_build_finished
         # Legacy encodings in CLICK's last save that the user has been told about
-        self._legacy_reported: frozenset[tuple[str, str, str]] = frozenset()
+        self._legacy_reported: frozenset[tuple[str, str, str, str]] = frozenset()
+        # Rule names that builds removed from saved check selections, not yet reported
+        self._dropped_checks: list[DroppedChecks] = []
         self._save_count = 0
 
         # One build worker. Requests made while it runs merge into the next build.
@@ -386,6 +389,10 @@ class ConnectionSession:
                         # workspace, so it does not fail here. Check Program reports a
                         # pyproject.toml that cannot be read when it runs the checks.
                         traceback.print_exc()
+                    # The next build replaces analysis.check_selection, maybe before the
+                    # app reports these names. So the session keeps them.
+                    with self._build_lock:
+                        self._dropped_checks.extend(selection.take_dropped())
             if not published:
                 error = (
                     "The project or its workspace changed while ClickNick was building the "
@@ -576,7 +583,9 @@ class ConnectionSession:
         Return an empty result when nothing new turned up, so pasting a fix and saving does
         not report the rest again. Each finding is keyed by its program, instruction and
         token, not by its rung number. Pasting rungs above a finding changes its rung number,
-        and that does not make it a new finding.
+        and that does not make it a new finding. A finding that names no instruction is about
+        the whole rung or the whole program, so its detail is part of the key too. The detail
+        holds no rung number.
         """
         from .ladder.program import read_legacy_encodings
 
@@ -584,10 +593,29 @@ class ConnectionSession:
         if csv_dir is None:
             return ()
         found = read_legacy_encodings(csv_dir)
-        keys = frozenset((item.file.casefold(), item.instruction, item.token) for item in found)
+        keys = frozenset(
+            (
+                item.file.casefold(),
+                item.instruction,
+                item.token,
+                "" if item.instruction else item.detail,
+            )
+            for item in found
+        )
         new = keys - self._legacy_reported
         self._legacy_reported = keys
         return found if new else ()
+
+    def dropped_checks_to_report(self) -> tuple[DroppedChecks, ...]:
+        """Return the rule names removed from saved check selections, each one only once.
+
+        A build, Check Program or Choose Checks removes a name that pyrung does not know
+        when it reads the selection.
+        """
+        with self._build_lock:
+            found, self._dropped_checks = tuple(self._dropped_checks), []
+        selection = self.analysis.check_selection if self.analysis is not None else None
+        return found + (selection.take_dropped() if selection is not None else ())
 
     def reload_workspace_from_click(
         self,

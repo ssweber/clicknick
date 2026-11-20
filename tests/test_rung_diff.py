@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-import typing
 from pathlib import Path
 
 import pytest
-from laddercodec import Coil, Contact, Rung, write_csv
+from laddercodec import Coil, Rung, write_csv
 
 from clicknick.data.data_source import CsvDataSource
 from clicknick.ladder.program import (
@@ -32,15 +31,12 @@ from clicknick.services.rung_diff import (
     render_diff,
 )
 
-_IT = typing.get_type_hints(Contact)["type"]
-
 
 def _rungs(*coils: str) -> list[Rung]:
     return [
         Rung(
-            logical_rows=1,
             conditions=[["-"] * 31],
-            instructions=[Coil(_IT.COIL_OUT, coil)],
+            instructions=[Coil(coil)],
             comment=None,
         )
         for coil in coils
@@ -49,8 +45,7 @@ def _rungs(*coils: str) -> list[Rung]:
 
 def _commented(*comments: str) -> list[Rung]:
     return [
-        Rung(logical_rows=1, conditions=[["-"] * 31], instructions=[""], comment=comment)
-        for comment in comments
+        Rung(conditions=[["-"] * 31], instructions=[""], comment=comment) for comment in comments
     ]
 
 
@@ -122,6 +117,32 @@ def test_reports_changed_unchanged_and_new_programs(tmp_path: Path) -> None:
     assert comparison.changes["subroutines/Drain.csv"].changed == (2,)
     assert comparison.changes["subroutines/Rinse.csv"].changed == (1,)
     assert comparison.missing_in_click == {"subroutines/Rinse.csv"}
+
+
+def test_a_tcp_address_with_leading_zeros_matches_clicks_form(tmp_path: Path) -> None:
+    """laddercodec 0.5.0 reads ``192.168.001.010`` as CLICK's dialog saves it, ``192.168.1.10``."""
+    from laddercodec import read_csv
+
+    def receive(ip: str) -> str:
+        cells = ",".join(["R", "C10", *["-"] * 30])
+        target = f'ModbusTcpTarget(name=""tcp"",ip=""{ip}"",port=502,device_id=1)'
+        instruction = (
+            f'"receive(target={target},remote_start=""C1"",dest=C11..C15,receiving=C1,'
+            'success=C2,error=C3,exception_response=DS100)"'
+        )
+        header = ",".join(["marker", *"ABCDEFGHIJKLMNOPQRSTUVWXYZ", "AA", "AB", "AC", "AD", "AE"])
+        return f"{header},AF\n{cells},{instruction}\n"
+
+    plain = tmp_path / "plain.csv"
+    plain.write_text(receive("192.168.1.10"), encoding="utf-8")
+    current = _bundle(tmp_path / "current", {"main.csv": read_csv(plain)}, index=True)
+    proposed = tmp_path / "proposed"
+    proposed.mkdir()
+    (proposed / "main.csv").write_text(receive("192.168.001.010"), encoding="utf-8")
+
+    comparison = _compare(proposed, current)
+
+    assert comparison.changes["main.csv"].differs is False
 
 
 def test_lists_programs_only_in_click(tmp_path: Path) -> None:
@@ -247,14 +268,12 @@ def test_legacy_rung_past_the_end_is_ignored() -> None:
 def test_a_program_with_a_rung_program_save_cannot_read_is_pasted_whole(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from laddercodec.instructions import UnknownCondition
-    from laddercodec.model import Program
+    from laddercodec import Program, UnknownCondition
 
     from clicknick.ladder.program import program_save
 
     good = _rungs("Y001", "Y002", "Y003")
     refused = Rung(
-        logical_rows=1,
         conditions=[[UnknownCondition(raw=b"Compare"), *["-"] * 30]],
         instructions=good[1].instructions,
         comment=None,
@@ -305,8 +324,10 @@ def test_click_copy_that_cannot_be_read_is_a_whole_program_to_paste_again(
     (finding,) = fill.legacy
     assert finding.unreadable
     assert finding.rung is None
+    # The finding leaves out laddercodec's location, which names a file the build may remove
     assert finding.detail == (
-        "ClickNick cannot read CLICK's copy of this program. Unsupported AF instruction: 'bogus'"
+        "ClickNick cannot read CLICK's copy of this program. Could not read 'bogus(Y003)' as an"
+        " instruction. Check its name and its parentheses."
     )
     assert fill.unreadable
     assert fill.changed == (1, 2)

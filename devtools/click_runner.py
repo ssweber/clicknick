@@ -331,7 +331,6 @@ from __future__ import annotations
 
 import argparse
 import codecs
-import importlib
 import json
 import os
 import re
@@ -1648,12 +1647,12 @@ def _decode_clip(clip: Path, csv: Path) -> ClipCsv:
 
     A plain ``UserWarning`` from laddercodec (such as the writer's warning about lost
     trailing blank rows) is not listed. The function issues it again as it would have been
-    shown. A laddercodec that writes a marker rung for a rung it cannot read issues a
-    warning. One that cannot write the rung raises ``WriterError``. Then no CSV is kept, and
-    the list ends with the reason (``laddercodec: the CSV cannot be written``).
+    shown. For a rung that holds an instruction it cannot read, ``write_csv`` writes a marker
+    rung and issues an ``UndecodedRungWarning``. For a rung that it cannot write at all, it
+    raises ``CsvWriteError``. Then no CSV is kept, and the list ends with the reason
+    (``laddercodec: the CSV cannot be written``).
     """
-    from laddercodec import decode, write_csv
-    from laddercodec.csv.writer import WriterError
+    from laddercodec import CsvWriteError, decode, write_csv
 
     from clicknick.ladder.program import _unreadable_detail, _unreadable_instructions
 
@@ -1661,8 +1660,7 @@ def _decode_clip(clip: Path, csv: Path) -> ClipCsv:
     refused: str | None = None  # Why write_csv refused, if it did
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        decoded = decode(clip.read_bytes())
-        rungs = decoded if isinstance(decoded, list) else [decoded]
+        rungs = decode(clip.read_bytes())
         found.extend(
             f"ClickNick, rungs from 1: rung {number}, {name}: {_unreadable_detail(name)}"
             for number, rung in enumerate(rungs, start=1)
@@ -1670,7 +1668,7 @@ def _decode_clip(clip: Path, csv: Path) -> ClipCsv:
         )
         try:
             write_csv(csv, rungs)
-        except WriterError as exc:
+        except CsvWriteError as exc:
             csv.unlink(missing_ok=True)  # Remove what was written before it raised
             refused = f"laddercodec: the CSV cannot be written: {type(exc).__name__}: {exc}"
     for warning in caught:
@@ -1757,15 +1755,6 @@ def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
     finally:
         connection.close()
     return _rows_by_address(rows)
-
-
-def _reads_stored_tags() -> bool:
-    """Return whether this laddercodec has the private walk that ``_read_stored`` uses.
-
-    laddercodec 0.4.0 does not have it. laddercodec added it after 0.4.0.
-    """
-    module = importlib.import_module("laddercodec.decode_program")
-    return all(hasattr(module, name) for name in ("_parse_header", "_walk_until_framing_error"))
 
 
 def _read_stored(scr: Path) -> dict[str, Any]:
@@ -2221,10 +2210,6 @@ class Run:
                         "--resume names the same folder as --out. Give --resume the folder of an earlier run."
                     )
                 self.load_resume()
-            if self.s.keep and self.read_stored is _read_stored and not _reads_stored_tags():
-                raise Refused(
-                    "try --keep needs laddercodec newer than 0.4.0 (_walk_until_framing_error)"
-                )
         if self.s.command == "import":
             assert self.s.csv is not None
             if not self.s.csv.is_file():

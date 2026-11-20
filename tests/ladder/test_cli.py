@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-import typing
 from pathlib import Path
 
 import pytest
-from laddercodec import BlockCopy, Break, Coil, CompareContact, Contact, Rung, Timer, write_csv
-from laddercodec.csv.contract import CONDITION_COLUMNS
-from laddercodec.model import Program
+from laddercodec import (
+    BlockCopy,
+    Break,
+    Coil,
+    CompareContact,
+    Contact,
+    Program,
+    Rung,
+    Tee,
+    Timer,
+    Undecoded,
+    write_csv,
+)
 
 from clicknick.ladder.cli import (
     _append_result,
@@ -20,6 +29,7 @@ from clicknick.ladder.cli import (
 )
 from clicknick.ladder.clipboard import parse_click_major_version
 from clicknick.ladder.program import (
+    CONDITION_COLUMNS,
     NeedsClickV4Error,
     PrepareResult,
     _collapse_cols,
@@ -33,13 +43,10 @@ from clicknick.ladder.program import (
     encode_csv,
     extract_addresses_from_bin,
     extract_addresses_from_csv,
+    extract_addresses_from_rungs,
     prepare_rungs_load,
     program_save,
 )
-
-# Resolve the InstructionType enum used by Contact/Coil constructors
-_IT = typing.get_type_hints(Contact)["type"]
-
 
 # ---------------------------------------------------------------------------
 # _extract_operand_candidates
@@ -48,22 +55,44 @@ _IT = typing.get_type_hints(Contact)["type"]
 
 class TestExtractOperandCandidates:
     def test_contact(self):
-        assert _extract_operand_candidates(Contact(_IT.CONTACT_NO, "X001")) == ["X001"]
+        assert _extract_operand_candidates(Contact("X001")) == ["X001"]
 
     def test_coil_with_range(self):
-        assert _extract_operand_candidates(Coil(_IT.COIL_OUT, "Y001", range_end="Y005")) == [
+        assert _extract_operand_candidates(Coil("Y001", range_end="Y005")) == [
             "Y001",
             "Y005",
         ]
 
     def test_coil_without_range(self):
-        assert _extract_operand_candidates(Coil(_IT.COIL_OUT, "Y001", range_end=None)) == [
+        assert _extract_operand_candidates(Coil("Y001", range_end=None)) == [
             "Y001",
         ]
 
     def test_compare_contact(self):
         result = _extract_operand_candidates(CompareContact("==", "DS1", "100"))
         assert result == ["DS1", "100"]
+
+    @pytest.mark.parametrize(
+        ("contact", "expected"),
+        [
+            (Contact("X001", kind="nc"), ["X001"]),
+            (CompareContact("==", "DS1", "DS2"), ["DS1", "DS2"]),
+        ],
+    )
+    def test_contact_with_a_wire_down(self, contact, expected):
+        assert _extract_operand_candidates(Tee(contact)) == expected
+
+    def test_addresses_of_a_rung_with_a_wire_down_from_a_contact(self):
+        rung = Rung(
+            conditions=[[Tee(Contact("X001")), *["-"] * 30], ["|", Contact("X002"), *["-"] * 29]],
+            instructions=[Coil("Y001"), Coil("Y002")],
+            comment=None,
+        )
+        assert extract_addresses_from_rungs([rung]) == ["X001", "Y001", "X002", "Y002"]
+
+    def test_undecoded_marker_has_no_address(self):
+        marker = Undecoded("bad bytes after DS1 at X001", rung=0)
+        assert _extract_operand_candidates(marker) == []
 
     def test_timer(self):
         assert _extract_operand_candidates(Timer("on_delay", "T1", "TD1", "1000", "Tms")) == [
@@ -105,7 +134,6 @@ class TestExtractAddresses:
         self, monkeypatch: pytest.MonkeyPatch
     ):
         rung = Rung(
-            logical_rows=2,
             conditions=[["-"] * 31, [""] * 31],
             instructions=[BlockCopy("DS201", "DS210", "DS202", "DS211"), ""],
             comment=None,
@@ -132,7 +160,7 @@ class TestExtractAddresses:
 
 
 def _rung(instruction) -> Rung:
-    return Rung(logical_rows=1, conditions=[["-"] * 31], instructions=[instruction], comment=None)
+    return Rung(conditions=[["-"] * 31], instructions=[instruction], comment=None)
 
 
 @pytest.mark.parametrize(
@@ -151,7 +179,7 @@ def test_parse_click_major_version(title: str, major: int | None):
 
 class TestCheckClickVersion:
     def test_v4_rungs_refused_by_older_click_with_rung_numbers(self):
-        rungs = [_rung(Coil(_IT.COIL_OUT, "Y001")), _rung(Break())]
+        rungs = [_rung(Coil("Y001")), _rung(Break())]
 
         with pytest.raises(NeedsClickV4Error, match=r"rung 2: break\(\)"):
             check_click_version(rungs, click_v4=False)
@@ -162,7 +190,7 @@ class TestCheckClickVersion:
         check_click_version([_rung(Break())], click_v4=True)
 
     def test_older_rungs_accepted_by_older_click(self):
-        check_click_version([_rung(Coil(_IT.COIL_OUT, "Y001"))], click_v4=False)
+        check_click_version([_rung(Coil("Y001"))], click_v4=False)
 
     def test_refused_load_leaves_mdb_untouched(self, monkeypatch: pytest.MonkeyPatch):
         provisioned: list[str] = []
@@ -173,7 +201,7 @@ class TestCheckClickVersion:
 
         with pytest.raises(NeedsClickV4Error):
             prepare_rungs_load(
-                [_rung(Coil(_IT.COIL_OUT, "Y001")), _rung(Break())],
+                [_rung(Coil("Y001")), _rung(Break())],
                 click_v4=False,
                 mdb_path=Path("SC_.mdb"),
             )
@@ -227,7 +255,7 @@ class TestDatabaseErrors:
     @pytest.fixture
     def rung_csv(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         path = tmp_path / "rung.csv"
-        write_csv(path, [_rung(Coil(_IT.COIL_OUT, "Y001"))])
+        write_csv(path, [_rung(Coil("Y001"))])
         monkeypatch.setattr("clicknick.ladder.cli.is_click_v4", lambda *_a: True)
         monkeypatch.setattr("clicknick.ladder.cli.find_click_hwnd", lambda: 0x1234)
         return path
@@ -679,6 +707,27 @@ class TestProgramSave:
         assert result.total_rungs == 0
         assert len(result.programs) == 6
 
+    def test_a_marker_in_a_subroutine_acts_as_return(self, tmp_path: Path, monkeypatch):
+        """write_csv puts a marker in place of a rung it cannot write. In a subroutine, the
+        marker must return to the caller, as laddercodec's write_bundle writes it."""
+        for name in ("Scr1.tmp", "Scr2.tmp"):
+            (tmp_path / name).write_bytes(name.encode())
+        programs = {
+            b"Scr1.tmp": Program(name="Main Program", prog_idx=1, rungs=[]),
+            b"Scr2.tmp": Program(name="Fill", prog_idx=2, rungs=[]),
+        }
+        monkeypatch.setattr("clicknick.ladder.program.decode_program", programs.__getitem__)
+        stops: dict[str, str] = {}
+
+        def _write_csv(path: Path, rungs, **kwargs) -> None:
+            stops[Path(path).name] = kwargs.get("stop", "end")
+
+        monkeypatch.setattr("clicknick.ladder.program.write_csv", _write_csv)
+
+        program_save(tmp_path, tmp_path / "out")
+
+        assert stops == {"main.csv": "end", "Fill.csv": "return"}
+
 
 # ---------------------------------------------------------------------------
 # Guided program mode
@@ -805,9 +854,9 @@ class TestMainArgparse:
         )
 
         def mock_decode_to_csv(data, path):
-            from laddercodec.csv.writer import WriterError
+            from laddercodec import CsvWriteError
 
-            raise WriterError("unknown instruction")
+            raise CsvWriteError("rungs[0] needs more than 32 rows")
 
         monkeypatch.setattr("clicknick.ladder.cli.decode_to_csv", mock_decode_to_csv)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])
@@ -841,9 +890,9 @@ class TestMainArgparse:
         )
 
         def mock_decode_to_csv(data, path):
-            from laddercodec.csv.writer import WriterError
+            from laddercodec import CsvWriteError
 
-            raise WriterError("unknown instruction")
+            raise CsvWriteError("rungs[0] needs more than 32 rows")
 
         monkeypatch.setattr("clicknick.ladder.cli.decode_to_csv", mock_decode_to_csv)
         monkeypatch.setattr("sys.argv", ["clicknick-rung", "save", str(out)])

@@ -598,9 +598,11 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
 
         project_dir = _get_project_dir(ctx)
         selection = getattr(ctx.analysis, "check_selection", None)
+        notes = ""
         if selection is not None:
             selection.sync(project_dir)
-        return run_project_check(project_dir) + _status_footer(ctx)
+            notes = "".join(f"NOTE: {item.describe()}\n" for item in selection.take_dropped())
+        return notes + run_project_check(project_dir) + _status_footer(ctx)
 
     if verb == "tag":
         from .tag_commands import dispatch_tag
