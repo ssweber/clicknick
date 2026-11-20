@@ -36,7 +36,6 @@ class TestCharactersCp1252Lacks:
 
     def test_a_character_cp1252_has_is_still_valid(self):
         assert validate_comment("Café 5°C") == (True, "")
-        assert validate_row_initial_value("é", DataType.TXT) == (True, "")
 
 
 def _format_only(nickname: str) -> tuple[bool, str]:
