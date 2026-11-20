@@ -1290,19 +1290,10 @@ def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
     tmp_path, monkeypatch, row
 ) -> None:
     """pyrung reads the workspace's nickname CSV as UTF-8, so ClickNick writes it as UTF-8."""
-    import typing
-
-    from laddercodec import Coil, Contact, Rung, write_csv
-
-    contact_type = typing.get_type_hints(Contact)["type"]
+    from laddercodec import Coil, Rung, write_csv
 
     def fake_program_save(_scr_folder, csv_dir, *, index):
-        rung = Rung(
-            logical_rows=1,
-            conditions=[["-"] * 31],
-            instructions=[Coil(contact_type.COIL_OUT, "Y001")],
-            comment=None,
-        )
+        rung = Rung(conditions=[["-"] * 31], instructions=[Coil("Y001")], comment=None)
         write_csv(csv_dir / "main.csv", [rung], index=index)
 
     monkeypatch.setattr("clicknick.ladder.program.program_save", fake_program_save)
