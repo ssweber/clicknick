@@ -285,12 +285,20 @@ class ConnectionController:
         session.load_workspace_pairing()
         app._session = session
 
-    def close_session(self) -> None:
-        """End the connection session and tear down everything it owns."""
+    def close_session(self) -> bool:
+        """End the connection session and tear down everything it owns.
+
+        Return True when the session's Workspace setup window held a choice that the user had
+        not applied. The choice is dropped with the session. `_handle_window_closed` and
+        `_handle_project_change` tell the user. The other callers do not.
+        """
         session = self._app._session
-        if session is not None:
-            session.close()
-            self._app._session = None
+        if session is None:
+            return False
+        dropped_choice = session.has_unapplied_choice
+        session.close()
+        self._app._session = None
+        return dropped_choice
 
     def _load_instance_database(self, session: ConnectionSession) -> None:
         """Load the window's database into a private store on a thread, then attach it to Tk.
@@ -449,7 +457,7 @@ class ConnectionController:
         app._update_status("⚠ The CLICK window closed", "error")
         self.cancel_monitoring_status()
 
-        self.close_session()
+        dropped_choice = self.close_session()
         # Database data belongs to the closed project; CSV data stays usable.
         if app.using_database:
             app._close_data(prompt_save=False)
@@ -457,6 +465,14 @@ class ConnectionController:
         app.selected_instance_var.set("")
 
         app.root.after(2000, self.refresh_click_instances)
+        if dropped_choice:
+            messagebox.showwarning(
+                "Workspace",
+                "Workspace setup closed because the CLICK window closed. The location you "
+                "chose was not applied. Open the project in CLICK, then open Workspace setup "
+                "and choose the location again.",
+                parent=app.root,
+            )
 
     def _keeps_edits_for(self, old_filename: str, new_filename: str) -> bool:
         """Ask whether unsaved edits stay with the project CLICK shows now.
@@ -551,7 +567,7 @@ class ConnectionController:
                 "now close.",
             )
 
-        self.close_session()
+        dropped_choice = self.close_session()
         if closes_data:
             app._close_data(prompt_save=False)
 
@@ -572,6 +588,16 @@ class ConnectionController:
             self._load_instance_database(app._session)
         elif self.monitoring:
             self._update_status_monitoring()
+
+        # A dialog, not a status message, because the load rewrites the status line.
+        if dropped_choice:
+            messagebox.showwarning(
+                "Workspace",
+                "Workspace setup closed because the project in CLICK changed. The location "
+                "you chose was not applied. Open Workspace setup and choose the location "
+                "again.",
+                parent=app.root,
+            )
 
     # -- The watch and the popup -----------------------------------------------
 

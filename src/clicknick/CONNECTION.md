@@ -62,7 +62,15 @@ and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`).
   loaded. The new project's session starts watching even when following the project fails part way.
 - When the session opens, it pairs the durable workspace for the project's PLC name (`pair_workspace`). The
   Workspace setup window and its unapplied choice (`pending_workspace`) belong to the session. They close with
-  it, when CLICK's window closes or shows another project.
+  it, when CLICK's window closes or shows another project. `ConnectionController.close_session` returns True when
+  the Workspace setup window held a choice that differs from the pairing (`has_unapplied_choice`).
+  `_handle_window_closed` and `_handle_project_change` then show a warning that the choice was not applied.
+  They show a dialog, not a status message, because the load rewrites the status line.
+  Closing the Workspace setup window by hand drops the choice without a notice.
+- **Choose Location...** and **Find Existing...** ask at once whether to apply the folder (`_offer_to_apply`).
+  Yes runs `_apply_setup`. If the folder holds files, `_offer_to_apply` asks nothing, and `_apply_setup` asks its
+  question about those files. If the folder is the paired workspace, `_offer_to_apply` asks nothing and applies nothing. Picking from the list of known
+  workspaces only fills in the form.
 - `monitoring` is the user's choice. It starts on. **Stop** turns it off, and only **Start** or a window that the
   user picks turns it on again. A project change, the CSV fallback and an automatic connect leave it as it was.
 - When the window closes, database data closes without a prompt, and CSV data stays loaded. The app reads the

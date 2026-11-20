@@ -286,6 +286,18 @@ class ConnectionSession:
             overlay.withdraw()
             overlay.destroy()
 
+    @property
+    def has_unapplied_choice(self) -> bool:
+        """True while the open Workspace setup window holds a choice that differs from the pairing.
+
+        The window starts with the paired workspace as its choice, and that one is applied.
+        """
+        return (
+            self.setup_window is not None
+            and self.pending_workspace is not None
+            and self.pending_workspace != self.pairing.config
+        )
+
     def close_setup_window(self) -> None:
         """Close the Workspace setup window, dropping the choice not applied yet."""
         window, self.setup_window = self.setup_window, None

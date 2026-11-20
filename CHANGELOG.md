@@ -15,8 +15,13 @@
 - The workspace no longer builds, and `clicknick-cli tag apply` stops, for a project whose nicknames or comments hold a character that cp1252 does not have. The Simulator, Check Program and **Workspace > Review Changes** then do not run, unless an earlier workspace exists. The Workspace group says **Could not build the workspace**, and its message lists the addresses and fields to change. `tag apply` names the first one. 0.25.0 built that workspace. To fix it, change the character in the Address Editor and Sync. For a character that you put in `src/plc/tags.py`, change it there.
 - **Save Copy and Load** for CLICK's Address.csv now refuses such a character too. It writes no copy, and the message tells you to change the character in CLICK, save, and try again. **Ladder > Compare with > Other CLICK window** compares without the other project's nicknames, and the status line says why.
 
+### Changed
+
+- Workspace setup now asks whether to create or use the workspace as soon as you pick a folder with **Choose Location...** or **Find Existing...**. Yes does the same as **Create Workspace** or **Use Workspace**, and No leaves the folder in the form. A workspace that you pick from the list still waits for the button. 0.25.0 only filled in the form, and made the workspace only when you clicked **Create Workspace** or **Use Workspace**.
+
 ### Fixed
 
+- If the CLICK window closes or shows another project while Workspace setup shows a location that you have not applied, ClickNick now shows a warning that the location was not applied. Open Workspace setup and choose the location again. 0.25.0 closed Workspace setup without a message, so you might not notice that no workspace was made.
 - ClickNick now loads a nickname CSV that CLICK exported with a non-ASCII nickname, comment or initial value. 0.25.0 refused the file because it is cp1252.
 - **Workspace > Review Changes** and `clicknick-cli rung apply` now show the source of a rung that you added to `src/plc` without a `# Rn` comment. 0.25.0 could show another rung's source in its place, so the rung looked duplicated.
 

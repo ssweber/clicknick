@@ -114,6 +114,17 @@ class WorkspaceController:
 
         return get_workspace_directory_info(self.pairing.config, self.source_dir())
 
+    def refused_for_earlier_save(self, mirror_path: Path) -> str | None:
+        """Return the build error that makes `_apply_setup` refuse a move to *mirror_path*.
+
+        Return None when `_apply_setup` does not refuse. It refuses when the build of CLICK's
+        last save failed and the workspace would move to another folder.
+        """
+        source = self.source_dir()
+        if source is None or source.resolve() == mirror_path.resolve():
+            return None
+        return self.earlier_save_build_error()
+
     def earlier_save_build_error(self) -> str | None:
         """Return the build's error if it failed and the workspace is an old save's, else None."""
         from .services.analysis_service import AnalysisStatus
@@ -381,6 +392,50 @@ class WorkspaceController:
         if self._config_combobox is not None:
             self._config_combobox.configure(values=[str(match.workspace_path) for match in matches])
 
+    @staticmethod
+    def _asks_about_folder(session: ConnectionSession, mirror_path: Path) -> bool:
+        """Return True when `_apply_setup` must ask before it uses the files already in *mirror_path*.
+
+        That happens when the folder holds files and is not the paired workspace. Raise
+        OSError when the folder cannot be listed.
+        """
+        if not (mirror_path.exists() and any(mirror_path.iterdir())):
+            return False
+        current = session.pairing.config
+        return current is None or mirror_path.resolve() != current.workspace_path.resolve()
+
+    def _offer_to_apply(
+        self, session: ConnectionSession, window, config: ProjectWorkspaceConfig
+    ) -> None:
+        """Ask whether to apply the choice that a folder picker just returned.
+
+        Yes does what the Create Workspace or Use Workspace button does. No leaves the choice
+        in the form. If *config* is the paired workspace and its `.clicknick.toml` still exists,
+        this method asks nothing and applies nothing. If the folder already contains files, or
+        cannot be listed, or `_apply_setup` will refuse because of the earlier save's build
+        error, this method asks nothing and calls `_apply_setup`, which asks about the files or
+        shows the refusal or the error.
+        """
+        if config == session.pairing.config and config.sidecar_path.is_file():
+            return
+        parent = self._setup_parent()
+        mirror_path = config.workspace_path.resolve()
+        refused = self.refused_for_earlier_save(mirror_path) is not None
+        try:
+            asks_about_folder = self._asks_about_folder(session, mirror_path)
+        except OSError:
+            asks_about_folder = True
+        if not (refused or asks_about_folder):
+            if config.sidecar_path.is_file():
+                question = f"Use the workspace at {config.workspace_path}?"
+            else:
+                question = f"Create the {config.plc_name} workspace at {config.workspace_path}?"
+            if not messagebox.askyesno("Workspace", question, parent=parent):
+                return
+            if not self._setup_unchanged(session, window):
+                return
+        self._apply_setup()
+
     def _select_existing(self) -> None:
         """Browse an existing workspace folder and verify its PLC identity."""
         session = self._app._session
@@ -420,6 +475,7 @@ class WorkspaceController:
             )
             return
         self._set_pending(session, config)
+        self._offer_to_apply(session, window, config)
 
     def _select_location(self) -> None:
         """Choose a home and preview the PLC-named workspace destination."""
@@ -464,6 +520,7 @@ class WorkspaceController:
                 workspace_path=workspace_path,
             )
         self._set_pending(session, config)
+        self._offer_to_apply(session, window, config)
 
     def _on_config_selected(self, _event=None) -> None:
         """Preview a known matching workspace selected by the user."""
@@ -499,8 +556,8 @@ class WorkspaceController:
         source = self.source_dir()
         changing_location = source is not None and source.resolve() != mirror_path
         # Refuse before asking for a PLC name, because the name is written into CLICK's folder.
-        build_error = self.earlier_save_build_error()
-        if build_error is not None and changing_location:
+        build_error = self.refused_for_earlier_save(mirror_path)
+        if build_error is not None:
             messagebox.showerror(
                 "Workspace",
                 "Could not build the workspace from CLICK's last save. ClickNick will not copy "
@@ -528,21 +585,21 @@ class WorkspaceController:
             return
 
         try:
-            mirror_is_nonempty = mirror_path.exists() and any(mirror_path.iterdir())
+            asks_about_folder = self._asks_about_folder(session, mirror_path)
         except OSError as exc:
             messagebox.showerror(
                 "Workspace", f"Could not set up the workspace: {exc}", parent=dialog_parent
             )
             app._update_status("Could not set up the workspace", "error")
             return
-        current_mirror = session.pairing.config.workspace_path if session.pairing.config else None
-        same_mirror = (
-            current_mirror is not None and mirror_path.resolve() == current_mirror.resolve()
-        )
-        if mirror_is_nonempty and not same_mirror:
+        if asks_about_folder:
+            if config.sidecar_path.is_file():
+                heading = f"Use the workspace at {mirror_path}?"
+            else:
+                heading = f"Use the existing folder?\n\n{mirror_path}"
             confirmed = messagebox.askokcancel(
                 "Use Existing Workspace Folder?",
-                f"Use the existing folder?\n\n{mirror_path}\n\n"
+                f"{heading}\n\n"
                 "ClickNick will replace the files in src/plc and csv, and the files "
                 "nicknames.csv, project_to_csv.py and run.py. It will not delete other files, "
                 "and it will not replace your tests, documentation or editor settings. If you "

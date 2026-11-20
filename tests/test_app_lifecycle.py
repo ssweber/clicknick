@@ -4,6 +4,7 @@ connects, and a CSV loads.
 
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -14,6 +15,7 @@ from clicknick.connection_controller import ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data_session import DataSession
 from clicknick.detection.window_detector import ClickInstance
+from clicknick.services.workspace_mirror import ProjectWorkspaceConfig
 from clicknick.workspace_controller import WorkspaceController
 
 
@@ -136,6 +138,7 @@ def _app(monkeypatch, *, answer=None, yes_no=False) -> tuple[ClickNickApp, list]
     monkeypatch.setattr(
         "tkinter.messagebox.showinfo", lambda *args, **kwargs: prompts.append(args[:1])
     )
+    monkeypatch.setattr("tkinter.messagebox.showwarning", MagicMock())
     monkeypatch.setattr(
         "tkinter.messagebox.showerror",
         lambda *args, **kwargs: prompts.append(("showerror", *args[:2])),
@@ -262,6 +265,73 @@ def test_project_change_keeps_csv_data_with_unsaved_edits(monkeypatch):
     assert app._connection.monitoring
     session.close.assert_called_once()
     app._connection._load_instance_database.assert_not_called()
+
+
+def _set_pending_choice(app, tmp_path) -> None:
+    app._session.setup_window = MagicMock()
+    app._session.pending_workspace = ProjectWorkspaceConfig("Main", tmp_path / "Chosen")
+
+
+def test_project_change_warns_when_workspace_setup_held_a_choice_not_applied(monkeypatch, tmp_path):
+    warning = MagicMock()
+    app, _ = _app(monkeypatch)
+    monkeypatch.setattr("clicknick.connection_controller.messagebox.showwarning", warning)
+    _open(app, FakeStore(is_database=False))
+    _set_pending_choice(app, tmp_path)
+
+    app._connection._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
+
+    warning.assert_called_once()
+    assert warning.call_args.args[0] == "Workspace"
+    assert warning.call_args.args[1].startswith(
+        "Workspace setup closed because the project in CLICK changed."
+    )
+    assert warning.call_args.kwargs["parent"] is app.root
+
+
+def test_project_change_shows_the_warning_once_through_the_database_load(monkeypatch, tmp_path):
+    """The warning is a dialog, so the load's later status lines cannot hide it."""
+    warning = MagicMock()
+    monkeypatch.setattr("clicknick.data.data_source.MdbDataSource", lambda **_kw: MagicMock())
+    monkeypatch.setattr(
+        "clicknick.connection_controller.AddressStore",
+        lambda _source: MagicMock(load_initial_data=MagicMock()),
+    )
+    app, _ = _app(monkeypatch)
+    monkeypatch.setattr("clicknick.connection_controller.messagebox.showwarning", warning)
+    app._connection._load_instance_database = ConnectionController._load_instance_database.__get__(
+        app._connection
+    )
+    app._connection._on_data_ready = MagicMock()
+    app._open_data = MagicMock(
+        side_effect=lambda store, **_kw: setattr(app, "_data", DataSession(store)) or True
+    )
+    app._start_analysis_build = MagicMock()
+    _open(app, FakeStore(is_database=True))
+    _set_pending_choice(app, tmp_path)
+
+    app._connection._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
+
+    for _ in range(200):
+        for callback in app.root.take(100):
+            callback()
+        if app._open_data.called:
+            break
+        time.sleep(0.01)
+    assert app._open_data.called
+    warning.assert_called_once()
+    app._update_status.assert_any_call("✓ DB loaded", "connected")
+
+
+def test_project_change_shows_no_warning_without_a_pending_choice(monkeypatch):
+    warning = MagicMock()
+    monkeypatch.setattr("clicknick.connection_controller.messagebox.showwarning", warning)
+    app, _ = _app(monkeypatch)
+    _open(app, FakeStore(is_database=False))
+
+    app._connection._handle_project_change("CLICK Programming Software - Main2.ckp", "Main2.ckp")
+
+    warning.assert_not_called()
 
 
 def test_project_change_closes_database_data_and_loads_the_new_project(monkeypatch):
@@ -688,7 +758,9 @@ def test_the_popup_goes_with_the_window_it_was_shown_over(monkeypatch):
 
 
 def test_workspace_setup_closes_with_the_click_window(monkeypatch):
+    warning = MagicMock()
     app, _prompts = _app(monkeypatch)
+    monkeypatch.setattr("clicknick.connection_controller.messagebox.showwarning", warning)
     app._connection.refresh_click_instances = MagicMock()
     session = app._session
     setup = MagicMock()
@@ -703,6 +775,7 @@ def test_workspace_setup_closes_with_the_click_window(monkeypatch):
     assert app._session is None
     setup.destroy.assert_called_once_with()
     assert session.setup_window is None and session.pending_workspace is None
+    warning.assert_called_once()
 
 
 def test_the_new_project_is_watched_even_when_following_it_fails(monkeypatch):
