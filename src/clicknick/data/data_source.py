@@ -250,9 +250,9 @@ class CsvDataSource(DataSource):
 
         Args:
             csv_path: Path to the CSV file
-            encoding: The encoding that a save writes. A file that you hand to CLICK is
-                cp1252, as CLICK exports it. A file that only ClickNick and pyrung read
-                is UTF-8. pyrung reads either encoding.
+            encoding: The encoding that a save writes. The default is cp1252, as CLICK
+                exports it. ClickNick writes every nickname CSV in cp1252, and a load
+                reads either encoding.
             required: Columns the file must have to load (Import from CSV needs
                 only Address)
         """

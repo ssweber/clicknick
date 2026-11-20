@@ -40,10 +40,9 @@ was tested against, are in `../clicknick-wt/buildbot/jobs/next-pins/`.
 
 ## pyrung's nickname reader (done in 0.18.0)
 
-pyrung 0.18.0 reads a nicknames.csv with pyclickplc's `read_csv`, which takes UTF-8 and cp1252. It writes the
-copy in a generated project in cp1252. ClickNick still writes the nicknames.csv in the workspace's csv/ folder
-and in the Compare copy as UTF-8. Both read back. Move them to cp1252 whenever it suits, because nothing needs
-UTF-8 any more.
+pyrung 0.18.0 reads a nicknames.csv with pyclickplc's `read_csv`, which takes UTF-8 and cp1252, and writes the
+copy in a generated project in cp1252. ClickNick writes the workspace's csv/ copy and the Compare copy in
+cp1252 too. Every nicknames.csv in a workspace is in one encoding.
 
 ## 1. Housekeeping (nothing)
 

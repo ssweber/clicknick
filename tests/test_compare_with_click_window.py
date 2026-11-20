@@ -119,17 +119,17 @@ def test_a_database_that_cannot_be_read_leaves_only_the_nicknames_out(
     assert not (dest / "nicknames.csv").exists()
 
 
-def test_the_copy_writes_its_nicknames_as_utf8(
+def test_the_copy_writes_its_nicknames_as_cp1252(
     click_dir: Path, tmp_path: Path, monkeypatch
 ) -> None:
-    """ClickNick writes the copy's nicknames.csv in UTF-8."""
+    """ClickNick writes the copy's nicknames.csv in cp1252, as CLICK exports it."""
     rows = {1: AddressRow("X", 1, nickname="Café", comment="5°")}
     monkeypatch.setattr("clicknick.utils.mdb_operations.load_all_addresses", lambda _conn: rows)
     dest = tmp_path / "copy"
 
     snapshot_click_program(click_dir, dest)
 
-    text = (dest / "nicknames.csv").read_bytes().decode("utf-8")
+    text = (dest / "nicknames.csv").read_bytes().decode("cp1252")
     assert "Café" in text
     assert "5°" in text
 

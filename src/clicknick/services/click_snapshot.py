@@ -69,7 +69,7 @@ def _copy_nicknames(click_dir: Path, staged: Path) -> str:
     except Exception as exc:  # The driver's own errors, or a locked file
         return f"its nicknames were left out: {exc}"
     try:
-        CsvDataSource(str(staged / _NICKNAMES), encoding="utf-8").save_changes(list(rows.values()))
+        CsvDataSource(str(staged / _NICKNAMES)).save_changes(list(rows.values()))
     except ValueError as exc:  # format_csv refuses a character that cp1252 does not have
         return f"its nicknames were left out: {exc}"
     return ""

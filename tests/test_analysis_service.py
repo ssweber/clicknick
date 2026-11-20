@@ -1289,7 +1289,7 @@ def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, 
 def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
     tmp_path, monkeypatch, row
 ) -> None:
-    """ClickNick writes the workspace's csv/nicknames.csv in UTF-8, so a nickname outside ASCII builds."""
+    """A nickname or comment that cp1252 has, but ASCII lacks, builds through pyrung from the cp1252 file."""
     from laddercodec import Coil, Rung, write_csv
 
     def fake_program_save(_scr_folder, csv_dir, *, index):
@@ -1302,7 +1302,8 @@ def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
     _regenerate_persisted_project(tmp_path, {1: row}, persist, analog_inputs=frozenset())
 
     nicknames = persist / "csv" / "nicknames.csv"
-    assert row.nickname in nicknames.read_text(encoding="utf-8")
+    assert row.nickname in nicknames.read_bytes().decode("cp1252")
+    assert row.nickname in (persist / "nicknames.csv").read_bytes().decode("cp1252")
 
 
 def test_every_row_click_cannot_hold_is_listed_before_the_nickname_csv_is_written(
