@@ -75,8 +75,9 @@ refusals rely on that split.
   ClickNick generates, was observed to make pyrung know none of X003 to X010.
 - pyrung was observed to accept a force or a patch on such a slot. A patch on X005 moved DS1. It refuses a
   force or a patch on an address that no rung names or reaches and that the project's TagMap does not map,
-  with `Unknown tag 'X002' (address X002 is not mapped to a tag)`. The Console's `why` answers for any address. `simplified` and `how` answer for a
-  slot that a rung reaches, and refuse any other address that pyrung does not know.
+  with `Unknown tag 'X002' (address X002 is not mapped to a tag)`. The Console's `why` answers for any
+  address. `simplified` and `how` answer for a slot that a rung reaches, and refuse any other address that
+  pyrung does not know.
 - The Simulator draws every point the same way, and every action works on every point. A link drag can start
   and end on any point. Only a bench link depends on the named addresses.
 - Each frame lists the tags that pyrung knows (`tagTypes`). `DapService.program_tags` holds them. The session
@@ -91,11 +92,21 @@ refusals rely on that split.
   While the set is `None`, the session sends the link. Whenever pyrung refuses a link with "unknown tag",
   in either case, the link waits (`_held`). The match ignores case. A link leaves `_held` when pyrung lists
   it as a bench link, when the user changes it, and when the simulation stops.
+- A link that waits is not in the simulation, so the simulation runs the program's own wiring on its
+  feedback. `_change_links` keeps the two in agreement. When a change in ClickNick makes a link wait, or
+  drops a link that waited, it restores the program's wiring on that feedback (`_restore_bench`) if pyrung
+  lists a bench link or cut there. That covers a waiting link that replaces a running link or a cut, and
+  `restore_link`, `set_link_enabled` and `discard_bench_links` on a link that waits. When pyrung refuses a
+  link for an unknown tag, `link()` restores the feedback too. pyrung checks a link before it replaces
+  anything, so the link that the refused one was to replace still runs. `links` lists one bench row for
+  each feedback. A link that waits hides a bench row that pyrung still lists there until the next listing.
 - A write sends each waiting link again after the reload, unless the frame with the new tags shows that a
   rung still does not name both ends. If pyrung drops a link or a force as `gone`, the new program does not
   have one of its tags, either end of a link. The link then waits, and the notice says so. The force goes
-  again by address to where the plan put it. Other drop reasons (`conflict`, `in program`, `invalid`,
-  `unlinked`) lose the entry as before.
+  again by address to where the plan put it. Every other drop reason, such as `conflict`, `in program`,
+  `invalid` or `unlinked`, loses the entry as before.
+- A write that leaves no link waiting clears the notice that an earlier write showed, because that notice
+  may say that a link waits.
 - The texts never say that the program does not use an address, because a range can reach it. They say that
   no rung in the simulation names it.
 

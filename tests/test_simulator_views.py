@@ -659,6 +659,27 @@ def test_a_cut_link_gives_the_switch_back(simulator, ready):
     assert win._canvas.itemcget(info["cut"], "state") == "normal"
 
 
+def test_a_cut_that_waits_shows_no_cut_mark_and_says_what_it_waits_for(simulator, tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    # No rung names X003.
+    harness = Harness(tmp_path, _ready_analysis(project, used=("X001", "X002", "Y001")))
+    win = simulator(harness)
+    _frame(harness)
+
+    harness.sim.cut_link("X003")
+    _frame(harness)
+
+    assert harness.sim.link_waits("X003")
+    info = win._inputs["X003"]
+    assert win._canvas.itemcget(info["cut"], "state") == "hidden"
+    assert win._canvas.itemcget(info["track"], "state") == "normal"
+    assert win._link_text("X003") == (
+        "No rung in the simulation names X003 yet. The cut applies once a rung names it and "
+        "you write the program to the simulation.\nRight-click for options."
+    )
+
+
 def test_link_menu_items_follow_the_link(simulator, ready, tk_root):
     win = simulator(ready)
     ready.dap.project["X003"] = "Y001"

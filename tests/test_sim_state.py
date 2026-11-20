@@ -111,7 +111,7 @@ def test_existing_workspace_file_wins_and_user_is_told(tmp_path):
 
 def test_restore_keeps_only_analog_values_the_hardware_provides():
     result = restore_state(_state(), analog_inputs=[], modules=("cpu:C2-03CPU",))
-    # A switch on X102 waits for a rung that uses X102, even with no module for it.
+    # A switch on X102 stays, though no module has X102.
     assert result.state.switches == _state().switches
     assert result.state.momentary == _state().momentary
     assert result.state.analog == {}

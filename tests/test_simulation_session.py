@@ -4032,6 +4032,150 @@ def test_a_write_keeps_a_link_waiting_from_the_new_tags_without_sending_it(witho
     assert not harness.sim.link_waits("X003")
 
 
+def _x001_rows(harness: Harness) -> list[tuple]:
+    return [
+        (row.enable, row.source, row.waiting) for row in harness.sim.links if row.feedback == "X001"
+    ]
+
+
+def test_a_waiting_link_that_replaces_a_running_one_leaves_the_program_wiring(without_x003):
+    harness = without_x003
+    harness.open()
+    _frame(harness)
+    harness.sim.link("X001", ON_DELAY_LINK)
+    harness.scheduler.run_ready()
+    _frame(harness)
+    assert harness.dap.bench["X001"]["enable"] == "Y001"
+
+    # No rung names X003, so the new link waits, and pyrung drops the link from Y001.
+    relinked = BenchLink("X003", response=response(on_delay="1s"))
+    harness.sim.link("X001", relinked)
+    harness.scheduler.run_ready()
+    assert "X001" not in harness.dap.bench
+    assert _x001_rows(harness) == [("X003", "bench", True)], "before the next listing"
+    _frame(harness)
+
+    assert _x001_rows(harness) == [("X003", "bench", True)]
+    assert harness.sim.link_waits("X001")
+    assert harness.sim.driving_link("X001") is None
+    assert harness.sim.bench_links == {"X001": relinked}
+    assert harness.messages("error") == ""
+
+    # A rung of the next program names X003, so the write sends the new link.
+    _rebuild(harness, uses=("X003",))
+    harness.sim.write_program()
+    harness.scheduler.run_ready()
+    _frame(harness)
+
+    assert harness.dap.bench["X001"]["enable"] == "X003"
+    assert not harness.sim.link_waits("X001")
+    assert _x001_rows(harness) == [("X003", "bench", False)]
+    assert harness.sim.bench_links == {"X001": relinked}
+
+
+def test_a_waiting_link_that_replaces_a_cut_gives_back_the_program_link(without_x003):
+    harness = without_x003
+    harness.open()
+    harness.dap.project["X001"] = "Y001"
+    _frame(harness)
+    harness.sim.cut_link("X001")
+    harness.scheduler.run_ready()
+    _frame(harness)
+    assert harness.dap.bench["X001"]["enable"] is None
+
+    harness.sim.link("X001", BenchLink("X003", response=response(on_delay="1s")))
+    harness.scheduler.run_ready()
+    _frame(harness)
+
+    assert "X001" not in harness.dap.bench
+    assert _x001_rows(harness) == [("Y001", "project", False), ("X003", "bench", True)]
+    assert harness.sim.driving_link("X001").source == "project"
+
+
+def test_a_link_refused_for_an_unknown_tag_leaves_the_program_wiring(without_x003):
+    harness = without_x003
+    harness.open()  # no frame yet, so ClickNick sends each link
+    harness.sim.link("X001", ON_DELAY_LINK)
+    harness.scheduler.run_ready()
+    assert harness.dap.bench["X001"]["enable"] == "Y001"
+
+    # pyrung refuses X003, which no rung names, and keeps the link from Y001 until told.
+    harness.sim.link("X001", BenchLink("X003", response=response(on_delay="1s")))
+    harness.scheduler.run_ready()
+
+    assert ("restore_link", "X001") in _link_calls(harness.dap)
+    assert "X001" not in harness.dap.bench
+    assert harness.sim.link_waits("X001")
+    assert harness.messages("error") == ""
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda sim: sim.restore_link("X001"),
+        lambda sim: sim.set_link_enabled("X001", False),
+        lambda sim: sim.discard_bench_links(),
+    ],
+    ids=["restore", "disable", "discard"],
+)
+def test_a_change_to_a_waiting_link_drops_a_bench_link_that_pyrung_lists_there(
+    without_x003, change
+):
+    harness = without_x003
+    harness.open()
+    _frame(harness)
+    harness.sim.link("X001", BenchLink("X003", response=response(on_delay="1s")))
+    harness.scheduler.run_ready()
+    assert harness.sim.link_waits("X001")
+    # The Console links X001 before ClickNick reads pyrung's links again.
+    harness.dap.link("X001", "Y001", trigger=None, response=ON_DELAY_LINK.response)
+
+    change(harness.sim)
+    harness.scheduler.run_ready()
+
+    assert "X001" not in harness.dap.bench
+    assert harness.messages("error") == ""
+
+
+def test_a_write_that_leaves_no_link_waiting_clears_the_wait_notice(ready):
+    _running_with_settings(ready)  # a bench link on X002
+    _rebuild(ready, drops=("X002",))
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    assert "waits until" in (ready.sim.notice or "")
+
+    _rebuild(ready, uses=("X002",))
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert not ready.sim.link_waits("X002")
+    assert ready.sim.notice is None
+
+
+def test_the_notice_says_what_a_cut_waits_for():
+    from clicknick.simulation_session import _waiting_text
+
+    assert _waiting_text({"X003": BenchLink(None)}) == (
+        "The cut on X003 waits until a rung in the simulation names X003."
+    )
+
+
+@pytest.mark.parametrize(
+    ("reason", "addresses", "found"),
+    [
+        ("Unknown tag 'DS10'.", ("DS1", "DS10"), "DS10"),
+        ("Unknown tag 'DS10'.", ("DS1",), None),
+        ("Unknown tag 'DS1' (address DS1 is not mapped to a tag)", ("DS10", "DS1"), "DS1"),
+        ("unknown tag: ds1", ("DS1",), "DS1"),
+        ("DS1 is read-only", ("DS1",), None),
+    ],
+)
+def test_a_refusal_names_an_address_only_as_a_whole_word(reason, addresses, found):
+    from clicknick.simulation_session import _unresolved
+
+    assert _unresolved(reason, addresses) == found
+
+
 # ----------------------------------------------------------------------
 # A switch on an address that pyrung cannot resolve
 # ----------------------------------------------------------------------
@@ -4181,3 +4325,71 @@ def test_a_switch_that_pyrung_cannot_resolve_does_not_stop_run_on_pyrung(tmp_pat
     assert harness.sim.switch_position == "run"
     assert dap.tag("Y001") is True, "the switch on X001 went with the switch to RUN"
     assert harness.sim.switch_on("X002")
+
+
+_RELINK_RUNGS = """\
+import warnings
+warnings.simplefilter("ignore")
+from pyrung import PLC, Program, rung, out
+from pyrung.click import ClickBlocks, TagMap
+x, y, *_ = ClickBlocks()
+mapping = TagMap({})
+with Program(strict=False) as logic:
+    with rung(x[1]):
+        out(y[1])
+    with rung(x[2]):
+        out(y[2])
+"""
+
+
+def test_a_waiting_link_that_replaces_a_running_one_on_pyrung(tmp_path, pyrung_dap):
+    """Relink X002 from Y001, which a rung names, to Y003, which no rung names yet."""
+    dap_class = pyrung_dap
+    project = tmp_path / "project"
+    project.mkdir()
+    used = ("X001", "X002", "Y001", "Y002")
+    harness = Harness(tmp_path, _ready_analysis(project, used=used))
+    run = project / "run.py"
+    run.write_text(_RELINK_RUNGS + "runner = PLC(logic, dt=0.010)\n", encoding="utf-8")
+
+    def factory(**callbacks):
+        dap = dap_class(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    harness.open()
+    dap = harness.dap
+    dap.frame()
+    harness.scheduler.run_ready()
+    harness.sim.link("X002", BenchLink("Y001", response=response(on_delay="1s")))
+    harness.scheduler.run_ready()
+    assert dap.bench_links() == {"X002": "Y001"}
+
+    relinked = BenchLink("Y003", response=response(on_delay="1s"))
+    harness.sim.link("X002", relinked)
+    harness.scheduler.run_ready()
+    dap.frame()
+    harness.scheduler.run_ready()
+
+    assert dap.bench_links() == {}
+    assert harness.sim.link_waits("X002")
+    rows = [(row.enable, row.source) for row in harness.sim.links if row.feedback == "X002"]
+    assert rows == [("Y003", "bench")]
+    assert harness.messages("error") == ""
+
+    # The next program has a rung on Y003, so the write sends the new link.
+    run.write_text(
+        _RELINK_RUNGS + "    with rung(y[3]):\n        out(y[4])\nrunner = PLC(logic, dt=0.010)\n",
+        encoding="utf-8",
+    )
+    _rebuild(harness, uses=("Y003", "Y004"), same_program=True)
+    harness.sim.write_program()
+    harness.scheduler.run_ready()
+    dap.frame()
+    harness.scheduler.run_ready()
+
+    assert dap.bench_links() == {"X002": "Y003"}
+    assert not harness.sim.link_waits("X002")
+    assert harness.sim.bench_links == {"X002": relinked}
+    assert harness.messages("error") == ""
