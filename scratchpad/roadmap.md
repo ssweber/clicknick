@@ -33,12 +33,9 @@ was tested against, are in `../clicknick-wt/buildbot/jobs/next-pins/`.
 1. Move onto laddercodec's and pyrung's joint release: items 8 and 9 below. The branch is
    `bob/laddercodec-next`, built against laddercodec's and pyrung's `main`. It merges once both are released,
    with the pins moved to the released versions.
-2. Decide the validation question for cp1252 (pyclickplc 0.11.0 is in). ClickNick's Address Editor still
-   accepts a nickname, comment or initial value with a character cp1252 does not have, and the write then
-   refuses it. The runner has not yet checked what CLICK shows and exports for such a character (pyclickplc's
-   roadmap item 2). When it has, pyclickplc decides whether its validators refuse the character, and ClickNick
-   follows. Also open: ClickNick reads CLICK's Address.csv (`read_mdb_csv`) as UTF-8 with a BOM. No fixture
-   shows that encoding for a non-ASCII nickname, so a runner check of Address.csv would settle it.
+2. Open check for the pyclickplc 0.11.0 step: ClickNick reads CLICK's Address.csv (`read_mdb_csv`) as UTF-8 with
+   a BOM. No fixture shows that encoding for a non-ASCII nickname, so a runner check of Address.csv would
+   settle it.
 3. Read the CHANGELOG from v0.25.0 against what merged, and write the summary.
 4. Sam's smoke test of the release candidate, then his tag. ClickNick goes last of the four repos.
 

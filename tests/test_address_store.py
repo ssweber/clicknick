@@ -1218,6 +1218,20 @@ class TestSaveRefusesErrors:
         assert store.is_dirty(c2)
         assert store.can_undo()
 
+    @pytest.mark.parametrize("field", ["nickname", "comment", "initial_value"])
+    def test_a_character_cp1252_lacks_blocks_save(self, field):
+        c1 = get_addr_key("C", 1)
+        store, source = _live_store({})
+        with store.edit_session("Edit") as session:
+            session.set_field(c1, field, "a→b")
+
+        row = store.visible_state[c1]
+        assert row.has_reportable_error
+        assert "CLICK cannot hold '→'" in getattr(row, f"{field}_error")
+        with pytest.raises(RuntimeError, match="validation errors"):
+            store.save_all_changes()
+        assert source.saved == []
+
     def test_masked_system_nickname_does_not_block_save(self):
         sc1, c1 = get_addr_key("SC", 1), get_addr_key("C", 1)
         store, source = _live_store({sc1: AddressRow(memory_type="SC", address=1, nickname="log")})

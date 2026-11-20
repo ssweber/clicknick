@@ -1270,3 +1270,50 @@ def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, 
     main = (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8")
     assert STAND_IN_COMMENT in main
     assert "out(C3)" in main
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        AddressRow("Y", 1, nickname="Motor", comment="Max 50\u00b0C"),
+        AddressRow("Y", 1, nickname="Caf\u00e9"),
+    ],
+    ids=["comment with a degree sign", "nickname with an e-acute"],
+)
+def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
+    tmp_path, monkeypatch, row
+) -> None:
+    """pyrung reads the workspace's nickname CSV as UTF-8, so ClickNick writes it as UTF-8."""
+    import typing
+
+    from laddercodec import Coil, Contact, Rung, write_csv
+
+    contact_type = typing.get_type_hints(Contact)["type"]
+
+    def fake_program_save(_scr_folder, csv_dir, *, index):
+        rung = Rung(
+            logical_rows=1,
+            conditions=[["-"] * 31],
+            instructions=[Coil(contact_type.COIL_OUT, "Y001")],
+            comment=None,
+        )
+        write_csv(csv_dir / "main.csv", [rung], index=index)
+
+    monkeypatch.setattr("clicknick.ladder.program.program_save", fake_program_save)
+    persist = tmp_path / "workspace"
+
+    _regenerate_persisted_project(tmp_path, {1: row}, persist, analog_inputs=frozenset())
+
+    nicknames = persist / "csv" / "nicknames.csv"
+    assert row.nickname in nicknames.read_text(encoding="utf-8")
+
+
+def test_a_comment_cp1252_lacks_stops_the_nickname_csv_and_says_where_to_change_it(
+    tmp_path,
+) -> None:
+    rows = {1: AddressRow("Y", 1, nickname="Motor", comment="a→b")}
+
+    with pytest.raises(ValueError, match=r"Y001.*'→'.*Change it in the Address Editor and Sync"):
+        _write_nicknames_csv(tmp_path, rows)
+
+    assert not (tmp_path / "nicknames.csv").exists()

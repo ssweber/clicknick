@@ -143,17 +143,17 @@ def _is_read_only(path: Path) -> bool:
     return bool(attributes & stat.FILE_ATTRIBUTE_READONLY) or not os.access(path, os.W_OK)
 
 
-def _write_file(path: Path, data: str) -> None:
-    """Write *data* to *path*, keeping an existing file's identity and attributes.
+def _write_file(path: Path, data: str, encoding: str = CSV_ENCODING) -> None:
+    """Write *data* to *path* in *encoding*, keeping an existing file's identity and attributes.
 
-    This function encodes the text as cp1252, the encoding of CLICK's nickname export, before
-    it opens the file. An encoding error therefore leaves the file as it was. It overwrites an existing file in place and truncates it to the new
-    length instead of recreating it. A Hidden file therefore still saves and stays Hidden.
-    A program that only reads the file does not stop the write. Examples are Explorer's
-    preview pane, antivirus and OneDrive. A program that locks the file, such as Excel,
-    does stop it.
+    This function encodes the text before it opens the file. An encoding error therefore
+    leaves the file as it was. It overwrites an existing file in place and truncates it to
+    the new length instead of recreating it. A Hidden file therefore still saves and stays
+    Hidden. A program that only reads the file does not stop the write. Examples are
+    Explorer's preview pane, antivirus and OneDrive. A program that locks the file, such as
+    Excel, does stop it.
     """
-    encoded = data.encode(CSV_ENCODING)
+    encoded = data.encode(encoding)
     try:
         if path.exists():
             with open(path, "r+b") as csvfile:
@@ -229,16 +229,26 @@ class CsvDataSource(DataSource):
     ``nicknames.csv`` with the same reader. Has no 'Used' field information.
     """
 
-    def __init__(self, csv_path: str, *, required: Sequence[str] = REQUIRED_COLUMNS):
+    def __init__(
+        self,
+        csv_path: str,
+        *,
+        required: Sequence[str] = REQUIRED_COLUMNS,
+        encoding: str = CSV_ENCODING,
+    ):
         """Initialize CSV data source.
 
         Args:
             csv_path: Path to the CSV file
+            encoding: The encoding that a save writes. A file that you hand to CLICK is
+                cp1252, as CLICK exports it. A file that only ClickNick and pyrung read
+                is UTF-8, because pyrung reads it as UTF-8.
             required: Columns the file must have to load (Import from CSV needs
                 only Address)
         """
         self._csv_path = csv_path
         self._required = tuple(required)
+        self._encoding = encoding
         self._fields: frozenset[str] = frozenset()
         # The reason the file could not be read the last time it was loaded
         self._unreadable: str | None = None
@@ -295,9 +305,9 @@ class CsvDataSource(DataSource):
 
         Raises:
             ValueError: The last load found a file it could not read; it is
-                left as it is. A nickname, comment or initial value that has a
-                character that cp1252 does not have also raises it. The message
-                names the address, and the file is left as it is.
+                left as it is. It is also raised if a nickname, comment or initial
+                value has a character that cp1252 does not have. The message names
+                the address. The file is left as it is.
             OSError: The file cannot be written, such as while Excel holds it open.
         """
         if self._unreadable is not None:
@@ -309,7 +319,7 @@ class CsvDataSource(DataSource):
 
         # The whole file is rewritten, with every row that has content
         records = [_record(row) for row in rows if row.has_content]
-        _write_file(Path(self._csv_path), format_csv(records))
+        _write_file(Path(self._csv_path), format_csv(records), self._encoding)
         return len(records)
 
 

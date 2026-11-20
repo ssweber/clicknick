@@ -10,12 +10,14 @@
 
 ### Breaking changes
 
-- ClickNick now writes every nickname CSV in cp1252, the encoding of CLICK's own nickname export. 0.25.0 wrote UTF-8. This covers **File > Export to CSV** in the Address Editor and **Sync** in CSV mode. It also covers the copy of Address.csv that CSV mode offers to save, and the nicknames.csv in the workspace. A script of yours that reads these files as UTF-8 must read them as cp1252. ClickNick still loads a nickname CSV in either encoding.
-- ClickNick now refuses to write a nickname, comment or initial value that has a character cp1252 does not have, such as `→`. 0.25.0 wrote the character. The error names the address and the character, and says to replace it. The file on disk stays as it was. If this happens in the nicknames.csv for **Compare with > Other CLICK window**, the comparison goes ahead without the nicknames, and the status line says why.
+- ClickNick now writes each nickname CSV that you hand to CLICK in cp1252. CLICK's own nickname export is cp1252 too. 0.25.0 wrote UTF-8. This covers **File > Export to CSV** in the Address Editor, **Sync** in CSV mode, and **Save Copy and Load** for CLICK's Address.csv. If a script of yours reads these files as UTF-8, change it to read cp1252. ClickNick still loads a nickname CSV in either encoding.
+- The Address Editor now shows an error for a nickname, comment or initial value that has a character cp1252 does not have, such as `→` or an emoji. CLICK cannot hold the character. It turns an emoji that you type into a comment into `??`. Sync writes nothing while a row has this error, and a CSV is not written either. The error names the character. Replace it. 0.25.0 accepted the character, and CLICK showed it as `?`.
+- The workspace no longer builds, and `clicknick-cli tag apply` stops, for a project whose nicknames, comments or initial values hold a character that cp1252 does not have. The Simulator, Check Program and Review Changes then do not run, and the Workspace group says **Could not build the workspace**. 0.25.0 built that workspace. To fix it, change the character in the Address Editor and Sync, then save the project in CLICK.
+- **Save Copy and Load** for CLICK's Address.csv, and **Ladder > Compare with > Other CLICK window**, now meet the same refusal. The copy is not written, and the message says to change the character in CLICK, save, and try again. Compare goes ahead without the other project's nicknames, and the status line says why.
 
 ### Fixed
 
-- ClickNick now loads a nickname CSV that CLICK exported with a non-ASCII nickname or comment. 0.25.0 refused the file because it is cp1252.
+- ClickNick now loads a nickname CSV that CLICK exported with a non-ASCII nickname, comment or initial value. 0.25.0 refused the file because it is cp1252.
 
 ## v0.25.0 - 2026-11-18
 

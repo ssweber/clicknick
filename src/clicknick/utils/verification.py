@@ -11,10 +11,14 @@ from typing import TYPE_CHECKING
 
 from pyclickplc.addresses import get_addr_key, is_xd_yd_hidden_slot, parse_addr_key
 from pyclickplc.banks import BANKS, NON_EDITABLE_TYPES, PAIRED_RETENTIVE_TYPES
-from pyclickplc.validation import SYSTEM_NICKNAME_TYPES, validate_initial_value
+from pyclickplc.validation import SYSTEM_NICKNAME_TYPES
 
 from ..data.cdv_file import check_cdv_files
-from ..models.validation import nickname_duplicate_checker, validate_nickname
+from ..models.validation import (
+    nickname_duplicate_checker,
+    validate_initial_value,
+    validate_nickname,
+)
 
 if TYPE_CHECKING:
     from ..data.address_store import AddressStore

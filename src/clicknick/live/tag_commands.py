@@ -377,7 +377,10 @@ def _export_nicknames(tags_source: str, out_csv) -> None:
     mapping = ns.get("mapping")
     if mapping is None:
         raise ValueError("tags.py did not define `mapping`")
-    mapping.to_nickname_file(out_csv, blocks=ns.get("blocks"))  # type: ignore[attr-defined]
+    try:
+        mapping.to_nickname_file(out_csv, blocks=ns.get("blocks"))  # type: ignore[attr-defined]
+    except ValueError as exc:  # A character that cp1252 does not have, which CLICK cannot hold
+        raise ValueError(f"{exc} Change it in the Address Editor and Sync.") from exc
 
 
 def _load_export_rows(project_dir):

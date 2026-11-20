@@ -350,3 +350,15 @@ def test_tag_apply_refuses_annotations_that_clash_with_the_comment(store):
 
     with pytest.raises(ValueError, match="DS1"):
         _compute_tag_changes(base, cur, store)
+
+
+def test_a_character_cp1252_lacks_in_tags_says_where_to_change_it(tmp_path) -> None:
+    source = (
+        "class _Mapping:\n"
+        "    def to_nickname_file(self, path, blocks=None):\n"
+        "        raise ValueError(\"Y001 Address Comment 'a→b' has '→'.\")\n"
+        "mapping = _Mapping()\n"
+    )
+
+    with pytest.raises(ValueError, match="Change it in the Address Editor and Sync"):
+        tag_commands._export_nicknames(source, tmp_path / "out.csv")

@@ -329,7 +329,8 @@ class CsvFallbackDialog:
                 # Show error message
                 tk.messagebox.showerror(
                     "Save Address CSV Copy",
-                    f"Could not save the copy to {dest_path}:\n{e}",
+                    f"Could not save the copy to {dest_path}:\n{e}\n\n"
+                    "If the message names a character, change it in CLICK, save, and try again.",
                     parent=self.window,
                 )
 

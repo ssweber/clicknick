@@ -270,6 +270,14 @@ class TestCsvModeStore:
 
         assert path.read_bytes() == (f'{HEADER}\r\nC1,BIT,"Café",0,No,"5°"\r\n'.encode("cp1252"))
 
+    def test_a_save_writes_the_encoding_that_the_caller_chose(self, tmp_path):
+        path = tmp_path / "names.csv"
+        rows = [AddressRow("C", 1, nickname="Café")]
+
+        CsvDataSource(str(path), encoding="utf-8").save_changes(rows)
+
+        assert "Café".encode() in path.read_bytes()
+
     def test_a_cp1252_file_is_loaded_and_saved_again_as_it_was(self, tmp_path):
         path = _write(
             tmp_path / "names.csv", f'{HEADER}\nC1,BIT,"Café",0,No,""\n', encoding="cp1252"
@@ -451,3 +459,29 @@ class TestFieldValues:
         CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="Motor")])
 
         assert path.read_bytes() == (f'{HEADER}\r\nC1,BIT,"Motor",0,No,""\r\n').encode()
+
+
+# The first two lines of a nickname export from CLICK 4.00, in which X001's nickname is e-acute.
+# The bytes are CLICK's: cp1252, no byte order mark, lines that end in CRLF.
+CLICK_EXPORT_E_ACUTE = (
+    b"Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
+    b'X001,BIT,"\xe9",0,No,""\r\n'
+)
+
+
+class TestClickExportWithANonAsciiNickname:
+    def test_the_export_loads_through_the_store(self, tmp_path):
+        path = tmp_path / "NewProject7.csv"
+        path.write_bytes(CLICK_EXPORT_E_ACUTE)
+        store = AddressStore(CsvDataSource(str(path)))
+
+        store.load_initial_data()
+
+        assert store.visible_state[get_addr_key("X", 1)].nickname == "\u00e9"
+
+    def test_export_to_csv_writes_the_same_bytes(self, tmp_path):
+        path = tmp_path / "export.csv"
+
+        CsvDataSource(str(path)).save_changes([AddressRow("X", 1, nickname="\u00e9")])
+
+        assert path.read_bytes() == CLICK_EXPORT_E_ACUTE

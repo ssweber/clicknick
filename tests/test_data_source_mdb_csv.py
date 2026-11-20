@@ -8,6 +8,8 @@ MDB_HEADER = "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Rete
 
 
 class TestConvertMdbCsvToUserCsv:
+    # The source is UTF-8 with a BOM because read_mdb_csv assumes it. No recording of CLICK's
+    # Address.csv with a non-ASCII nickname shows that CLICK writes it so.
     def test_writes_the_copy_in_cp1252(self, tmp_path):
         source = tmp_path / "Address.csv"
         source.write_bytes((MDB_HEADER + "100663297,DS,1,1,Café,1,0,1,\r\n").encode("utf-8-sig"))

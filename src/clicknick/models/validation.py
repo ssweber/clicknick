@@ -1,8 +1,10 @@
 from collections.abc import Callable, Mapping
 
 from pyclickplc.banks import DataType
+from pyclickplc.nicknames import first_non_cp1252_char
 from pyclickplc.validation import COMMENT_MAX_LENGTH
 from pyclickplc.validation import validate_comment as _pyclickplc_validate_comment
+from pyclickplc.validation import validate_initial_value as _pyclickplc_validate_initial_value
 from pyclickplc.validation import validate_nickname as _pyclickplc_validate_nickname
 
 # The fields that CLICK stores without a space or a tab at either end. A Text initial value
@@ -15,6 +17,18 @@ EDGE_CHARACTERS = " \t"
 
 # The error for a comment with a line break or another control code at either end
 CONTROL_EDGE_ERROR = "Cannot start or end with a line break or a control character"
+
+
+def cp1252_error(text: str) -> str:
+    """Return the error for the first character of *text* that cp1252 does not have, or "".
+
+    CLICK cannot hold such a character. It turns an emoji that you type into a comment
+    into ``??``. A nickname CSV is cp1252 too, so ClickNick cannot write the character to one.
+    """
+    char = first_non_cp1252_char(text)
+    if char is None:
+        return ""
+    return f"CLICK cannot hold {char!r}. Replace it"
 
 
 def control_code_edges(comment: str) -> tuple[bool, bool]:
@@ -66,6 +80,8 @@ def validate_comment(
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
+    if error := cp1252_error(comment):
+        return False, error
     if len(comment) > COMMENT_MAX_LENGTH:
         return False, f"Too long ({len(comment)}/{COMMENT_MAX_LENGTH})"
     if any(control_code_edges(comment)):
@@ -125,6 +141,8 @@ def validate_nickname(
     Returns:
         Tuple of (is_valid, error_message) - error_message is "" if valid
     """
+    if error := cp1252_error(nickname):
+        return False, error
     # Check format first
     is_valid, error = _pyclickplc_validate_nickname(nickname, system_bank=system_bank)
     if not is_valid:
@@ -137,3 +155,17 @@ def validate_nickname(
         return False, "Duplicate"
 
     return True, ""
+
+
+def validate_initial_value(value: str, data_type: int) -> tuple[bool, str]:
+    """Validate an initial value for a row of *data_type*.
+
+    A character that cp1252 does not have is an error for every data type.
+    pyclickplc's rules decide the rest.
+
+    Returns:
+        Tuple of (is_valid, error_message) - error_message is "" if valid
+    """
+    if error := cp1252_error(value):
+        return False, error
+    return _pyclickplc_validate_initial_value(value, data_type)

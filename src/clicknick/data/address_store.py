@@ -28,13 +28,14 @@ from pyclickplc.banks import (
     DataType,
 )
 from pyclickplc.blocks import compute_all_block_ranges, find_paired_tag_index, parse_block_tag
-from pyclickplc.validation import SYSTEM_NICKNAME_TYPES, validate_initial_value
+from pyclickplc.validation import SYSTEM_NICKNAME_TYPES
 
 from ..models.address_row import AddressRow, initial_values_differ
 from ..models.validation import (
     TRIMMED_FIELDS,
     trim_entry,
     validate_comment,
+    validate_initial_value,
     validate_nickname,
 )
 from ..services.block_service import BlockService, compute_block_colors, same_block_tag

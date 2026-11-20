@@ -88,11 +88,14 @@ def _read_nickname_rows(db_path: Path) -> dict[int, AddressRow]:
 
 
 def _write_nicknames_csv(csv_dir: Path, nickname_rows: Mapping[int, AddressRow]) -> Path:
-    """Write the nickname snapshot to csv_dir/nicknames.csv for pyrung."""
+    """Write the nickname snapshot to csv_dir/nicknames.csv for pyrung, which reads UTF-8."""
     from ..data.data_source import CsvDataSource
 
     nick_dest = csv_dir / "nicknames.csv"
-    CsvDataSource(str(nick_dest)).save_changes(list(nickname_rows.values()))
+    try:
+        CsvDataSource(str(nick_dest), encoding="utf-8").save_changes(list(nickname_rows.values()))
+    except ValueError as exc:  # A character that cp1252 does not have, which CLICK cannot hold
+        raise ValueError(f"{exc} Change it in the Address Editor and Sync.") from exc
     return nick_dest
 
 
