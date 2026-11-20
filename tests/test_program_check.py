@@ -118,3 +118,25 @@ def test_dispatch_check_refreshes_app_defaults_before_running(tmp_path, monkeypa
     monkeypatch.setattr("clicknick.services.program_check.run_project_check", run)
     ctx = DispatchContext(store=_Store(), analysis=analysis)
     assert dispatch(ctx, "check").startswith("current defaults")
+
+
+def test_dispatch_check_names_the_checks_it_removed_from_the_selection(tmp_path, monkeypatch):
+    from clicknick.services.program_check_selection import ProgramCheckSelection
+
+    appdata = tmp_path / "settings"
+    appdata.mkdir()
+    (appdata / "check-defaults.toml").write_text(
+        '[tool.pyrung.check]\nselect = ["CMP", "OLD_RULE"]\n', encoding="utf-8"
+    )
+    project = tmp_path / "generated"
+    project.mkdir()
+    analysis = _Analysis(project)
+    analysis.check_selection = ProgramCheckSelection(appdata=appdata)
+    monkeypatch.setattr("clicknick.services.program_check.run_project_check", lambda _dir: "ran")
+    ctx = DispatchContext(store=_Store(), analysis=analysis)
+
+    first = dispatch(ctx, "check")
+
+    assert first.startswith("NOTE: pyrung has no check named OLD_RULE, so ClickNick removed it ")
+    assert first.split("\n")[1].startswith("ran")
+    assert dispatch(ctx, "check").startswith("ran")

@@ -841,6 +841,7 @@ class ClickNickApp:
                 parent=self.root,
             )
             return
+        self._report_dropped_checks()
 
         # clicknick-cli groups the findings the same way, with pyrung's grouped().
         grouped = report.grouped() if report is not None else {}
@@ -871,6 +872,7 @@ class ClickNickApp:
             messagebox.showerror(
                 "Choose Checks", f"Could not open Choose Checks: {exc}", parent=parent
             )
+        self._report_dropped_checks(parent)
 
     def _analyze_program(self) -> None:
         """Run program validation and show a report that you can refresh in place."""
@@ -1884,11 +1886,19 @@ class ClickNickApp:
         if messagebox.askyesno("Paste Again", message, icon=messagebox.WARNING, parent=self.root):
             self._workspace.review_changes()
 
+    def _report_dropped_checks(self, parent: tk.Misc | None = None) -> None:
+        """Tell the user which rule names ClickNick removed from a saved check selection."""
+        found = self._session.dropped_checks_to_report() if self._session else ()
+        if found:
+            message = "\n\n".join(item.describe() for item in found)
+            messagebox.showwarning("Check Program", message, parent=parent or self.root)
+
     def _on_build_finished(self) -> None:
         """Show the build's result. This runs on the build worker's thread."""
         try:
             self.root.after(0, self._request_ui_refresh)
             self.root.after(0, self._report_legacy_encodings)
+            self.root.after(0, self._report_dropped_checks)
         except (RuntimeError, tk.TclError):
             pass  # The window closed while the build ran
 
