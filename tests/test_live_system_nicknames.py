@@ -6,6 +6,7 @@ from pyclickplc.addresses import get_addr_key
 from clicknick.data.address_store import AddressStore
 from clicknick.live.dispatch import DispatchContext, dispatch
 from clicknick.models.address_row import AddressRow
+from clicknick.services.system_nickname_service import find_system_nickname_repairs
 
 
 class MockDataSource:
@@ -51,12 +52,12 @@ def test_repair_command_stages_known_corrections_in_one_store_operation():
         "tag repair-system-nicknames",
     )
 
-    assert "4 system nickname repairs staged" in result
-    assert len(store.user_overrides) == 4
+    assert "2 system nickname repairs staged" in result
+    assert len(store.user_overrides) == 2
     assert store.get_visible_row(get_addr_key("SD", 132)).nickname == ("_Port1_AL_Denied_No1_Cnt")
     assert store.get_visible_row(get_addr_key("SD", 133)).nickname == ("_WLAN_AL_Denied_No1_Cnt")
-    assert store.get_visible_row(get_addr_key("SD", 134)).nickname == ("_Port1_AL_Denied_Count")
-    assert store.get_visible_row(get_addr_key("SD", 135)).nickname == ("_WLAN_AL_Denied_Count")
+    assert store.get_visible_row(get_addr_key("SD", 134)).nickname == ""
+    assert store.get_visible_row(get_addr_key("SD", 135)).nickname == ""
     assert not store.has_errors()
     assert opened == ["changed"]
 
@@ -81,5 +82,23 @@ def test_repair_command_says_sync_or_save_for_the_data_loaded(is_database, save)
 
     assert result.splitlines()[-2:] == [
         f"Review them in the Address Editor under Changed, then {save} them.",
-        f"[4 tags staged | Next: {save} tags in ClickNick]",
+        f"[2 tags staged | Next: {save} tags in ClickNick]",
     ]
+
+
+def test_a_blank_nickname_with_a_comment_needs_no_repair():
+    # pyclickplc 0.11.0 listed a blank name as an old name for these four addresses.
+    rows = {
+        get_addr_key("SD", address): AddressRow(
+            memory_type="SD", address=address, comment="kept by the user"
+        )
+        for address in (132, 133, 134, 135)
+    }
+    store = AddressStore(MockDataSource(rows))
+    store.load_initial_data()
+
+    assert find_system_nickname_repairs(store) == ()
+    result = dispatch(DispatchContext(store=store), "tag repair-system-nicknames")
+
+    assert result == "system nickname repair: no known corrections needed"
+    assert not store.user_overrides

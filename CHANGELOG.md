@@ -21,6 +21,7 @@
 
 ### Fixed
 
+- A project that has a comment or a non-default setting on SD132, SD133, SD134 or SD135, but no nickname there, now builds its workspace. **Tools > Repairs > System Nicknames** no longer offers to fill in a nickname at those four addresses. 0.25.0 stopped the build for such a project. The fix comes from pyclickplc 0.11.1.
 - If the CLICK window closes or shows another project while Workspace setup shows a location that you have not applied, ClickNick now shows a warning that the location was not applied. Open Workspace setup and choose the location again. 0.25.0 closed Workspace setup without a message, so you might not notice that no workspace was made.
 - ClickNick now loads a nickname CSV that CLICK exported with a non-ASCII nickname, comment or initial value. 0.25.0 refused the file because it is cp1252.
 - **Workspace > Review Changes** and `clicknick-cli rung apply` now show the source of a rung that you added to `src/plc` without a `# Rn` comment. 0.25.0 could show another rung's source in its place, so the rung looked duplicated.
