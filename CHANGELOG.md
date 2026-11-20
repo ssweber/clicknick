@@ -8,21 +8,11 @@
 
 ## Unreleased
 
-### Changed
-
-- The Simulator now keeps a saved switch position on an input that no installed module has and no rung uses. 0.25.0 removed it when it loaded your saved settings, and the notice said that no installed input had the address.
-
-### Fixed
-
-- ClickNick now builds the workspace when it cannot read the hardware in CLICK's Project.ini. This happens for a module that ClickNick does not know yet. Check Program, Review Changes, `clicknick-cli` and the Simulator then work. 0.25.0 stopped with **Could not build the workspace**, and the Simulator's hardware panel said that no CPU was configured. The panel now shows the read error. A message box in the main window tells you that ClickNick does not know which addresses are analog inputs. If you turn on the check Comparison Operand Has No Ladder Writer, Check Program then reports an analog input that a comparison reads as a value that nothing writes. For a project with no CPU, the panel now says that the Simulator still runs the program, that the dashed cards show the X and Y addresses that the program uses, and how to see your hardware.
-- ClickNick now builds the workspace for a CLICK PLUS project with an empty option slot, and the Simulator shows the project's hardware. CLICK 4.00 saves an empty option slot as the slot cover C2-FILL. ClickNick now reads C2-FILL through pyclickplc 0.11.2, and the Simulator shows it as a card with no I/O. For such a project, 0.25.0 showed **Could not build the workspace**, and the Simulator showed no hardware.
-- The Simulator no longer shows an error when you link an address that no rung in the simulation names. The simulation can link only an address that a rung names. A slot that a rung reaches only through a range, such as X005 in `pack_bits(X003..X010, DS1)`, does not count. The bench link now waits. The **Wiring** menu shows it as `bench, waiting`, and the input's tooltip says what it waits for. While the link waits, the simulation runs the program's own wiring on that input. To apply it, name the address in a rung, in CLICK or in the workspace's `src/plc`, and write the program to the simulation. 0.25.0 showed an error, such as `Linking X001 failed: cannot link X001: unknown tag: X001` in an empty project, and did not keep the link.
-- The Simulator now keeps a bench link that you saved on an address that no rung in the simulation names. The link waits, and the Simulator applies it after you write a program in which a rung names the address. 0.25.0 showed an error when the simulation started, and removed the link.
-- The Simulator now keeps a bench link or a force on an address when you write a program in which no rung names that address. This holds for either end of a bench link. The link waits until a rung names both ends again. 0.25.0 removed the link and the force.
-
 ## v0.26.0 - 2026-11-20
 
 Every ClickNick user should upgrade for the fixes from pyrung 0.18.0 and laddercodec 0.5.0. The Simulator now runs a `copy()` of a number into TXT in your `src/plc` code the same as a CLICK PLC. Review Changes now pastes some code from `src/plc` correctly. 0.25.0 pasted that code wrongly.
+
+The workspace now builds, and the Simulator runs, for a CLICK PLUS project with an empty option slot and for a project whose hardware ClickNick cannot read. In the Simulator, a bench link on an address that no rung names now waits until a rung names it. The Simulator no longer shows an error for such a link.
 
 A nickname, comment or initial value with a character such as `é` or `°` now arrives unchanged when you move it between ClickNick and CLICK in a nickname CSV. ClickNick now writes nickname CSVs in cp1252, the encoding that CLICK uses, and loads the ones that CLICK exports.
 
@@ -59,9 +49,13 @@ Read Breaking changes before you upgrade if a script of yours reads a nickname C
 - A rung in CLICK's last save with a value that CLICK's editor refuses, such as the compare `DH70 == DS39`, now makes the **Paste Again** notice ask you to paste the whole program again. For a compare such as this one, 0.25.0 put an empty rung in the workspace in its place. The Simulator now runs the program as CLICK saved it.
 - Review Changes, **Load Ladder CSV to Clipboard** and `clicknick-rung load` now refuse a CSV that holds an `UNDECODED` marker, or a comment that starts with `UNDECODED comment:`, and name the rung. Other programs that read CLICK's ladder can write the marker in place of a rung that they cannot read, and the line in place of a comment that they cannot read. CLICK cannot hold the marker. Put the rung's logic in place of the marker, or remove the marker. Delete the `UNDECODED comment:` line, or put back the comment. 0.25.0 refused the marker as an unknown instruction, and did not name the rung. It pasted the `UNDECODED comment:` line into CLICK as part of the rung's comment.
 - ClickNick now reads a Modbus TCP address with leading zeros in a ladder CSV, such as `192.168.001.010`, as CLICK's dialog saves it, `192.168.1.10`. Review Changes no longer lists such a rung as changed, and a paste writes the address without the zeros. This comes from laddercodec 0.5.0.
+- For a project with no CPU, the Simulator's hardware panel now says that the Simulator still runs the program, that the dashed cards show the X and Y addresses that the program uses, and how to see your hardware. 0.25.0 said only that no CPU was configured and how to choose one.
+- The Simulator now keeps a saved switch position on an input that no installed module has and no rung uses. 0.25.0 removed it when it loaded your saved settings, and the notice said that no installed input had the address.
 
 ### Fixed
 
+- ClickNick now builds the workspace for a CLICK PLUS project with an empty option slot, and the Simulator shows the project's hardware. CLICK 4.00 saves an empty option slot as the slot cover C2-FILL. ClickNick now reads C2-FILL through pyclickplc 0.11.2, and the Simulator shows it as a card with no I/O. For such a project, 0.25.0 showed **Could not build the workspace**, and the Simulator's hardware panel showed the read error and said that no CPU was configured.
+  - If ClickNick cannot read the hardware in CLICK's Project.ini for another reason, such as a module that it does not know yet, it now builds the workspace anyway. Check Program, Review Changes, `clicknick-cli` and the Simulator then work. The Simulator's hardware panel shows the read error. A message box in the main window tells you that ClickNick does not know which addresses are analog inputs. If you turn on the check Comparison Operand Has No Ladder Writer, Check Program then reports an analog input that a comparison reads as a value that nothing writes. 0.25.0 stopped with **Could not build the workspace**.
 - ClickNick now loads a nickname CSV in cp1252, such as one that CLICK exported with a non-ASCII nickname, comment or initial value. 0.25.0 refused the file. ClickNick still loads a nickname CSV in UTF-8.
 - A project that has a comment or a non-default setting on SD132, SD133, SD134 or SD135, but no nickname there, now builds its workspace. **Tools > Repairs > System Nicknames** no longer offers to fill in a nickname at those four addresses. 0.25.0 stopped the build for such a project. The fix comes from pyclickplc 0.11.1.
 - If the CLICK window closes or shows another project while Workspace setup shows a location that you have not applied, ClickNick now shows a warning that the location was not applied. Open Workspace setup and choose the location again. 0.25.0 closed Workspace setup without a message, so you might not notice that no workspace was made.
@@ -75,6 +69,10 @@ Read Breaking changes before you upgrade if a script of yours reads a nickname C
 - The Simulator now runs two kinds of Copy between TXT and numbers in `src/plc` the same as a CLICK PLC. The fix comes from pyrung 0.18.0.
   - `copy()` of a number into TXT, such as `copy(25, txt[1])`, stores `2` in TXT1 and `5` in TXT2. 0.25.0 stored the number 25 in TXT1. A Copy of a number into TXT that you made in CLICK's Copy dialog already ran correctly in 0.25.0.
   - `blockcopy()` from TXT into number registers, with no `convert=`, reads each TXT as a digit. In 0.25.0 the scan failed with an error when one of those TXT addresses was blank or held a letter.
+- The Simulator no longer shows an error for a bench link on an address that no rung in the simulation names. The simulation can link only an address that a rung names. A slot that a rung reaches only through a range, such as X005 in `pack_bits(X003..X010, DS1)`, does not count. A bench link now waits while no rung names its input or the address that drives it. The **Wiring** menu shows it as `bench, waiting`, and the input's tooltip says what it waits for. While the link waits, the simulation runs the program's own wiring on that input. To apply it, name each of its addresses in a rung, in CLICK or in the workspace's `src/plc`, and write the program to the simulation. In 0.25.0:
+  - Linking such an address showed an error, such as `Linking X001 failed: cannot link X001: unknown tag: X001` in an empty project, and the Simulator did not keep the link.
+  - A saved link on such an address showed an error when the simulation started, and the Simulator removed the link. The link now waits, and stays in the Simulator's settings.
+  - A write of a program in which no rung names an address removed a force on that address, and a bench link with either end there. The link now waits, and the force stays.
 
 ## v0.25.0 - 2026-11-18
 
