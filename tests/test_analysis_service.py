@@ -50,6 +50,21 @@ class TestBuildTagAddrKeyMap:
         assert tag_to_key["PumpRun"] == y2
         assert key_to_tag[y1] == "MotorOut"
 
+    def test_a_blank_sd132_with_a_comment_is_a_tag_named_by_its_address(self, tmp_path):
+        # pyclickplc 0.11.0 listed a blank name as an old name for SD132, and pyrung refused it.
+        sd132 = get_addr_key("SD", 132)
+        rows = {
+            sd132: AddressRow(
+                memory_type="SD", address=132, nickname="", comment="note", data_type=DataType.INT
+            )
+        }
+
+        _tag_to_key, key_to_tag = _build_tag_addr_key_map(
+            _write_nicknames_csv(tmp_path, rows), rows
+        )
+
+        assert key_to_tag[sd132] == "SD132"
+
     def test_unnamed_addresses_fall_back_to_display_address(self):
         tag_to_key, key_to_tag = _build_tag_addr_key_map(None, {})
         x1 = get_addr_key("X", 1)
