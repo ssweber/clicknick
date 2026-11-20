@@ -181,3 +181,15 @@ def test_a_read_error_that_is_not_a_value_error_does_not_say_the_simulator_runs(
 
     assert "locked" in text
     assert "still runs" not in text
+
+
+def test_an_empty_option_slot_shows_as_a_card_with_no_terminals(tmp_path):
+    # CLICK 4.00 saves a CLICK PLUS option slot that holds no module as module 8192 (C2-FILL).
+    ini = tmp_path / "Project.ini"
+    ini.write_text("[SystemConfig]\nItem1=199\nItem10=8192\n", encoding="utf-8")
+
+    layout = read_panel_layout(ini, used_io=set())
+
+    slot = next(card for card in layout.cards if card.location == "slot")
+    assert slot.model == "C2-FILL"
+    assert slot.terminals == ()
