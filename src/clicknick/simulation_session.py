@@ -192,8 +192,8 @@ class WiredLink:
     active: bool = False
     pending: bool = False
     enabled: bool = True
-    #: True for a bench link that the simulation does not have yet, because the program does
-    #: not use its feedback or its enable (:func:`link_waits`).
+    #: True for a bench link that the simulation does not have yet, because no rung in the
+    #: simulation names its feedback or its enable (:func:`link_waits`).
     waiting: bool = False
 
     @property
@@ -292,16 +292,23 @@ def _unavailable(exc: BaseException) -> bool:
     return isinstance(exc, DapUnavailableError)
 
 
-def link_waits(feedback: str, link: BenchLink, used: frozenset[str] | None) -> bool:
-    """Return True if the program does not use the feedback or the enable of *link*.
+def link_waits(feedback: str, link: BenchLink, named: frozenset[str] | None) -> bool:
+    """Return True if *named* lacks the feedback or the enable of *link*.
 
-    *used* holds the addresses of the tags that the simulation knows. The simulation would
-    refuse such a link, so ClickNick keeps it and sends it once the program uses both
-    addresses. If *used* is None, nobody knows what the program uses yet, and no link waits.
+    *named* holds the addresses that a rung in the simulation names. pyrung links only those
+    addresses, so ClickNick keeps such a link and sends it once a rung names both ends. If
+    *named* is None, nobody knows what the rungs name yet, and no link waits.
     """
-    if used is None:
+    if named is None:
         return False
-    return feedback not in used or (link.enable is not None and link.enable not in used)
+    return feedback not in named or (link.enable is not None and link.enable not in named)
+
+
+def _named_addresses(
+    tags: Iterable[str], maps: tuple[Mapping[str, int], Mapping[int, str]]
+) -> frozenset[str]:
+    """Return the CLICK addresses of the pyrung tags in *tags*, mapped through *maps*."""
+    return frozenset(a for tag in tags if (a := address_of(tag, maps)) is not None)
 
 
 def _waiting_text(waiting: Mapping[str, BenchLink]) -> str:
@@ -311,19 +318,23 @@ def _waiting_text(waiting: Mapping[str, BenchLink]) -> str:
         link = waiting[feedback]
         if link.cut:
             parts.append(
-                f"The cut on {feedback} waits until the program in the simulation uses {feedback}."
+                f"The cut on {feedback} waits until a rung in the simulation names {feedback}."
             )
         else:
             parts.append(
-                f"The bench link on {feedback} waits until the program in the simulation uses "
-                f"both {feedback} and {link.enable}."
+                f"The bench link on {feedback} waits until a rung in the simulation names both "
+                f"{feedback} and {link.enable}."
             )
     return " ".join(parts)
 
 
 def _unknown_tag(reason: str) -> bool:
-    """Return True if pyrung refused a link because the program does not know one of its tags."""
-    return "unknown tag" in reason
+    """Return True if pyrung refused a link because it does not know one of the link's tags.
+
+    pyrung words this in more than one way, such as ``unknown tag: X001`` and
+    ``Unknown tag 'X001' (address X001 is not mapped to a tag)``.
+    """
+    return "unknown tag" in reason.lower()
 
 
 def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
@@ -465,18 +476,16 @@ class SimulationSession:
         self._dap: Any | None = None
         self._token = 0
         # The program that the simulation runs. These fields hold the analysis generation it
-        # came from, the CLICK save count at that time, its tag names, the addresses it uses,
-        # its folder and what its source held. A launch and a write set them. pyrung never loads
-        # files on its own, because autoreload is off.
+        # came from, the CLICK save count at that time, its tag names, its folder and what its
+        # source held. A launch and a write set them. pyrung never loads files on its own,
+        # because autoreload is off.
         self._program_generation = -1
         self._program_saves: int | None = None
         self._program_names: tuple[Mapping[str, int], Mapping[int, str]] | None = None
-        # The addresses of the tags that the simulation knows, read from its frames, and the
-        # tag list and names that they were read from. None until a frame lists the tags.
-        self._used: frozenset[str] | None = None
-        self._used_from: tuple[object, ...] | None = None
-        # The used addresses that the views last heard about.
-        self._used_shown: frozenset[str] | None = None
+        # The addresses that a rung in the simulation names, read from its frames, and the tag
+        # list and names that they were read from. None until a frame lists the tags.
+        self._named: frozenset[str] | None = None
+        self._named_from: tuple[object, ...] | None = None
         # The feedbacks of the bench links that the simulation refused or dropped because it
         # does not know one of their tags. They wait like the links that link_waits names.
         self._held: set[str] = set()
@@ -875,55 +884,50 @@ class SimulationSession:
         )
 
     @property
-    def used_addresses(self) -> frozenset[str] | None:
-        """The CLICK addresses of the tags that the simulation knows, or None while unknown.
+    def named_addresses(self) -> frozenset[str] | None:
+        """The CLICK addresses that a rung in the simulation names, or None while unknown.
 
-        These are the tags of the program that the simulation runs, as its frames list them.
-        pyrung refuses a link on any other address. The set is None while the simulation is
-        off, and from a launch until its first frame.
+        These are the tags that pyrung knows, as its frames list them. pyrung refuses a bench
+        link on any other address. A slot that a rung reaches only through a range, such as
+        X005 in ``pack_bits(X003..X010, DS1)``, is not in the set. The set is None while the
+        simulation is off, from a launch until its first frame, and from a write until the
+        frame after it.
         """
-        return self._used
+        return self._named
 
-    def is_used(self, address: str) -> bool:
-        """Return True if the program in the simulation uses *address*, or if nobody knows."""
-        used = self._used
-        return used is None or address in used
+    def is_named(self, address: str) -> bool:
+        """Return True if a rung in the simulation names *address*, or if nobody knows yet."""
+        named = self._named
+        return named is None or address in named
 
     def link_waits(self, feedback: str) -> bool:
-        """Return True if the bench link on *feedback* waits for the program to use its points."""
+        """Return True if the bench link on *feedback* waits for a rung to name its ends."""
         link = self._state.links.get(feedback)
         return link is not None and self._waits(feedback, link)
 
     def _waits(self, feedback: str, link: BenchLink) -> bool:
         """Return True if ClickNick holds *link* back, because the simulation would refuse it."""
-        return feedback in self._held or link_waits(feedback, link, self._used)
+        return feedback in self._held or link_waits(feedback, link, self._named)
 
-    def _read_used(self) -> frozenset[str] | None:
+    def _read_named(self) -> frozenset[str] | None:
         """Return the addresses of the tags that the simulation's latest frame listed."""
         dap = self._dap
         tags = None if dap is None else dap.program_tags
         if tags is None:
+            self._named_from = None
             return None
         maps = self._tag_maps()
         # A frame can arrive every scan. Map the tags again only when the list or the names
         # changed. DapService replaces its list only when the tags change.
         source = (tags, *maps)
-        if self._used_from is not None and all(map(operator.is_, self._used_from, source)):
-            return self._used
-        self._used_from = source
-        return frozenset(a for tag in tags if (a := address_of(tag, maps)) is not None)
+        if self._named_from is not None and all(map(operator.is_, self._named_from, source)):
+            return self._named
+        self._named_from = source
+        return _named_addresses(tags, maps)
 
-    def _refresh_used(self) -> None:
-        """Read the used addresses from the simulation, and redraw the panel if they changed."""
-        self._used = self._read_used()
-        self._show_used()
-
-    def _show_used(self) -> None:
-        """Tell the views to draw the panel again when the used addresses changed."""
-        used = self.used_addresses
-        if used != self._used_shown:
-            self._used_shown = used
-            self._emit("layout")
+    def _refresh_named(self) -> None:
+        """Read the named addresses from the simulation's latest frame."""
+        self._named = self._read_named()
 
     def driving_link(self, address: str) -> WiredLink | None:
         """Return the link that drives *address* right now, or None. A cut drives nothing."""
@@ -1376,8 +1380,8 @@ class SimulationSession:
         self._links_synced = False
         self._links_refetch = False
         self._program_names = None
-        self._used = None
-        self._used_from = None
+        self._named = None
+        self._named_from = None
         self._held.clear()
         self._program_dir = None
         self._program_source = None
@@ -1391,7 +1395,6 @@ class SimulationSession:
         self._dap = None
         if dap is not None:
             self._run_background(dap.terminate, "sim-dap-stop")
-        self._show_used()
 
     def _flush_save(self) -> None:
         if self._save_after_id is not None:
@@ -1648,6 +1651,9 @@ class SimulationSession:
             self._wired(row) for row in body.get("links") or () if isinstance(row, Mapping)
         )
         self._link_rows = rows
+        # A bench link that pyrung lists no longer waits, even one that it refused before. The
+        # Console may have made it since.
+        self._held.difference_update(row.feedback for row in rows if row.source == "bench")
         if sync:
             self._links_synced = True
             revision = body.get("revision")
@@ -1870,7 +1876,7 @@ class SimulationSession:
             # then, only redraw. Do not read the switch position or forces from this frame.
             self._emit("frame")
             return
-        self._refresh_used()
+        self._refresh_named()
         if self._examine_build():  # Compare the build before the views read program_change.
             self._check_program()
         # Others can drive the simulation too, such as the Console or an agent through
@@ -2144,7 +2150,7 @@ class SimulationSession:
             )
         else:
             self._program_names = target.names
-            self._refresh_used()
+            self._refresh_named()
             self._program_generation = target.generation
             self._program_saves = target.saves
             self._program_source = source
@@ -2260,11 +2266,12 @@ class SimulationSession:
         pyrung refuses the reload, nothing changes in pyrung. The old program runs on, and
         Restart is offered.
 
-        A bench link waits while the simulation does not know its feedback or its enable
-        (:meth:`link_waits`). After the reload, the job sends each link that waited. A link that
-        pyrung refuses because it does not know a tag waits on. When pyrung drops a link or a
-        force because the new program does not have its tag (reason ``gone``), the link waits.
-        The job sends the force again by address, and pyrung accepts that.
+        A bench link waits while no rung in the simulation names its feedback or its enable
+        (:meth:`link_waits`). After the reload, the job sends each link that waited, unless the
+        new program's tags have arrived and a rung there still does not name both ends. A link
+        that pyrung refuses because it does not know a tag waits on. When pyrung drops a link
+        or a force because the new program does not have its tag (reason ``gone``), the link
+        waits, and the job sends the force again by address.
         """
         dap = self._dap
         if not self.is_ready or dap is None:
@@ -2433,8 +2440,8 @@ class SimulationSession:
                 return address_of(name, names) or address_of(name, old)
 
             # pyrung drops an entry as "gone" when the new program does not have one of its
-            # tags. A link there waits. A force there goes again by address, which pyrung
-            # accepts on an address that the program does not use.
+            # tags. A link there waits. A force there goes again by address. If pyrung refuses
+            # that too, the notice reports the force as dropped.
             waiting: dict[str, BenchLink] = {}
             kept: set[tuple[str, str]] = set()
             for entry in carried:
@@ -2460,8 +2467,16 @@ class SimulationSession:
                     if address is not None and (moved.enable is None or enable_at is not None):
                         waiting[address] = _bench_link(rows[tag], enable_at)
                         kept.add(("link", tag))
+            # After the reload's answer, pyrung sends a frame that lists the new program's tags.
+            # If that frame has arrived, it says which links can go. If not, send each link,
+            # and a link that pyrung refuses for an unknown tag waits.
+            tags = dap.program_tags
+            named = None if tags is None else _named_addresses(tags, names)
             for address, link in waiting_before.items():
                 if address in links or address in waiting:
+                    continue
+                if link_waits(address, link, named):
+                    waiting[address] = link
                     continue
                 what = f"the bench link on {address}"
                 reason = refusal(what, partial(_send_link, dap, address, link))
@@ -2839,14 +2854,16 @@ class SimulationSession:
     ) -> None:
         """Wire *feedback* on the bench. If ``link.enable`` is None, cut it.
 
-        If the simulation does not know *feedback* or the enable, the link waits
-        (:meth:`link_waits`). ClickNick keeps it and sends it at the next write. A link that
-        the simulation refuses because it does not know a tag waits too, with no error.
+        If no rung in the simulation names *feedback* or the enable, the link waits
+        (:meth:`link_waits`), and nothing goes to the simulation. ClickNick keeps the link and
+        sends it at the next write. Until the first frame lists the named tags, the link goes
+        to the simulation. If the simulation refuses it because it does not know a tag, the
+        link waits too, with no error.
         """
         link = replace(link, enabled=True)
         links = dict(self._state.links)
         links[feedback] = link
-        if link_waits(feedback, link, self._used):
+        if link_waits(feedback, link, self._named):
             self._held.discard(feedback)
             self._update_state(links=links)
             return
@@ -3116,10 +3133,7 @@ class SimulationSession:
         self._layout_error = error
         self._restore_when_known()
         if changed:
-            self._used_shown = self.used_addresses
             self._emit("layout")
-        else:
-            self._show_used()
 
     def set_state_location(self, plc_name: str, workspace_dir: Path | None) -> None:
         """Load the remembered settings, moving them into a newly paired workspace."""

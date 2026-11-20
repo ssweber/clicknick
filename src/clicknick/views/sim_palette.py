@@ -18,8 +18,6 @@ LED_RIM = "#2b2f36"
 
 SWITCH_OFF = "#c3c8d0"
 SWITCH_ON = "#2f9e44"
-#: A switch that is on, at an address that the program in the simulation does not use.
-UNUSED_ON = "#a5d8b0"
 SWITCH_KNOB = "#ffffff"
 BUTTON_BEZEL = "#8d96a3"
 #: A released pushbutton has a neutral color. A color would hint at what the input does.

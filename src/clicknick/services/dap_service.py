@@ -136,7 +136,7 @@ class DapService:
 
     @property
     def program_tags(self) -> frozenset[str] | None:
-        """The tag names that the running program knows, as the latest frame lists them.
+        """The tag names that a rung of the running program names, as the latest frame lists them.
 
         pyrung accepts a link only between these tags. The set is None until the first frame,
         and from a planned reload that went through until the frame after it.

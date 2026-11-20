@@ -67,37 +67,40 @@ refusals rely on that split.
   address, and each bench link whose key is not an address or whose value does not parse. The session reports
   each one as an error.
 
-## Points that the program does not use
+## Bench links on an address that no rung names
 
-- pyrung knows only the tags that the program uses. It refuses a link whose feedback or enable is any other tag,
-  with `cannot link X001: unknown tag: X001`. It accepts a force or a patch on such an address.
-- The used addresses come from pyrung. Each frame lists the tags that the running program knows (`tagTypes`,
-  which is the runner's `_known_tags_by_name`, the set that pyrung's `link_problem` checks).
-  `DapService.program_tags` holds them. The session maps them to addresses with the running program's tag
-  names (`used_addresses`, read in `_on_frame` and after a write). The rule is the same for X, Y, DF and every
-  other address. With pyrung 0.18.0, `pack_bits(X003..X010, DS1)` was observed to make pyrung know only X003
-  and X010, so the addresses between them count as unused. The DataView lists all eight.
-- The set is `None` while the simulation is off, from a launch until its first frame, and from a write's reload
-  until the frame after it. While it is `None`, no point is dimmed and no link waits. The session sends what
-  the user chose, and pyrung decides.
-- Two sets of "used" addresses exist. The dashed placeholder cards show the X and Y addresses that the latest
-  build uses (`_used_io`, from the analysis), so they show a CLICK save before it is written. The dimming
-  shows what the program in the simulation uses, so it changes only at a write or a launch. The user texts say
-  "the program in the simulation" for the dimming.
-- The Simulator dims a point that the program in the simulation does not use, and its tooltip says why. No
-  link drag starts or ends on it, and the link, force and Console question menu items are disabled. Its switch
-  takes no click, a double-click does not force it, and its analog entry is read-only. **Release force** stays
-  enabled. The Console can still link the point, and pyrung refuses.
-- A bench link waits when ClickNick holds it back because pyrung would refuse it (`link_waits`). That is when
-  the used set does not hold its feedback or its enable, or when pyrung refused it or dropped it for an unknown
-  tag (`_held`). ClickNick keeps it in the desired state and saves it. `links` lists it with `waiting=True`,
-  and the frame that adopts pyrung's links keeps it. A link that pyrung refuses for an unknown tag at launch,
-  from `link()` or after a write waits too, and no error is shown.
-- A write sends each waiting link again after the reload. If pyrung drops a link or a force as `gone`, the new
-  program does not have one of its tags, either end of a link. The link then waits, and the notice says so.
-  The force goes again by address to where the plan put it, and pyrung accepts it. Other drop reasons
-  (`conflict`, `in program`, `invalid`, `unlinked`) lose the entry as before.
-- Switch and analog values on an unused address stay in the desired state and go with every patch.
+- pyrung knows the tags that a rung names (`_known_tags_by_name`). Its `link_problem` refuses a link whose
+  feedback or enable is any other tag, with `cannot link X001: unknown tag: X001`. A slot that a rung reaches
+  only through a range is not known. With pyrung 0.18.0, `pack_bits(X003..X010, DS1)`, in the form that
+  ClickNick generates, was observed to make pyrung know none of X003 to X010.
+- pyrung was observed to accept a force or a patch on such a slot. A patch on X005 moved DS1. It refuses a
+  force or a patch on an address that no rung names or reaches and that the project's TagMap does not map,
+  with `Unknown tag 'X020'.` The Console's `why` answers for any address. `simplified` and `how` answer for a
+  slot that a rung reaches, and refuse any other address that pyrung does not know.
+- The Simulator draws every point the same way, and every action works on every point. A link drag can start
+  and end on any point. Only a bench link depends on the named addresses.
+- Each frame lists the tags that pyrung knows (`tagTypes`). `DapService.program_tags` holds them. The session
+  maps them to addresses with the running program's tag names (`named_addresses`, read in `_on_frame` and
+  after a write). The set is `None` while the simulation is off, from a launch until its first frame, and
+  from a write's reload until the frame after it.
+- A bench link waits when ClickNick holds it back because pyrung would refuse it (`link_waits`). ClickNick
+  keeps it in the desired state and saves it. `links` lists it with `waiting=True`, the **Wiring** menu shows
+  it as `bench, waiting`, and the frame that adopts pyrung's links keeps it. No error is shown.
+- While ClickNick holds the named set, it decides from the set whether a link waits, and sends nothing for a
+  link that waits. `link()` does this, and so does a write once the frame with the new tags has arrived.
+  While the set is `None`, the session sends the link. Whenever pyrung refuses a link with "unknown tag",
+  in either case, the link waits (`_held`). The match ignores case. A link leaves `_held` when pyrung lists
+  it as a bench link, when the user changes it, and when the simulation stops.
+- A write sends each waiting link again after the reload, unless the frame with the new tags shows that a
+  rung still does not name both ends. If pyrung drops a link or a force as `gone`, the new program does not
+  have one of its tags, either end of a link. The link then waits, and the notice says so. The force goes
+  again by address to where the plan put it. Other drop reasons (`conflict`, `in program`, `invalid`,
+  `unlinked`) lose the entry as before.
+- The texts never say that the program does not use an address, because a range can reach it. They say that
+  no rung in the simulation names it.
+- Switch and analog values stay in the desired state on any address and go with every patch. pyrung 0.18.0
+  was observed to refuse a whole patch when it cannot resolve one address in it. A switch on such an address
+  then keeps `set_mode("run")` from going through.
 
 ## Restoring saved settings
 

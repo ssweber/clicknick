@@ -11,6 +11,9 @@ tk = pytest.importorskip("tkinter")
 
 from test_simulation_session import Harness, _ready_analysis  # noqa: E402
 
+# The fixture that runs pyrung. A test asks for it with request.getfixturevalue().
+from test_simulation_session import pyrung_dap as pyrung_dap_fixture  # noqa: E402, F401
+
 from clicknick.services.analysis_service import AnalysisService  # noqa: E402
 from clicknick.services.physical_response import response  # noqa: E402
 from clicknick.simulation_session import SimStatus  # noqa: E402
@@ -749,7 +752,15 @@ def test_restored_links_banner(simulator, ready):
     assert "bench link restored" not in str(win._banner_key)
 
 
-def test_a_point_the_program_does_not_use_is_dimmed_and_takes_no_link(
+def _menu_states(menu) -> dict[str, str]:
+    return {
+        menu.entrycget(i, "label"): menu.entrycget(i, "state")
+        for i in range(menu.index("end") + 1)
+        if menu.type(i) not in ("separator", "radiobutton")
+    }
+
+
+def test_a_point_that_no_rung_names_works_and_its_link_waits(
     simulator, tmp_path, tk_root, monkeypatch
 ):
     from clicknick.services.sim_state import BenchLink
@@ -757,7 +768,8 @@ def test_a_point_the_program_does_not_use_is_dimmed_and_takes_no_link(
 
     project = tmp_path / "project"
     project.mkdir()
-    harness = Harness(tmp_path, _ready_analysis(project, used=("X001", "X002", "Y001", "DF1")))
+    # No rung names X003 or DF1.
+    harness = Harness(tmp_path, _ready_analysis(project, used=("X001", "X002", "Y001")))
     harness.sim.link("X003", BenchLink("Y001", response=response(on_delay="1s")))
     win = simulator(harness)
     c = win._canvas
@@ -765,50 +777,53 @@ def test_a_point_the_program_does_not_use_is_dimmed_and_takes_no_link(
     monkeypatch.setattr(win, "_show_action_error", errors.append)
     opened: list = []
     monkeypatch.setattr(win, "_open_link_dialog", lambda address, **kw: opened.append(address))
+    _frame(harness)  # the frame lists the tags that a rung names
     assert harness.messages("error") == "", "pyrung refused the saved link, and it waits"
-    texts = [i for i in c.find_withtag("in:X003") if c.type(i) == "text"]
-    [label] = [i for i in texts if c.itemcget(i, "text") == "X003"]
-    assert c.itemcget(label, "fill") != P.MUTED, "nothing is dimmed before the first frame"
+    assert harness.sim.link_waits("X003")
 
-    _frame(harness)  # the frame lists the tags that the program uses
+    # The point looks like any other.
     texts = [i for i in c.find_withtag("in:X003") if c.type(i) == "text"]
     [label] = [i for i in texts if c.itemcget(i, "text") == "X003"]
-    assert c.itemcget(label, "fill") == P.MUTED
-    assert not c.find_withtag("handle:X003"), "no link drag starts on it"
-    assert c.find_withtag("handle:X002")
+    assert c.itemcget(label, "fill") == P.TEXT
+    assert c.find_withtag("handle:X003"), "a link drag starts on it"
+    assert c.itemcget(win._inputs["X003"]["cut"], "state") == "hidden"
+    assert win._switch_text("X003") == (
+        "Maintained switch: click to latch. Right-click to change.\n"
+        "Drag its label onto an output to link them.\n"
+        "No rung in the simulation names X003 yet. The bench link applies once a rung names it "
+        "and you write the program to the simulation."
+    )
+
+    # Its switch moves, and its analog entry takes a value.
     win._on_switch_press("X003")
     win._on_switch_release("X003")
-    assert not harness.sim.switch_on("X003"), "its switch does not move"
-    assert win._switch_text("X003") == (
-        "The program in the simulation does not use X003. To link it here, use it in a rung "
-        "and write the program to the simulation.\n"
-        "The bench link from Y001 waits until the program in the simulation uses X003."
-    )
-    assert "X003" not in win._enables()
+    assert harness.sim.switch_on("X003")
+    assert str(win._analog_in["DF1"]["entry"].cget("state")) == "normal"
 
-    # It takes no force, and the Console is not asked about it.
+    # Every menu item is enabled.
     menu = tk.Menu(tk_root, tearoff=0)
     win._add_analysis_items(menu, "X003")
     win._add_force_items(menu, "X003", (True, False))
-    states = {
-        menu.entrycget(i, "label"): menu.entrycget(i, "state")
-        for i in range(menu.index("end") + 1)
-        if menu.type(i) != "separator"
-    }
-    assert states == {
-        "Why?": "disabled",
-        "Force ON": "disabled",
-        "Force OFF": "disabled",
-        "Release force": "disabled",
-    }
+    win._add_link_items(menu, "X003", analog=False)
+    states = _menu_states(menu)
+    assert states.pop("Release force") == "disabled", "X003 is not forced"
+    assert states.pop("Save link to project") == "disabled", "the test has no store"
+    assert {"Force ON", "Force OFF"} <= set(states)
+    assert set(states.values()) == {"normal"}, states
+    menu = tk.Menu(tk_root, tearoff=0)
+    win._add_analysis_items(menu, "DF1")
+    win._add_link_items(menu, "DF1", analog=True)
+    states = _menu_states(menu)
+    assert "Link to the tag that drives it..." in states
+    assert set(states.values()) == {"normal"}, states
 
-    # Dragging an output onto it finds no target.
+    # Dragging an output onto it finds the input.
     target = win._inputs["X003"]
     win._start_link_drag("Y001")
     win._on_link_drag(SimpleNamespace(x=target["x"] + 100, y=target["cy"]))
-    assert win._link_drag["target"] is None
+    assert win._link_drag["target"] == "in:X003"
     win._on_any_release(None)
-    assert opened == []
+    assert opened == ["X003"]
     assert errors == []
 
     win._populate_wiring_menu()
@@ -816,11 +831,6 @@ def test_a_point_the_program_does_not_use_is_dimmed_and_takes_no_link(
         label.startswith("X003") and label.endswith("bench, waiting")
         for label in _menu_labels(win._wiring_menu)
     )
-    harness.sim.restore_link("X003")
-    menu = tk.Menu(tk_root, tearoff=0)
-    win._add_link_items(menu, "X003", analog=False)
-    assert menu.entrycget("end", "label") == "Link to the tag that drives it..."
-    assert menu.entrycget("end", "state") == "disabled"
 
 
 def test_link_dialog_builds_bench_links(tk_root):
@@ -1570,3 +1580,80 @@ def test_a_reopened_console_shows_a_command_still_running_and_stops_it(simulator
     assert console._send_btn.cget("text") == "Send"
     assert note not in ready.sim.program_change.text
     assert ready.sim.program_change.actions == ("write",)
+
+
+_RANGE_PROGRAM = """\
+import warnings
+warnings.simplefilter("ignore")
+from pyrung import PLC, Program, rung, out, pack_bits, system
+from pyrung.click import ClickBlocks, TagMap
+x, y, c, t, ct, sc, ds, dd, dh, df, xd, yd, xd0u, yd0u, td, ctd, sd, txt = ClickBlocks()
+DS1 = ds[1]
+X001 = x[1]
+Y001 = y[1]
+mapping = TagMap({})
+with Program(strict=False) as logic:
+    with rung(X001):
+        out(Y001)
+    with rung(system.sys.always_on):
+        pack_bits(x.select(3, 10), DS1)
+runner = PLC(logic, dt=0.010)
+"""
+
+
+def test_a_slot_that_a_range_reaches_works_on_pyrung_and_its_link_waits(
+    simulator, tmp_path, tk_root, monkeypatch, request
+):
+    """X005 is in ``pack_bits(X003..X010, DS1)``. pyrung reaches it, but no rung names it."""
+    from clicknick.services.sim_state import BenchLink
+
+    dap_class = request.getfixturevalue("pyrung_dap_fixture")
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project, used=("X001", "Y001", "DS1")))
+    # The code that ClickNick generates for the rung, with the range as a select().
+    (project / "run.py").write_text(_RANGE_PROGRAM, encoding="utf-8")
+
+    def factory(**callbacks):
+        dap = dap_class(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    win = simulator(harness)
+    errors: list[str] = []
+    monkeypatch.setattr(win, "_show_action_error", errors.append)
+    sim, dap = harness.sim, harness.dap
+    dap.frame()
+    harness.scheduler.run_ready()
+    assert not sim.is_named("X005"), "pyrung does not know a slot that only a range reaches"
+    sim.set_switch_position("run")
+    harness.scheduler.run_ready()
+
+    # The switch on X005 moves DS1 (bit 2), and Force ON on X006 sets bit 3.
+    win._on_switch_press("X005")
+    win._on_switch_release("X005")
+    harness.scheduler.run_ready()
+    dap.scan(1)
+    assert dap.tag("DS1") == 4
+    menu = tk.Menu(tk_root, tearoff=0)
+    win._add_force_items(menu, "X006", (True, False))
+    menu.invoke("Force ON")
+    harness.scheduler.run_ready()
+    dap.scan(2)
+    assert dap.tag("DS1") == 12
+    assert sim.forces == {"X006": True}
+
+    # A link on X005 waits, with no error box, and its tooltip says why.
+    sim.link("X005", BenchLink("Y001", response=response(on_delay="1s")), on_error=errors.append)
+    harness.scheduler.run_ready()
+    dap.frame()
+    harness.scheduler.run_ready()
+    assert sim.link_waits("X005")
+    assert dap.bench_links() == {}
+    assert errors == []
+    assert harness.messages("error") == ""
+    assert win._switch_text("X005").endswith(
+        "No rung in the simulation names X005 yet. The bench link applies once a rung names it "
+        "and you write the program to the simulation."
+    )
