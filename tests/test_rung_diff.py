@@ -119,6 +119,32 @@ def test_reports_changed_unchanged_and_new_programs(tmp_path: Path) -> None:
     assert comparison.missing_in_click == {"subroutines/Rinse.csv"}
 
 
+def test_a_tcp_address_with_leading_zeros_matches_clicks_form(tmp_path: Path) -> None:
+    """laddercodec 0.5.0 reads ``192.168.001.010`` as CLICK's dialog saves it, ``192.168.1.10``."""
+    from laddercodec import read_csv
+
+    def receive(ip: str) -> str:
+        cells = ",".join(["R", "C10", *["-"] * 30])
+        target = f'ModbusTcpTarget(name=""tcp"",ip=""{ip}"",port=502,device_id=1)'
+        instruction = (
+            f'"receive(target={target},remote_start=""C1"",dest=C11..C15,receiving=C1,'
+            'success=C2,error=C3,exception_response=DS100)"'
+        )
+        header = ",".join(["marker", *"ABCDEFGHIJKLMNOPQRSTUVWXYZ", "AA", "AB", "AC", "AD", "AE"])
+        return f"{header},AF\n{cells},{instruction}\n"
+
+    plain = tmp_path / "plain.csv"
+    plain.write_text(receive("192.168.1.10"), encoding="utf-8")
+    current = _bundle(tmp_path / "current", {"main.csv": read_csv(plain)}, index=True)
+    proposed = tmp_path / "proposed"
+    proposed.mkdir()
+    (proposed / "main.csv").write_text(receive("192.168.001.010"), encoding="utf-8")
+
+    comparison = _compare(proposed, current)
+
+    assert comparison.changes["main.csv"].differs is False
+
+
 def test_lists_programs_only_in_click(tmp_path: Path) -> None:
     current = _bundle(
         tmp_path / "current",

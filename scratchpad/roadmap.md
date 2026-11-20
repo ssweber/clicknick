@@ -259,6 +259,10 @@ can automate. Items marked (runner) the runner can answer. When a check is walke
   CLICK's process shows another top-level window. Does every redraw, **Tools > Redraw Nicknames in CLICK**
   included, then report CLICK busy? If so, which window classes should the redraw tolerate besides the
   main window and tooltips?
+- Q14 (Sam): CLICK can hold a Modbus TCP address with leading zeros, such as `010.002.003.004`, after an
+  earlier paste. laddercodec 0.5.0 reads it as `10.2.3.4`, so Review Changes no longer lists that rung, and
+  CLICK keeps the padded bytes. Does a Send with such a pasted address connect to 10.2.3.4 on the PLC? If it
+  does not, laddercodec needs a legacy-encoding finding for the padded address.
 
 ### Address Editor and store
 - Fill Down / Add Block T1..TD5, then Sync.
