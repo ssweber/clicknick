@@ -34,7 +34,6 @@ from ..models.address_row import AddressRow, initial_values_differ
 from ..models.validation import (
     TRIMMED_FIELDS,
     cp1252_error,
-    cp1252_problems,
     trim_entry,
     validate_comment,
     validate_initial_value,
@@ -88,8 +87,8 @@ def _flag_loaded_error(row: AddressRow) -> AddressRow:
             row.nickname, row.addr_key, lambda _name, _key: False, system_bank=system_bank
         )
         flagged = not is_valid
-    if flagged and cp1252_problems([row]):
-        # A character that CLICK cannot hold is an error to fix, never one to hide
+    if flagged and cp1252_error(row.nickname):
+        # A nickname that CLICK cannot hold is an error to fix, never one to hide
         flagged = False
     if row.loaded_with_error == flagged:
         return row

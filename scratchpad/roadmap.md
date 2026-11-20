@@ -314,10 +314,11 @@ find goes into bugfix releases. Items marked (4b) a mock
 can automate. Items marked (runner) the runner can answer. When a check is walked or automated, delete it.
 
 ### Questions only CLICK can answer
-- Q12 (runner): on a Windows whose ANSI code page is not 1252, what does CLICK hold and export for `ł` or `Ж`?
-  ClickNick keeps cp1252 meanwhile, and flags both. Sam's `??` for an emoji fits a conversion through the
-  system code page. Python's cp1252 has no U+0081, U+008D, U+008F, U+0090 or U+009D, which Windows maps, so
-  ClickNick flags those five too. They stay as they are.
+- Q13 (Sam, not the runner: changing the code page needs a reboot): on a Windows whose ANSI code page is not
+  1252, what does CLICK hold and export for `ł` or `Ж`? ClickNick flags both, because it keeps cp1252 until this
+  is answered. Sam saw CLICK turn one emoji into `??`, which fits a conversion through the system code page.
+  Python's cp1252 also has no U+0081, U+008D, U+008F, U+0090 or U+009D. Windows maps these five, and
+  ClickNick flags them.
 - Q2 (runner): what does CLICK write on File > New, and when does its title change? This bears on how soon
   ClickNick checks kept edits against the new project's database. File > Open and Save As have run.
 - Q6: after you delete all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the

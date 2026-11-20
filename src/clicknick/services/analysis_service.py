@@ -94,8 +94,11 @@ def _write_nicknames_csv(csv_dir: Path, nickname_rows: Mapping[int, AddressRow])
 
     problems = cp1252_problems(nickname_rows.values())
     if problems:
+        shown = problems[:_CP1252_LISTED]
+        if len(problems) > len(shown):
+            shown.append(f"and {len(problems) - len(shown)} more.")
         raise ValueError(
-            "\n".join(problems) + "\nChange the characters in the Address Editor and Sync."
+            "\n".join(shown) + "\nChange the characters in the Address Editor and Sync."
         )
     nick_dest = csv_dir / "nicknames.csv"
     # pyclickplc's format_csv refuses a character that CLICK cannot hold. The check above
@@ -166,6 +169,9 @@ def _build_tag_addr_key_map(
     tag_to_key = {tag: addr_key for addr_key, tag in key_to_tag.items()}
     return tag_to_key, key_to_tag
 
+
+# The build error lists this many addresses that CLICK cannot hold a character of, and counts the rest
+_CP1252_LISTED = 10
 
 _GENERATED_DIR_NAMES = {"src", "csv", "csv_output"}
 _GENERATED_FILE_NAMES = {

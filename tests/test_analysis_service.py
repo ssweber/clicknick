@@ -1308,7 +1308,7 @@ def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
     assert row.nickname in nicknames.read_text(encoding="utf-8")
 
 
-def test_every_row_clicks_cannot_hold_is_listed_before_the_nickname_csv_is_written(
+def test_every_row_click_cannot_hold_is_listed_before_the_nickname_csv_is_written(
     tmp_path,
 ) -> None:
     rows = {
@@ -1326,3 +1326,14 @@ def test_every_row_clicks_cannot_hold_is_listed_before_the_nickname_csv_is_writt
         "Change the characters in the Address Editor and Sync."
     )
     assert not (tmp_path / "nicknames.csv").exists()
+
+
+def test_the_nickname_csv_error_lists_ten_rows_and_counts_the_rest(tmp_path) -> None:
+    rows = {i: AddressRow("DS", i, nickname=f"Tag{i}→") for i in range(1, 14)}
+
+    with pytest.raises(ValueError) as caught:
+        _write_nicknames_csv(tmp_path, rows)
+
+    lines = str(caught.value).splitlines()
+    assert len(lines) == 12
+    assert lines[10] == "and 3 more."

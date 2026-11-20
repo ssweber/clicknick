@@ -325,6 +325,12 @@ class CsvFallbackDialog:
                 convert_mdb_csv_to_user_csv(str(self.source_csv_path), dest_path)
                 self.saved_path = dest_path
                 self.window.destroy()
+            except UnicodeDecodeError as e:  # Address.csv is not in the encoding that was read
+                tk.messagebox.showerror(
+                    "Save Address CSV Copy",
+                    f"Could not save the copy to {dest_path}:\n{e}",
+                    parent=self.window,
+                )
             except ValueError as e:  # A character that CLICK cannot hold
                 tk.messagebox.showerror(
                     "Save Address CSV Copy",

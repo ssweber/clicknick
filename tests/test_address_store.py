@@ -1252,6 +1252,22 @@ class TestSaveRefusesErrors:
             store.save_all_changes()
         assert source.saved == []
 
+    def test_a_masked_system_nickname_stays_masked_when_the_comment_has_an_emoji(self):
+        """Only a nickname that CLICK cannot hold lifts the mask. A comment does not."""
+        sc1 = get_addr_key("SC", 1)
+        store, source = _live_store(
+            {sc1: AddressRow(memory_type="SC", address=1, nickname="log", comment="hot 🔥")}
+        )
+        assert store.visible_state[sc1].loaded_with_error
+        with store.edit_session("Comment") as session:
+            session.set_field(sc1, "comment", "hot")
+
+        row = store.visible_state[sc1]
+        assert row.loaded_with_error
+        assert not row.has_reportable_error
+        assert store.save_all_changes() == {sc1}
+        assert source.saved[0][0].comment == "hot"
+
     def test_masked_system_nickname_does_not_block_save(self):
         sc1, c1 = get_addr_key("SC", 1), get_addr_key("C", 1)
         store, source = _live_store({sc1: AddressRow(memory_type="SC", address=1, nickname="log")})
