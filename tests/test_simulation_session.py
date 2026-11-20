@@ -4137,6 +4137,66 @@ def test_a_change_to_a_waiting_link_drops_a_bench_link_that_pyrung_lists_there(
     assert harness.messages("error") == ""
 
 
+def test_a_listing_asked_for_before_a_link_change_does_not_undo_it(without_x003):
+    harness = without_x003
+    harness.open()
+    _frame(harness)
+    harness.sim.link("X001", ON_DELAY_LINK)
+    harness.scheduler.run_ready()
+    _frame(harness)
+
+    # pyrung answers a listing, and the user relinks X001 before ClickNick reads the answer.
+    harness.sim._fetch_links(harness.dap, harness.sim._token)
+    relinked = BenchLink("X003", response=response(on_delay="1s"))
+    harness.sim.link("X001", relinked)
+    harness.scheduler.run_ready()
+
+    assert harness.sim.bench_links == {"X001": relinked}
+    assert _x001_rows(harness) == [("X003", "bench", True)]
+    _frame(harness)  # asks for the links again
+    _frame(harness)
+    assert harness.sim.bench_links == {"X001": relinked}
+    assert harness.sim.link_waits("X001")
+    assert "X001" not in harness.dap.bench
+
+
+def test_disabling_a_held_link_before_the_first_frame_keeps_it(without_x003):
+    harness = without_x003
+    harness.open()  # no frame, so ClickNick sends the link, and pyrung refuses it
+    harness.sim.link("X003", ON_DELAY_LINK)
+    harness.scheduler.run_ready()
+    assert harness.sim.link_waits("X003")
+
+    harness.sim.set_link_enabled("X003", False)
+    harness.scheduler.run_ready()
+    harness.sim._fetch_links(harness.dap, harness.sim._token, sync=True)
+    harness.scheduler.run_ready()
+
+    assert harness.sim.link_waits("X003")
+    assert harness.sim.bench_links == {"X003": replace(ON_DELAY_LINK, enabled=False)}
+
+
+def test_a_write_that_applies_one_waiting_link_names_only_the_one_still_waiting(ready):
+    _name(ready, "X003", "Aux")
+    _running_with_settings(ready)  # a bench link on X002
+    ready.sim.link("X003", ON_DELAY_LINK)
+    ready.scheduler.run_ready()
+    _rebuild(ready, drops=("X002", "X003"))
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    assert "X002" in ready.sim.notice and "X003" in ready.sim.notice
+
+    _rebuild(ready, uses=("X002",))
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert not ready.sim.link_waits("X002")
+    assert ready.sim.link_waits("X003")
+    assert ready.sim.notice == (
+        "The bench link on X003 waits until a rung in the simulation names both X003 and Y001."
+    )
+
+
 def test_a_write_that_leaves_no_link_waiting_clears_the_wait_notice(ready):
     _running_with_settings(ready)  # a bench link on X002
     _rebuild(ready, drops=("X002",))

@@ -629,6 +629,9 @@ class SimulationSession:
         self._links_synced = False
         # Read the links again on the next frame, because the simulation did not answer the listing.
         self._links_refetch = False
+        # The count of the user's changes to bench links. _on_links copies no listing into the
+        # settings if the user changed a link after ClickNick asked for that listing.
+        self._links_edits = 0
         self._restored_links = 0
 
         # Hardware
@@ -1716,11 +1719,15 @@ class SimulationSession:
             enabled=row.get("enabled", True) is not False,
         )
 
-    def _on_links(self, token: int, body: Mapping[str, Any], *, sync: bool) -> None:
+    def _on_links(self, token: int, body: Mapping[str, Any], *, sync: bool, edits: int) -> None:
         """Store the simulation's links for display.
 
         From the first listing with *sync* set, also copy the bench links into the user's
         settings. The settings then follow changes made elsewhere, such as in the Console.
+
+        *edits* is the count of the user's link changes when the listing was asked for. If the
+        user changed a link since, the listing may predate that change. The rows are then only
+        shown, and the next frame asks for the links again.
         """
         if token != self._token or self._dap is None:
             return
@@ -1728,6 +1735,10 @@ class SimulationSession:
             self._wired(row) for row in body.get("links") or () if isinstance(row, Mapping)
         )
         self._link_rows = rows
+        if edits != self._links_edits:
+            self._links_refetch = True
+            self._emit("desired")
+            return
         # A bench link that pyrung lists no longer waits, even one that it refused before. The
         # Console may have made it since.
         self._held.difference_update(row.feedback for row in rows if row.source == "bench")
@@ -1765,6 +1776,8 @@ class SimulationSession:
 
     def _fetch_links(self, dap: Any, token: int, *, sync: bool = False) -> None:
         """Read the links back after any queued actions. Any thread may call this."""
+        # A link change that comes after this point sends its job after the listing.
+        edits = self._links_edits
 
         def job() -> None:
             try:
@@ -1773,7 +1786,7 @@ class SimulationSession:
                 if _unavailable(exc):
                     self._post(lambda: self._refetch_links(token))
                 return
-            self._post(lambda: self._on_links(token, body, sync=sync))
+            self._post(lambda: self._on_links(token, body, sync=sync, edits=edits))
 
         self._run_serial(job)
 
@@ -2234,14 +2247,16 @@ class SimulationSession:
             if listing.carried:
                 self._set_notice(listing.carried)
                 self._written_notice = listing.carried
-            elif (
-                not listing.waiting
-                and self._written_notice is not None
-                and self._notice == self._written_notice
-            ):
-                # The notice of an earlier write may say that a link waits. No link waits now.
-                self._notice = None
-                self._emit("desired")
+            elif self._written_notice is not None and self._notice == self._written_notice:
+                # The notice of an earlier write may name a link that no longer waits. Name only
+                # the links that still wait, or clear the notice if none does.
+                text = _waiting_text(listing.waiting) if listing.waiting else None
+                if text is None:
+                    self._notice = None
+                    self._emit("desired")
+                elif text != self._notice:
+                    self._set_notice(text)
+                    self._written_notice = text
         # Read the links back with the tag names that apply after the write. In a reload,
         # pyrung drops a bench link that the new program declares with the same wiring, a
         # bench cut whose declared link is gone, and a bench link that does not fit the new
@@ -2898,10 +2913,18 @@ class SimulationSession:
         feedback, such as the link that the waiting one replaces. ClickNick then restores the
         program's own wiring there (:func:`_restore_bench`), before it sends *job*.
         """
+        self._links_edits += 1
         previous = dict(self._state.links)
         changed = [a for a in previous.keys() | links.keys() if previous.get(a) != links.get(a)]
         waited = {a for a in changed if a in previous and self._waits(a, previous[a])}
-        self._held.difference_update(changed)
+        # A held link that the user only disables or enables is the same link, so it stays held.
+        self._held.difference_update(
+            a
+            for a in changed
+            if a not in links
+            or a not in previous
+            or replace(previous[a], enabled=True) != replace(links[a], enabled=True)
+        )
         self._update_state(links=links)
         dap = self._dap
         if dap is None:

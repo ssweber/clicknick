@@ -91,7 +91,8 @@ refusals rely on that split.
   link that waits. `link()` does this, and so does a write once the frame with the new tags has arrived.
   While the set is `None`, the session sends the link. Whenever pyrung refuses a link with "unknown tag",
   in either case, the link waits (`_held`). The match ignores case. A link leaves `_held` when pyrung lists
-  it as a bench link, when the user changes it, and when the simulation stops.
+  it as a bench link, when the user changes it, and when the simulation stops. If the user only disables
+  or enables a held link, the link stays in `_held`.
 - A link that waits is not in the simulation, so the simulation runs the program's own wiring on its
   feedback. `_change_links` keeps the two in agreement. When a change in ClickNick makes a link wait, or
   drops a link that waited, it restores the program's wiring on that feedback (`_restore_bench`) if pyrung
@@ -100,13 +101,18 @@ refusals rely on that split.
   link for an unknown tag, `link()` restores the feedback too. pyrung checks a link before it replaces
   anything, so the link that the refused one was to replace still runs. `links` lists one bench row for
   each feedback. A link that waits hides a bench row that pyrung still lists there until the next listing.
+- A listing can predate a link change. pyrung answers it, and the user changes a link before ClickNick
+  reads the answer. `_change_links` counts the changes (`_links_edits`), and `_fetch_links` passes the count
+  from when it asked to `_on_links`. If the count has moved, `_on_links` only shows the rows. It does not
+  copy them into the settings, and the next frame asks for the links again.
 - A write sends each waiting link again after the reload, unless the frame with the new tags shows that a
   rung still does not name both ends. If pyrung drops a link or a force as `gone`, the new program does not
   have one of its tags, either end of a link. The link then waits, and the notice says so. The force goes
   again by address to where the plan put it. Every other drop reason, such as `conflict`, `in program`,
   `invalid` or `unlinked`, loses the entry as before.
-- A write that leaves no link waiting clears the notice that an earlier write showed, because that notice
-  may say that a link waits.
+- The notice that an earlier write showed may name a link that no longer waits. A write with nothing new
+  to report replaces that notice with one that names only the links that still wait. If no link waits, it
+  clears the notice.
 - The texts never say that the program does not use an address, because a range can reach it. They say that
   no rung in the simulation names it.
 
