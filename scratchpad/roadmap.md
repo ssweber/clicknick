@@ -24,6 +24,7 @@ How to use it:
 3. Recording, ClickNick side (item 10; waits on pyrung's recording core and console commands for every
    change).
 4. Small follow-ups (nothing), whenever a branch touches their file.
+5. The release after 0.26.0. Sam has not ranked it yet.
 
 ## The next release, 0.26.0
 
@@ -45,9 +46,10 @@ was tested against, are in `../clicknick-wt/buildbot/jobs/next-pins/`.
      it. The No CPU card says that the Simulator still runs the program.
    - #159: `main` pins pyclickplc 0.11.2, which reads C2-FILL. CLICK 4.00 saves an empty CLICK PLUS option
      slot as C2-FILL.
-   - #160: a bench link waits, with no error, while no rung in the simulation names its input or its driver.
-     A saved link waits the same way. A write keeps a link or a force on an address that no rung names any
-     more. The Simulator keeps a saved switch position on an input that no module has.
+   - #160: a bench link or a cut now waits until a rung names each of its addresses: its input and, for a
+     bench link, the address that drives it. It shows no error. A saved link waits the same way. A write keeps
+     a link or a force on an address that no rung names any more. The Simulator keeps a saved switch position
+     on an input that no module has.
 5. The branch `docs/finish-v0.26.0` moves the entries of #158, #159 and #160 into the v0.26.0 section of the
    CHANGELOG.
 6. Sam's smoke test of the release candidate, then his tag. ClickNick goes last of the four repos.
@@ -72,13 +74,15 @@ for this in next release". Each item says what it needs, as above.
 - An unknown module (waits on pyclickplc). pyclickplc would read a module that it does not know as unknown,
   instead of raising `ValueError`. This is item 3 of pyclickplc's roadmap.
 - The CPU's placeholder card (nothing). On a CLICK PLUS, the Simulator puts the placeholder card for X001-X020
-  after the option slots (`_position` and `_rank` in `services/sim_hardware.py`).
+  after the option slots (`_position` and `_rank` in `services/sim_hardware.py`). pyclickplc puts X001-X016 in
+  option slot 0 on a CLICK PLUS, but `_position` puts them on the CPU. So the placeholder is in the wrong
+  place, not only in the wrong order.
 - Stacked message boxes (nothing). When a build finishes, ClickNick can show several message boxes, one on
   top of another. This happened before 0.26.0 too.
 - End-to-end smoke tests against the runner's CLICK (CLICK). For each CPU, a script would make a project in
   the runner's CLICK and run the build, the Simulator, Check Program, Sync and `rung apply` on it. The first
-  step is a runner `new --cpu MODEL`, which makes the project through CLICK's new-project wizard, offline.
-  The findings are in `../clicknick-wt/buildbot/jobs/e2e-smoke/FINDINGS.md`.
+  step adds a `new --cpu MODEL` command to the runner. It would make the project through CLICK's new-project
+  wizard, offline. The findings are in `../clicknick-wt/buildbot/jobs/e2e-smoke/FINDINGS.md`.
 
 ## 1. Housekeeping (nothing)
 
@@ -298,8 +302,8 @@ can automate. Items marked (runner) the runner can answer. When a check is walke
   earlier paste. laddercodec 0.5.0 reads it as `10.2.3.4`, so Review Changes no longer lists that rung, and
   CLICK keeps the padded bytes. Does a Send with such a pasted address connect to 10.2.3.4 on the PLC? If it
   does not, laddercodec needs a legacy-encoding finding for the padded address.
-- If CLICK's Export Nicknames again leaves out a nickname that ClickNick wrote, note the CLICK version, and
-  whether the project was saved or reopened before the export.
+- CLICK's **Export Nicknames** was seen to leave out a nickname that ClickNick wrote, before 0.26.0. If it
+  happens again, note the CLICK version, and whether the project was saved or reopened before the export.
 
 ### Address Editor and store
 - Fill Down / Add Block T1..TD5, then Sync.
