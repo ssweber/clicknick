@@ -18,6 +18,7 @@
 ### Fixed
 
 - ClickNick now loads a nickname CSV that CLICK exported with a non-ASCII nickname, comment or initial value. 0.25.0 refused the file because it is cp1252.
+- **Workspace > Review Changes** and `clicknick-cli rung apply` now show the source of a rung that you added to `src/plc` without a `# Rn` comment. 0.25.0 could show another rung's source in its place, so the rung looked duplicated.
 
 ## v0.25.0 - 2026-11-18
 

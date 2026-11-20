@@ -780,6 +780,120 @@ def test_diff_uses_exporter_manifest_for_source_chunk() -> None:
     assert "+R2  # New rung" not in diff.text
 
 
+def _hand_written(*blocks: tuple[str | None, str, str]) -> str:
+    """Return a program from (marker, comment, instruction) blocks. A marker of None writes none."""
+    lines = ["from pyrung import Program, comment, copy, rung", "", "with Program() as logic:"]
+    for marker, label, instruction in blocks:
+        suffix = "" if marker is None else f"  # R{marker}"
+        lines.extend(
+            [f"    comment({label!r})", f"    with rung(C1):{suffix}", f"        {instruction}", ""]
+        )
+    return "\n".join(lines)
+
+
+def _line_of(source: str, text: str) -> int:
+    return next(index for index, line in enumerate(source.splitlines(), start=1) if text in line)
+
+
+def test_an_inserted_rung_without_a_marker_shows_its_own_source() -> None:
+    before = _hand_written(("1", "A", "copy(DS1, DS101)"), ("2", "B", "copy(DS3, DS103)"))
+    # The new rung has no marker, and the markers after it are stale.
+    after = _hand_written(
+        ("1", "A", "copy(DS1, DS101)"),
+        (None, "New", "copy(DS2, DS102)"),
+        ("2", "B", "copy(DS3, DS103)"),
+    )
+
+    change = compare_rungs(_commented("A", "B"), _commented("A", "New", "B"))
+    diff = render_diff(
+        change,
+        "main.csv",
+        before=_sources(before, {1: [_line_of(before, "# R1")], 2: [_line_of(before, "# R2")]}),
+        after=_sources(
+            after,
+            {
+                1: [_line_of(after, "# R1")],
+                2: [_line_of(after, "copy(DS2, DS102)") - 1],
+                3: [_line_of(after, "# R2")],
+            },
+        ),
+    )
+
+    assert change.changed == (2,)
+    assert "+    comment('New')" in diff.text
+    assert "+    with rung(C1):\n" in diff.text
+    assert "+        copy(DS2, DS102)" in diff.text
+    assert "+R2" not in diff.text
+    # The rung with the stale marker is shown once, as rung 3, and not as the new rung.
+    assert diff.text.count("copy(DS3, DS103)") == 1
+    assert "+        copy(DS3, DS103)" not in diff.text
+
+
+def test_a_moved_rung_is_shown_from_the_manifest_not_the_marker() -> None:
+    # Rung B moved below C. The moved block has no marker, and the markers before it are stale.
+    before = _hand_written(
+        ("1", "A", "copy(DS1, DS101)"),
+        ("2", "B", "copy(DS2, DS102)"),
+        ("3", "C", "copy(DS3, DS103)"),
+    )
+    after = _hand_written(
+        ("1", "A", "copy(DS1, DS101)"),
+        ("3", "C", "copy(DS3, DS103)"),
+        (None, "B", "copy(DS2, DS102)"),
+    )
+
+    change = compare_rungs(_commented("A", "B", "C"), _commented("A", "C", "B"))
+    diff = render_diff(
+        change,
+        "main.csv",
+        before=_sources(
+            before,
+            {number: [_line_of(before, f"# R{number}")] for number in (1, 2, 3)},
+        ),
+        after=_sources(
+            after,
+            {
+                1: [_line_of(after, "# R1")],
+                2: [_line_of(after, "# R3")],
+                3: [_line_of(after, "copy(DS2, DS102)") - 1],
+            },
+        ),
+    )
+
+    # C moved up from CLICK's rung 3 to rung 2, and each rung is shown with its own source.
+    assert diff.lines[2:] == (
+        "     comment('A')\n",
+        "     with rung(C1):  # R1\n",
+        "         copy(DS1, DS101)\n",
+        "+    comment('C')\n",
+        "+    with rung(C1):  # R3\n",
+        "+        copy(DS3, DS103)\n",
+        "     comment('B')\n",
+        "     with rung(C1):\n",
+        "         copy(DS2, DS102)\n",
+        "-    comment('C')\n",
+        "-    with rung(C1):  # R3\n",
+        "-        copy(DS3, DS103)\n",
+    )
+
+
+def test_a_manifest_line_that_matches_no_chunk_falls_back_to_the_summary() -> None:
+    before = _hand_written(("1", "A", "copy(DS1, DS101)"))
+    after = _hand_written(("1", "A", "copy(DS1, DS101)"), ("2", "B", "copy(DS2, DS102)"))
+
+    change = compare_rungs(_commented("A"), _commented("A", "B"))
+    diff = render_diff(
+        change,
+        "main.csv",
+        before=_sources(before, {1: [_line_of(before, "# R1")]}),
+        # Rung 2 points at line 1, which is in no rung. Its marker must not place it.
+        after=_sources(after, {1: [_line_of(after, "# R1")], 2: [1]}),
+    )
+
+    assert "+R2  # B\n" in diff.text
+    assert "+        copy(DS2, DS102)" not in diff.text
+
+
 def test_diff_renders_multiline_rung_replacing_placeholder() -> None:
     before = """\
 from pyrung import Program, rung
@@ -1023,3 +1137,83 @@ def test_round_trip_says_which_line_of_nicknames_csv_pyrung_refuses(tmp_path: Pa
     assert "nicknames.csv line 2: Data Type 'INT' is not the type of Y001 (BIT)" in sources.error
     with pytest.raises(ValueError, match=r"^nicknames\.csv line 2: Data Type 'INT'"):
         CsvDataSource(str(nicknames)).load_all_addresses()
+
+
+def _workspace_with_helper(tmp_path: Path, *, recorded: str) -> tuple[Path, Path]:
+    """Write a workspace whose main program and subroutine each have a rung built in helpers.py.
+
+    The helper's rung is on the same line number as a rung of the program that calls it.
+    *recorded* is the source_file that the manifest records for the helper's rungs.
+    """
+    source_dir = tmp_path / "src" / "plc"
+    (source_dir / "subroutines").mkdir(parents=True)
+    program = _hand_written(("1", "A", "copy(DS1, DS101)"), ("2", "B", "copy(DS2, DS102)"))
+    (source_dir / "main.py").write_text(program, encoding="utf-8")
+    sub = '@subroutine("Fill")\n' + program
+    (source_dir / "subroutines" / "fill.py").write_text(sub, encoding="utf-8")
+    (source_dir / "helpers.py").write_text(program, encoding="utf-8")
+    line = _line_of(program, "# R2")
+    own = str(source_dir / "main.py")
+    manifest = {
+        "version": 1,
+        "main": [
+            {
+                "rung": 1,
+                "sources": [{"source_file": own, "source_line": _line_of(program, "# R1")}],
+            },
+            {"rung": 2, "sources": [{"source_file": recorded, "source_line": line}]},
+        ],
+        "subroutines": {
+            "Fill": [
+                {"rung": 1, "sources": [{"source_file": recorded, "source_line": line + 1}]},
+            ]
+        },
+    }
+    bundle_dir = tmp_path / "csv_output"
+    bundle_dir.mkdir()
+    (bundle_dir / "rung_sources.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return source_dir, bundle_dir
+
+
+@pytest.mark.parametrize("spelling", ["same", "copied workspace", "upper case"])
+def test_a_rung_built_in_a_helper_module_is_not_placed_in_the_program_by_line_number(
+    tmp_path: Path, spelling: str
+) -> None:
+    source_dir = tmp_path / "src" / "plc"
+    recorded = {
+        "same": str(source_dir / "helpers.py"),
+        "copied workspace": str(tmp_path / "elsewhere" / "src" / "plc" / "helpers.py"),
+        "upper case": str(source_dir / "helpers.py").upper(),
+    }[spelling]
+    source_dir, bundle_dir = _workspace_with_helper(tmp_path, recorded=recorded)
+
+    sources = BundleSources.workspace(source_dir, bundle_dir)
+
+    # Each helper rung keeps no line, so it is shown as its summary.
+    assert sources.lines("main.csv")[2] == []
+    assert sources.lines("subroutines/Fill.csv")[1] == []
+    change = compare_rungs(_commented("A"), _commented("A", "B"))
+    diff = render_diff(
+        change,
+        "main.csv",
+        before=_sources(_hand_written(("1", "A", "copy(DS1, DS101)"))),
+        after=sources,
+    )
+    assert "+R2  # B\n" in diff.text
+    assert "+        copy(DS2, DS102)" not in diff.text
+
+
+def test_a_rung_in_the_programs_own_file_keeps_its_line_if_the_workspace_was_copied(
+    tmp_path: Path,
+) -> None:
+    source_dir, bundle_dir = _workspace_with_helper(tmp_path, recorded="")
+    manifest_path = bundle_dir / "rung_sources.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    own = str(tmp_path / "elsewhere" / "src" / "plc" / "main.py").upper()
+    manifest["main"][0]["sources"][0]["source_file"] = own
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    sources = BundleSources.workspace(source_dir, bundle_dir)
+
+    program = (source_dir / "main.py").read_text(encoding="utf-8")
+    assert sources.lines("main.csv")[1] == [_line_of(program, "# R1")]
