@@ -8,10 +8,17 @@
 
 ## Unreleased
 
+### Changed
+
+- The Simulator now keeps a saved switch position on an input that no installed module has and no rung uses. 0.25.0 removed it when it loaded your saved settings, and the notice said that no installed input had the address.
+
 ### Fixed
 
 - ClickNick now builds the workspace when it cannot read the hardware in CLICK's Project.ini. This happens for a module that ClickNick does not know yet. Check Program, Review Changes, `clicknick-cli` and the Simulator then work. 0.25.0 stopped with **Could not build the workspace**, and the Simulator's hardware panel said that no CPU was configured. The panel now shows the read error. A message box in the main window tells you that ClickNick does not know which addresses are analog inputs. If you turn on the check Comparison Operand Has No Ladder Writer, Check Program then reports an analog input that a comparison reads as a value that nothing writes. For a project with no CPU, the panel now says that the Simulator still runs the program, that the dashed cards show the X and Y addresses that the program uses, and how to see your hardware.
 - ClickNick now builds the workspace for a CLICK PLUS project with an empty option slot, and the Simulator shows the project's hardware. CLICK 4.00 saves an empty option slot as the slot cover C2-FILL. ClickNick now reads C2-FILL through pyclickplc 0.11.2, and the Simulator shows it as a card with no I/O. For such a project, 0.25.0 showed **Could not build the workspace**, and the Simulator showed no hardware.
+- While the simulation runs, the Simulator now dims each point that the program in the simulation does not use, and the point's tooltip says why. You cannot link a dimmed point, force it, ask about it, flip its switch or type its analog value. To use the point, use it in a rung, in CLICK or in the workspace's `src/plc`, and load the new program into the simulation. 0.25.0 let you link such a point and then showed an error, such as `Linking X001 failed: cannot link X001: unknown tag: X001` in an empty project.
+- The Simulator now keeps a bench link that you saved on a point that the program does not use. The **Wiring** menu shows the link as `bench, waiting`, and the Simulator applies the link once the program in the simulation uses the point. 0.25.0 showed an error when the simulation started, and removed the link.
+- When you load a new program that no longer uses a point, the Simulator now keeps the bench link and the force on that point. This holds for either end of a bench link. The link waits until a program uses both ends again. 0.25.0 removed both.
 
 ## v0.26.0 - 2026-11-20
 

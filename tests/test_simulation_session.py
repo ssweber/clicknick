@@ -8,12 +8,19 @@ from __future__ import annotations
 
 import ast
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from pyclickplc.addresses import format_address_display, normalize_address, parse_addr_key
+from pyclickplc.addresses import (
+    format_address_display,
+    get_addr_key,
+    normalize_address,
+    parse_addr_key,
+    parse_address,
+)
 from pyrung import PHYSICAL_KEYS
 
 from clicknick.data.data_source import CsvDataSource
@@ -88,11 +95,19 @@ class FakeDap:
     names of the program it runs (*program_names*, read at launch and at each reload). A
     planned reload places each entry where its plan says. It carries every other entry over
     by name.
+
+    Like pyrung, it knows only the tags that the program uses (*program_known*, read at launch
+    and at each reload). It refuses a link on any other tag. A reload drops a link with such a
+    tag, and a force on a named tag that the new program does not have, as ``gone``. A frame
+    lists the known tags (``program_tags``), and a reload clears that list until the next frame.
     """
 
     def __init__(self, **callbacks) -> None:
         self.callbacks = callbacks
         self.program_names = dict  # () -> {address: tag}: what the workspace on disk names
+        self.program_known = frozenset  # () -> the tags that the workspace's program uses
+        self.knows: frozenset[str] = frozenset()
+        self.program_tags: frozenset[str] | None = None
         self.names: dict[str, str] = {}
         self.calls: list[tuple] = []
         self.launch_error: Exception | None = None
@@ -128,6 +143,7 @@ class FakeDap:
     def launch(self, project_dir, **kwargs):
         self.calls.append(("launch", project_dir, kwargs))
         self.names = dict(self.program_names())
+        self.knows = frozenset(self.program_known())
         if self.launch_hook is not None:
             self.launch_hook()
         if self.launch_error is not None:
@@ -146,9 +162,25 @@ class FakeDap:
         if self.reload_error is not None:
             raise self.reload_error  # a failed reload changes nothing
         carried: list[dict] = []
+        knows = frozenset(self.program_known())
 
-        def report(tag, kind, to, *, planned, **fields):
-            reason = self.reload_drops.get(tag)
+        def gone(*tags) -> tuple[str, str] | None:
+            for tag in tags:
+                if tag is not None and tag not in knows:
+                    return ("gone", f"{tag} is not in the new program")
+            return None
+
+        def report(tag, kind, to, *, planned, enable=None, **fields):
+            if kind == "force":
+                # pyrung reaches an address by itself, so only a named tag can be gone.
+                missing = None if to is None or normalize_address(to) else gone(to)
+            elif kind in ("link", "cut"):
+                missing = None if to is None else gone(to, enable)
+            else:
+                missing = None
+            reason = self.reload_drops.get(tag) or missing
+            if kind != "force":
+                fields["enable"] = None if reason and kind != "declared" else enable
             entry = {
                 "tag": tag,
                 "kind": kind,
@@ -183,6 +215,8 @@ class FakeDap:
             report(fb, "declared", to, planned=True, feedback=fb, enable=self.project.get(fb))
         self.forces, self.bench = forces, bench
         self.names = dict(self.program_names())
+        self.knows = knows
+        self.program_tags = None  # until the frame after the reload lists the new tags
         self.links_revision += 1
         return {"result": "Reloaded at scan 7 (3 tag(s))", "carried": carried}
 
@@ -228,6 +262,9 @@ class FakeDap:
         self.calls.append(("link", feedback, enable, {"trigger": trigger, "response": response}))
         if feedback in self.refuse_links:
             raise RuntimeError(f"cannot link {feedback}: {self.refuse_links[feedback]}")
+        for tag in (feedback, enable):
+            if self._tag(tag) not in self.knows:
+                raise RuntimeError(f"cannot link {feedback}: unknown tag: {self._tag(tag)}")
         self.bench[self._tag(feedback)] = {
             "enable": self._tag(enable), "enabled": True, "trigger": trigger,
             "response": dict(response),
@@ -283,6 +320,7 @@ class FakeDap:
 
     def frame(self, **changes) -> None:
         """Simulate a pyrungScanFrame arriving on the reader thread."""
+        self.program_tags = self.knows
         for name, value in changes.items():
             setattr(self, name, value)
         self.callbacks["on_frame"]()
@@ -320,17 +358,25 @@ def _publish(svc: AnalysisService, result: AnalysisResult) -> None:
     svc._status = AnalysisStatus.READY
 
 
-def _ready_analysis(project_dir: Path, *, generation: int = 1) -> AnalysisService:
+#: The addresses that the default program uses: every point of :data:`CPU`. A rung that uses
+#: an address with no nickname names its tag after the address.
+CPU_POINTS = ("X001", "X002", "X003", "Y001", "DF1")
+
+
+def _ready_analysis(
+    project_dir: Path, *, generation: int = 1, used: tuple[str, ...] = CPU_POINTS
+) -> AnalysisService:
     (project_dir / "run.py").write_text("x", encoding="utf-8")
+    keys = {address: get_addr_key(*parse_address(address)) for address in used}
     svc = AnalysisService()
     _publish(
         svc,
         AnalysisResult(
-            dataview=SimpleNamespace(tags=set()),
+            dataview=SimpleNamespace(tags=set(used)),
             program=MagicMock(),
             project_dir=project_dir,
-            tag_to_addr_key={},
-            addr_key_to_tag={},
+            tag_to_addr_key=dict(keys),
+            addr_key_to_tag={key: address for address, key in keys.items()},
         ),
     )
     svc._generation = generation
@@ -364,6 +410,7 @@ class Harness:
         def dap_factory(**callbacks):
             dap = FakeDap(**callbacks)
             dap.program_names = self.workspace_names
+            dap.program_known = self.workspace_known
             if self.next_launch_error is not None:
                 dap.launch_error = self.next_launch_error
             dap.launch_hook = self.launch_hook
@@ -410,6 +457,16 @@ class Harness:
             format_address_display(*parse_addr_key(key)): tag
             for key, tag in self.analysis.project_addr_key_to_tag.items()
         }
+
+    def workspace_known(self) -> frozenset[str]:
+        """Return the tags that the workspace's program uses, under their current names."""
+        result = None if self.analysis is None else self.analysis._result
+        if result is None:
+            return frozenset()
+        to_key, to_tag = result.tag_to_addr_key, result.addr_key_to_tag
+        return frozenset(
+            to_tag.get(to_key[tag], tag) if tag in to_key else tag for tag in result.dataview.tags
+        )
 
     @property
     def dap(self) -> FakeDap:
@@ -969,16 +1026,26 @@ def test_a_bench_link_the_file_cannot_hold_is_reported(ready, tmp_path):
     assert ready.sim.restored_links == 1
 
 
-def test_restore_drops_inputs_the_hardware_no_longer_has(ready, tmp_path):
+def test_restore_drops_analog_values_the_hardware_no_longer_has(ready, tmp_path):
     save_state(
         tmp_path / "app" / "Line1.toml",
-        SimulatorState(switches={"X001": True, "X009": True}, modules=("cpu:OLD",)),
+        SimulatorState(
+            switches={"X001": True, "X009": True},
+            analog={"DF1": 2.0, "DF5": 3.0},
+            modules=("cpu:OLD",),
+        ),
     )
     ready.sim.set_state_location("Line1", None)
     ready.open()
+    assert ready.sim.analog_value("DF1") == 2.0
+    assert ready.sim.analog_value("DF5") is None
+    # No module and no rung has X009, so its switch waits for a rung that uses it.
     assert ready.sim.switch_on("X001")
-    assert not ready.sim.switch_on("X009")
-    assert ready.sim.notice and "X009" in ready.sim.notice
+    assert ready.sim.switch_on("X009")
+    assert ready.sim.notice == (
+        "The hardware changed since the last session. ClickNick removed the settings for DF5, "
+        "because no installed analog input has those addresses."
+    )
 
 
 def test_pairing_a_workspace_moves_settings_into_it(ready, tmp_path):
@@ -1377,6 +1444,7 @@ def _name(ready, address: str, tag: str) -> None:
     key = get_addr_key(*parse_address(address))
     ready.analysis._result.addr_key_to_tag[key] = tag
     ready.analysis._result.tag_to_addr_key[tag] = key
+    ready.analysis._result.dataview.tags.add(tag)  # the program uses it
 
 
 def _echoes(ready) -> list[str]:
@@ -1390,9 +1458,9 @@ def test_to_tag_uses_the_running_programs_names(ready):
 
 
 def test_panel_actions_echo_as_console_commands(ready):
-    ready.open()
     _name(ready, "X001", "Start_PB")
     _name(ready, "Y001", "Motor_Run")
+    ready.open()
     ready.events.clear()
 
     ready.sim.toggle_switch("X001")
@@ -1479,6 +1547,8 @@ def _rebuild(
     saved: bool = True,
     same_program: bool = False,
     compared: bool = True,
+    uses: tuple[str, ...] = (),
+    drops: tuple[str, ...] = (),
 ) -> None:
     """Rebuild the analysis as a CLICK save does. *renames* maps addresses to new tag names.
 
@@ -1486,6 +1556,9 @@ def _rebuild(
     Sync. The build writes ``src/plc`` again and adds a rung to it, unless *same_program* is
     set. Unless *compared* is false, the session then compares that source with the program
     it runs, as its watch tick or a frame does.
+
+    The new program uses the addresses that the old one used, under their new names. It also
+    uses each address in *renames* and in *uses*, and no longer uses those in *drops*.
     """
     if saved:
         harness.saves += 1
@@ -1496,10 +1569,19 @@ def _rebuild(
     key_to_tag = dict(old.addr_key_to_tag)
     for address, tag in (renames or {}).items():
         key_to_tag[get_addr_key(*parse_address(address))] = tag
+    uses = (*uses, *(renames or {}))
+    for address in uses:
+        key_to_tag.setdefault(get_addr_key(*parse_address(address)), address)
+    old_keys = old.tag_to_addr_key
+    tags = {
+        key_to_tag.get(old_keys[tag], tag) if tag in old_keys else tag for tag in old.dataview.tags
+    }
+    tags |= {key_to_tag[get_addr_key(*parse_address(address))] for address in uses}
+    tags -= {key_to_tag.get(get_addr_key(*parse_address(address))) for address in drops}
     _publish(
         harness.analysis,
         AnalysisResult(
-            dataview=old.dataview,
+            dataview=SimpleNamespace(tags=tags),
             program=old.program,
             project_dir=old.project_dir,
             tag_to_addr_key={tag: key for key, tag in key_to_tag.items()},
@@ -2645,7 +2727,7 @@ def test_a_refused_link_undoes_only_itself(ready):
 # ----------------------------------------------------------------------
 
 
-def test_switches_on_unassigned_inputs_wait_for_the_analysis(ready, tmp_path):
+def test_switches_on_unassigned_inputs_stay_through_the_first_build(ready, tmp_path):
     from pyclickplc.addresses import get_addr_key
 
     ready.analysis._result.tag_to_addr_key["Aux"] = get_addr_key("X", 201)
@@ -2906,6 +2988,32 @@ def test_stop_and_write_clears_non_retentive_values_and_keeps_the_force(on_pyrun
     assert (dap.tag("Ret"), dap.tag("NonRet"), dap.tag("Light")) == (7, 1, True)
     assert dap.list_forces() == {"Light": True}
     assert dap.mode == "run"
+
+
+def test_the_used_points_come_from_pyrung_and_follow_a_write(on_pyrung):
+    """pyrung's frames list the tags that the program knows, and the frame after a write too."""
+    sim, dap = on_pyrung.sim, on_pyrung.dap
+    assert {"X001", "Y001", "DS1", "DS2"} <= sim.used_addresses
+    assert not sim.is_used("X002")
+
+    # The program starts to use X002, as Aux.
+    _name(on_pyrung, "X002", "Aux")
+    run = on_pyrung.analysis.project_dir / "run.py"
+    run.write_text(
+        _VALUES_PROGRAM.replace(
+            "with rung(start):",
+            'with rung(Bool("Aux")):\n        out(Bool("Lamp"))\n    with rung(start):',
+        ),
+        encoding="utf-8",
+    )
+    _rebuild(on_pyrung)
+    sim.run_time_edit()
+    on_pyrung.scheduler.run_ready()
+    dap.frame()
+
+    assert "Aux" in dap.program_tags
+    assert sim.is_used("X002")
+    assert on_pyrung.messages("error") == ""
 
 
 def test_a_link_that_lands_where_a_followed_name_went_is_dropped(ready):
@@ -3616,3 +3724,211 @@ def test_the_console_runs_assert_and_run_until_on_pyrung(on_pyrung):
     assert on_pyrung.dap.tag("Ret") == 21
     ok, text = send_command(session, "run until Ret > 100000 within 5")
     assert not ok and "still false after 5 scan(s)" in text
+
+
+# ----------------------------------------------------------------------
+# Points that the program does not use
+# ----------------------------------------------------------------------
+
+#: A program that uses every point of :data:`CPU` except X003.
+WITHOUT_X003 = ("X001", "X002", "Y001", "DF1")
+
+
+@pytest.fixture()
+def without_x003(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    return Harness(tmp_path, _ready_analysis(project, used=WITHOUT_X003))
+
+
+def _link_calls(dap: FakeDap) -> list[tuple]:
+    return [c[:2] for c in dap.calls if c[0] in ("link", "unlink", "restore_link", "set_links")]
+
+
+def test_linking_a_point_the_program_does_not_use_sends_nothing_and_shows_no_error(without_x003):
+    harness = without_x003
+    harness.open()
+    assert harness.sim.used_addresses is None, "unknown until the first frame lists the tags"
+    _frame(harness)
+    assert harness.sim.used_addresses == frozenset(WITHOUT_X003)
+    assert not harness.sim.is_used("X003")
+    errors: list[str] = []
+
+    harness.sim.link("X003", ON_DELAY_LINK, on_error=errors.append)
+    harness.sim.link("X002", BenchLink("X003", response=response(on_delay="1s")))
+    harness.scheduler.run_ready()
+
+    assert _link_calls(harness.dap) == []
+    assert errors == []
+    assert harness.messages("error") == ""
+    assert [e.text for e in harness.events if e.kind == "echo"] == []
+    waiting = {link.feedback: link for link in harness.sim.links if link.waiting}
+    assert set(waiting) == {"X002", "X003"}
+    assert not any(link.active for link in waiting.values())
+
+    harness.sim.set_link_enabled("X003", False)
+    harness.sim.restore_link("X003")
+    harness.sim.discard_bench_links()
+    harness.scheduler.run_ready()
+    assert _link_calls(harness.dap) == []
+    assert harness.sim.bench_links == {}
+    assert harness.messages("error") == ""
+
+
+def test_a_link_the_simulation_refuses_for_an_unknown_tag_waits_with_no_error(without_x003):
+    harness = without_x003
+    harness.open()  # no frame yet, so ClickNick does not know what the program uses
+    errors: list[str] = []
+
+    harness.sim.link("X003", ON_DELAY_LINK, on_error=errors.append)
+    harness.scheduler.run_ready()
+
+    assert _link_calls(harness.dap) == [("link", "X003")]
+    assert errors == []
+    assert harness.messages("error") == ""
+    assert harness.sim.bench_links == {"X003": ON_DELAY_LINK}
+    assert harness.sim.link_waits("X003")
+    _frame(harness)
+    assert harness.sim.bench_links == {"X003": ON_DELAY_LINK}
+
+
+def test_a_saved_link_on_an_unused_point_waits_then_applies_after_a_write(without_x003, tmp_path):
+    harness = without_x003
+    path = tmp_path / "app" / "Line1.toml"
+    save_state(path, SimulatorState(links={"X002": AUX_LINK, "X003": ON_DELAY_LINK}))
+    harness.sim.set_state_location("Line1", None)
+    harness.open()
+
+    # Before the first frame, every link goes. pyrung refuses the one on X003, and it waits.
+    assert _link_calls(harness.dap) == [("link", "X002"), ("link", "X003")]
+    assert harness.messages("error") == ""
+    assert harness.sim.link_waits("X003")
+    harness.dap.links_revision += 1  # the Console changed a link
+    _frame(harness)
+    assert harness.sim.bench_links == {"X002": AUX_LINK, "X003": ON_DELAY_LINK}
+    assert harness.sim.link_waits("X003")
+    harness.scheduler.fire(SAVE_DELAY_MS)
+    assert dict(load_state(path).links) == {"X002": AUX_LINK, "X003": ON_DELAY_LINK}
+
+    _rebuild(harness, uses=("X003",))
+    mark = len(harness.dap.calls)
+    harness.sim.write_program()
+    harness.scheduler.run_ready()
+
+    assert ("link", "X003") in [c[:2] for c in harness.dap.calls[mark:]]
+    assert harness.dap.bench["X003"]["enable"] == "Y001"
+    assert harness.sim.used_addresses is None, "until the frame after the reload"
+    _frame(harness)
+    assert harness.sim.is_used("X003")
+    assert not harness.sim.link_waits("X003")
+    assert harness.sim.bench_links == {"X002": AUX_LINK, "X003": ON_DELAY_LINK}
+    assert harness.messages("error") == ""
+
+
+def test_a_write_that_stops_using_a_point_keeps_its_link_and_force(ready):
+    _name(ready, "X003", "Aux")
+    _running_with_settings(ready)  # a bench link on X002, and a force on Y001
+    ready.sim.force("X003", True)
+    ready.scheduler.run_ready()
+    _rebuild(ready, drops=("X002", "X003"))
+    mark = len(ready.dap.calls)
+
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    # pyrung drops both as gone. The force goes again by address, and the link waits.
+    assert ("force", "X003", True) in ready.dap.calls[mark:]
+    assert "X002" not in ready.dap.bench
+    assert ready.sim.forces == {"Y001": True, "X003": True}
+    assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+    assert ready.sim.link_waits("X002")
+    assert ready.sim.notice == (
+        "The bench link on X002 waits until the program in the simulation uses both X002 and Y001."
+    )
+    ready.dap.links_revision += 1
+    _frame(ready)
+    assert ready.sim.bench_links == {"X002": ON_DELAY_LINK}
+    assert not ready.sim.is_used("X002")
+
+    _rebuild(ready, uses=("X002",))
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    assert ready.dap.bench["X002"]["enable"] == "Y001"
+    assert not ready.sim.link_waits("X002")
+
+
+def test_a_write_that_stops_using_only_the_enable_keeps_the_link_waiting(ready):
+    ready.open()
+    ready.sim.link("X001", BenchLink("X003", response=response(on_delay="1s")))
+    _frame(ready)
+    _rebuild(ready, drops=("X003",))
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert "X001" not in ready.dap.bench
+    assert ready.sim.bench_links == {"X001": BenchLink("X003", response=response(on_delay="1s"))}
+    assert ready.sim.link_waits("X001")
+    assert "Could not keep" not in (ready.sim.notice or "")
+    _frame(ready)
+    assert ready.sim.link_waits("X001")
+    assert ready.sim.is_used("X001") and not ready.sim.is_used("X003")
+
+    _rebuild(ready, uses=("X003",))
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+    assert ready.dap.bench["X001"]["enable"] == "X003"
+
+
+def test_a_link_the_new_program_declares_does_not_wait(ready):
+    ready.open()
+    ready.sim.link("X002", ON_DELAY_LINK)
+    _frame(ready)
+    ready.dap.reload_drops = {"X002": ("in program", "the program links X002")}
+
+    ready.sim.write_program()
+    ready.scheduler.run_ready()
+
+    assert not ready.sim.link_waits("X002")
+    assert ready.sim.bench_links == {}
+
+
+def test_saved_settings_apply_with_no_cpu(ready, tmp_path):
+    ready.sim._layout_reader = lambda _path, used: build_panel_layout((), used)
+    path = tmp_path / "app" / "Line1.toml"
+    saved = SimulatorState(
+        switches={"X001": True, "X009": True},
+        analog={"DF1": 4.5},
+        forces={"Y001": True},
+        links={"X002": AUX_LINK},
+        modules=("cpu:C0-02DD1-D",),
+    )
+    save_state(path, saved)
+    ready.sim.set_state_location("Line1", None)
+    ready.open()
+
+    assert not ready.sim.layout.has_cpu
+    assert ready.sim.layout.addresses("input") == ("X001", "X002", "X003")
+    assert ("force", "Y001", True) in ready.dap.calls
+    assert _link_calls(ready.dap) == [("link", "X002")]
+    ready.sim.set_switch_position("run")
+    ready.scheduler.run_ready()
+    assert ("set_mode", "run", {"X001": True, "X009": True, "DF1": 4.5}, None) in ready.dap.calls
+    assert ready.sim.notice is None
+    ready.scheduler.fire(SAVE_DELAY_MS)
+    assert load_state(path) == replace(saved, run_hint_seen=True)
+
+
+def test_restore_trims_analog_values_before_the_first_build(ready, tmp_path):
+    save_state(
+        tmp_path / "app" / "Line1.toml",
+        SimulatorState(switches={"X201": True}, analog={"DF5": 1.0}, modules=("cpu:OLD",)),
+    )
+    ready.analysis._result = None  # the app has just connected, and its first build runs
+    ready.analysis._status = AnalysisStatus.BUILDING
+    ready.sim.set_state_location("Line1", None)
+    ready.sim.refresh_layout()
+
+    assert ready.sim.analog_value("DF5") is None
+    assert ready.sim.switch_on("X201")
+    assert ready.sim.notice is not None and "DF5" in ready.sim.notice

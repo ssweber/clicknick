@@ -124,3 +124,23 @@ def test_a_pyrung_without_the_planned_reload_is_named():
         dap.planned_reload({})
     assert not isinstance(refused.value, DapUnavailableError)
     assert dap.sent == ["pyrungReload"]
+
+
+def _frame(dap: DapService, tags: dict[str, str]) -> None:
+    dap._handle_event({"event": "pyrungScanFrame", "body": {"trace": {"tagTypes": tags}}})
+
+
+def test_the_program_tags_follow_the_frames_and_a_reload_clears_them():
+    dap = DapService()
+    assert dap.program_tags is None, "unknown until the first frame"
+    _frame(dap, {"Start": "bool", "Light": "bool"})
+    assert dap.program_tags == {"Start", "Light"}
+
+    dap._handle_response({"request_seq": 1, "command": "pyrungReload", "success": True})
+    assert dap.program_tags is None, "the new program's tags come in the next frame"
+    _frame(dap, {})
+    assert dap.program_tags == frozenset(), "an empty program knows no tags"
+
+    _frame(dap, {"Start": "bool"})
+    dap._handle_response({"request_seq": 2, "command": "pyrungReload", "success": False})
+    assert dap.program_tags == {"Start"}, "a refused reload keeps the old program"

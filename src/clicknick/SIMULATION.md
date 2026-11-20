@@ -67,6 +67,47 @@ refusals rely on that split.
   address, and each bench link whose key is not an address or whose value does not parse. The session reports
   each one as an error.
 
+## Points that the program does not use
+
+- pyrung knows only the tags that the program uses. It refuses a link whose feedback or enable is any other tag,
+  with `cannot link X001: unknown tag: X001`. It accepts a force or a patch on such an address.
+- The used addresses come from pyrung. Each frame lists the tags that the running program knows (`tagTypes`,
+  which is the runner's `_known_tags_by_name`, the set that pyrung's `link_problem` checks).
+  `DapService.program_tags` holds them. The session maps them to addresses with the running program's tag
+  names (`used_addresses`, read in `_on_frame` and after a write). The rule is the same for X, Y, DF and every
+  other address. With pyrung 0.18.0, `pack_bits(X003..X010, DS1)` was observed to make pyrung know only X003
+  and X010, so the addresses between them count as unused. The DataView lists all eight.
+- The set is `None` while the simulation is off, from a launch until its first frame, and from a write's reload
+  until the frame after it. While it is `None`, no point is dimmed and no link waits. The session sends what
+  the user chose, and pyrung decides.
+- Two sets of "used" addresses exist. The dashed placeholder cards show the X and Y addresses that the latest
+  build uses (`_used_io`, from the analysis), so they show a CLICK save before it is written. The dimming
+  shows what the program in the simulation uses, so it changes only at a write or a launch. The user texts say
+  "the program in the simulation" for the dimming.
+- The Simulator dims a point that the program in the simulation does not use, and its tooltip says why. No
+  link drag starts or ends on it, and the link, force and Console question menu items are disabled. Its switch
+  takes no click, a double-click does not force it, and its analog entry is read-only. **Release force** stays
+  enabled. The Console can still link the point, and pyrung refuses.
+- A bench link waits when ClickNick holds it back because pyrung would refuse it (`link_waits`). That is when
+  the used set does not hold its feedback or its enable, or when pyrung refused it or dropped it for an unknown
+  tag (`_held`). ClickNick keeps it in the desired state and saves it. `links` lists it with `waiting=True`,
+  and the frame that adopts pyrung's links keeps it. A link that pyrung refuses for an unknown tag at launch,
+  from `link()` or after a write waits too, and no error is shown.
+- A write sends each waiting link again after the reload. If pyrung drops a link or a force as `gone`, the new
+  program does not have one of its tags, either end of a link. The link then waits, and the notice says so.
+  The force goes again by address to where the plan put it, and pyrung accepts it. Other drop reasons
+  (`conflict`, `in program`, `invalid`, `unlinked`) lose the entry as before.
+- Switch and analog values on an unused address stay in the desired state and go with every patch.
+
+## Restoring saved settings
+
+- The session applies the saved switches, analog values, forces and links at launch, whatever the hardware.
+- `_restore_when_known` trims only the analog values, to the DFs that an installed analog input has. Only a
+  module assigns a DF to an analog input, so it waits for a hardware configuration with a CPU that it could
+  read. It does not wait for a build. Until then nothing is trimmed, and the saved `modules` stay in the file,
+  because `_save_now` writes `modules` only with a CPU.
+- Nothing trims a switch, a force or a bench link. A switch on an X address that no module provides stays.
+
 ## Writing a changed program
 
 The workspace is the pyrung project that ClickNick generates from the connected CLICK project.

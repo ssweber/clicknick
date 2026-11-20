@@ -451,6 +451,8 @@ def test_slim_cpu_card_with_its_slots_as_one_housing(simulator, ready):
         module("slot", 0, "C2-08ND3", inputs=("X001", "X002")),
         module("expansion", 1, "C0-08TD1", outputs=("Y101",)),
     ]
+    # The program uses only these modules' points, so no placeholder card joins them.
+    ready.analysis = _ready_analysis(ready.analysis.project_dir, used=("X001", "X002", "Y101"))
     ready.sim._layout_reader = lambda _path, used: build_panel_layout(modules, used)
     win = simulator(ready)
     texts = {
@@ -745,6 +747,80 @@ def test_restored_links_banner(simulator, ready):
     assert "1 bench link restored" in str(win._banner_key)
     ready.sim.discard_bench_links()
     assert "bench link restored" not in str(win._banner_key)
+
+
+def test_a_point_the_program_does_not_use_is_dimmed_and_takes_no_link(
+    simulator, tmp_path, tk_root, monkeypatch
+):
+    from clicknick.services.sim_state import BenchLink
+    from clicknick.views import sim_palette as P
+
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project, used=("X001", "X002", "Y001", "DF1")))
+    harness.sim.link("X003", BenchLink("Y001", response=response(on_delay="1s")))
+    win = simulator(harness)
+    c = win._canvas
+    errors: list[str] = []
+    monkeypatch.setattr(win, "_show_action_error", errors.append)
+    opened: list = []
+    monkeypatch.setattr(win, "_open_link_dialog", lambda address, **kw: opened.append(address))
+    assert harness.messages("error") == "", "pyrung refused the saved link, and it waits"
+    texts = [i for i in c.find_withtag("in:X003") if c.type(i) == "text"]
+    [label] = [i for i in texts if c.itemcget(i, "text") == "X003"]
+    assert c.itemcget(label, "fill") != P.MUTED, "nothing is dimmed before the first frame"
+
+    _frame(harness)  # the frame lists the tags that the program uses
+    texts = [i for i in c.find_withtag("in:X003") if c.type(i) == "text"]
+    [label] = [i for i in texts if c.itemcget(i, "text") == "X003"]
+    assert c.itemcget(label, "fill") == P.MUTED
+    assert not c.find_withtag("handle:X003"), "no link drag starts on it"
+    assert c.find_withtag("handle:X002")
+    win._on_switch_press("X003")
+    win._on_switch_release("X003")
+    assert not harness.sim.switch_on("X003"), "its switch does not move"
+    assert win._switch_text("X003") == (
+        "The program in the simulation does not use X003. To link it here, use it in a rung "
+        "and write the program to the simulation.\n"
+        "The bench link from Y001 waits until the program in the simulation uses X003."
+    )
+    assert "X003" not in win._enables()
+
+    # It takes no force, and the Console is not asked about it.
+    menu = tk.Menu(tk_root, tearoff=0)
+    win._add_analysis_items(menu, "X003")
+    win._add_force_items(menu, "X003", (True, False))
+    states = {
+        menu.entrycget(i, "label"): menu.entrycget(i, "state")
+        for i in range(menu.index("end") + 1)
+        if menu.type(i) != "separator"
+    }
+    assert states == {
+        "Why?": "disabled",
+        "Force ON": "disabled",
+        "Force OFF": "disabled",
+        "Release force": "disabled",
+    }
+
+    # Dragging an output onto it finds no target.
+    target = win._inputs["X003"]
+    win._start_link_drag("Y001")
+    win._on_link_drag(SimpleNamespace(x=target["x"] + 100, y=target["cy"]))
+    assert win._link_drag["target"] is None
+    win._on_any_release(None)
+    assert opened == []
+    assert errors == []
+
+    win._populate_wiring_menu()
+    assert any(
+        label.startswith("X003") and label.endswith("bench, waiting")
+        for label in _menu_labels(win._wiring_menu)
+    )
+    harness.sim.restore_link("X003")
+    menu = tk.Menu(tk_root, tearoff=0)
+    win._add_link_items(menu, "X003", analog=False)
+    assert menu.entrycget("end", "label") == "Link to the tag that drives it..."
+    assert menu.entrycget("end", "state") == "disabled"
 
 
 def test_link_dialog_builds_bench_links(tk_root):

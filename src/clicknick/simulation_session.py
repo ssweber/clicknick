@@ -19,12 +19,13 @@ results come back through ``scheduler.after(0, ...)``.
 from __future__ import annotations
 
 import enum
+import operator
 import os
 import queue
 import threading
 import traceback
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -45,7 +46,7 @@ from .services.physical_response import (
     response_label,
     response_tokens,
 )
-from .services.program_carry import CarryPlan, address_of, plan_carry
+from .services.program_carry import CarryPlan, LinkTarget, address_of, plan_carry
 from .services.sim_hardware import (
     MODULE_STATUS_PREFIX,
     PanelLayout,
@@ -191,6 +192,9 @@ class WiredLink:
     active: bool = False
     pending: bool = False
     enabled: bool = True
+    #: True for a bench link that the simulation does not have yet, because the program does
+    #: not use its feedback or its enable (:func:`link_waits`).
+    waiting: bool = False
 
     @property
     def cut(self) -> bool:
@@ -288,6 +292,40 @@ def _unavailable(exc: BaseException) -> bool:
     return isinstance(exc, DapUnavailableError)
 
 
+def link_waits(feedback: str, link: BenchLink, used: frozenset[str] | None) -> bool:
+    """Return True if the program does not use the feedback or the enable of *link*.
+
+    *used* holds the addresses of the tags that the simulation knows. The simulation would
+    refuse such a link, so ClickNick keeps it and sends it once the program uses both
+    addresses. If *used* is None, nobody knows what the program uses yet, and no link waits.
+    """
+    if used is None:
+        return False
+    return feedback not in used or (link.enable is not None and link.enable not in used)
+
+
+def _waiting_text(waiting: Mapping[str, BenchLink]) -> str:
+    """Return the notice for the bench links in *waiting*, which a write left waiting."""
+    parts = []
+    for feedback in sorted(waiting):
+        link = waiting[feedback]
+        if link.cut:
+            parts.append(
+                f"The cut on {feedback} waits until the program in the simulation uses {feedback}."
+            )
+        else:
+            parts.append(
+                f"The bench link on {feedback} waits until the program in the simulation uses "
+                f"both {feedback} and {link.enable}."
+            )
+    return " ".join(parts)
+
+
+def _unknown_tag(reason: str) -> bool:
+    """Return True if pyrung refused a link because the program does not know one of its tags."""
+    return "unknown tag" in reason
+
+
 def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
     """Send one bench link to the simulation, either a cut or a link with its response."""
     if link.cut:
@@ -329,6 +367,8 @@ class _Listing:
     problems: tuple[str, ...] = ()
     #: Text saying what the write released, renamed or could not keep (``CarryPlan.written``).
     carried: str = ""
+    #: The bench links that the simulation does not have, because they wait (:func:`link_waits`).
+    waiting: Mapping[str, BenchLink] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -425,12 +465,21 @@ class SimulationSession:
         self._dap: Any | None = None
         self._token = 0
         # The program that the simulation runs. These fields hold the analysis generation it
-        # came from, the CLICK save count at that time, its tag names, its folder and what its
-        # source held. A launch and a write set them. pyrung never loads files on its own,
-        # because autoreload is off.
+        # came from, the CLICK save count at that time, its tag names, the addresses it uses,
+        # its folder and what its source held. A launch and a write set them. pyrung never loads
+        # files on its own, because autoreload is off.
         self._program_generation = -1
         self._program_saves: int | None = None
         self._program_names: tuple[Mapping[str, int], Mapping[int, str]] | None = None
+        # The addresses of the tags that the simulation knows, read from its frames, and the
+        # tag list and names that they were read from. None until a frame lists the tags.
+        self._used: frozenset[str] | None = None
+        self._used_from: tuple[object, ...] | None = None
+        # The used addresses that the views last heard about.
+        self._used_shown: frozenset[str] | None = None
+        # The feedbacks of the bench links that the simulation refused or dropped because it
+        # does not know one of their tags. They wait like the links that link_waits names.
+        self._held: set[str] = set()
         self._program_dir: Path | None = None
         self._program_source: PlcSourceWatch | None = None
         self._source_changed = False
@@ -805,10 +854,13 @@ class SimulationSession:
 
     @property
     def links(self) -> tuple[WiredLink, ...]:
-        """Return every link as the simulation reports it, or the bench changes while it is off."""
-        if self._link_rows is not None:
-            return self._link_rows
-        return tuple(
+        """Return every link as the simulation reports it, or the bench changes while it is off.
+
+        While the simulation runs, the bench links that wait (:meth:`link_waits`) follow the
+        simulation's own links.
+        """
+        rows = self._link_rows
+        return (rows or ()) + tuple(
             WiredLink(
                 address,
                 link.enable,
@@ -816,9 +868,62 @@ class SimulationSession:
                 link.trigger,
                 link.response,
                 enabled=link.enabled,
+                waiting=waits,
             )  # fmt: skip
             for address, link in self._state.links.items()
+            if (waits := self._waits(address, link)) or rows is None
         )
+
+    @property
+    def used_addresses(self) -> frozenset[str] | None:
+        """The CLICK addresses of the tags that the simulation knows, or None while unknown.
+
+        These are the tags of the program that the simulation runs, as its frames list them.
+        pyrung refuses a link on any other address. The set is None while the simulation is
+        off, and from a launch until its first frame.
+        """
+        return self._used
+
+    def is_used(self, address: str) -> bool:
+        """Return True if the program in the simulation uses *address*, or if nobody knows."""
+        used = self._used
+        return used is None or address in used
+
+    def link_waits(self, feedback: str) -> bool:
+        """Return True if the bench link on *feedback* waits for the program to use its points."""
+        link = self._state.links.get(feedback)
+        return link is not None and self._waits(feedback, link)
+
+    def _waits(self, feedback: str, link: BenchLink) -> bool:
+        """Return True if ClickNick holds *link* back, because the simulation would refuse it."""
+        return feedback in self._held or link_waits(feedback, link, self._used)
+
+    def _read_used(self) -> frozenset[str] | None:
+        """Return the addresses of the tags that the simulation's latest frame listed."""
+        dap = self._dap
+        tags = None if dap is None else dap.program_tags
+        if tags is None:
+            return None
+        maps = self._tag_maps()
+        # A frame can arrive every scan. Map the tags again only when the list or the names
+        # changed. DapService replaces its list only when the tags change.
+        source = (tags, *maps)
+        if self._used_from is not None and all(map(operator.is_, self._used_from, source)):
+            return self._used
+        self._used_from = source
+        return frozenset(a for tag in tags if (a := address_of(tag, maps)) is not None)
+
+    def _refresh_used(self) -> None:
+        """Read the used addresses from the simulation, and redraw the panel if they changed."""
+        self._used = self._read_used()
+        self._show_used()
+
+    def _show_used(self) -> None:
+        """Tell the views to draw the panel again when the used addresses changed."""
+        used = self.used_addresses
+        if used != self._used_shown:
+            self._used_shown = used
+            self._emit("layout")
 
     def driving_link(self, address: str) -> WiredLink | None:
         """Return the link that drives *address* right now, or None. A cut drives nothing."""
@@ -1271,6 +1376,9 @@ class SimulationSession:
         self._links_synced = False
         self._links_refetch = False
         self._program_names = None
+        self._used = None
+        self._used_from = None
+        self._held.clear()
         self._program_dir = None
         self._program_source = None
         self._source_changed = False
@@ -1283,6 +1391,7 @@ class SimulationSession:
         self._dap = None
         if dap is not None:
             self._run_background(dap.terminate, "sim-dap-stop")
+        self._show_used()
 
     def _flush_save(self) -> None:
         if self._save_after_id is not None:
@@ -1494,8 +1603,15 @@ class SimulationSession:
         return patches
 
     def _drop_failed_links(self, token: int, failed: list[tuple[str, str]]) -> None:
+        """Remove the bench links that the simulation refused, and say why.
+
+        A link that the simulation refused because it does not know one of its tags waits.
+        """
         if token != self._token:
             return
+        held = {address for address, reason in failed if _unknown_tag(reason)}
+        self._held |= held
+        failed = [(address, reason) for address, reason in failed if address not in held]
         links = dict(self._state.links)
         for address, _reason in failed:
             links.pop(address, None)
@@ -1546,6 +1662,10 @@ class SimulationSession:
                 and normalize_address(row.feedback) == row.feedback
                 and (row.enable is None or normalize_address(row.enable) == row.enable)
             }
+            # The simulation does not list a link that waits, so keep it from the settings.
+            for address, link in self._state.links.items():
+                if address not in adopted and self._waits(address, link):
+                    adopted[address] = link
             bench = body.get("bench") is not False
             if adopted != dict(self._state.links) or bench != self._state.bench_wiring:
                 self._update_state(links=adopted, bench_wiring=bench)
@@ -1581,7 +1701,9 @@ class SimulationSession:
         reload moves the forces and links that pyrung already holds (:meth:`_write_program`).
         """
         forces = dict(self._state.forces)
-        links = dict(self._state.links)
+        # The simulation would refuse a link that waits, so it stays in the settings unsent.
+        # Until the first frame lists the tags, nothing waits, and every link goes.
+        links = {a: link for a, link in self._state.links.items() if not self._waits(a, link)}
         bench_wiring = self._state.bench_wiring
         position = self._desired_position
         patches = self._input_patches()
@@ -1748,6 +1870,7 @@ class SimulationSession:
             # then, only redraw. Do not read the switch position or forces from this frame.
             self._emit("frame")
             return
+        self._refresh_used()
         if self._examine_build():  # Compare the build before the views read program_change.
             self._check_program()
         # Others can drive the simulation too, such as the Console or an agent through
@@ -1961,17 +2084,19 @@ class SimulationSession:
 
         After a write that went through, *listing* holds what pyrung placed on the new program.
         After a write that pyrung refused, it holds what pyrung had before the write. Both are
-        keyed by CLICK address.
+        keyed by CLICK address. The bench links that wait join the ones that pyrung holds.
         """
         state = self._state
+        links = {**listing.waiting, **listing.links}
+        self._held = set(listing.waiting) - set(listing.links)
         if (
             dict(listing.forces) != dict(state.forces)
-            or dict(listing.links) != dict(state.links)
+            or links != dict(state.links)
             or listing.bench_wiring != state.bench_wiring
         ):
             self._update_state(
                 forces=dict(listing.forces),
-                links=dict(listing.links),
+                links=links,
                 bench_wiring=listing.bench_wiring,
             )
         # Compare later frames with this listing, by address.
@@ -2019,6 +2144,7 @@ class SimulationSession:
             )
         else:
             self._program_names = target.names
+            self._refresh_used()
             self._program_generation = target.generation
             self._program_saves = target.saves
             self._program_source = source
@@ -2102,8 +2228,12 @@ class SimulationSession:
         rows: Mapping[str, Mapping[str, Any]],
         bench_wiring: bool,
         names: tuple[Mapping[str, int], Mapping[int, str]],
+        waiting: Mapping[str, BenchLink],
     ) -> _Listing:
-        """Return pyrung's listing keyed by CLICK address, with the names of the program it runs."""
+        """Return pyrung's listing keyed by CLICK address, with the names of the program it runs.
+
+        *waiting* holds the bench links that pyrung does not have, because they wait.
+        """
         forces: dict[str, PlcValue] = {}
         for name, value in forced.items():
             address = address_of(name, names)
@@ -2116,7 +2246,7 @@ class SimulationSession:
             enable_at = None if enable is None else address_of(enable, names)
             if address is not None and (enable is None or enable_at is not None):
                 links[address] = _bench_link(row, enable_at)
-        return _Listing(forces, links, bench_wiring)
+        return _Listing(forces, links, bench_wiring, waiting=waiting)
 
     def _write_program(self, how: Literal["keep", "stop"], *, echo: bool = True) -> None:
         """Reload the workspace's program in the running process, without a relaunch.
@@ -2129,6 +2259,12 @@ class SimulationSession:
         did before. The forces and links that pyrung reports it placed become the user's. If
         pyrung refuses the reload, nothing changes in pyrung. The old program runs on, and
         Restart is offered.
+
+        A bench link waits while the simulation does not know its feedback or its enable
+        (:meth:`link_waits`). After the reload, the job sends each link that waited. A link that
+        pyrung refuses because it does not know a tag waits on. When pyrung drops a link or a
+        force because the new program does not have its tag (reason ``gone``), the link waits.
+        The job sends the force again by address, and pyrung accepts that.
         """
         dap = self._dap
         if not self.is_ready or dap is None:
@@ -2164,6 +2300,7 @@ class SimulationSession:
             (dict(analysis.project_tag_to_addr_key), dict(analysis.project_addr_key_to_tag)),
             self._save_count(),
         )
+        waiting_before = {a: link for a, link in self._state.links.items() if self._waits(a, link)}
         analog = self._analog_channels()
         project_dir = self._program_dir
         position = self._desired_position
@@ -2247,7 +2384,7 @@ class SimulationSession:
                 # running, so continue it if the switch is at RUN.
                 if position == "run":
                     refusal("the switch position", dap.continue_)
-                listing = self._listing_as_set(forced, rows, bench_wiring, old)
+                listing = self._listing_as_set(forced, rows, bench_wiring, old, waiting_before)
                 self._post(lambda: self._on_write_failed(token, error, listing))
                 return
 
@@ -2268,8 +2405,6 @@ class SimulationSession:
                 reason = refusal("the switch position", dap.continue_)
             if reason is not None:
                 problems.append(f"The simulation refused the switch position: {reason}.")
-            if unanswered:
-                problems.append(f"The simulation did not answer for {', '.join(unanswered)}.")
 
             carried = [e for e in body.get("carried") or () if isinstance(e, Mapping)]
             names = target.names
@@ -2292,7 +2427,65 @@ class SimulationSession:
                     enable_at = None if enable is None else address_of(str(enable), names)
                     if enable is None or enable_at is not None:
                         links[address] = _bench_link(rows[tag], enable_at)
-            listing = _Listing(forces, links, bench_wiring, tuple(problems), plan.written(carried))
+
+            def where(name: str) -> str | None:
+                """Return the address of *name* in the new program, else in the old one."""
+                return address_of(name, names) or address_of(name, old)
+
+            # pyrung drops an entry as "gone" when the new program does not have one of its
+            # tags. A link there waits. A force there goes again by address, which pyrung
+            # accepts on an address that the program does not use.
+            waiting: dict[str, BenchLink] = {}
+            kept: set[tuple[str, str]] = set()
+            for entry in carried:
+                if entry.get("reason") != "gone":
+                    continue
+                tag, kind = str(entry.get("tag", "")), entry.get("kind")
+                if kind == "force":
+                    to = plan.forces.get(tag, tag)
+                    address = None if to is None else where(to)
+                    if address is None:
+                        continue
+                    value = entry["value"] if "value" in entry else forced.get(tag)
+                    if refusal(f"the force on {address}", partial(dap.force, address, value)):
+                        continue
+                    forces[address] = value
+                    kept.add(("force", tag))
+                elif kind in ("link", "cut") and tag in rows:
+                    moved = plan.links.get(tag, LinkTarget(tag, enables.get(tag)))
+                    if moved is None:
+                        continue  # The plan dropped the link.
+                    address = where(moved.feedback)
+                    enable_at = None if moved.enable is None else where(moved.enable)
+                    if address is not None and (moved.enable is None or enable_at is not None):
+                        waiting[address] = _bench_link(rows[tag], enable_at)
+                        kept.add(("link", tag))
+            for address, link in waiting_before.items():
+                if address in links or address in waiting:
+                    continue
+                what = f"the bench link on {address}"
+                reason = refusal(what, partial(_send_link, dap, address, link))
+                if reason is None and not link.enabled:
+                    reason = refusal(what, partial(dap.set_links, enabled={address: False}))
+                if reason is None:
+                    links[address] = link
+                elif _unknown_tag(reason):
+                    waiting[address] = link
+                else:
+                    problems.append(f"Could not apply the bench link on {address}: {reason}.")
+            if unanswered:
+                problems.append(f"The simulation did not answer for {', '.join(unanswered)}.")
+            written = plan.written(
+                e
+                for e in carried
+                if ("force" if e.get("kind") == "force" else "link", str(e.get("tag"))) not in kept
+            )
+            parked = {a: link for a, link in waiting.items() if a not in waiting_before}
+            if parked:
+                written = " ".join(part for part in (written, _waiting_text(parked)) if part)
+            listing = _Listing(
+                forces, links, bench_wiring, tuple(problems), written, waiting=waiting
+            )
             summary = str(body.get("result") or "")
             self._post(lambda: self._on_written(token, summary, target, source, listing))
 
@@ -2599,13 +2792,20 @@ class SimulationSession:
         job: Callable[[Any], object],
         what: str,
         on_error: Callable[[str], None] | None = None,
+        *,
+        send: bool = True,
     ) -> None:
-        """Record the bench links the user chose, then send *job* to the simulation."""
+        """Record the bench links the user chose, then send *job* to the simulation.
+
+        If *send* is False, the change is to a link that waits, which the simulation does not
+        have. Only the settings change.
+        """
         previous = dict(self._state.links)
         changed = [a for a in previous.keys() | links.keys() if previous.get(a) != links.get(a)]
+        self._held.difference_update(changed)
         self._update_state(links=links)
         dap = self._dap
-        if dap is None:
+        if dap is None or not send:
             return  # The change is applied when the simulation (re)starts.
 
         def undo(text: str) -> None:
@@ -2637,15 +2837,38 @@ class SimulationSession:
     def link(
         self, feedback: str, link: BenchLink, *, on_error: Callable[[str], None] | None = None
     ) -> None:
-        """Wire *feedback* on the bench. If ``link.enable`` is None, cut it."""
+        """Wire *feedback* on the bench. If ``link.enable`` is None, cut it.
+
+        If the simulation does not know *feedback* or the enable, the link waits
+        (:meth:`link_waits`). ClickNick keeps it and sends it at the next write. A link that
+        the simulation refuses because it does not know a tag waits too, with no error.
+        """
         link = replace(link, enabled=True)
         links = dict(self._state.links)
         links[feedback] = link
+        if link_waits(feedback, link, self._used):
+            self._held.discard(feedback)
+            self._update_state(links=links)
+            return
+        token = self._token
+
+        def send(dap: Any) -> None:
+            try:
+                _send_link(dap, feedback, link)
+            except Exception as exc:
+                if _unavailable(exc) or not _unknown_tag(str(exc)):
+                    raise
+                self._post(lambda: self._hold(token, feedback, link))
+
         verb = "Cutting the link on" if link.cut else "Linking"
-        self._change_links(
-            links, lambda dap: _send_link(dap, feedback, link), f"{verb} {feedback}", on_error
-        )
+        self._change_links(links, send, f"{verb} {feedback}", on_error)
         self._echo(self._link_command(feedback, link))
+
+    def _hold(self, token: int, feedback: str, link: BenchLink) -> None:
+        """Let *link* wait, because the simulation refused it for a tag that it does not know."""
+        if token == self._token and self._state.links.get(feedback) == link:
+            self._held.add(feedback)
+            self._emit("desired")
 
     def cut_link(self, feedback: str, *, on_error: Callable[[str], None] | None = None) -> None:
         """Cut the program's link on *feedback*, as if the sensor failed."""
@@ -2655,26 +2878,34 @@ class SimulationSession:
         """Drop the bench change on *feedback*, going back to what the program declares."""
         if feedback not in self._state.links:
             return
+        waits = self.link_waits(feedback)
         links = dict(self._state.links)
         links.pop(feedback)
         self._change_links(
-            links, lambda dap: dap.restore_link(feedback), f"Restoring the link on {feedback}"
+            links,
+            lambda dap: dap.restore_link(feedback),
+            f"Restoring the link on {feedback}",
+            send=not waits,
         )
-        self._echo(f"restore {self.to_tag(feedback)}")
+        if not waits:
+            self._echo(f"restore {self.to_tag(feedback)}")
 
     def set_link_enabled(self, feedback: str, enabled: bool) -> None:
         """Set one bench change aside, or bring it back, without forgetting it."""
         link = self._state.links.get(feedback)
         if link is None or link.enabled == enabled:
             return
+        waits = self.link_waits(feedback)
         links = dict(self._state.links)
         links[feedback] = replace(link, enabled=enabled)
         self._change_links(
             links,
             lambda dap: dap.set_links(enabled={feedback: enabled}),
             f"{'Enabling' if enabled else 'Disabling'} the bench link on {feedback}",
+            send=not waits,
         )
-        self._echo(f"links {'enable' if enabled else 'disable'} {self.to_tag(feedback)}")
+        if not waits:
+            self._echo(f"links {'enable' if enabled else 'disable'} {self.to_tag(feedback)}")
 
     def set_bench_wiring(self, on: bool) -> None:
         """Apply the bench changes, or set all of them aside."""
@@ -2691,7 +2922,8 @@ class SimulationSession:
     def discard_bench_links(self) -> None:
         """Drop every bench change."""
         self._restored_links = 0
-        addresses = list(self._state.links)
+        # The simulation does not have a link that waits, so it has nothing to restore there.
+        addresses = [a for a in self._state.links if not self.link_waits(a)]
 
         def job(dap: Any) -> None:
             for address in addresses:
@@ -2826,10 +3058,7 @@ class SimulationSession:
     def _apply_restore(self, layout: PanelLayout) -> None:
         self._restore_pending = False
         result: RestoreResult = restore_state(
-            self._state,
-            inputs=layout.addresses("input"),
-            analog_inputs=layout.addresses("analog_in"),
-            modules=layout.modules,
+            self._state, analog_inputs=layout.addresses("analog_in"), modules=layout.modules
         )
         changed = result.state != self._state
         self._state = result.state
@@ -2839,28 +3068,25 @@ class SimulationSession:
             )
             self._set_notice(
                 f"{lead}ClickNick removed the settings for {', '.join(result.dropped)}, "
-                "because no installed input has those addresses."
+                "because no installed analog input has those addresses."
             )
         if changed:
             self._emit("desired")
             self._schedule_save()
 
     def _restore_when_known(self) -> None:
-        """Trim the remembered settings to the hardware, once it is fully known.
+        """Trim the remembered analog values to the hardware, once ClickNick has read it.
 
-        Some inputs are used by the program but provided by no module (unassigned placeholder
-        cards). They are known only from the analysis. Until an analysis is available,
-        settings on them would look like settings on missing hardware.
+        Until then, every saved setting stays and applies. Only a module assigns a DF to an
+        analog input, so the trim waits for a hardware configuration that has a CPU. It does not
+        wait for a build. Switches, forces and bench links are never trimmed here.
         """
         layout = self._layout
-        analysis = self._get_analysis()
         if (
             self._restore_pending
             and layout is not None
             and self._layout_error is None
             and layout.has_cpu
-            and analysis is not None
-            and analysis.is_available
         ):
             self._apply_restore(layout)
 
@@ -2890,7 +3116,10 @@ class SimulationSession:
         self._layout_error = error
         self._restore_when_known()
         if changed:
+            self._used_shown = self.used_addresses
             self._emit("layout")
+        else:
+            self._show_used()
 
     def set_state_location(self, plc_name: str, workspace_dir: Path | None) -> None:
         """Load the remembered settings, moving them into a newly paired workspace."""

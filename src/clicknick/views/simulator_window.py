@@ -18,6 +18,12 @@ switch. The chip is blue for the program's link and purple for a bench link. Hov
 chip to draw the wire to the driving terminal. You make, cut and save links to the
 project from the right-click menu, and the Wiring menu lists them all.
 
+A point that the program in the simulation does not use is dimmed, and its tooltip says so.
+The simulation does not have the point, so you cannot link it, force it or ask about it, its
+switch does not move and its analog value is read-only. A saved bench link on it waits until
+the program in the simulation uses it. Before the first frame of a simulation, and while it is
+off, no point is dimmed.
+
 Cards are compact and flow into rows in rack order. A full rack fits without horizontal
 scrolling: the CPU, two option slots and eight expansions. A card that is not installed
 is still drawn in its place, off the rail. With no CPU, a "No CPU" card stands first.
@@ -247,11 +253,14 @@ class SimulatorWindow(tk.Toplevel):
         """Draw the address and then the nickname, cut short so that the nickname ends at *right*.
 
         The tooltip shows the comment, and the full nickname if the label had to cut it. If
-        there is no comment and the nickname is not cut, the label has no tooltip.
+        there is no comment and the nickname is not cut, the label has no tooltip. If no rung
+        uses *address*, the label is dimmed, its tooltip says so, and no link drag starts on it.
         """
         c = self._canvas
+        used = self._simulation.is_used(address)
+        color = P.TEXT if used else P.MUTED
         address_item = c.create_text(
-            x, cy, text=address, anchor="w", fill=P.TEXT, font=_FONT_MONO, tags=(tag,)
+            x, cy, text=address, anchor="w", fill=color, font=_FONT_MONO, tags=(tag,)
         )
         nickname, comment = self._names(address)
         items = [address_item]
@@ -263,11 +272,12 @@ class SimulatorWindow(tk.Toplevel):
             if shown:
                 items.append(
                     c.create_text(
-                        left, cy, text=shown, anchor="w", fill=P.TEXT, font=_FONT, tags=(tag,)
+                        left, cy, text=shown, anchor="w", fill=color, font=_FONT, tags=(tag,)
                     )
                 )
-        tip = "\n".join(part for part in (nickname if cut else "", comment) if part)
-        if link:  # the label is the handle a link drag starts from
+        unused = "" if used else self._unused_text(address)
+        tip = "\n".join(part for part in (nickname if cut else "", comment, unused) if part)
+        if link and used:  # the label is the handle a link drag starts from
             handle = f"handle:{address}"
             for item in items:
                 c.addtag_withtag(handle, item)
@@ -345,6 +355,8 @@ class SimulatorWindow(tk.Toplevel):
 
     def _on_switch_press(self, address: str) -> None:
         sim = self._simulation
+        if not sim.is_used(address):
+            return  # The simulation does not have the point, so its switch does not move.
         if sim.is_momentary(address):
             self._held = address
             sim.press_input(address)
@@ -366,6 +378,7 @@ class SimulatorWindow(tk.Toplevel):
             menu.add_command(
                 label=f"Force {'ON' if value else 'OFF'}",
                 command=lambda v=value: sim.force(address, v, on_error=self._show_action_error),
+                state=tk.NORMAL if sim.is_used(address) else tk.DISABLED,
             )
         menu.add_command(
             label="Release force",
@@ -376,6 +389,31 @@ class SimulatorWindow(tk.Toplevel):
     # ------------------------------------------------------------------
     # Feedback links
     # ------------------------------------------------------------------
+
+    def _unused_text(self, address: str) -> str:
+        """Return the tooltip text for a point that the simulation does not have.
+
+        The text ends with what the bench link on the point waits for, if it has one.
+        """
+        text = (
+            f"The program in the simulation does not use {address}. To link it here, use it in "
+            "a rung and write the program to the simulation."
+        )
+        waiting = self._waiting_text(address)
+        return f"{text}\n{waiting}" if waiting else text
+
+    def _waiting_text(self, address: str) -> str:
+        """Return what the bench link on *address* waits for, or "" if it does not wait."""
+        sim = self._simulation
+        link = sim.bench_links.get(address)
+        if link is None or not sim.link_waits(address):
+            return ""
+        ends = [a for a in (address, link.enable) if a is not None]
+        # The simulation refused the link for a tag that it does not know. If the last frame
+        # lists both ends, name both.
+        missing = [a for a in ends if not sim.is_used(a)] or ends
+        what = "The cut" if link.cut else f"The bench link from {link.enable}"
+        return f"{what} waits until the program in the simulation uses {' and '.join(missing)}."
 
     def _saved_to_project(self, address: str, link: BenchLink) -> bool:
         """Return True if the project's comment on *address* already declares this bench link."""
@@ -410,10 +448,12 @@ class SimulatorWindow(tk.Toplevel):
         return f"{text}\nRight-click for options."
 
     def _enables(self) -> list[str]:
-        layout = self._simulation.layout
+        sim = self._simulation
+        layout = sim.layout
         if layout is None:
             return []
-        return [*layout.addresses("output"), *layout.addresses("input")]
+        addresses = [*layout.addresses("output"), *layout.addresses("input")]
+        return [a for a in addresses if sim.is_used(a)]
 
     def _open_link_dialog(self, address: str, *, analog: bool, enable: str | None = None) -> None:
         sim = self._simulation
@@ -444,7 +484,12 @@ class SimulatorWindow(tk.Toplevel):
         for item in reversed(c.find_overlapping(x, y, x, y)):
             for tag in c.gettags(item):
                 kind, _, address = tag.partition(":")
-                if kind in kinds and address and address != source:
+                if (
+                    kind in kinds
+                    and address
+                    and address != source
+                    and self._simulation.is_used(address)
+                ):
                     return tag
         return None
 
@@ -679,6 +724,7 @@ class SimulatorWindow(tk.Toplevel):
         menu.add_command(
             label="Link to the tag that drives it...",
             command=lambda: self._open_link_dialog(address, analog=analog),
+            state=tk.NORMAL if sim.is_used(address) else tk.DISABLED,
         )
 
     def _wire_points(
@@ -775,7 +821,8 @@ class SimulatorWindow(tk.Toplevel):
         """Add menu entries that ask questions about *address*, answered in the console pane."""
         sim = self._simulation
         tag = sim.to_tag(address)
-        state = tk.NORMAL if sim.is_ready and not self._console.busy else tk.DISABLED
+        asks = sim.is_ready and not self._console.busy and sim.is_used(address)
+        state = tk.NORMAL if asks else tk.DISABLED
         value = sim.values.get(address)
         if isinstance(value, bool):
             why = f"Why is it {'ON' if value else 'OFF'}?"
@@ -842,17 +889,7 @@ class SimulatorWindow(tk.Toplevel):
             x + 15, cy - 5, x + 25, cy + 5, fill=P.BUTTON_CAP, outline=P.SWITCH_KNOB,
             state="hidden", tags=(tag, switch),
         )  # fmt: skip
-        self._tooltip_item(
-            (track, knob, bezel, cap),
-            lambda a=address: (
-                (
-                    "Momentary pushbutton: on while held. Right-click to change."
-                    if self._simulation.is_momentary(a)
-                    else "Maintained switch: click to latch. Right-click to change."
-                )
-                + "\nDrag its label onto an output to link them."
-            ),
-        )
+        self._tooltip_item((track, knob, bezel, cap), lambda a=address: self._switch_text(a))
         pending = c.create_oval(
             x + 30, cy - 11, x + 36, cy - 5, fill=P.PENDING, outline="", state="hidden", tags=(tag,)
         )
@@ -889,6 +926,18 @@ class SimulatorWindow(tk.Toplevel):
         c.tag_bind(switch, "<ButtonPress-1>", lambda _e, a=address: self._on_switch_press(a))
         c.tag_bind(switch, "<ButtonRelease-1>", lambda _e, a=address: self._on_switch_release(a))
 
+    def _switch_text(self, address: str) -> str:
+        """Return the tooltip text for an input's switch or pushbutton."""
+        if not self._simulation.is_used(address):
+            return self._unused_text(address)
+        text = (
+            "Momentary pushbutton: on while held. Right-click to change."
+            if self._simulation.is_momentary(address)
+            else "Maintained switch: click to latch. Right-click to change."
+        ) + "\nDrag its label onto an output to link them."
+        waiting = self._waiting_text(address)
+        return f"{text}\n{waiting}" if waiting else text
+
     def _output_menu(self, event: tk.Event, address: str) -> None:
         menu = tk.Menu(self, tearoff=0)
         self._add_analysis_items(menu, address, output=True)
@@ -896,6 +945,8 @@ class SimulatorWindow(tk.Toplevel):
         menu.tk_popup(event.x_root, event.y_root)
 
     def _output_hint(self, address: str) -> str:
+        if not self._simulation.is_used(address):
+            return self._unused_text(address)
         if address in self._simulation.forces:
             return "Forced. Double-click (or click the padlock) to release."
         return "Double-click to force it the other way. Drag its label onto an input's label to link them."
@@ -905,7 +956,7 @@ class SimulatorWindow(tk.Toplevel):
         sim = self._simulation
         if address in sim.forces:
             sim.release_force(address)
-        else:
+        elif sim.is_used(address):
             sim.force(address, not sim.values.get(address), on_error=self._show_action_error)
 
     def _draw_output(self, x: float, y: float, address: str) -> None:
@@ -938,7 +989,11 @@ class SimulatorWindow(tk.Toplevel):
     def _analog_menu(self, event: tk.Event, address: str, *, linkable: bool = False) -> None:
         menu = tk.Menu(self, tearoff=0)
         self._add_analysis_items(menu, address)
-        menu.add_command(label="Force value...", command=lambda: self._force_analog(address))
+        menu.add_command(
+            label="Force value...",
+            command=lambda: self._force_analog(address),
+            state=tk.NORMAL if self._simulation.is_used(address) else tk.DISABLED,
+        )
         menu.add_command(
             label="Release force",
             command=lambda: self._simulation.release_force(address),
@@ -1002,7 +1057,12 @@ class SimulatorWindow(tk.Toplevel):
         live = c.create_text(
             x + 84, y + 32, text="", anchor="w", fill=P.MUTED, font=_FONT_SMALL, tags=(tag,)
         )
-        self._tooltip_item((live,), lambda a=address: self._link_text(a))
+        self._tooltip_item(
+            (live,),
+            lambda a=address: (
+                self._link_text(a) if self._simulation.is_used(a) else self._unused_text(a)
+            ),
+        )
         info: dict[str, Any] = {
             "var": var,
             "entry": entry,
@@ -1325,8 +1385,11 @@ class SimulatorWindow(tk.Toplevel):
             momentary = sim.is_momentary(address)
             toggle_state = "hidden" if momentary or link else "normal"
             button_state = "normal" if momentary and not link else "hidden"
+            # A switch at an address that the simulation does not have shows its position,
+            # dimmed.
+            on_color = P.SWITCH_ON if sim.is_used(address) else P.UNUSED_ON
             c.itemconfigure(
-                info["track"], fill=P.SWITCH_ON if on else P.SWITCH_OFF, state=toggle_state
+                info["track"], fill=on_color if on else P.SWITCH_OFF, state=toggle_state
             )
             kx = x + 20 if on else x + 10
             c.coords(info["knob"], kx, cy - 5, kx + 10, cy + 5)
@@ -1335,9 +1398,7 @@ class SimulatorWindow(tk.Toplevel):
             # A held pushbutton sits lower and lights up.
             inset = 1 if on else 0
             c.coords(info["cap"], x + 15 + inset, cy - 5 + inset, x + 25 - inset, cy + 5 - inset)
-            c.itemconfigure(
-                info["cap"], fill=P.SWITCH_ON if on else P.BUTTON_CAP, state=button_state
-            )
+            c.itemconfigure(info["cap"], fill=on_color if on else P.BUTTON_CAP, state=button_state)
             c.itemconfigure(info["led"], fill=P.LED_ON if values.get(address) else P.LED_OFF)
             self._show_badge(info["badge"], address in forces)
             waiting = address in pending or countdown is not None
@@ -1365,11 +1426,12 @@ class SimulatorWindow(tk.Toplevel):
             desired = self._simulation.analog_value(address)
             live = values.get(address)
             link = self._simulation.driving_link(address)
-            entry_state = "disabled" if link else "normal"
+            fixed = link is not None or not self._simulation.is_used(address)
+            entry_state = "disabled" if fixed else "normal"
             if str(info["entry"].cget("state")) != entry_state:
                 info["entry"].configure(state=entry_state)
                 if "scale" in info:
-                    info["scale"].state(["disabled"] if link else ["!disabled"])
+                    info["scale"].state(["disabled"] if fixed else ["!disabled"])
             if link is not None:
                 color = P.LINK if link.source == "project" else P.LINK_BENCH
                 kind = link.kind
@@ -1582,7 +1644,7 @@ class SimulatorWindow(tk.Toplevel):
                 var = tk.BooleanVar(value=link.enabled)
                 self._link_vars.append(var)
                 menu.add_checkbutton(
-                    label=f"{label}   bench",
+                    label=f"{label}   bench, waiting" if link.waiting else f"{label}   bench",
                     variable=var,
                     command=lambda f=link.feedback, v=var: sim.set_link_enabled(f, v.get()),
                 )
