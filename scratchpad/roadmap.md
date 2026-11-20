@@ -30,20 +30,20 @@ How to use it:
 The ClickNick session runs these steps. Its build notes for them, with the sibling commits that each branch
 was tested against, are in `../clicknick-wt/buildbot/jobs/next-pins/`.
 
-1. Move onto laddercodec 0.5.0 and pyrung 0.18.0. The branch does the first part of item 9 below. The rest
-   waits on pyrung's release after 0.18.0. The branch is `bob/laddercodec-next`. It pins laddercodec 0.5.0, and
-   it is built against pyrung's `main`. It merges once pyrung 0.18.0 is out, with the pyrung pin moved to it.
+1. Move onto laddercodec 0.5.0 and pyrung 0.18.0. The branch `bob/laddercodec-next` does the first part of
+   item 9 below. It pins laddercodec 0.5.0, pyclickplc 0.11.1 and pyrung 0.18.0, and waits for review and CI.
+   The rest of item 9 waits on pyrung's release after 0.18.0.
 2. Check the encoding of CLICK's Address.csv. ClickNick reads it (`read_mdb_csv`) as UTF-8 with a BOM, and no
    recording shows a non-ASCII nickname in it.
 3. Read the CHANGELOG from v0.25.0 against what merged, and write the summary.
 4. Sam's smoke test of the release candidate, then his tag. ClickNick goes last of the four repos.
 
-## pyrung's nickname reader (pyrung)
+## pyrung's nickname reader (done in 0.18.0)
 
-pyrung reads a nicknames.csv as UTF-8 (`ladder_to_pyrung_project`), and its own `to_nickname_file` now writes
-cp1252. The planner says that pyrung will read either encoding. Until it does, a plain folder's cp1252
-nicknames.csv (project_to_csv.py output, or a CLICK export) breaks Review Changes' source pane for `é` or `°`.
-ClickNick writes the workspace's and the Compare copy's nicknames.csv as UTF-8 meanwhile.
+pyrung 0.18.0 reads a nicknames.csv with pyclickplc's `read_csv`, which takes UTF-8 and cp1252. It writes the
+copy in a generated project in cp1252. ClickNick still writes the nicknames.csv in the workspace's csv/ folder
+and in the Compare copy as UTF-8. Both read back. Move them to cp1252 whenever it suits, because nothing needs
+UTF-8 any more.
 
 ## 1. Housekeeping (nothing)
 
@@ -168,7 +168,7 @@ The branch `bob/laddercodec-next` did this much:
   (`prepare_rungs_load`).
 - `program_save` writes each subroutine with `stop="return"`.
 
-pyrung's main at 34746bc cannot run the marker. Its `ladder_to_pyrung` raises `ValueError`, because the AF
+pyrung's 0.18.0 and its main at 34746bc cannot run the marker. Its `ladder_to_pyrung` raises `ValueError`, because the AF
 column holds `undecoded`, which pyrung does not know. The builder of `bob/laddercodec-next` checked this on
 2026-11-20. The planner placed pyrung's support for the marker in pyrung's release after 0.18.0. These
 steps wait on that release:

@@ -66,7 +66,7 @@ requires-dist = [
     { name = "pymodbus", specifier = "==3.12.1" },
     { name = "pyodbc", specifier = "==5.3.0" },
     { name = "pyrsistent", specifier = "==0.20.0" },
-    { name = "pyrung", specifier = "==0.17.0" },
+    { name = "pyrung", specifier = "==0.18.0" },
     { name = "pywin32", specifier = "==311" },
     { name = "tksheet", specifier = "==7.6.0" },
     { name = "tomlkit", specifier = "==0.15.1" },
@@ -316,18 +316,19 @@ wheels = [
 
 [[package]]
 name = "pyrung"
-version = "0.17.0"
+version = "0.18.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "executing" },
+    { name = "laddercodec" },
     { name = "pyclickplc" },
     { name = "pymodbus" },
     { name = "pyrsistent" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a8/6a/2e0918f6f7db9fc9490cce693cc8567e9369a6fb94206c18646457819195/pyrung-0.17.0.tar.gz", hash = "sha256:045a7b66fb792791c0950e25ec6e36e055d1bee4ed477fccfa4660da13367155", size = 5366090, upload-time = "2026-11-18T19:48:59.685Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/79/a02681f746335cc99ad8c3cdff8c01d6a3a00d6d13b09d37ff507885945b/pyrung-0.18.0.tar.gz", hash = "sha256:f35e5c2fce0e2f0174ce5c0d4a5d5d58dafd6ab3c1b03700cd1ece9333bfbda8", size = 5479859, upload-time = "2026-11-20T18:09:21.895Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/22/eaef542573f46c4c2411640217b5c4afbe879368ff24f1fb0b0414f77242/pyrung-0.17.0-py3-none-any.whl", hash = "sha256:7c3fdf13e71149d6718ab94ae64b55768a85959a09dae1a01cc55a565c3a8367", size = 1996275, upload-time = "2026-11-18T19:48:57.457Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/6a/dcfcd363a31b5153302715a4674a26e5d4347cc77a75475186a3d41cb6bd/pyrung-0.18.0-py3-none-any.whl", hash = "sha256:8c03408528e9adb034cf15b1f64017bb3d0c1dbc4a553890577c218fae4558f9", size = 2046963, upload-time = "2026-11-20T18:09:20.231Z" },
 ]
 
 [[package]]
