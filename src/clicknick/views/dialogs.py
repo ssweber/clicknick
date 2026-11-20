@@ -325,12 +325,17 @@ class CsvFallbackDialog:
                 convert_mdb_csv_to_user_csv(str(self.source_csv_path), dest_path)
                 self.saved_path = dest_path
                 self.window.destroy()
-            except Exception as e:
-                # Show error message
+            except ValueError as e:  # A character that CLICK cannot hold
                 tk.messagebox.showerror(
                     "Save Address CSV Copy",
                     f"Could not save the copy to {dest_path}:\n{e}\n\n"
-                    "If the message names a character, change it in CLICK, save, and try again.",
+                    "Change it in CLICK, save, and try again.",
+                    parent=self.window,
+                )
+            except Exception as e:
+                tk.messagebox.showerror(
+                    "Save Address CSV Copy",
+                    f"Could not save the copy to {dest_path}:\n{e}",
                     parent=self.window,
                 )
 

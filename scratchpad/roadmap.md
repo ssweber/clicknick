@@ -33,11 +33,17 @@ was tested against, are in `../clicknick-wt/buildbot/jobs/next-pins/`.
 1. Move onto laddercodec's and pyrung's joint release: items 8 and 9 below. The branch is
    `bob/laddercodec-next`, built against laddercodec's and pyrung's `main`. It merges once both are released,
    with the pins moved to the released versions.
-2. Open check for the pyclickplc 0.11.0 step: ClickNick reads CLICK's Address.csv (`read_mdb_csv`) as UTF-8 with
-   a BOM. No fixture shows that encoding for a non-ASCII nickname, so a runner check of Address.csv would
-   settle it.
+2. Check the encoding of CLICK's Address.csv. ClickNick reads it (`read_mdb_csv`) as UTF-8 with a BOM, and no
+   recording shows a non-ASCII nickname in it.
 3. Read the CHANGELOG from v0.25.0 against what merged, and write the summary.
 4. Sam's smoke test of the release candidate, then his tag. ClickNick goes last of the four repos.
+
+## pyrung's nickname reader (pyrung)
+
+pyrung reads a nicknames.csv as UTF-8 (`ladder_to_pyrung_project`), and its own `to_nickname_file` now writes
+cp1252. The planner says that pyrung will read either encoding. Until it does, a plain folder's cp1252
+nicknames.csv (project_to_csv.py output, or a CLICK export) breaks Review Changes' source pane for `é` or `°`.
+ClickNick writes the workspace's and the Compare copy's nicknames.csv as UTF-8 meanwhile.
 
 ## 1. Housekeeping (nothing)
 
@@ -308,6 +314,10 @@ find goes into bugfix releases. Items marked (4b) a mock
 can automate. Items marked (runner) the runner can answer. When a check is walked or automated, delete it.
 
 ### Questions only CLICK can answer
+- Q12 (runner): on a Windows whose ANSI code page is not 1252, what does CLICK hold and export for `ł` or `Ж`?
+  ClickNick keeps cp1252 meanwhile, and flags both. Sam's `??` for an emoji fits a conversion through the
+  system code page. Python's cp1252 has no U+0081, U+008D, U+008F, U+0090 or U+009D, which Windows maps, so
+  ClickNick flags those five too. They stay as they are.
 - Q2 (runner): what does CLICK write on File > New, and when does its title change? This bears on how soon
   ClickNick checks kept edits against the new project's database. File > Open and Save As have run.
 - Q6: after you delete all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the

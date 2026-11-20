@@ -188,7 +188,7 @@ def test_load_export_rows_reads_src_plc_tags(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tag_commands,
         "_export_nicknames",
-        lambda source, _path: exported.append(source),
+        lambda source, _path, **_kw: exported.append(source),
     )
 
     class FakeDataSource:
@@ -352,13 +352,22 @@ def test_tag_apply_refuses_annotations_that_clash_with_the_comment(store):
         _compute_tag_changes(base, cur, store)
 
 
-def test_a_character_cp1252_lacks_in_tags_says_where_to_change_it(tmp_path) -> None:
-    source = (
-        "class _Mapping:\n"
-        "    def to_nickname_file(self, path, blocks=None):\n"
-        "        raise ValueError(\"Y001 Address Comment 'a→b' has '→'.\")\n"
-        "mapping = _Mapping()\n"
-    )
+_TAGS_WITH_AN_ARROW = (
+    "from pyrung.click import ClickBlocks, TagMap\n"
+    "blocks = ClickBlocks()\n"
+    "mapping = TagMap([], include_system=False)\n"
+    'blocks.c.slot(1, name="Motor", comment="a\\u2192b")\n'
+)
 
-    with pytest.raises(ValueError, match="Change it in the Address Editor and Sync"):
-        tag_commands._export_nicknames(source, tmp_path / "out.csv")
+
+@pytest.mark.parametrize(
+    ("fix", "message"),
+    [
+        ("Change it in the Address Editor and Sync.", "Address Editor and Sync"),
+        ("Change it in src/plc/tags.py.", "src/plc/tags.py"),
+    ],
+)
+def test_a_character_clicks_cannot_hold_says_where_to_change_it(tmp_path, fix, message) -> None:
+    """Run pyrung's own ``to_nickname_file``, which pyclickplc's ``write_csv`` refuses."""
+    with pytest.raises(ValueError, match=rf"C1.*→.*{message}"):
+        tag_commands._export_nicknames(_TAGS_WITH_AN_ARROW, tmp_path / "out.csv", fix=fix)

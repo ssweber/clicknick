@@ -1232,6 +1232,26 @@ class TestSaveRefusesErrors:
             store.save_all_changes()
         assert source.saved == []
 
+    @pytest.mark.parametrize(
+        ("memory_type", "nickname"), [("X", "a→b"), ("SC", "_Always→ON"), ("SD", "x→y")]
+    )
+    def test_a_loaded_system_row_with_a_character_cp1252_lacks_still_blocks_save(
+        self, memory_type, nickname
+    ):
+        key = get_addr_key(memory_type, 1)
+        store, source = _live_store({key: AddressRow(memory_type, 1, nickname=nickname)})
+        c1 = get_addr_key("C", 1)
+        with store.edit_session("Edit") as session:
+            session.set_field(c1, "nickname", "Pump")
+
+        row = store.visible_state[key]
+        assert not row.loaded_with_error
+        assert row.has_reportable_error
+        assert "CLICK cannot hold" in row.nickname_error
+        with pytest.raises(RuntimeError, match="validation errors"):
+            store.save_all_changes()
+        assert source.saved == []
+
     def test_masked_system_nickname_does_not_block_save(self):
         sc1, c1 = get_addr_key("SC", 1), get_addr_key("C", 1)
         store, source = _live_store({sc1: AddressRow(memory_type="SC", address=1, nickname="log")})

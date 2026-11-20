@@ -8,19 +8,6 @@ from pyrung.validation import FindingDisplay
 from clicknick.services.program_check_preferences import ProgramCheckPreferences
 from clicknick.views.analysis_report_window import AnalysisReportData, AnalysisReportWindow
 
-tk = pytest.importorskip("tkinter")
-
-
-@pytest.fixture(scope="module")
-def tk_root():
-    try:
-        root = tk.Tk()
-    except tk.TclError as exc:
-        pytest.skip(f"no Tk display available: {exc}")
-    root.withdraw()
-    yield root
-    root.destroy()
-
 
 def _data(code="RUNG_CONTRADICTION", problem="Mode cannot satisfy both conditions."):
     return AnalysisReportData(

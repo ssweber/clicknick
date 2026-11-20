@@ -1,4 +1,7 @@
-from collections.abc import Callable, Mapping
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable, Mapping
+from typing import TYPE_CHECKING
 
 from pyclickplc.banks import DataType
 from pyclickplc.nicknames import first_non_cp1252_char
@@ -6,6 +9,9 @@ from pyclickplc.validation import COMMENT_MAX_LENGTH
 from pyclickplc.validation import validate_comment as _pyclickplc_validate_comment
 from pyclickplc.validation import validate_initial_value as _pyclickplc_validate_initial_value
 from pyclickplc.validation import validate_nickname as _pyclickplc_validate_nickname
+
+if TYPE_CHECKING:
+    from .address_row import AddressRow
 
 # The fields that CLICK stores without a space or a tab at either end. A Text initial value
 # is the exception. CLICK keeps its edges when the value is quoted. A comment is not in this
@@ -29,6 +35,28 @@ def cp1252_error(text: str) -> str:
     if char is None:
         return ""
     return f"CLICK cannot hold {char!r}. Replace it"
+
+
+def cp1252_problems(rows: Iterable[AddressRow]) -> list[str]:
+    """Return one sentence for each nickname, comment or initial value that CLICK cannot hold.
+
+    The sentence names the address and the field, such as
+    ``Y001's comment has '→', which CLICK cannot hold.`` The list is empty if every row is
+    fine.
+    """
+    problems = []
+    for row in rows:
+        for label, text in (
+            ("nickname", row.nickname),
+            ("comment", row.comment),
+            ("initial value", row.initial_value),
+        ):
+            char = first_non_cp1252_char(text)
+            if char is not None:
+                problems.append(
+                    f"{row.display_address}'s {label} has {char!r}, which CLICK cannot hold."
+                )
+    return problems
 
 
 def control_code_edges(comment: str) -> tuple[bool, bool]:

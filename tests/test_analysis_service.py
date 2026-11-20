@@ -1308,12 +1308,21 @@ def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
     assert row.nickname in nicknames.read_text(encoding="utf-8")
 
 
-def test_a_comment_cp1252_lacks_stops_the_nickname_csv_and_says_where_to_change_it(
+def test_every_row_clicks_cannot_hold_is_listed_before_the_nickname_csv_is_written(
     tmp_path,
 ) -> None:
-    rows = {1: AddressRow("Y", 1, nickname="Motor", comment="a→b")}
+    rows = {
+        1: AddressRow("Y", 1, nickname="Motor", comment="a→b"),
+        2: AddressRow("Y", 2, nickname="PumpЖ"),
+        3: AddressRow("Y", 3, nickname="Fine"),
+    }
 
-    with pytest.raises(ValueError, match=r"Y001.*'→'.*Change it in the Address Editor and Sync"):
+    with pytest.raises(ValueError) as caught:
         _write_nicknames_csv(tmp_path, rows)
 
+    assert str(caught.value) == (
+        "Y001's comment has '→', which CLICK cannot hold.\n"
+        "Y002's nickname has 'Ж', which CLICK cannot hold.\n"
+        "Change the characters in the Address Editor and Sync."
+    )
     assert not (tmp_path / "nicknames.csv").exists()
