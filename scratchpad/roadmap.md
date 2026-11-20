@@ -30,9 +30,9 @@ How to use it:
 The ClickNick session runs these steps. Its build notes for them, with the sibling commits that each branch
 was tested against, are in `../clicknick-wt/buildbot/jobs/next-pins/`.
 
-1. Move onto laddercodec's and pyrung's joint release. The branch does the first part of item 9 below. The
-   rest waits on pyrung's next release. The branch is `bob/laddercodec-next`, built against laddercodec's and
-   pyrung's `main`. It merges once both are released, with the pins moved to the released versions.
+1. Move onto laddercodec 0.5.0 and pyrung 0.18.0. The branch does the first part of item 9 below. The rest
+   waits on pyrung's release after 0.18.0. The branch is `bob/laddercodec-next`. It pins laddercodec 0.5.0, and
+   it is built against pyrung's `main`. It merges once pyrung 0.18.0 is out, with the pyrung pin moved to it.
 2. Check the encoding of CLICK's Address.csv. ClickNick reads it (`read_mdb_csv`) as UTF-8 with a BOM, and no
    recording shows a non-ASCII nickname in it.
 3. Read the CHANGELOG from v0.25.0 against what merged, and write the summary.
@@ -138,7 +138,7 @@ Do each when a branch next touches its file.
 - These parts of `app.py` are candidates for a later split: the Tools and Repairs menu actions, launching
   Review Changes and Compare with, `_export_pyrung_project`, and the unused `_check_odbc_drivers_and_warn`.
 
-## 9. The undecoded marker (waits on pyrung's release after the joint one)
+## 9. The undecoded marker (waits on pyrung's release after 0.18.0)
 
 laddercodec replaces a rung that it cannot decode with a marker rung. The marker rung has the comment
 `UNDECODED: rung N, row R: <error>` and one `Undecoded` instruction that acts as End (Return in a subroutine).
@@ -170,7 +170,7 @@ The branch `bob/laddercodec-next` did this much:
 
 pyrung's main at 34746bc cannot run the marker. Its `ladder_to_pyrung` raises `ValueError`, because the AF
 column holds `undecoded`, which pyrung does not know. The builder of `bob/laddercodec-next` checked this on
-2026-11-20. The planner placed pyrung's support for the marker in pyrung's release after the joint one. These
+2026-11-20. The planner placed pyrung's support for the marker in pyrung's release after 0.18.0. These
 steps wait on that release:
 
 - Drop the empty stand-in rung (`_replace_unreadable`, `is_stand_in`, and the refusals in `prepare_rungs_load`
