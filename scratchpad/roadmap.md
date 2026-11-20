@@ -153,14 +153,18 @@ The branch `bob/laddercodec-next` did this much:
   (`ladder/codec_warnings.py`). Each warning class has a rule, and a laddercodec warning with no rule counts
   as a rung that ClickNick cannot read. The coordinator asked for this on 2026-11-20, after two review rounds
   found placeholders that reached the workspace with no finding.
-- A rung whose comment laddercodec cannot decode becomes a stand-in too.
+- A rung whose comment laddercodec cannot decode keeps its logic and loses its comment in a save, as in
+  0.25.0 (laddercodec v0.4.0 set the comment to None). Save Clipboard to CSV refuses it, and a paste refuses a
+  comment that starts with `UNDECODED comment:`.
+- One lock guards each `recording()` block, because the build worker and the Tk thread both call laddercodec.
 - `program_save` writes ClickNick's empty stand-in rung, with an unreadable finding, in place of three kinds of
   rung: a rung that decodes as a marker, a rung that `write_csv` would write as a marker, and a rung that
   `write_csv` would split into more than one rung. The runner showed on CLICK 4.00 that a paste, and a save
   before Syntax Check, keep a NOP fed from the rail beside outputs on one rung. One function makes the check
   (`_rung_problems` in `ladder/program.py`).
-- Save Clipboard to CSV refuses the same three kinds of rung. `clicknick-rung load` copies such a .bin file as
-  it is, and adds no addresses to SC_.mdb. Every paste path refuses a marker in a CSV, with the rung's number
+- Save Clipboard to CSV refuses the same three kinds of rung. `clicknick-rung load` copies a .bin file that
+  decodes as a marker as it is, and adds no addresses to SC_.mdb. It passes every other laddercodec warning on
+  and adds the addresses. Every paste path refuses a marker in a CSV, with the rung's number
   (`prepare_rungs_load`).
 - `program_save` writes each subroutine with `stop="return"`.
 

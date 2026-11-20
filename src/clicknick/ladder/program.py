@@ -26,7 +26,6 @@ from laddercodec import (
     Tee,
     Timer,
     Undecoded,
-    UndecodedCommentWarning,
     UndecodedStop,
     UnknownCondition,
     UnknownInstruction,
@@ -36,13 +35,22 @@ from laddercodec import (
     encode,
     find_v4_only,
     read_csv,
+    replace,
     write_csv,
 )
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
 from ..utils.click_temp import scr_files
 from ..utils.mdb_operations import ensure_addresses_exist
-from .codec_warnings import Note, Rule, marker_detail, pass_on_legacy, recording, sort_warnings
+from .codec_warnings import (
+    Note,
+    Rule,
+    marker_detail,
+    pass_on,
+    pass_on_legacy,
+    recording,
+    sort_warnings,
+)
 
 if TYPE_CHECKING:
     from laddercodec import Program
@@ -80,6 +88,8 @@ _OLD_STAND_IN_COMMENTS = (
 )
 # The end of a finding's detail that already tells the user what to do
 _SYNTAX_CHECK_FIX = "Run Syntax Check in CLICK, then save the project."
+# How laddercodec starts the comment of a rung whose comment it cannot read
+_UNDECODED_COMMENT = "UNDECODED comment: "
 
 
 # ---------------------------------------------------------------------------
@@ -505,9 +515,15 @@ def _decode_clipboard(data: bytes) -> tuple[list[Rung], list[Note]]:
 
 
 def _clipboard_problems(rungs: list[Rung], notes: list[Note]) -> list[str]:
-    """Return a line for each reason in *notes*, and for each marker rung in *rungs*."""
+    """Return a line for each reason in *notes*, and for each marker rung in *rungs*.
+
+    A comment that laddercodec cannot read is a reason too, because the CSV would hold
+    laddercodec's note in place of the comment.
+    """
     lines = []
     for note in notes:
+        if not (note.reported or note.rule is Rule.COMMENT):
+            continue
         where = "a copied rung" if note.rung is None else f"copied rung {note.rung + 1}"
         lines.append(f"  {where}: {note.detail}")
     for number, rung in enumerate(rungs, start=1):
@@ -623,11 +639,8 @@ def is_empty_rung(rung: Rung) -> bool:
     )
 
 
-def _stand_in(rung: Rung, problems: Sequence[tuple[str, str]], *, headline: bool) -> Rung:
-    """Return an empty rung that says which rung it replaces, so the rung numbers below it stay.
-
-    *headline* is True if the rung's comment starts with a line that laddercodec wrote.
-    """
+def _stand_in(rung: Rung, problems: Sequence[tuple[str, str]]) -> Rung:
+    """Return an empty rung that says which rung it replaces, so the rung numbers below it stay."""
     names = [name for name, _detail in problems if name]
     if names:
         why = f"ClickNick cannot read its {', '.join(names)}. Paste it again."
@@ -635,8 +648,8 @@ def _stand_in(rung: Rung, problems: Sequence[tuple[str, str]], *, headline: bool
         why = " ".join(detail for _name, detail in problems)
     lines = [STAND_IN_COMMENT, why]
     comment = rung.comment or ""
-    if headline:
-        # laddercodec's first line repeats the reason, and it may count rungs from 0
+    if any(isinstance(af, Undecoded) for af in rung.instructions):
+        # laddercodec's first line repeats the reason, with its rung number counted from 0
         comment = comment.split("\n", 1)[1] if "\n" in comment else ""
     if comment:
         lines += ["", comment]
@@ -652,25 +665,30 @@ def _replace_unreadable(
     (``Rule.RUNG``), or from ``_rung_problems``. A note about the whole program
     (``Rule.PROGRAM``) leaves the rungs as they are. It gives a finding with no rung number,
     and Review Changes pastes that program whole.
+
+    A rung whose comment laddercodec cannot read (``Rule.COMMENT``) keeps its logic, and
+    loses its comment, with no finding. 0.25.0 did the same.
     """
     noted: dict[int, list[tuple[str, str]]] = {}
     comments: set[int] = set()
     found: list[LegacyEncoding] = []
     for note in notes:
-        if note.rule is Rule.RUNG and note.rung is not None and 0 <= note.rung < len(prog.rungs):
+        known = note.rung is not None and 0 <= note.rung < len(prog.rungs)
+        if note.rule is Rule.RUNG and known:
             noted.setdefault(note.rung, []).append(("", note.detail))
-            if isinstance(note.warning, UndecodedCommentWarning):
-                comments.add(note.rung)
-        elif note.reported:
+        elif note.rule is Rule.COMMENT and known:
+            comments.add(note.rung)
+        elif note.reported or note.rule is Rule.COMMENT:
             found.append(_whole_program(file, prog.name, note.detail))
     rungs: list[Rung] = []
     for index, rung in enumerate(prog.rungs):
+        if index in comments:
+            rung = replace(rung, comment=None)
         problems = list(dict.fromkeys([*noted.get(index, []), *_rung_problems(rung, stop=stop)]))
         if not problems:
             rungs.append(rung)
             continue
-        headline = index in comments or any(isinstance(af, Undecoded) for af in rung.instructions)
-        rungs.append(_stand_in(rung, problems, headline=headline))
+        rungs.append(_stand_in(rung, problems))
         found.extend(
             LegacyEncoding(file, prog.name, index + 1, name, "", detail, unreadable=True)
             for name, detail in problems
@@ -919,8 +937,10 @@ def prepare_rungs_load(
     Raise NeedsClickV4Error, before touching the MDB, if the rungs need a newer CLICK than
     the target (*click_v4*). Raise UnreadableRungError for a stand-in rung, because pasting
     it would replace the rung in CLICK with an empty one. Also raise it for laddercodec's
-    UNDECODED marker rung, because CLICK cannot hold the marker. Raise ValueError if there
-    are no rungs, because there is nothing to paste.
+    UNDECODED marker rung, because CLICK cannot hold the marker. Raise it for a comment that
+    starts with laddercodec's ``UNDECODED comment:`` line, because a paste would put that
+    line in CLICK in place of the comment. Raise ValueError if there are no rungs, because
+    there is nothing to paste.
     """
     if not rungs:
         raise ValueError("there are no rungs to copy")
@@ -955,6 +975,21 @@ def prepare_rungs_load(
                     "Put the rung's logic in place of its marker, or remove the marker.",
                 ]
             )
+        )
+    noted = [
+        number
+        for number, rung in enumerate(rungs, start=first_rung)
+        if (rung.comment or "").startswith(_UNDECODED_COMMENT)
+    ]
+    if noted:
+        numbers = ", ".join(str(number) for number in noted)
+        if len(noted) == 1:
+            head = f"Rung {numbers} has a comment that starts with laddercodec's"
+        else:
+            head = f"Rungs {numbers} have comments that start with laddercodec's"
+        raise UnreadableRungError(
+            f'{head} "{_UNDECODED_COMMENT.strip()}" line. laddercodec could not read the comment'
+            " that CLICK held there. Delete that line, or put back the comment."
         )
     check_click_version(rungs, click_v4=click_v4, first_rung=first_rung)
     with recording() as found:
@@ -1016,14 +1051,15 @@ def prepare_csv_load(
 def prepare_bin_load(data: bytes, *, click_v4: bool, mdb_path: Path | None = None) -> PrepareResult:
     """Decode a binary payload and provision MDB addresses.
 
-    Raise ValueError if laddercodec warns about a rung that the user must hear about
-    (``codec_warnings``). The decoder may have put a placeholder in place of the rung, so
-    the payload's operands are not known for sure. Then ClickNick cannot add them to the MDB.
+    Raise ValueError if laddercodec decodes a rung as an UNDECODED marker. Then the rung's
+    operands are not known, and ClickNick cannot add them to the MDB. The payload is CLICK's
+    own bytes, so every other warning from laddercodec is passed on, and the load goes on.
     """
     rungs, notes = _decode_clipboard(data)
-    found = _clipboard_problems(rungs, notes)
+    found = _clipboard_problems(rungs, [])
     if found:
         raise ValueError(found[0].strip().removeprefix("copied "))
+    pass_on([note.warning for note in notes if note.rule is not Rule.WARN])
     check_click_version(rungs, click_v4=click_v4)
     addresses = extract_addresses_from_rungs(rungs)
     addresses_inserted, resolved_mdb_path, mdb_error = _provision_mdb_addresses(
@@ -1064,8 +1100,12 @@ def rung_fingerprint(rung: Rung) -> tuple[tuple[str, ...], ...]:
     """Serialize a rung into laddercodec's canonical CSV rows, for comparison.
 
     The rows do not depend on how the CSV was written (rung index column, header comment).
+    The rows only tell rungs apart, so each warning from laddercodec is passed on.
     """
-    return tuple(tuple(row) for row in csv_rows([rung]))
+    with recording() as found:
+        rows = csv_rows([rung])
+    pass_on(found)
+    return tuple(tuple(row) for row in rows)
 
 
 def read_csv_comment(csv_path: Path) -> str:

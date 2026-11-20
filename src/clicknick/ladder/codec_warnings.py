@@ -8,11 +8,17 @@ Nothing in the placeholder alone tells ClickNick that the user must hear about i
 So every call into laddercodec that reads CLICK's bytes or writes a CSV runs inside
 ``recording()``, and ``sort_warnings`` gives each warning a rule. A warning from laddercodec
 that no rule knows counts as a rung that ClickNick cannot read.
+
+``recording()`` changes the warning filters of the whole process, and the build worker and
+the Tk thread both call laddercodec. So one lock guards each block, and each block holds
+one laddercodec call. The Tk thread then waits for one call at most, never for a whole
+save. Warnings are passed on under the same lock, so that no other block records them.
 """
 
 from __future__ import annotations
 
 import re
+import threading
 import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -36,6 +42,8 @@ _TO_THE_END_RE = re.compile(
 )
 # How laddercodec starts the warning for blank rows at the end of a rung that a CSV drops
 _LOST_BLANK_ROWS = "CSV round-trip lost "
+# Held across each recording() block, and while a warning is passed on
+_LOCK = threading.RLock()
 
 
 class Rule(Enum):
@@ -48,6 +56,9 @@ class Rule(Enum):
     WARN = "warn"
     # ClickNick cannot copy the rung as it is. A save writes a stand-in rung in its place.
     RUNG = "rung"
+    # laddercodec cannot read the rung's comment, and its comment says so. A save keeps the
+    # rung and leaves the comment out, as 0.25.0 did. Save Clipboard to CSV refuses.
+    COMMENT = "comment"
     # The rung reads, but laddercodec cannot read the program's CSV back. A save reports
     # the whole program, and Review Changes pastes it whole.
     PROGRAM = "program"
@@ -73,6 +84,9 @@ def _from_laddercodec(record: warnings.WarningMessage) -> bool:
     module = type(record.message).__module__
     if module == "laddercodec" or module.startswith("laddercodec."):
         return True
+    if record.category is not UserWarning:
+        # Python's own kinds, such as DeprecationWarning from a library that laddercodec calls
+        return False
     try:
         return Path(record.filename).resolve().is_relative_to(_PACKAGE)
     except (OSError, ValueError):
@@ -83,24 +97,40 @@ def _from_laddercodec(record: warnings.WarningMessage) -> bool:
 def recording() -> Iterator[list[Warning]]:
     """Record each warning that laddercodec issues in the block into the list yielded.
 
-    Warnings from anything else are passed on when the block ends.
+    Warnings from anything else are passed on when the block ends. Keep the block to one
+    laddercodec call, because another thread waits for it to end.
     """
     found: list[Warning] = []
     records: list[warnings.WarningMessage] = []
-    try:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            records = caught
-            yield found
-    finally:
-        # After the block, so that a warning passed on is not recorded again
-        for record in records:
-            if _from_laddercodec(record):
-                found.append(record.message)
-            else:
-                warnings.warn_explicit(
-                    record.message, record.category, record.filename, record.lineno
-                )
+    with _LOCK:
+        try:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                records = caught
+                yield found
+        finally:
+            # After the block, so that a warning passed on is not recorded again
+            for record in records:
+                if _from_laddercodec(record):
+                    found.append(record.message)
+                else:
+                    warnings.warn_explicit(
+                        record.message, record.category, record.filename, record.lineno
+                    )
+
+
+def _pass_on(warning: Warning) -> None:
+    with _LOCK:
+        warnings.warn(warning, stacklevel=3)
+
+
+def pass_on(found: list[Warning]) -> None:
+    """Pass on every warning in *found*, for a call whose result ClickNick only compares.
+
+    ``rung_fingerprint`` writes CSV rows only to tell rungs apart, and copies nothing.
+    """
+    for warning in found:
+        _pass_on(warning)
 
 
 def marker_detail(marker: Undecoded) -> str:
@@ -137,7 +167,7 @@ def _note(warning: Warning, *, writing: bool) -> Note:
         return Note(warning, Rule.RUNG, marker.rung, detail)
     if isinstance(warning, UndecodedCommentWarning):
         detail = f"laddercodec cannot read this rung's comment: {_first_line(warning.error)}."
-        return Note(warning, Rule.RUNG, warning.rung, detail)
+        return Note(warning, Rule.COMMENT, warning.rung, detail)
     if isinstance(warning, RefusedFieldWarning):
         return Note(warning, Rule.PROGRAM, warning.rung, _first_line(warning.error))
     if type(warning) is UserWarning and str(warning).startswith(_LOST_BLANK_ROWS):
@@ -157,7 +187,7 @@ def sort_warnings(found: list[Warning], *, writing: bool = False) -> list[Note]:
     notes = [_note(warning, writing=writing) for warning in found]
     for note in notes:
         if note.rule is Rule.WARN:
-            warnings.warn(note.warning, stacklevel=2)
+            _pass_on(note.warning)
     return notes
 
 
@@ -165,5 +195,5 @@ def pass_on_legacy(notes: list[Note]) -> list[Note]:
     """Pass on each legacy-encoding warning in *notes*, and return the other notes."""
     for note in notes:
         if note.rule is Rule.LEGACY:
-            warnings.warn(note.warning, stacklevel=2)
+            _pass_on(note.warning)
     return [note for note in notes if note.rule is not Rule.LEGACY]

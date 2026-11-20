@@ -10,7 +10,10 @@ The encoder/decoder core lives in the standalone [`laddercodec`](https://github.
 - **codec_warnings.py** — Records every warning that laddercodec issues and gives each one a rule. Run every
   laddercodec call that reads CLICK's bytes or writes a CSV inside `recording()`, and pass what it records to
   `sort_warnings`. A laddercodec warning with no rule counts as a rung that ClickNick cannot read. When
-  laddercodec adds a warning class, add its rule there.
+  laddercodec adds a warning class, add its rule there. Keep each block to one laddercodec call. One lock
+  guards every block, and the Tk thread waits for it while the build worker saves. A call whose result
+  ClickNick only compares, such as `csv_rows` in `rung_fingerprint`, records too and passes everything on
+  (`pass_on`).
 
 For encoder/codec work, **work in the laddercodec repo** (`../laddercodec`).
 

@@ -551,21 +551,17 @@ def test_a_marker_that_the_decoder_warns_about_gets_one_finding(tmp_path: Path, 
     ]
 
 
-def test_a_comment_that_laddercodec_cannot_read_makes_its_rung_a_stand_in(
+def test_a_comment_that_laddercodec_cannot_read_is_left_out_of_the_save(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """laddercodec keeps the rung's logic, but its comment holds laddercodec's placeholder."""
+    """The rung keeps its logic and loses its comment, with no finding, as in 0.25.0."""
     rung = _rung("C2", comment="UNDECODED comment: bad RTF\nMixer start")
     warning = UndecodedCommentWarning(1, "bad RTF", "Main Program")
 
     out, found = _save_one_program(tmp_path, monkeypatch, [_rung("C1"), rung], (warning,))
 
-    detail = "laddercodec cannot read this rung's comment: bad RTF."
-    assert found == [LegacyEncoding("main.csv", "Main Program", 2, "", "", detail, unreadable=True)]
-    stand_in = read_csv(out / "main.csv")[1]
-    assert is_stand_in(stand_in)
-    # The placeholder line goes. The text that laddercodec could read stays.
-    assert stand_in.comment == f"{STAND_IN_COMMENT}\n{detail}\n\nMixer start"
+    assert found == []
+    assert read_csv(out / "main.csv") == [_rung("C1"), _rung("C2")]
 
 
 class _NewWarning(UserWarning):
@@ -619,9 +615,53 @@ def test_clipboard_comment_that_laddercodec_cannot_read_writes_no_csv(
 
     with pytest.raises(UnreadableRungError, match="copied rung 1: laddercodec cannot read this"):
         decode_to_csv(b"clip", path)
-    with pytest.raises(ValueError, match="^rung 1: laddercodec cannot read this rung's comment"):
-        prepare_bin_load(b"clip", click_v4=True)
     assert not path.exists()
+
+
+def test_a_bin_load_passes_on_warnings_other_than_a_marker(monkeypatch) -> None:
+    """The payload is CLICK's own bytes, and the operands are known, so the load goes on."""
+    data = encode(_rung("C1", CompareContact("==", "DH70", "DH71")))
+    data = data.replace("DH71".encode("utf-16-le"), "DS39".encode("utf-16-le"))
+    provisioned: list[list[str]] = []
+
+    def provision(addresses, *, mdb_path=None):
+        provisioned.append(addresses)
+        return 0, None, None
+
+    monkeypatch.setattr("clicknick.ladder.program._provision_mdb_addresses", provision)
+
+    with pytest.warns(RefusedFieldWarning):
+        result = prepare_bin_load(data, click_v4=True)
+
+    assert result.payload == data
+    assert provisioned == [result.addresses]
+    assert {"DH70", "DS39", "C1"} <= set(result.addresses)
+
+
+def test_a_bin_load_passes_on_a_comment_that_laddercodec_cannot_read(monkeypatch) -> None:
+    def decode(_data: bytes) -> list[Rung]:
+        warnings.warn(UndecodedCommentWarning(0, "bad RTF"), stacklevel=1)
+        return [_rung("C1", comment="UNDECODED comment: bad RTF")]
+
+    monkeypatch.setattr("clicknick.ladder.program.decode", decode)
+
+    with pytest.warns(UndecodedCommentWarning):
+        result = prepare_bin_load(b"clip", click_v4=True)
+
+    assert result.payload == b"clip"
+
+
+def test_paste_refuses_a_comment_that_laddercodec_could_not_read() -> None:
+    rungs = [_rung("C1"), _rung("C2", comment="UNDECODED comment: bad RTF\nMixer start")]
+
+    with pytest.raises(UnreadableRungError) as refused:
+        prepare_rungs_load(rungs, click_v4=True, first_rung=3)
+
+    assert str(refused.value) == (
+        'Rung 4 has a comment that starts with laddercodec\'s "UNDECODED comment:" line.'
+        " laddercodec could not read the comment that CLICK held there. Delete that line, or"
+        " put back the comment."
+    )
 
 
 def test_paste_refuses_rungs_that_laddercodec_warns_about_as_it_encodes(monkeypatch) -> None:
@@ -648,6 +688,77 @@ def test_warnings_from_anything_but_laddercodec_pass_through() -> None:
             warnings.warn("not laddercodec", DeprecationWarning, stacklevel=1)
 
     assert found == []
+
+
+def test_a_python_warning_raised_inside_laddercodec_passes_through() -> None:
+    """Only a UserWarning is laddercodec's by where it was raised, not a DeprecationWarning."""
+    import laddercodec
+
+    from clicknick.ladder.codec_warnings import recording
+
+    inside = str(Path(laddercodec.__file__).resolve().parent / "decode.py")
+    with pytest.warns(DeprecationWarning, match="old call"):
+        with recording() as found:
+            warnings.warn_explicit("old call", DeprecationWarning, inside, 1)
+            warnings.warn_explicit("lost a row", UserWarning, inside, 1)
+
+    assert [str(warning) for warning in found] == ["lost a row"]
+
+
+def test_two_threads_never_record_at_once() -> None:
+    """The build worker and the Tk thread both call laddercodec. Neither takes the other's
+    warning, and the warning filters are as they were afterwards."""
+    import threading
+    import time
+
+    from clicknick.ladder.codec_warnings import recording
+
+    filters = list(warnings.filters)
+    showwarning = warnings.showwarning
+    build_in, tk_trying, tk_in = threading.Event(), threading.Event(), threading.Event()
+    lists: dict[str, list[Warning]] = {}
+    overlap: list[bool] = []
+
+    def build() -> None:
+        with recording() as found:
+            build_in.set()
+            assert tk_trying.wait(5)
+            time.sleep(0.05)  # the Tk thread is waiting for the lock by now
+            overlap.append(tk_in.is_set())
+            warnings.warn(UndecodedCommentWarning(3, "bad RTF", "Main Program"), stacklevel=1)
+        lists["build"] = found
+
+    def tk() -> None:
+        assert build_in.wait(5)
+        tk_trying.set()
+        with recording() as found:
+            tk_in.set()
+        lists["tk"] = found
+
+    threads = [threading.Thread(target=build), threading.Thread(target=tk)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+
+    assert overlap == [False]
+    assert [type(warning) for warning in lists["build"]] == [UndecodedCommentWarning]
+    assert lists["tk"] == []
+    assert warnings.filters == filters
+    assert warnings.showwarning is showwarning
+
+
+def test_a_fingerprint_passes_on_what_laddercodec_warns(monkeypatch) -> None:
+    from clicknick.ladder.program import rung_fingerprint
+
+    def csv_rows(_rungs, **_kwargs):
+        warnings.warn(_NewWarning(0), stacklevel=1)
+        return [["R", "-"]]
+
+    monkeypatch.setattr("clicknick.ladder.program.csv_rows", csv_rows)
+
+    with pytest.warns(_NewWarning):
+        assert rung_fingerprint(_rung("C1")) == (("R", "-"),)
 
 
 # ---------------------------------------------------------------------------
