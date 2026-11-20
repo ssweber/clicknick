@@ -20,7 +20,7 @@ from pyclickplc.banks import (
     MEMORY_TYPE_TO_DATA_TYPE,
     DataType,
 )
-from pyclickplc.nicknames import REQUIRED_COLUMNS, format_csv, read_csv
+from pyclickplc.nicknames import CSV_ENCODING, REQUIRED_COLUMNS, format_csv, read_csv
 
 from ..models.address_row import AddressRow
 from ..utils.mdb_operations import (
@@ -146,14 +146,14 @@ def _is_read_only(path: Path) -> bool:
 def _write_file(path: Path, data: str) -> None:
     """Write *data* to *path*, keeping an existing file's identity and attributes.
 
-    This function encodes the text before it opens the file, so an encoding error leaves the
-    file as it was. It overwrites an existing file in place and truncates it to the new
+    This function encodes the text as cp1252, the encoding of CLICK's nickname export, before
+    it opens the file. An encoding error therefore leaves the file as it was. It overwrites an existing file in place and truncates it to the new
     length instead of recreating it. A Hidden file therefore still saves and stays Hidden.
     A program that only reads the file does not stop the write. Examples are Explorer's
     preview pane, antivirus and OneDrive. A program that locks the file, such as Excel,
     does stop it.
     """
-    encoded = data.encode("utf-8")
+    encoded = data.encode(CSV_ENCODING)
     try:
         if path.exists():
             with open(path, "r+b") as csvfile:
@@ -295,7 +295,9 @@ class CsvDataSource(DataSource):
 
         Raises:
             ValueError: The last load found a file it could not read; it is
-                left as it is.
+                left as it is. A nickname, comment or initial value that has a
+                character that cp1252 does not have also raises it. The message
+                names the address, and the file is left as it is.
             OSError: The file cannot be written, such as while Excel holds it open.
         """
         if self._unreadable is not None:

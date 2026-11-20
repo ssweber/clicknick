@@ -262,16 +262,48 @@ class TestCsvModeStore:
         assert store.visible_state[key].nickname == "Stop"
         assert store.base_state[key].nickname == ""
 
-    def test_an_encoding_failure_leaves_the_file_as_it_was(self, tmp_path):
+    def test_a_save_writes_the_file_in_cp1252(self, tmp_path):
+        path = tmp_path / "names.csv"
+        rows = [AddressRow("C", 1, nickname="Café", comment="5°")]
+
+        CsvDataSource(str(path)).save_changes(rows)
+
+        assert path.read_bytes() == (f'{HEADER}\r\nC1,BIT,"Café",0,No,"5°"\r\n'.encode("cp1252"))
+
+    def test_a_cp1252_file_is_loaded_and_saved_again_as_it_was(self, tmp_path):
+        path = _write(
+            tmp_path / "names.csv", f'{HEADER}\nC1,BIT,"Café",0,No,""\n', encoding="cp1252"
+        )
+        before = path.read_bytes()
+        source = CsvDataSource(str(path))
+
+        rows = source.load_all_addresses()
+        source.save_changes(list(rows.values()))
+
+        assert [row.nickname for row in rows.values()] == ["Café"]
+        assert path.read_bytes() == before
+
+    @pytest.mark.parametrize("field", ["nickname", "comment", "initial_value"])
+    def test_a_character_cp1252_lacks_is_refused_and_the_file_stays_as_it_was(
+        self, tmp_path, field
+    ):
         path = _write(tmp_path / "names.csv", f'{HEADER}\nX001,BIT,"Start",0,No,""\n')
         before = path.read_bytes()
-        # A lone surrogate cannot be encoded.
-        rows = [AddressRow("C", 1, nickname="Motor"), AddressRow("C", 2, comment="\ud800")]
+        # cp1252 has no arrow.
+        rows = [AddressRow("C", 1, nickname="Motor"), AddressRow("C", 2, **{field: "a→b"})]
 
-        with pytest.raises(UnicodeEncodeError):
+        with pytest.raises(ValueError, match="C2"):
             CsvDataSource(str(path)).save_changes(rows)
 
         assert path.read_bytes() == before
+
+    def test_a_character_cp1252_lacks_creates_no_file(self, tmp_path):
+        path = tmp_path / "names.csv"
+
+        with pytest.raises(ValueError, match="C1"):
+            CsvDataSource(str(path)).save_changes([AddressRow("C", 1, nickname="→")])
+
+        assert not path.exists()
 
     def test_a_save_writes_a_shorter_file_whole(self, tmp_path):
         path = _write(tmp_path / "names.csv", f"{HEADER}\n" + 'C1,BIT,"Long name",0,No,""\n' * 9)

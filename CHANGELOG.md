@@ -8,6 +8,15 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- ClickNick now writes every nickname CSV in cp1252, the encoding of CLICK's own nickname export. 0.25.0 wrote UTF-8. This covers **File > Export to CSV** in the Address Editor and **Sync** in CSV mode. It also covers the copy of Address.csv that CSV mode offers to save, and the nicknames.csv in the workspace. A script of yours that reads these files as UTF-8 must read them as cp1252. ClickNick still loads a nickname CSV in either encoding.
+- ClickNick now refuses to write a nickname, comment or initial value that has a character cp1252 does not have, such as `→`. 0.25.0 wrote the character. The error names the address and the character, and says to replace it. The file on disk stays as it was. If this happens in the nicknames.csv for **Compare with > Other CLICK window**, the comparison goes ahead without the nicknames, and the status line says why.
+
+### Fixed
+
+- ClickNick now loads a nickname CSV that CLICK exported with a non-ASCII nickname or comment. 0.25.0 refused the file because it is cp1252.
+
 ## v0.25.0 - 2026-11-18
 
 After a Sync, CLICK's ladder now shows the new nicknames. You no longer need CLICK's Address Picker or a reopened project to see them. Every ClickNick user should upgrade.
