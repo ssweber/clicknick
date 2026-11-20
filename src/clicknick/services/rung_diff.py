@@ -14,6 +14,7 @@ from __future__ import annotations
 import ast
 import difflib
 import json
+import os
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -501,7 +502,12 @@ def _program_name(relative: Path, source: str) -> str | None:
     return f"subroutines/{title.group(1) if title else relative.stem}.csv"
 
 
-def _read_manifest(bundle_dir: Path) -> dict[str, dict[int, list[int]]]:
+# A source line in the exporter's manifest, as (file, line). The file is None if the manifest
+# records no file.
+_ManifestLine = tuple[str | None, int]
+
+
+def _read_manifest(bundle_dir: Path) -> dict[str, dict[int, list[_ManifestLine]]]:
     """Return the exporter's manifest as program name -> proposed rung -> source lines.
 
     Return an empty dict if the manifest cannot be read.
@@ -518,15 +524,18 @@ def _read_manifest(bundle_dir: Path) -> dict[str, dict[int, list[int]]]:
     except (OSError, ValueError, TypeError, AttributeError):
         return {}
 
-    result: dict[str, dict[int, list[int]]] = {}
+    result: dict[str, dict[int, list[_ManifestLine]]] = {}
     for name, entries in entries_by_name.items():
-        lines: dict[int, list[int]] = {}
+        lines: dict[int, list[_ManifestLine]] = {}
         for entry in entries if isinstance(entries, list) else ():
             if not isinstance(entry, dict) or not isinstance(entry.get("rung"), int):
                 continue
             sources = entry.get("sources", [])
             lines[entry["rung"]] = [
-                source["source_line"]
+                (
+                    source["source_file"] if isinstance(source.get("source_file"), str) else None,
+                    source["source_line"],
+                )
                 for source in (sources if isinstance(sources, list) else ())
                 if isinstance(source, dict) and isinstance(source.get("source_line"), int)
             ]
@@ -580,6 +589,27 @@ class BundleSources:
                 texts[name.casefold()] = source
         return cls(texts)
 
+    @staticmethod
+    def _in_file(recorded: str | None, path: Path, source_dir: Path) -> bool:
+        """Return whether the manifest's *recorded* file is *path*, a file in *source_dir*.
+
+        A line with no recorded file counts as being in *path*. The exporter records the
+        file that defined each rung. If either file is missing, ``os.path.samefile`` raises.
+        The two paths are then compared from the ``plc`` folder down, with case ignored on
+        Windows.
+        """
+        if recorded is None:
+            return True
+        try:
+            return os.path.samefile(recorded, path)
+        except OSError:
+            pass
+        tail = (source_dir.name, *path.relative_to(source_dir).parts)
+        recorded_parts = Path(recorded).parts
+        return tuple(os.path.normcase(part) for part in recorded_parts[-len(tail) :]) == tuple(
+            os.path.normcase(part) for part in tail
+        )
+
     @classmethod
     def workspace(cls, source_dir: Path, bundle_dir: Path) -> BundleSources:
         """Read the workspace source that *bundle_dir* was just exported from.
@@ -588,6 +618,7 @@ class BundleSources:
         the text shown is the text that was edited.
         """
         texts: dict[str, str] = {}
+        paths: dict[str, Path] = {}
         for path in (source_dir / "main.py", *sorted((source_dir / "subroutines").glob("*.py"))):
             try:
                 source = path.read_text(encoding="utf-8")
@@ -596,18 +627,34 @@ class BundleSources:
             name = _program_name(path.relative_to(source_dir), source)
             if name is not None:
                 texts[name.casefold()] = source
-        return cls(texts, _read_manifest(bundle_dir))
+                paths[name.casefold()] = path
+        # A rung that the exporter built in another file, such as a helper module, has
+        # no line in this program's text.
+        rung_lines = {
+            name: {
+                rung: [
+                    line
+                    for recorded, line in entries
+                    if cls._in_file(recorded, paths[name], source_dir)
+                ]
+                for rung, entries in by_rung.items()
+            }
+            for name, by_rung in _read_manifest(bundle_dir).items()
+            if name in paths
+        }
+        return cls(texts, rung_lines)
 
 
 @dataclass
 class _SourceChunk:
-    """The source lines of one rung in generated pyrung.
+    """The source lines of one rung in a pyrung file.
 
-    They are a ``with rung()`` block that has an ``# Rn`` marker, the ``comment()`` calls
-    just above it, and any ``rung().continued()`` blocks just after it.
+    They are a ``with rung()`` block, the ``comment()`` calls just above it, and any
+    ``rung().continued()`` blocks just after it. *number* is the block's ``# Rn`` marker, or
+    None if the block has no marker, as in a rung that you wrote by hand.
     """
 
-    number: int
+    number: int | None
     marker_line: int
     start_line: int
     end_line: int
@@ -643,8 +690,10 @@ def _statement_rung_number(statement: ast.stmt, lines: list[str]) -> int | None:
 def _source_chunks(source: str) -> list[_SourceChunk]:
     """Parse generated pyrung into the chunks that show each rung.
 
-    Return an empty list if the source does not parse. A chunk's number comes from its
-    ``# Rn`` marker. That number is only for display. Rungs are compared by fingerprint.
+    Return an empty list if the source does not parse. Every ``with rung()`` block that
+    is not ``rung().continued()`` starts a chunk. A chunk's number comes from its ``# Rn``
+    marker, if it has one. Rungs are compared by fingerprint, so that number is only for
+    display.
     """
     try:
         tree = ast.parse(source)
@@ -669,19 +718,13 @@ def _source_chunks(source: str) -> list[_SourceChunk]:
                 kind = next((value for value in kinds if value is not None), None)
 
             if kind == "primary":
-                rung_number = _statement_rung_number(statement, lines)
-                if rung_number is not None:
-                    active = _SourceChunk(
-                        number=rung_number,
-                        marker_line=statement.lineno,
-                        start_line=(
-                            pending_comments[0].lineno if pending_comments else statement.lineno
-                        ),
-                        end_line=statement.end_lineno or statement.lineno,
-                    )
-                    chunks.append(active)
-                else:
-                    active = None
+                active = _SourceChunk(
+                    number=_statement_rung_number(statement, lines),
+                    marker_line=statement.lineno,
+                    start_line=pending_comments[0].lineno if pending_comments else statement.lineno,
+                    end_line=statement.end_lineno or statement.lineno,
+                )
+                chunks.append(active)
                 pending_comments.clear()
                 continue
 
@@ -704,8 +747,20 @@ def _source_chunks(source: str) -> list[_SourceChunk]:
 def _chunks_by_rung(
     source: str, rung_lines: Mapping[int, Sequence[int]]
 ) -> dict[int, tuple[_SourceChunk, ...]]:
+    """Return the chunks that show each rung, by rung number.
+
+    If *rung_lines* holds the exporter's manifest, it alone says which source belongs to
+    which rung. A marker number is not used, because it is stale once a rung is added,
+    moved or removed. A rung that the manifest does not resolve has no entry. Without a
+    manifest, the ``# Rn`` markers give the numbers.
+    """
     chunks = _source_chunks(source)
     result: dict[int, tuple[_SourceChunk, ...]] = {}
+    if not rung_lines:
+        for chunk in chunks:
+            if chunk.number is not None:
+                result.setdefault(chunk.number, (chunk,))
+        return result
     for rung_number, source_lines in rung_lines.items():
         matched: list[_SourceChunk] = []
         for source_line in source_lines:
@@ -721,8 +776,6 @@ def _chunks_by_rung(
                 matched.append(chunk)
         if matched:
             result[rung_number] = tuple(matched)
-    for chunk in chunks:
-        result.setdefault(chunk.number, (chunk,))
     return result
 
 
