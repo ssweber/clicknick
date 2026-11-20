@@ -330,7 +330,47 @@ def test_simulator_without_cpu_shows_the_placeholder(simulator, ready):
         for item in win._canvas.find_all()
         if win._canvas.type(item) == "text"
     ]
-    assert any(t.startswith("No CPU configured.") for t in texts)
+    assert "No CPU" in texts
+    assert any(
+        t.startswith("No CPU configured. The Simulator still runs the program") for t in texts
+    )
+
+
+def _canvas_texts(win):
+    return [
+        win._canvas.itemcget(item, "text")
+        for item in win._canvas.find_all()
+        if win._canvas.type(item) == "text"
+    ]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError("Unsupported module ID 8192 at SystemConfig.Item10"),
+        PermissionError("locked"),
+    ],
+    ids=["value error", "os error"],
+)
+def test_a_hardware_read_error_is_titled_and_shown_without_no_cpu(simulator, ready, error):
+    def unreadable(_path, _used):
+        raise error
+
+    ready.sim._layout_reader = unreadable
+    win = simulator(ready)
+    texts = _canvas_texts(win)
+    assert "Hardware" in texts
+    assert not any("No CPU" in t for t in texts)
+    assert any(str(error) in t and "only the X and Y addresses" in t for t in texts)
+
+
+def test_a_missing_project_ini_is_titled_as_a_hardware_problem(simulator, ready):
+    ready.sim._get_project_ini = lambda: None
+    win = simulator(ready)
+    texts = _canvas_texts(win)
+    assert "Hardware" in texts
+    assert not any("No CPU" in t for t in texts)
+    assert any("Project.ini was not found" in t for t in texts)
 
 
 def test_dataview_force_column(tk_root):

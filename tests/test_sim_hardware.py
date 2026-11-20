@@ -156,3 +156,28 @@ def test_reads_a_real_project_ini(tmp_path):
     assert cpu.location == "cpu"
     assert cpu.of_kind("input")[0].address == "X001"
     assert _addresses(_placeholders(layout)[0], "input") == ["X501"]
+
+
+def test_a_module_that_pyclickplc_rejects_is_named_in_the_panel_text(tmp_path):
+    from clicknick.services.sim_hardware import layout_error_text, read_panel_layout
+
+    ini = tmp_path / "Project.ini"
+    # -1 is not a CLICK module ID, so every pyclickplc release rejects it.
+    ini.write_text("[SystemConfig]\nItem1=196\nItem10=-1\n", encoding="utf-8")
+    with pytest.raises(ValueError) as raised:
+        read_panel_layout(ini)
+    text = layout_error_text(raised.value)
+
+    assert "-1" in text
+    assert "still runs the program" in text
+    assert "only the X and Y addresses" in text
+    assert "No CPU" not in text
+
+
+def test_a_read_error_that_is_not_a_value_error_does_not_say_the_simulator_runs():
+    from clicknick.services.sim_hardware import layout_error_text
+
+    text = layout_error_text(PermissionError("locked"))
+
+    assert "locked" in text
+    assert "still runs" not in text

@@ -8,6 +8,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- ClickNick now builds the workspace when it cannot read the hardware in CLICK's Project.ini. This happens for a module that ClickNick does not know yet, such as a C2-FILL in the option slot of a CLICK PLUS CPU. Check Program, Review Changes, `clicknick-cli` and the Simulator then work. 0.25.0 stopped with **Could not build the workspace**, and the Simulator's hardware panel said that no CPU was configured. The panel now shows the read error. A message box in the main window tells you that ClickNick does not know which addresses are analog inputs. If you turn on the check Comparison Operand Has No Ladder Writer, Check Program then reports an analog input that a comparison reads as a value that nothing writes. For a project with no CPU, the panel now says that the Simulator still runs the program, that the dashed cards show the X and Y addresses that the program uses, and how to see your hardware.
+
 ## v0.26.0 - 2026-11-20
 
 Every ClickNick user should upgrade for the fixes from pyrung 0.18.0 and laddercodec 0.5.0. The Simulator now runs a `copy()` of a number into TXT in your `src/plc` code the same as a CLICK PLC. Review Changes now pastes some code from `src/plc` correctly. 0.25.0 pasted that code wrongly.

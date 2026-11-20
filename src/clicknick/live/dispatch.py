@@ -599,9 +599,12 @@ def dispatch(ctx: DispatchContext, command: str) -> str:
         project_dir = _get_project_dir(ctx)
         selection = getattr(ctx.analysis, "check_selection", None)
         notes = ""
+        warning = getattr(ctx.analysis, "build_warning", None)
+        if warning:
+            notes = f"NOTE: {warning}\n"
         if selection is not None:
             selection.sync(project_dir)
-            notes = "".join(f"NOTE: {item.describe()}\n" for item in selection.take_dropped())
+            notes += "".join(f"NOTE: {item.describe()}\n" for item in selection.take_dropped())
         return notes + run_project_check(project_dir) + _status_footer(ctx)
 
     if verb == "tag":

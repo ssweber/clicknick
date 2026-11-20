@@ -202,6 +202,8 @@ class ConnectionSession:
         self._on_build_finished = on_build_finished
         # Legacy encodings in CLICK's last save that the user has been told about
         self._legacy_reported: frozenset[tuple[str, str, str, str]] = frozenset()
+        # The build warning that the user has been told about
+        self._build_warning_reported: str | None = None
         # Rule names that builds removed from saved check selections, not yet reported
         self._dropped_checks: list[DroppedChecks] = []
         self._save_count = 0
@@ -605,6 +607,23 @@ class ConnectionSession:
         new = keys - self._legacy_reported
         self._legacy_reported = keys
         return found if new else ()
+
+    def build_warning_to_report(self) -> str | None:
+        """Return the latest build's warning if the user has not been told it, or None.
+
+        A build that succeeds without a warning clears what was told. If the same warning
+        comes back, it is reported again.
+        """
+        from .services.analysis_service import AnalysisStatus
+
+        analysis = self.analysis
+        if analysis is None or analysis.status is not AnalysisStatus.READY:
+            return None
+        warning = analysis.build_warning
+        if warning == self._build_warning_reported:
+            return None
+        self._build_warning_reported = warning
+        return warning
 
     def dropped_checks_to_report(self) -> tuple[DroppedChecks, ...]:
         """Return the rule names removed from saved check selections, each one only once.

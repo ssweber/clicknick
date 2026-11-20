@@ -1897,12 +1897,19 @@ class ClickNickApp:
             message = "\n\n".join(item.describe() for item in found)
             messagebox.showwarning("Check Program", message, parent=parent or self.root)
 
+    def _report_build_warning(self) -> None:
+        """Tell the user what the latest build went on without, once for each warning."""
+        warning = self._session.build_warning_to_report() if self._session else None
+        if warning:
+            messagebox.showwarning("Workspace", warning, parent=self.root)
+
     def _on_build_finished(self) -> None:
         """Show the build's result. This runs on the build worker's thread."""
         try:
             self.root.after(0, self._request_ui_refresh)
             self.root.after(0, self._report_legacy_encodings)
             self.root.after(0, self._report_dropped_checks)
+            self.root.after(0, self._report_build_warning)
         except (RuntimeError, tk.TclError):
             pass  # The window closed while the build ran
 

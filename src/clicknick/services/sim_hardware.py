@@ -229,6 +229,21 @@ def build_panel_layout(modules: Iterable[ModuleIOLike], used_io: Iterable[str] =
     return PanelLayout(cards=tuple(cards))
 
 
+def layout_error_text(error: Exception) -> str:
+    """Return the text that the hardware panel shows when reading Project.ini failed.
+
+    A ``ValueError`` is a module that pyclickplc has no entry for, or a malformed file. The
+    build still runs then. Any other error, such as ``OSError``, fails the build.
+    """
+    shown = "This panel shows only the X and Y addresses that the program uses."
+    if isinstance(error, ValueError):
+        return (
+            f"ClickNick could not read the hardware in CLICK's Project.ini: {error}. "
+            f"The Simulator still runs the program. {shown}"
+        )
+    return f"Could not read CLICK's Project.ini: {error}. {shown}"
+
+
 def read_panel_layout(project_ini: Path, used_io: Iterable[str] = ()) -> PanelLayout:
     """Read CLICK's hardware configuration from Project.ini.
 

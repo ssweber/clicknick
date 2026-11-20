@@ -51,6 +51,7 @@ from .services.sim_hardware import (
     PanelLayout,
     build_panel_layout,
     io_addresses,
+    layout_error_text,
 )
 from .services.sim_state import (
     BenchLink,
@@ -2883,7 +2884,7 @@ class SimulationSession:
                 error = None
             except Exception as exc:
                 layout = build_panel_layout((), used)
-                error = f"Could not read the hardware configuration: {exc}"
+                error = layout_error_text(exc)
         changed = layout != self._layout or error != self._layout_error
         self._layout = layout
         self._layout_error = error
