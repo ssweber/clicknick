@@ -1840,7 +1840,7 @@ class ClickNickApp:
         ``ConnectionSession.legacy_encodings_to_report`` returns nothing unless a finding is
         new. So the message shows once for each set of findings.
         """
-        from .ladder.program import describe_legacy_encoding
+        from .ladder.program import describe_legacy_encoding, stand_in_fix
 
         found = self._session.legacy_encodings_to_report() if self._session else ()
         if not found:
@@ -1857,12 +1857,16 @@ class ClickNickApp:
         copies = [item for item in found if item.unreadable and item.rung is None]
         parts: list[str] = []
         if unreadable:
+            one = len({(item.file, item.rung) for item in unreadable}) == 1
+            fix = stand_in_fix(unreadable, one=one)
+            if fix.startswith(("Paste", "Where")):
+                them = "it" if one else "them"
+                fix += f" Ladder > Compare with > Folder on that copy lists {them} in red."
             parts.append(
-                "ClickNick cannot read these rungs in CLICK:\n\n"
+                "ClickNick cannot copy these rungs from CLICK as they are:\n\n"
                 + _listed(unreadable)
-                + "\n\nThe workspace holds an empty rung in place of each. Paste them again "
-                "from your own copy of the program, or fix them in CLICK. Ladder > Compare with > "
-                "Folder on that copy lists them in red."
+                + "\n\nThe workspace holds an empty rung in place of each."
+                + (f" {fix}" if fix else "")
             )
         if copies:
             parts.append(

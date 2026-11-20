@@ -32,6 +32,7 @@ from .program import (
     prepare_bin_load,
     prepare_csv_load,
     program_save,
+    stand_in_fix,
 )
 
 # ---------------------------------------------------------------------------
@@ -618,10 +619,12 @@ def main() -> None:
                 for item in legacy:
                     print(f"  {describe_legacy_encoding(item)}")
             if unreadable:
+                fix = stand_in_fix(
+                    unreadable, one=len({(item.file, item.rung) for item in unreadable}) == 1
+                )
                 print(
-                    "\nClickNick cannot read these rungs. Each CSV holds an empty rung in place of"
-                    " each of these rungs. Paste them into CLICK again from your own copy of the"
-                    " program, or fix them in CLICK:"
+                    "\nClickNick cannot copy these rungs from CLICK as they are. Each CSV holds an"
+                    " empty rung in place of each of them." + (f" {fix}" if fix else "")
                 )
                 for item in unreadable:
                     print(f"  {describe_legacy_encoding(item)}")

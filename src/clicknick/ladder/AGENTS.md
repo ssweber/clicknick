@@ -7,6 +7,10 @@ The encoder/decoder core lives in the standalone [`laddercodec`](https://github.
 - **program.py** — Service functions (encode, decode, MDB provisioning, program save/load). Pure logic, no print/input/sys.exit. Used by both CLI and GUI.
 - **cli.py** — `clicknick-rung` CLI. Thin wrapper: argparse, interactive prompts, presentation. Calls program.py services.
 - **clipboard.py** — Win32 clipboard interaction (copy/read/clear, Click format 522)
+- **codec_warnings.py** — Records every warning that laddercodec issues and gives each one a rule. Run every
+  laddercodec call that reads CLICK's bytes or writes a CSV inside `recording()`, and pass what it records to
+  `sort_warnings`. A laddercodec warning with no rule counts as a rung that ClickNick cannot read. When
+  laddercodec adds a warning class, add its rule there.
 
 For encoder/codec work, **work in the laddercodec repo** (`../laddercodec`).
 

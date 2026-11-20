@@ -190,6 +190,31 @@ def test_legacy_encodings_are_reported_once_per_new_finding(tmp_path: Path) -> N
     assert len(session.legacy_encodings_to_report()) == 1
 
 
+def test_a_new_kind_of_unreadable_rung_in_the_same_file_is_reported(tmp_path: Path) -> None:
+    """These findings name no instruction, so only their details tell them apart."""
+    from clicknick.ladder.program import write_legacy_encodings
+
+    split = "CLICK's Syntax Check splits this rung into 2 rungs."
+    compare = "laddercodec cannot write this rung to a CSV: no CSV cell reads back as this compare."
+    session = _session(tmp_path)
+
+    def save(*found: tuple[int | None, str]) -> None:
+        write_legacy_encodings(
+            tmp_path,
+            [LegacyEncoding("main.csv", "P", rung, "", "", d, True) for rung, d in found],
+        )
+
+    save((2, split))
+    assert len(session.legacy_encodings_to_report()) == 1
+    save((2, split), (7, compare))
+    assert [item.rung for item in session.legacy_encodings_to_report()] == [2, 7]
+    save((2, split), (7, compare), (None, "ClickNick cannot read CLICK's copy of this program."))
+    assert len(session.legacy_encodings_to_report()) == 3
+    # The same findings, moved down by a pasted rung, are not news
+    save((3, split), (8, compare), (None, "ClickNick cannot read CLICK's copy of this program."))
+    assert session.legacy_encodings_to_report() == ()
+
+
 def test_nothing_is_reported_while_clicks_program_is_being_read(tmp_path: Path) -> None:
     session = _session(tmp_path)
     _record(tmp_path, ("main.csv", 3, "H70000"))

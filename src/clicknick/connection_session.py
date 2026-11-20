@@ -201,7 +201,7 @@ class ConnectionSession:
         # Called on the build worker's thread, not the Tk thread.
         self._on_build_finished = on_build_finished
         # Legacy encodings in CLICK's last save that the user has been told about
-        self._legacy_reported: frozenset[tuple[str, str, str]] = frozenset()
+        self._legacy_reported: frozenset[tuple[str, str, str, str]] = frozenset()
         # Rule names that builds removed from saved check selections, not yet reported
         self._dropped_checks: list[DroppedChecks] = []
         self._save_count = 0
@@ -583,7 +583,9 @@ class ConnectionSession:
         Return an empty result when nothing new turned up, so pasting a fix and saving does
         not report the rest again. Each finding is keyed by its program, instruction and
         token, not by its rung number. Pasting rungs above a finding changes its rung number,
-        and that does not make it a new finding.
+        and that does not make it a new finding. A finding that names no instruction is about
+        the whole rung or the whole program, so its detail is part of the key too. The detail
+        holds no rung number.
         """
         from .ladder.program import read_legacy_encodings
 
@@ -591,7 +593,15 @@ class ConnectionSession:
         if csv_dir is None:
             return ()
         found = read_legacy_encodings(csv_dir)
-        keys = frozenset((item.file.casefold(), item.instruction, item.token) for item in found)
+        keys = frozenset(
+            (
+                item.file.casefold(),
+                item.instruction,
+                item.token,
+                "" if item.instruction else item.detail,
+            )
+            for item in found
+        )
         new = keys - self._legacy_reported
         self._legacy_reported = keys
         return found if new else ()

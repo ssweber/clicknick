@@ -1395,7 +1395,7 @@ def test_the_console_waits_while_the_program_is_written(simulator, ready):
     _rebuilt(ready)
     _record_unreadable(ready.analysis.project_dir, 4)
     win._console._submit_command_text("reload")
-    assert "Cannot write the program: ClickNick cannot read this rung" in _output(win._console)
+    assert "Cannot write the program: ClickNick cannot copy this rung" in _output(win._console)
     while jobs:
         jobs.pop(0)()
     assert ready.dap.calls.count(("reload",)) == 1

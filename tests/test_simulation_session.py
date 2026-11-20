@@ -515,9 +515,11 @@ def test_program_with_a_rung_clicknick_cannot_read_does_not_run(ready):
     assert ready.daps == []
     assert ready.sim.status is SimStatus.FAILED
     message = ready.messages("error")
-    assert "ClickNick cannot read this rung in CLICK" in message
+    assert "ClickNick cannot copy this rung from CLICK as it is" in message
     assert "Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
-    assert message.endswith("Paste it again.")
+    assert message.endswith(
+        "\nPaste it again from your own copy of the program, or fix it in CLICK."
+    )
     assert "CsvWriteError" not in message
 
 
@@ -528,7 +530,9 @@ def test_several_unreadable_rungs_are_named_together(ready):
     message = ready.messages("error")
     assert "Conf_Compare rung 4" in message
     assert "Conf_Compare rung 5" in message
-    assert message.endswith("Paste them again.")
+    assert message.endswith(
+        "\nPaste them again from your own copy of the program, or fix them in CLICK."
+    )
 
 
 def test_once_the_rung_is_pasted_again_the_simulation_runs(ready):
@@ -1926,7 +1930,7 @@ def test_a_write_is_refused_while_a_rung_clicknick_cannot_read_is_in_the_workspa
 
     assert ready.dap.calls[mark:] == [], "the old program runs on"
     notice = ready.sim.notice or ""
-    assert notice.startswith("Cannot write the program: ClickNick cannot read this rung")
+    assert notice.startswith("Cannot write the program: ClickNick cannot copy this rung")
     assert "Conf_Compare rung 4" in notice
     assert notice.endswith("The simulation still runs the previous program.")
     assert not ready.sim.writing
@@ -1970,7 +1974,7 @@ def test_restart_refuses_a_workspace_that_cannot_start_and_keeps_the_simulation(
 
     assert len(ready.daps) == 1 and ("terminate",) not in ready.dap.calls
     assert ready.sim.is_ready
-    assert "Cannot restart the simulation: ClickNick cannot read" in ready.messages("error")
+    assert "Cannot restart the simulation: ClickNick cannot copy" in ready.messages("error")
 
     ready.analysis._status = AnalysisStatus.BUILDING
     ready.sim.restart()

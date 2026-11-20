@@ -346,11 +346,35 @@ def test_rungs_clicknick_cannot_read_pop_up_without_offering_the_workspace(monke
     ask.assert_not_called()
     assert warn.call_args.args[0] == "Paste Again"
     message = warn.call_args.args[1]
-    assert message.startswith("ClickNick cannot read these rungs in CLICK:\n")
+    assert message.startswith("ClickNick cannot copy these rungs from CLICK as they are:\n")
     assert "  Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
     assert "empty rung" in message
+    assert "Paste it again from your own copy of the program" in message
     assert "old encoding" not in message
     app._workspace.review_changes.assert_not_called()
+
+
+def test_a_rung_that_syntax_check_splits_is_not_told_to_be_pasted_again(monkeypatch) -> None:
+    from clicknick.ladder.program import LegacyEncoding
+
+    detail = (
+        "CLICK's Syntax Check splits this rung into 2 rungs. Run Syntax Check in CLICK, then "
+        "save the project."
+    )
+    split = LegacyEncoding("main.csv", "Main Program", 2, "", "", detail, True)
+    warn = MagicMock()
+    monkeypatch.setattr("clicknick.app.messagebox.showwarning", warn)
+
+    _popup_app((split,))._report_legacy_encodings()
+    alone = warn.call_args.args[1]
+    _popup_app((split, _unreadable(4)))._report_legacy_encodings()
+    mixed = warn.call_args.args[1]
+
+    assert alone.endswith(
+        f"  Main Program rung 2: {detail}\n\nThe workspace holds an empty rung in place of each."
+    )
+    assert "Paste" not in alone
+    assert "Where a line does not say what to do, paste the rung again" in mixed
 
 
 def test_a_program_csv_laddercodec_cannot_read_pops_up_too(monkeypatch) -> None:

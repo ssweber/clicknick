@@ -30,9 +30,9 @@ How to use it:
 The ClickNick session runs these steps. Its build notes for them, with the sibling commits that each branch
 was tested against, are in `../clicknick-wt/buildbot/jobs/next-pins/`.
 
-1. Move onto laddercodec's and pyrung's joint release: item 9 below. The branch is
-   `bob/laddercodec-next`, built against laddercodec's and pyrung's `main`. It merges once both are released,
-   with the pins moved to the released versions.
+1. Move onto laddercodec's and pyrung's joint release. The branch does the first part of item 9 below. The
+   rest waits on pyrung's next release. The branch is `bob/laddercodec-next`, built against laddercodec's and
+   pyrung's `main`. It merges once both are released, with the pins moved to the released versions.
 2. Check the encoding of CLICK's Address.csv. ClickNick reads it (`read_mdb_csv`) as UTF-8 with a BOM, and no
    recording shows a non-ASCII nickname in it.
 3. Read the CHANGELOG from v0.25.0 against what merged, and write the summary.
@@ -148,7 +148,12 @@ as CLICK holds it, such as a text compare that reads two ways.
 The branch `bob/laddercodec-next` did this much:
 
 - It moved ClickNick onto laddercodec's renamed API, and dropped unknown rule names from saved check
-  selections. That was item 8's last step.
+  selections. That finished the move onto pyrung's named imports.
+- Every call into laddercodec that reads CLICK's bytes or writes a CSV records laddercodec's warnings
+  (`ladder/codec_warnings.py`). Each warning class has a rule, and a laddercodec warning with no rule counts
+  as a rung that ClickNick cannot read. The coordinator asked for this on 2026-11-20, after two review rounds
+  found placeholders that reached the workspace with no finding.
+- A rung whose comment laddercodec cannot decode becomes a stand-in too.
 - `program_save` writes ClickNick's empty stand-in rung, with an unreadable finding, in place of three kinds of
   rung: a rung that decodes as a marker, a rung that `write_csv` would write as a marker, and a rung that
   `write_csv` would split into more than one rung. The runner showed on CLICK 4.00 that a paste, and a save
