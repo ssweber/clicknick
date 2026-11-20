@@ -9,6 +9,7 @@ from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
 from clicknick.models.address_row import AddressRow
+from clicknick.utils import mdb_operations
 from clicknick.views.address_editor.window import AddressEditorWindow
 
 MODULE = "clicknick.views.address_editor.window"
@@ -89,6 +90,7 @@ class _ClickDatabase:
     """A stand-in for SC_.mdb. CLICK writes to it too, without telling the store."""
 
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "live.mdb"
     is_read_only = False
     is_database = True

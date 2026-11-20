@@ -12,12 +12,14 @@ from clicknick.data.address_store import AddressStore
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
 from clicknick.services.nickname_staging import plan_nicknames, stage_nicknames
+from clicknick.utils import mdb_operations
 
 X1, X2, X3 = (get_addr_key("X", n) for n in (1, 2, 3))
 
 
 class _Database:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     is_database = True
     is_read_only = False
     file_path = "SC_.mdb"

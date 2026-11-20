@@ -8,6 +8,7 @@ from clicknick.data.address_store import AddressStore
 from clicknick.data.nickname_manager import NicknameManager
 from clicknick.models.address_row import AddressRow, value_notes
 from clicknick.models.nickname import Nickname
+from clicknick.utils import mdb_operations
 from clicknick.views.address_editor.view_builder import find_paired_row
 from clicknick.views.nav_window.outline_panel import OutlinePanel
 
@@ -72,6 +73,7 @@ def test_default_initial_value_is_not_shown():
 
 class _Source:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
 

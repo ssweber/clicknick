@@ -5,12 +5,14 @@ from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
 from clicknick.services.row_service import RowService
+from clicknick.utils import mdb_operations
 
 
 class MockDataSource:
     """Mock data source for testing."""
 
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
 

@@ -26,6 +26,7 @@ from clicknick.models.address_row import AddressRow
 from clicknick.models.validation import CONTROL_EDGE_ERROR, EDGE_CHARACTERS
 from clicknick.services import ImportService
 from clicknick.services.block_service import add_block_tag, remove_block_tag
+from clicknick.utils import mdb_operations
 from clicknick.widgets.import_csv_dialog import detect_blocks_in_csv
 
 EDGE = "Cannot start or end with a space"
@@ -41,6 +42,7 @@ class LiveSource:
     """A database that CLICK writes to as well. Its rows change without the store being told."""
 
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "live.mdb"
     is_read_only = False
     is_database = True

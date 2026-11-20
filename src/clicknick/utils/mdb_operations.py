@@ -5,6 +5,7 @@ Provides connection management and CRUD operations for the MDB database.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -195,6 +196,24 @@ def _delete_rows(cursor, rows: list[AddressRow]) -> int:
     return len(rows)  # Assuming success if no exception raised
 
 
+def stored_row(row: AddressRow) -> AddressRow:
+    """Return *row* as SC_.mdb holds it after ``save_changes`` writes it.
+
+    CLICK stores '0' as the InitialValue of a row that it creates with none, for every data
+    type except TXT. For TXT it stores NULL. CLICK holds '' after File > Open. CLICK reads
+    '' and '0' the same way. Any other value is stored as it is.
+
+    A row that ``save_changes`` deletes has no content, and SC_.mdb then holds no row for it.
+    The store then shows the address's default row, whose initial value is empty, so this
+    function returns the row with an empty initial value.
+    """
+    if row.needs_full_delete(is_dirty=True):
+        return replace(row, initial_value="")
+    if row.initial_value == "" and row.data_type != DataType.TXT:
+        return replace(row, initial_value="0")
+    return row
+
+
 def _upsert_rows(cursor, rows: list[AddressRow]) -> int:
     """Helper: Defensively Insert or Update rows."""
     modified_count = 0
@@ -213,7 +232,13 @@ def _upsert_rows(cursor, rows: list[AddressRow]) -> int:
                 SET Nickname = ?, Comment = ?, InitialValue = ?, Retentive = ? 
                 WHERE AddrKey = ?
                 """,
-                (row.nickname, row.comment, row.initial_value, row.retentive, row.addr_key),
+                (
+                    row.nickname,
+                    row.comment,
+                    stored_row(row).initial_value,
+                    row.retentive,
+                    row.addr_key,
+                ),
             )
         else:
             # INSERT
@@ -232,7 +257,7 @@ def _upsert_rows(cursor, rows: list[AddressRow]) -> int:
                     row.data_type,
                     row.nickname,
                     row.comment,
-                    row.initial_value,
+                    stored_row(row).initial_value,
                     row.retentive,
                 ),
             )
@@ -272,7 +297,7 @@ def save_changes(conn: MdbConnection, rows: Sequence[AddressRow]) -> int:
                     int(row.data_type),
                     row.nickname,
                     row.comment,
-                    row.initial_value,
+                    stored_row(row).initial_value,
                     bool(row.retentive),
                 ]
                 for row in to_upsert

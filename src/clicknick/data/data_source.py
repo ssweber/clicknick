@@ -28,6 +28,7 @@ from ..utils.mdb_operations import (
     find_click_database,
     load_all_addresses,
     save_changes,
+    stored_row,
 )
 
 if TYPE_CHECKING:
@@ -209,6 +210,15 @@ class DataSource(ABC):
             Number of rows modified
         """
 
+    @abstractmethod
+    def stored_row(self, row: AddressRow) -> AddressRow:
+        """Return *row* as this data source holds it after ``save_changes`` writes it.
+
+        The store takes the result as its base row after a Sync, so that the next read of
+        the data source changes nothing. A row that the data source does not keep, because
+        ``save_changes`` deletes it or leaves it out, comes back with an empty initial value.
+        """
+
     @property
     def is_read_only(self) -> bool:
         """Return True if this data source is read-only."""
@@ -297,6 +307,16 @@ class CsvDataSource(DataSource):
             field for column, field in COLUMN_FIELDS.items() if column in records.columns
         )
         return {addr_key: _row(record) for addr_key, record in records.items()}
+
+    def stored_row(self, row: AddressRow) -> AddressRow:
+        """Return *row* as the CSV file reads back.
+
+        ``format_csv`` writes 0 for an empty initial value of any data type but TXT, and
+        ``read_csv`` reads it back as '0'. ``save_changes`` leaves out a row with no content.
+        A CSV row is never Used. The rows that ``save_changes`` leaves out are therefore the
+        rows that a save to SC_.mdb deletes, and the same rule fits both.
+        """
+        return stored_row(row)
 
     def save_changes(self, rows: Sequence[AddressRow]) -> int:
         """Save to the CSV file.
@@ -400,6 +420,10 @@ class MdbDataSource(DataSource):
 
         with MdbConnection(self._db_path) as conn:
             return save_changes(conn, rows)
+
+    def stored_row(self, row: AddressRow) -> AddressRow:
+        """Return *row* as SC_.mdb holds it after ``save_changes`` writes it."""
+        return stored_row(row)
 
     @property
     def supports_used_field(self) -> bool:

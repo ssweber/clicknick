@@ -7,10 +7,12 @@ from pyclickplc.addresses import get_addr_key
 
 from clicknick.data.address_store import AddressStore
 from clicknick.live.dispatch import DispatchContext, dispatch
+from clicknick.utils import mdb_operations
 
 
 class MockDataSource:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
     is_database = True

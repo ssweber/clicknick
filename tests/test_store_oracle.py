@@ -28,6 +28,7 @@ from clicknick.services.block_service import (
     remove_block_tag,
     same_block_tag,
 )
+from clicknick.utils import mdb_operations
 from clicknick.views.address_editor.view_builder import build_unified_view
 
 CONTENT_FIELDS = ("nickname", "comment", "initial_value", "retentive")
@@ -106,6 +107,7 @@ class Source:
     """Data source that both the test (acting as CLICK) and Sync write rows to."""
 
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "oracle.mdb"
     is_read_only = False
     is_database = True
@@ -119,9 +121,10 @@ class Source:
     def save_changes(self, rows) -> int:
         for row in rows:
             # The database keeps content, used and data type only, as SC_.mdb does.
+            stored = mdb_operations.stored_row(row)
             self.rows[row.addr_key] = _row(
                 row.addr_key,
-                **{name: getattr(row, name) for name in CONTENT_FIELDS},
+                **{name: getattr(stored, name) for name in CONTENT_FIELDS},
                 used=row.used,
                 data_type=row.data_type,
             )
@@ -459,3 +462,61 @@ def test_incremental_state_matches_full_rebuild(seed: int) -> None:
             step = "discard"
         history.append(step)
         _assert_matches_rebuild(store, source, " -> ".join(history))
+
+
+class _MdbFake(Source):
+    """SC_.mdb as save_changes leaves it: a deleted row is gone, a written row is stored_row."""
+
+    def save_changes(self, rows) -> int:
+        for row in rows:
+            if row.needs_full_delete(is_dirty=True):
+                self.rows.pop(row.addr_key, None)
+            else:
+                self.rows[row.addr_key] = mdb_operations.stored_row(row)
+        return len(rows)
+
+
+class _CsvFake(_MdbFake):
+    """A nickname CSV as save_changes leaves it: every row with content, and no others."""
+
+    supports_used_field = False
+    is_database = False
+    file_path = "oracle.csv"
+
+    def save_changes(self, rows) -> int:
+        self.rows = {
+            row.addr_key: mdb_operations.stored_row(replace(row, used=False))
+            for row in rows
+            if row.has_content
+        }
+        return len(self.rows)
+
+
+@pytest.mark.parametrize("source_type", [_MdbFake, _CsvFake], ids=["mdb", "csv"])
+def test_a_reload_after_any_sync_changes_nothing(source_type) -> None:
+    """After a Sync that inserts, updates or deletes rows, the next read of the source is a no-op."""
+    typed = [("TD", 401), ("DS", 4001), ("DH", 401), ("C", 1901), ("TXT", 901)]
+    keys = [get_addr_key(memory_type, address) for memory_type, address in typed]
+    store = AddressStore(source_type({}))
+    store.load_initial_data()
+
+    def sync_then_reload(step: str, **fields: str) -> None:
+        with store.edit_session(step) as session:
+            for key in keys:
+                for name, value in fields.items():
+                    session.set_field(
+                        key, name, f"{value}{key}" if name == "nickname" and value else value
+                    )
+        assert store.save_all_changes()
+        after_sync = dict(store.visible_state)
+        notified: list[set[int]] = []
+        store.add_observer(lambda _store, changed: notified.append(set(changed)))
+        store._on_database_update()
+        store._observers.pop()
+        assert notified == [], step
+        assert store.visible_state == after_sync, step
+        assert not store.has_unsaved_changes(), step
+
+    sync_then_reload("insert", nickname="n_")
+    sync_then_reload("update", comment="a comment")
+    sync_then_reload("delete", nickname="", comment="")

@@ -86,3 +86,81 @@ def test_ensure_addresses_exist_requires_existing_db_path(tmp_path: Path) -> Non
     missing = tmp_path / "missing.mdb"
     with pytest.raises(FileNotFoundError, match="MDB file not found"):
         mdb_operations.ensure_addresses_exist(str(missing), ["X001"])
+
+
+class _FakeCursor:
+    """Records each statement and answers the existence check with *exists*."""
+
+    def __init__(self, exists: bool):
+        self.exists = exists
+        self.writes: list[tuple[str, tuple]] = []
+
+    def execute(self, sql: str, params: tuple = ()) -> None:
+        if not sql.strip().startswith("SELECT"):
+            self.writes.append((sql, params))
+
+    def fetchone(self) -> tuple[int]:
+        return (1 if self.exists else 0,)
+
+
+def _stored_initial_value(row: AddressRow, *, exists: bool) -> str:
+    cursor = _FakeCursor(exists)
+    mdb_operations._upsert_rows(cursor, [row])
+    ((sql, params),) = cursor.writes
+    assert sql.lstrip().startswith("UPDATE" if exists else "INSERT")
+    # UPDATE binds InitialValue third, INSERT seventh.
+    return params[2] if exists else params[6]
+
+
+@pytest.mark.parametrize("exists", [False, True], ids=["insert", "update"])
+@pytest.mark.parametrize(
+    ("memory_type", "data_type", "initial", "expected"),
+    [
+        ("DS", DataType.INT, "", "0"),
+        ("C", DataType.BIT, "", "0"),
+        ("T", DataType.BIT, "", "0"),
+        ("DH", DataType.HEX, "", "0"),
+        ("XD", DataType.HEX, "", "0"),
+        ("TXT", DataType.TXT, "", ""),
+        ("DS", DataType.INT, "5", "5"),
+        ("DH", DataType.HEX, "00FF", "00FF"),
+        ("TXT", DataType.TXT, "A", "A"),
+        ("TXT", DataType.TXT, " ", " "),
+    ],
+)
+def test_upsert_writes_the_initial_value_that_click_stores(
+    memory_type: str, data_type: int, initial: str, expected: str, exists: bool
+) -> None:
+    row = AddressRow(
+        memory_type=memory_type,
+        address=1,
+        data_type=data_type,
+        nickname="a",
+        initial_value=initial,
+    )
+    assert _stored_initial_value(row, exists=exists) == expected
+
+
+def test_jet_save_writes_the_initial_value_that_click_stores() -> None:
+    captured: list[list] = []
+
+    class _FakeJet(mdb_operations.JetConnection):
+        def __init__(self) -> None:
+            pass
+
+        def save_addresses(self, deletes, upserts):
+            captured.extend(upserts)
+            return len(upserts)
+
+    conn = mdb_operations.MdbConnection("unused.mdb")
+    conn._conn = _FakeJet()
+    rows = [
+        AddressRow(memory_type="DS", address=1, data_type=DataType.INT, nickname="a"),
+        AddressRow(memory_type="TXT", address=1, data_type=DataType.TXT, nickname="b"),
+        AddressRow(
+            memory_type="DS", address=2, data_type=DataType.INT, nickname="c", initial_value="7"
+        ),
+    ]
+    mdb_operations.save_changes(conn, rows)
+
+    assert [upsert[6] for upsert in captured] == ["0", "", "7"]

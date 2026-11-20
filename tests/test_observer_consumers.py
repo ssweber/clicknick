@@ -8,10 +8,12 @@ from clicknick.data.address_store import AddressStore
 from clicknick.data.nickname_manager import NicknameManager
 from clicknick.data.shared_dataview import SharedDataviewData
 from clicknick.models.address_row import AddressRow
+from clicknick.utils import mdb_operations
 
 
 class _MockDataSource:
     supports_used_field = True
+    stored_row = staticmethod(mdb_operations.stored_row)
     file_path = "test.mdb"
     is_read_only = False
 

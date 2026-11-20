@@ -17,6 +17,7 @@
 
 ### Changed
 
+- When ClickNick writes a row to CLICK's database and the row has no initial value, it now stores `0`, except for a TXT row. CLICK stores the same for a row that it creates. 0.25.0 stored an empty value. CLICK reads both forms the same way. After a Sync or a save to a nickname CSV, the Address Editor shows `0` as the initial value of such a row, the same as a row that CLICK made.
 - Workspace setup now asks whether to create or use the workspace as soon as you pick a folder with **Choose Location...** or **Find Existing...**. Yes does the same as **Create Workspace** or **Use Workspace**, and No leaves the folder in the form. A workspace that you pick from the list still waits for the button. 0.25.0 only filled in the form, and made the workspace only when you clicked **Create Workspace** or **Use Workspace**.
 
 ### Fixed
