@@ -1206,23 +1206,20 @@ def test_regeneration_publishes_the_legacy_record_and_removes_it_after_a_clean_s
 ):
     import warnings
 
-    import laddercodec
-    from laddercodec.model import Program
+    from laddercodec import LegacyEncodingWarning, Program
 
     from clicknick.ladder.program import LEGACY_ENCODINGS_FILE, read_legacy_encodings
 
-    class FakeLegacyWarning(UserWarning):
-        def __init__(self, rung: int) -> None:
-            super().__init__("Math H70000")
-            self.instruction, self.token, self.rung, self.program = "Math", "H70000", rung, None
-            self.detail = "it is stored as 16-bit and CLICK runs it as 4464."
-
-    monkeypatch.setattr(laddercodec, "LegacyEncodingWarning", FakeLegacyWarning, raising=False)
     stale = [True]
 
     def decode_program(_data):
         if stale[0]:
-            warnings.warn(FakeLegacyWarning(0), stacklevel=2)
+            warnings.warn(
+                LegacyEncodingWarning(
+                    "Math", "H70000", "it is stored as 16-bit and CLICK runs it as 4464.", 0
+                ),
+                stacklevel=2,
+            )
         return Program(name="Main Program", prog_idx=1, rungs=[])
 
     def generate(_csv_dir, *, output_dir, **_kwargs):
@@ -1249,20 +1246,14 @@ def test_regeneration_publishes_the_legacy_record_and_removes_it_after_a_clean_s
 
 
 def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, monkeypatch):
-    """The build used to stop on WriterError, so the workspace and its csv/ went stale."""
-    import typing
-
-    from laddercodec import Coil, Contact, Rung
-    from laddercodec.instructions import UnknownCondition
-    from laddercodec.model import Program
+    """The build used to stop when write_csv refused a rung, and the workspace went stale."""
+    from laddercodec import Coil, Program, Rung, UnknownCondition
 
     from clicknick.ladder.program import STAND_IN_COMMENT, read_legacy_encodings
 
-    coil = typing.get_type_hints(Contact)["type"].COIL_OUT
-
     def _rung(output: str, first: object = "-") -> Rung:
         conditions = [first, *["-"] * 30]
-        return Rung(1, [conditions], [Coil(coil, output)], None)
+        return Rung([conditions], [Coil(output)], None)
 
     rungs = [_rung("C1"), _rung("C2", UnknownCondition(raw=b"Compare")), _rung("C3")]
     monkeypatch.setattr(

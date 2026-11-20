@@ -20,8 +20,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from laddercodec.csv.writer import WriterError
-
 from ..utils.mdb_shared import find_click_database
 from .clipboard import copy_to_clipboard, find_click_hwnd, is_click_v4, read_from_clipboard
 from .program import (
@@ -694,7 +692,7 @@ def main() -> None:
         elif suffix == ".csv":
             try:
                 decode_to_csv(data, file_path)
-            except (WriterError, Exception) as exc:
+            except Exception as exc:
                 print(f"Error: could not decode to CSV: {exc}", file=sys.stderr)
                 sys.exit(1)
             print(f"Saved {file_path}")
@@ -709,7 +707,7 @@ def main() -> None:
             try:
                 decode_to_csv(data, csv_path)
                 print(f"Saved {csv_path}")
-            except (WriterError, Exception) as exc:
+            except Exception as exc:
                 print(
                     f"Warning: could not write CSV: {exc}",
                     file=sys.stderr,

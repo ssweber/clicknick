@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from laddercodec.model import Program
+from laddercodec import Program
 
 from clicknick.ladder.program import program_save
 

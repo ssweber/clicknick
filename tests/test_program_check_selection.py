@@ -165,3 +165,18 @@ def test_sync_removes_an_unknown_name_from_the_app_defaults_too(tmp_path):
     [dropped] = selection.take_dropped()
     assert dropped.names == ("OLD_RULE",)
     assert dropped.describe().startswith("pyrung has no check named OLD_RULE, so ClickNick ")
+
+
+def test_a_selection_left_with_no_check_says_so(tmp_path):
+    path = tmp_path / "pyproject.toml"
+    path.write_text('[tool.pyrung.check]\nselect = ["OLD_RULE"]\n', encoding="utf-8")
+    selection = ProgramCheckSelection(tmp_path, appdata=tmp_path / "settings")
+
+    assert selection.load() == CheckConfig(select=())
+
+    [dropped] = selection.take_dropped()
+    assert dropped.describe() == (
+        f"pyrung has no check named OLD_RULE, so ClickNick removed it from the check selection "
+        f"in {path}. No checks are left in the selection, so Check Program runs none. Open "
+        "Choose Checks to choose the checks to run."
+    )

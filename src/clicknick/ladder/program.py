@@ -15,13 +15,25 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import laddercodec
 from laddercodec import (
+    CSV_HEADER,
     Coil,
     CompareContact,
+    ConditionToken,
     Contact,
+    CsvWriteError,
+    InstructionToken,
+    LegacyEncodingWarning,
+    RefusedFieldWarning,
     Rung,
+    Tee,
     Timer,
+    Undecoded,
+    UndecodedRungWarning,
+    UndecodedStop,
+    UnknownCondition,
+    UnknownInstruction,
+    csv_rows,
     decode,
     decode_program,
     encode,
@@ -29,16 +41,13 @@ from laddercodec import (
     read_csv,
     write_csv,
 )
-from laddercodec.csv import CONDITION_COLUMNS
-from laddercodec.encode import AfToken, ConditionToken
-from laddercodec.instructions import UnknownCondition, UnknownInstruction
 from pyclickplc.addresses import format_address_display, get_addr_key, parse_address
 
 from ..utils.click_temp import scr_files
 from ..utils.mdb_operations import ensure_addresses_exist
 
 if TYPE_CHECKING:
-    from laddercodec.model import Program
+    from laddercodec import Program
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -51,6 +60,16 @@ ADDRESS_RANGE_RE = re.compile(
 _WINDOWS_UNSAFE_FILENAME_RE = re.compile(r'[<>:"/\\|?*]')
 # The marker field of a ladder CSV row that starts a rung: R, or R and its number
 _RUNG_MARKER_RE = re.compile(r"R[0-9]*")
+# The condition columns A to AE. The header row starts with the marker column and ends with AF.
+CONDITION_COLUMNS = CSV_HEADER[1:-1]
+# How laddercodec ends the reason of a marker that stands for its rung and every rung after it
+_TO_THE_END_RE = re.compile(
+    r"; decoding stopped, so this marker stands for rung [0-9]+ to the end$"
+)
+# How laddercodec ends the message of an error that it raised at a place in a CSV
+_CSV_LOCATION_RE = re.compile(r" \(at .*?, line [0-9]+.*\)$")
+# How a CsvWriteError message starts: the index of the rung in the list that it was given
+_ROWS_INDEX_RE = re.compile(r"^rungs\[[0-9]+\]:? *")
 
 # Written beside a CSV bundle when CLICK holds rungs in a form an older laddercodec wrote
 LEGACY_ENCODINGS_FILE = "legacy_encodings.json"
@@ -166,7 +185,7 @@ def check_click_version(rungs: list[Rung], *, click_v4: bool, first_rung: int = 
 # ---------------------------------------------------------------------------
 
 
-def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
+def _extract_operand_candidates(token: ConditionToken | InstructionToken) -> list[str]:
     def _append(value: str | None, *, address_only: bool = False) -> None:
         if not value:
             return
@@ -179,6 +198,12 @@ def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
 
     out: list[str] = []
 
+    if isinstance(token, Tee):  # A contact with a wire down from its cell
+        token = token.contact
+    if isinstance(token, Undecoded):
+        # The marker's text is laddercodec's reason. The reason may name an address that no
+        # instruction reads.
+        return out
     if isinstance(token, Contact):
         _append(token.operand)
         return out
@@ -191,9 +216,9 @@ def _extract_operand_candidates(token: ConditionToken | AfToken) -> list[str]:
         _append(token.right)
         return out
     if isinstance(token, Timer):
-        _append(token.done_bit)
-        _append(token.current)
-        _append(token.setpoint, address_only=True)
+        _append(token.done)
+        _append(token.accumulator)
+        _append(token.preset, address_only=True)
         return out
 
     if isinstance(token, str):
@@ -238,15 +263,9 @@ def extract_addresses_from_csv(path: Path, *, best_effort: bool = False) -> list
     return extract_addresses_from_rungs(rungs)
 
 
-def _decode_to_rungs(data: bytes) -> list[Rung]:
-    """Decode clipboard/program bytes into a normalized rung list."""
-    result = decode(data)
-    return result if isinstance(result, list) else [result]
-
-
 def extract_addresses_from_bin(data: bytes) -> list[str]:
     """Parse operand addresses from a clipboard-format binary payload."""
-    return extract_addresses_from_rungs(_decode_to_rungs(data))
+    return extract_addresses_from_rungs(decode(data))
 
 
 def _provision_mdb_addresses(
@@ -419,7 +438,10 @@ def _instruction_name(raw: bytes) -> str:
 
 def _unreadable_instructions(rung: Rung) -> list[str]:
     """Return the name of each instruction of *rung* that laddercodec cannot read, once each."""
-    cells = [cell for row in rung.conditions for cell in row]
+    # A Tee is a contact with a wire down from its cell
+    cells = [
+        cell.contact if isinstance(cell, Tee) else cell for row in rung.conditions for cell in row
+    ]
     names = (
         _instruction_name(cell.raw)
         for cell in [*cells, *rung.instructions]
@@ -432,18 +454,108 @@ def _unreadable_detail(name: str) -> str:
     return f"ClickNick cannot read this {name}."
 
 
+def marker_detail(marker: Undecoded) -> str:
+    """Say why laddercodec put an UNDECODED marker in place of a rung, with no rung number.
+
+    laddercodec counts rungs from 0, and ClickNick counts them from 1. So the text leaves
+    out laddercodec's number, and the caller names the rung.
+    """
+    error = marker.error.rstrip(".")
+    stopped = _TO_THE_END_RE.search(error)
+    if stopped is None:
+        return f"laddercodec cannot read this rung: {error}."
+    return (
+        f"laddercodec cannot read this rung, and it stopped reading the program there: "
+        f"{error[: stopped.start()]}. The rungs after it are missing too."
+    )
+
+
+def _warning_detail(warning: UndecodedRungWarning) -> str:
+    """Say why ``csv_rows`` could not write a rung, from the warning it issued."""
+    return f"laddercodec cannot write this rung to a CSV: {warning.marker.error.rstrip('.')}."
+
+
+def _rung_problems(rung: Rung, *, stop: UndecodedStop = "end") -> list[tuple[str, str]]:
+    """Return why the CSV cannot hold *rung* as CLICK holds it, as (instruction, detail) pairs.
+
+    The instruction is empty when the reason is about the whole rung. Return an empty list
+    if the CSV holds the rung as it is. These are the reasons:
+
+    - The rung holds an instruction that laddercodec cannot read.
+    - The rung is an UNDECODED marker, which laddercodec decodes for a rung it cannot read.
+    - ``csv_rows`` writes a marker in place of the rung, or refuses to write it.
+    - ``csv_rows`` writes the rung as more than one rung. CLICK's Syntax Check would split it.
+      A paste, or a save before Syntax Check, keeps the rung whole in CLICK. So the CSV
+      would hold more rungs than CLICK, and each rung after it would get the wrong number.
+    """
+    names = _unreadable_instructions(rung)
+    if names:
+        return [(name, _unreadable_detail(name)) for name in names]
+    for af in rung.instructions:
+        if isinstance(af, Undecoded):
+            return [("", marker_detail(af))]
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", UndecodedRungWarning)
+            rows = csv_rows([rung], stop=stop)
+    except CsvWriteError as exc:
+        reason = _ROWS_INDEX_RE.sub("", str(exc)).rstrip(".")
+        return [("", f"laddercodec cannot write this rung to a CSV: {reason}.")]
+    for record in caught:
+        if isinstance(record.message, UndecodedRungWarning):
+            return [("", _warning_detail(record.message))]
+        warnings.warn_explicit(record.message, record.category, record.filename, record.lineno)
+    starts = sum(1 for row in rows if row and row[0] == "R")
+    if starts > 1:
+        return [
+            (
+                "",
+                f"CLICK's Syntax Check splits this rung into {starts} rungs. Run Syntax Check "
+                "in CLICK, then save the project.",
+            )
+        ]
+    return []
+
+
+def _decode_markers_quietly(data: bytes) -> tuple[list[Rung], list[RefusedFieldWarning]]:
+    """Decode clipboard bytes without the warning that laddercodec issues for each marker.
+
+    The caller reads each marker rung itself. Also return each ``RefusedFieldWarning``,
+    which laddercodec issues for a stored value that CLICK's editor refuses. Pass on
+    warnings of other kinds.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", UndecodedRungWarning)
+        warnings.simplefilter("always", RefusedFieldWarning)
+        rungs = decode(data)
+    refused: list[RefusedFieldWarning] = []
+    for record in caught:
+        if isinstance(record.message, RefusedFieldWarning):
+            refused.append(record.message)
+        elif not isinstance(record.message, UndecodedRungWarning):
+            warnings.warn_explicit(record.message, record.category, record.filename, record.lineno)
+    return rungs, refused
+
+
 def decode_to_csv(data: bytes, path: Path) -> None:
     """Decode clipboard/program bytes and write canonical CSV.
 
-    Raise UnreadableRungError, before writing anything, if a rung holds an instruction
-    that laddercodec cannot read.
+    Raise UnreadableRungError, before writing anything, if the CSV cannot hold a rung as
+    CLICK holds it (``_rung_problems``). Also raise it for a value that CLICK's editor
+    refuses, because ``read_csv`` would refuse the CSV.
     """
-    rungs = _decode_to_rungs(data)
+    rungs, refused = _decode_markers_quietly(data)
     found = [
-        f"  copied rung {number}, {name}: {_unreadable_detail(name)}"
+        f"  copied rung {number}, {name}: {detail}" if name else f"  copied rung {number}: {detail}"
         for number, rung in enumerate(rungs, start=1)
-        for name in _unreadable_instructions(rung)
+        for name, detail in _rung_problems(rung)
     ]
+    found.extend(
+        f"  copied rung {item.rung + 1}: {item.error}"
+        if item.rung is not None
+        else f"  a copied rung: {item.error}"
+        for item in refused
+    )
     if found:
         raise UnreadableRungError(
             "ClickNick cannot read these rungs, so it wrote no CSV:\n"
@@ -485,20 +597,18 @@ def _dedupe_filename_stem(stem: str, used_stems: set[str]) -> str:
 def _decode_program_recording_legacy(data: bytes) -> tuple[Program, list[Warning]]:
     """Decode one Scr*.tmp, collecting the legacy encodings laddercodec warns about.
 
-    Pass on warnings of other kinds once decoding is done. A laddercodec too old to warn
-    about legacy encodings decodes as before, and this function returns no legacy warnings.
+    Pass on warnings of other kinds once decoding is done, except the warning for each
+    UNDECODED marker. ``_replace_unreadable`` reports each marker rung itself.
     """
-    legacy_type = getattr(laddercodec, "LegacyEncodingWarning", None)
-    if legacy_type is None:
-        return decode_program(data), []
     with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always", legacy_type)
+        warnings.simplefilter("always", LegacyEncodingWarning)
+        warnings.simplefilter("always", UndecodedRungWarning)
         prog = decode_program(data)
     found: list[Warning] = []
     for record in caught:
-        if isinstance(record.message, legacy_type):
+        if isinstance(record.message, LegacyEncodingWarning):
             found.append(record.message)
-        else:
+        elif not isinstance(record.message, UndecodedRungWarning):
             warnings.warn_explicit(record.message, record.category, record.filename, record.lineno)
     return prog, found
 
@@ -519,7 +629,6 @@ def _legacy_encoding(file: str, prog: Program, warning: Warning) -> LegacyEncodi
 def empty_rung(comment: str) -> Rung:
     """Return a one-row rung with no instructions, holding only *comment*."""
     return Rung(
-        logical_rows=1,
         conditions=[[""] * len(CONDITION_COLUMNS)],
         instructions=[""],
         comment=comment,
@@ -533,32 +642,41 @@ def is_empty_rung(rung: Rung) -> bool:
     )
 
 
-def _stand_in(rung: Rung, names: Sequence[str]) -> Rung:
+def _stand_in(rung: Rung, problems: Sequence[tuple[str, str]]) -> Rung:
     """Return an empty rung that says which rung it replaces, so the rung numbers below it stay."""
-    lines = [STAND_IN_COMMENT, f"ClickNick cannot read its {', '.join(names)}. Paste it again."]
-    if rung.comment:
-        lines += ["", rung.comment]
+    names = [name for name, _detail in problems if name]
+    if names:
+        why = f"ClickNick cannot read its {', '.join(names)}. Paste it again."
+    else:
+        why = " ".join(detail for _name, detail in problems)
+    lines = [STAND_IN_COMMENT, why]
+    comment = rung.comment or ""
+    if any(isinstance(af, Undecoded) for af in rung.instructions):
+        # laddercodec's first line repeats the reason, with its rung number counted from 0
+        comment = comment.split("\n", 1)[1] if "\n" in comment else ""
+    if comment:
+        lines += ["", comment]
     return empty_rung("\n".join(lines))
 
 
-def _replace_unreadable(file: str, prog: Program) -> tuple[list[Rung], list[LegacyEncoding]]:
-    """Return the program's rungs, with a stand-in for each rung that laddercodec cannot read.
+def _replace_unreadable(
+    file: str, prog: Program, *, stop: UndecodedStop
+) -> tuple[list[Rung], list[LegacyEncoding]]:
+    """Return the program's rungs, with a stand-in for each rung that the CSV cannot hold.
 
-    Also return a finding for each instruction that it cannot read.
+    Also return a finding for each reason (``_rung_problems``).
     """
     rungs: list[Rung] = []
     found: list[LegacyEncoding] = []
     for number, rung in enumerate(prog.rungs, start=1):
-        names = _unreadable_instructions(rung)
-        if not names:
+        problems = _rung_problems(rung, stop=stop)
+        if not problems:
             rungs.append(rung)
             continue
-        rungs.append(_stand_in(rung, names))
+        rungs.append(_stand_in(rung, problems))
         found.extend(
-            LegacyEncoding(
-                file, prog.name, number, name, "", _unreadable_detail(name), unreadable=True
-            )
-            for name in names
+            LegacyEncoding(file, prog.name, number, name, "", detail, unreadable=True)
+            for name, detail in problems
         )
     return rungs, found
 
@@ -570,9 +688,15 @@ def is_stand_in(rung: Rung) -> bool:
 
 
 def unreadable_copy(file: str, program: str, exc: Exception) -> LegacyEncoding:
-    """Return a finding that laddercodec cannot read a whole CSV. *exc* says why."""
+    """Return a finding that laddercodec cannot read a whole CSV. *exc* says why.
+
+    The finding leaves out laddercodec's location in the CSV. It names a file that the
+    build wrote and may since have removed.
+    """
     lines = str(exc).strip().splitlines()
     reason = lines[0] if lines else type(exc).__name__
+    if getattr(exc, "location", None) is not None:
+        reason = _CSV_LOCATION_RE.sub("", reason)
     detail = f"ClickNick cannot read CLICK's copy of this program. {reason}"
     return LegacyEncoding(file, program, None, "", "", detail, unreadable=True)
 
@@ -694,7 +818,7 @@ def program_save(
 
     main_prog, main_legacy = main_progs[0]
     main_csv = dest / "main.csv"
-    main_rungs, unreadable = _replace_unreadable("main.csv", main_prog)
+    main_rungs, unreadable = _replace_unreadable("main.csv", main_prog, stop="end")
     write_csv(main_csv, main_rungs, index=index)
     legacy_encodings = [_legacy_encoding("main.csv", main_prog, w) for w in main_legacy]
     legacy_encodings.extend(unreadable)
@@ -709,8 +833,9 @@ def program_save(
             stem = _dedupe_filename_stem(_slugify(prog.name), used_stems)
             csv_path = sub_dir / f"{stem}.csv"
             file = f"subroutines/{stem}.csv"
-            rungs, unreadable = _replace_unreadable(file, prog)
-            write_csv(csv_path, rungs, index=index)
+            rungs, unreadable = _replace_unreadable(file, prog, stop="return")
+            # In a subroutine, an UNDECODED marker returns to the caller
+            write_csv(csv_path, rungs, index=index, stop="return")
             subroutine_csvs.append(csv_path)
             legacy_encodings.extend(_legacy_encoding(file, prog, w) for w in legacy)
             legacy_encodings.extend(unreadable)
@@ -740,8 +865,9 @@ def prepare_rungs_load(
 
     Raise NeedsClickV4Error, before touching the MDB, if the rungs need a newer CLICK than
     the target (*click_v4*). Raise UnreadableRungError for a stand-in rung, because pasting
-    it would replace the rung in CLICK with an empty one. Raise ValueError if there are no
-    rungs, because there is nothing to paste.
+    it would replace the rung in CLICK with an empty one. Also raise it for laddercodec's
+    UNDECODED marker rung, because CLICK cannot hold the marker. Raise ValueError if there
+    are no rungs, because there is nothing to paste.
     """
     if not rungs:
         raise ValueError("there are no rungs to copy")
@@ -755,6 +881,28 @@ def prepare_rungs_load(
             what = f"Rungs {numbers} are empty rungs that stand in for rungs"
             fix = "Paste those rungs from your own copy of the program, or fix them in CLICK."
         raise UnreadableRungError(f"{what} ClickNick cannot read from CLICK. {fix}")
+    marked = [
+        (number, af)
+        for number, rung in enumerate(rungs, start=first_rung)
+        for af in rung.instructions
+        if isinstance(af, Undecoded)
+    ]
+    if marked:
+        numbers = ", ".join(str(number) for number, _af in marked)
+        if len(marked) == 1:
+            head = f"Rung {numbers} is an UNDECODED marker. CLICK cannot hold a marker."
+        else:
+            head = f"Rungs {numbers} are UNDECODED markers. CLICK cannot hold a marker."
+        lines = [f"  rung {number}: {marker_detail(af)}" for number, af in marked]
+        raise UnreadableRungError(
+            "\n".join(
+                [
+                    head,
+                    *lines,
+                    "Put the rung's logic in place of its marker, or remove the marker.",
+                ]
+            )
+        )
     check_click_version(rungs, click_v4=click_v4, first_rung=first_rung)
     payload = (
         encode(rungs, show_nicknames=show_nicknames)
@@ -801,8 +949,19 @@ def prepare_csv_load(
 
 
 def prepare_bin_load(data: bytes, *, click_v4: bool, mdb_path: Path | None = None) -> PrepareResult:
-    """Decode a binary payload and provision MDB addresses."""
-    rungs = _decode_to_rungs(data)
+    """Decode a binary payload and provision MDB addresses.
+
+    Raise ValueError if laddercodec cannot read a rung. The decoder puts an UNDECODED marker
+    in place of that rung, so its operands, and the operands of a marker that stands for the
+    rest of the payload, are unknown. Then ClickNick cannot add them to the MDB.
+    """
+    rungs, refused = _decode_markers_quietly(data)
+    for item in refused:
+        warnings.warn(item, stacklevel=2)
+    for number, rung in enumerate(rungs, start=1):
+        for af in rung.instructions:
+            if isinstance(af, Undecoded):
+                raise ValueError(f"rung {number}: {marker_detail(af)}")
     check_click_version(rungs, click_v4=click_v4)
     addresses = extract_addresses_from_rungs(rungs)
     addresses_inserted, resolved_mdb_path, mdb_error = _provision_mdb_addresses(
@@ -844,9 +1003,7 @@ def rung_fingerprint(rung: Rung) -> tuple[tuple[str, ...], ...]:
 
     The rows do not depend on how the CSV was written (rung index column, header comment).
     """
-    from laddercodec.csv.writer import decoded_rung_to_rows
-
-    return tuple(tuple(row) for row in decoded_rung_to_rows(rung))
+    return tuple(tuple(row) for row in csv_rows([rung]))
 
 
 def read_csv_comment(csv_path: Path) -> str:

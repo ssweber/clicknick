@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import typing
 from pathlib import Path
 from unittest.mock import ANY, Mock
 
 import pytest
-from laddercodec import Coil, Contact, Rung, write_csv
+from laddercodec import Coil, Rung, write_csv
 
 from clicknick.live import rung_commands
 from clicknick.live.dispatch import DispatchContext, dispatch
-
-_IT = typing.get_type_hints(Contact)["type"]
 
 CLICK = {
     "main.csv": ["Y001", "Y002"],
@@ -35,9 +32,8 @@ class _Analysis:
 def _rungs(coils: list[str]) -> list[Rung]:
     return [
         Rung(
-            logical_rows=1,
             conditions=[["-"] * 31],
-            instructions=[Coil(_IT.COIL_OUT, coil)],
+            instructions=[Coil(coil)],
             comment=None,
         )
         for coil in coils

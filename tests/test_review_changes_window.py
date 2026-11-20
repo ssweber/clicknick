@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import dataclasses
 import tkinter as tk
-import typing
 from pathlib import Path
 from tkinter import ttk
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from laddercodec import Coil, Contact, Rung, write_csv
+from laddercodec import Coil, Rung, write_csv
 from pyclickplc.addresses import get_addr_key
 
 from clicknick.connection_session import SavedProgram
@@ -38,10 +37,8 @@ MAIN = NAMES.index("main.csv")
 
 
 def _coils(*coils: str) -> list[Rung]:
-    out = typing.get_type_hints(Contact)["type"].COIL_OUT
     return [
-        Rung(logical_rows=1, conditions=[["-"] * 31], instructions=[Coil(out, coil)], comment=coil)
-        for coil in coils
+        Rung(conditions=[["-"] * 31], instructions=[Coil(coil)], comment=coil) for coil in coils
     ]
 
 

@@ -7,9 +7,8 @@ import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
-import laddercodec
 import pytest
-from laddercodec.model import Program
+from laddercodec import LegacyEncodingWarning, Program
 
 from clicknick.connection_session import ConnectionSession
 from clicknick.ladder.cli import main
@@ -21,15 +20,6 @@ from clicknick.ladder.program import (
 )
 
 DETAIL = "it is stored as 16-bit and CLICK runs it as 4464."
-
-
-class FakeLegacyWarning(UserWarning):
-    """Stands in for laddercodec.LegacyEncodingWarning, which older laddercodecs lack."""
-
-    def __init__(self, instruction, token, detail, rung=None, program=None) -> None:
-        super().__init__(f"{instruction} {token}: {detail}")
-        self.instruction, self.token, self.detail = instruction, token, detail
-        self.rung, self.program = rung, program
 
 
 @pytest.fixture
@@ -63,13 +53,8 @@ def _decoder(monkeypatch, warning_type, warns: dict[bytes, list[tuple]]) -> None
     monkeypatch.setattr("clicknick.ladder.program.decode_program", _decode_program)
 
 
-def _legacy_type(monkeypatch, warning_type=FakeLegacyWarning) -> type[Warning]:
-    monkeypatch.setattr(laddercodec, "LegacyEncodingWarning", warning_type, raising=False)
-    return warning_type
-
-
 def test_records_each_programs_legacy_encodings(monkeypatch, scr: Path, written) -> None:
-    warning_type = _legacy_type(monkeypatch)
+    warning_type = LegacyEncodingWarning
     _decoder(
         monkeypatch,
         warning_type,
@@ -100,7 +85,7 @@ def test_records_each_programs_legacy_encodings(monkeypatch, scr: Path, written)
 def test_save_without_legacy_encodings_removes_the_old_record(
     monkeypatch, scr: Path, written
 ) -> None:
-    warning_type = _legacy_type(monkeypatch)
+    warning_type = LegacyEncodingWarning
     _decoder(monkeypatch, warning_type, {b"Scr1.tmp": [("Math", "H70000", DETAIL, 0)]})
     out = scr / "csv"
     program_save(scr, out)
@@ -115,8 +100,6 @@ def test_save_without_legacy_encodings_removes_the_old_record(
 
 
 def test_other_warnings_still_reach_the_caller(monkeypatch, scr: Path, written) -> None:
-    _legacy_type(monkeypatch)
-
     def _deprecation(*args, program=None) -> Warning:
         return DeprecationWarning(" ".join(args))
 
@@ -128,29 +111,10 @@ def test_other_warnings_still_reach_the_caller(monkeypatch, scr: Path, written) 
     assert result.legacy_encodings == []
 
 
-def test_laddercodec_without_legacy_warnings_saves_as_before(
-    monkeypatch, scr: Path, written
-) -> None:
-    monkeypatch.delattr(laddercodec, "LegacyEncodingWarning", raising=False)
-    _decoder(monkeypatch, FakeLegacyWarning, {b"Scr1.tmp": [("Math", "H70000", DETAIL, 0)]})
-
-    # Nothing is caught: the warning goes on like any other
-    with pytest.warns(FakeLegacyWarning):
-        result = program_save(scr, scr / "csv")
-
-    assert result.legacy_encodings == []
-    assert written == [scr / "csv" / "main.csv", scr / "csv" / "subroutines" / "Fill.csv"]
-    assert not (scr / "csv" / LEGACY_ENCODINGS_FILE).exists()
-
-
-@pytest.mark.skipif(
-    not hasattr(laddercodec, "LegacyEncodingWarning"),
-    reason="this laddercodec does not warn about legacy encodings",
-)
 def test_reads_laddercodecs_own_warning(monkeypatch, scr: Path, written) -> None:
     _decoder(
         monkeypatch,
-        laddercodec.LegacyEncodingWarning,
+        LegacyEncodingWarning,
         {b"Scr2.tmp": [("Math", "H70000", DETAIL, 2)]},
     )
 
@@ -172,7 +136,7 @@ def test_unreadable_record_counts_as_none(tmp_path: Path, text: str) -> None:
 
 
 def test_cli_save_lists_rungs_to_paste_again(monkeypatch, scr: Path, written, capsys) -> None:
-    warning_type = _legacy_type(monkeypatch)
+    warning_type = LegacyEncodingWarning
     _decoder(monkeypatch, warning_type, {b"Scr1.tmp": [("Math", "H70000", DETAIL, 11)]})
     monkeypatch.setattr("sys.argv", ["clicknick-cli", "program", "save", str(scr)])
 

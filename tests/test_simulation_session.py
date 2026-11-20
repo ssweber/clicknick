@@ -518,7 +518,7 @@ def test_program_with_a_rung_clicknick_cannot_read_does_not_run(ready):
     assert "ClickNick cannot read this rung in CLICK" in message
     assert "Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
     assert message.endswith("Paste it again.")
-    assert "WriterError" not in message
+    assert "CsvWriteError" not in message
 
 
 def test_several_unreadable_rungs_are_named_together(ready):

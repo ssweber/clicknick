@@ -19,6 +19,15 @@
 
 - When ClickNick writes a row to CLICK's database and the row has no initial value, it now stores `0`, except for a TXT row. CLICK stores the same for a row that it creates. 0.25.0 stored an empty value. CLICK reads both forms the same way. After a Sync or a save to a nickname CSV, the Address Editor shows `0` as the initial value of such a row, the same as a row that CLICK made.
 - Workspace setup now asks whether to create or use the workspace as soon as you pick a folder with **Choose Location...** or **Find Existing...**. Yes does the same as **Create Workspace** or **Use Workspace**, and No leaves the folder in the form. A workspace that you pick from the list still waits for the button. 0.25.0 only filled in the form, and made the workspace only when you clicked **Create Workspace** or **Use Workspace**.
+- The workspace now holds an empty rung in place of each rung in CLICK's last save that ClickNick cannot write to a ladder CSV as CLICK holds it. The **Paste Again** notice names each of these rungs and says why. The Simulator does not start until you fix them. 0.25.0 did this only for a rung with an instruction that ClickNick cannot read. The rungs are:
+  - A rung that ClickNick cannot read. If ClickNick cannot read the rest of the program after that rung, the notice says that those rungs are missing from the workspace too.
+  - A rung with a text compare that a ladder CSV can show in two ways, such as `"A"=="B"` compared with `"C"`.
+  - A rung that CLICK's Syntax Check splits into more than one rung, such as a NOP fed from the left rail beside outputs. CLICK keeps such a rung whole after a paste until you run Syntax Check. Run Syntax Check in CLICK, then save the project.
+
+  For a rung of the first two kinds, paste the rung again from your own copy of the program, or fix it in CLICK.
+- **Save Clipboard to CSV**, and `clicknick-rung save` to a .csv file, now refuse to write a CSV when the clipboard holds one of the rungs in the list above, and name the rung. **Save Clipboard to CSV** also refuses a value that CLICK's editor refuses, such as the compare `DH70 == DS39`, as it did in 0.25.0. Fix the rung in CLICK and copy it again. `clicknick-rung load` copies a .bin file that holds such a rung as it is, and says that it did not add the file's addresses to SC_.mdb.
+- A rung in CLICK's last save with a value that CLICK's editor refuses, such as the compare `DH70 == DS39`, now makes the **Paste Again** notice ask you to paste the whole program again. 0.25.0 put an empty rung in the workspace in place of that rung. The Simulator now runs the program as CLICK saved it.
+- Review Changes, **Load Ladder CSV to Clipboard** and `clicknick-rung load` now refuse a CSV that holds an `UNDECODED` marker, and name the rung. Other programs that read CLICK's ladder can write this marker in place of a rung that they cannot read. CLICK cannot hold the marker. Put the rung's logic in place of the marker, or remove the marker.
 
 ### Fixed
 
@@ -26,6 +35,7 @@
 - If the CLICK window closes or shows another project while Workspace setup shows a location that you have not applied, ClickNick now shows a warning that the location was not applied. Open Workspace setup and choose the location again. 0.25.0 closed Workspace setup without a message, so you might not notice that no workspace was made.
 - ClickNick now loads a nickname CSV that CLICK exported with a non-ASCII nickname, comment or initial value. 0.25.0 refused the file because it is cp1252.
 - **Workspace > Review Changes** and `clicknick-cli rung apply` now show the source of a rung that you added to `src/plc` without a `# Rn` comment. 0.25.0 could show another rung's source in its place, so the rung looked duplicated.
+- Check Program now runs, and Choose Checks now opens, when the saved check selection names a check that pyrung does not have, such as a check that pyrung has renamed. ClickNick removes that name from the selection and keeps the other checks. It tells you once which names it removed, and from which file. If no check is left in the selection, the message says so, and Check Program runs no checks until you choose some in Choose Checks. `clicknick-cli check` prints the same note. 0.25.0 showed an error and ran no checks.
 
 ## v0.25.0 - 2026-11-18
 

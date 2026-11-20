@@ -23,8 +23,7 @@ from typing import Any
 
 import laddercodec
 import pytest
-from laddercodec import read_csv
-from laddercodec.model import Program
+from laddercodec import Program, read_csv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "devtools"))
 
@@ -3586,7 +3585,6 @@ def test_try_keep_saves_each_accepted_case(tmp_path, setup):
     assert [p.parent.parent.name for p in stored.read] == ["case01", "case03", "case04"]
 
 
-@pytest.mark.skipif(not cr._reads_stored_tags(), reason="laddercodec 0.4.0 has no stored-tag walk")
 def test_read_stored_reads_the_tags_click_stored():
     # The Scr1.tmp that CLICK saved for a Copy of 005 into DS1
     scr = Path(__file__).parent / "fixtures" / "click_runner" / "copy_5_ds1_Scr1.tmp"
@@ -3608,18 +3606,6 @@ def test_read_stored_reads_the_tags_click_stored():
         ],
         "error": None,
     }
-
-
-def test_try_keep_refuses_a_laddercodec_without_the_walk(tmp_path, setup, monkeypatch):
-    _, exe = setup
-    monkeypatch.setattr(cr, "_reads_stored_tags", lambda: False)
-    fake = FakeClick(tmp_path)
-    code, result = run_try(fake, tmp_path, exe, {"cases": TRY_CASES}, "--keep")
-    assert code == cr.EXIT_REFUSED
-    assert result["reason"] == (
-        "try --keep needs laddercodec newer than 0.4.0 (_walk_until_framing_error)"
-    )
-    assert fake.pid is None
 
 
 def test_try_without_keep_saves_nothing(tmp_path, setup):
@@ -4454,12 +4440,6 @@ def test_wire_keep_records_a_clipboard_it_cannot_decode(tmp_path, setup):
     assert kept["error"] is None and kept["main"]
 
 
-# Newer laddercodec writes a marker rung for a rung that it cannot read, and warns. The
-# pinned 0.4.0 refuses to write such a rung and raises WriterError.
-WRITES_MARKERS = pytest.mark.skipif(
-    not hasattr(laddercodec, "UndecodedRungWarning"),
-    reason="this laddercodec writes no marker rung (#38)",
-)
 UNKNOWN_CONTACT = (
     "ClickNick, rungs from 1: rung 1, ContactXX: ClickNick cannot read this ContactXX."
 )
@@ -4499,26 +4479,25 @@ def test_wire_keep_names_what_laddercodec_cannot_write(tmp_path, setup, monkeypa
     """If laddercodec cannot write the rung, no CSV is left.
 
     The case's ``clip_error`` gives what ClickNick found and then laddercodec's reason.
-    laddercodec 0.4.0 raises WriterError for an unknown condition."""
+    laddercodec raises CsvWriteError for a rung that it cannot write, such as one that needs
+    more than 32 rows."""
     _, exe = setup
-    from laddercodec.csv.writer import WriterError
 
     def write_csv(path: Path, rungs: list) -> None:
         Path(path).write_text("marker,A", encoding="utf-8")  # Write part of the file, then refuse
-        raise WriterError("Cannot serialize unknown condition to CSV (raw 96 bytes)")
+        raise laddercodec.CsvWriteError("rungs[0] needs more than 32 rows")
 
     monkeypatch.setattr(laddercodec, "write_csv", write_csv)
     kept = keep_clip(tmp_path, exe, unknown_contact_payload())
     assert kept["clip_error"] == (
-        f"{UNKNOWN_CONTACT}; laddercodec: the CSV cannot be written: WriterError: Cannot"
-        " serialize unknown condition to CSV (raw 96 bytes)"
+        f"{UNKNOWN_CONTACT}; laddercodec: the CSV cannot be written: CsvWriteError: rungs[0]"
+        " needs more than 32 rows"
     )
     assert kept["clip_csv"] is None
     assert not (tmp_path / "out" / "saves" / "case01.clip.csv").exists()
     assert "the clipboard decoded into" not in logged(tmp_path)
 
 
-@WRITES_MARKERS
 @pytest.mark.parametrize(
     ("payload", "unreadable"),
     [

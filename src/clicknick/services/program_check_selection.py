@@ -18,6 +18,8 @@ class DroppedChecks:
 
     path: Path
     names: tuple[str, ...]
+    # True if the selection that is left turns no check on
+    none_left: bool = False
 
     def describe(self) -> str:
         """Return the message that tells the user which names were removed, and from where."""
@@ -25,10 +27,18 @@ class DroppedChecks:
         listed = f"{', '.join(rest)} or {last}" if rest else last
         them = "it" if len(self.names) == 1 else "them"
         what = "check" if len(self.names) == 1 else "checks"
-        return (
+        head = (
             f"pyrung has no {what} named {listed}, so ClickNick removed {them} from the "
-            f"check selection in {self.path}. The other checks in the selection stay. "
-            "Open Choose Checks to see which checks run."
+            f"check selection in {self.path}."
+        )
+        if self.none_left:
+            return (
+                f"{head} No checks are left in the selection, so Check Program runs none. "
+                "Open Choose Checks to choose the checks to run."
+            )
+        return (
+            f"{head} The other checks in the selection stay. Open Choose Checks to see "
+            "which checks run."
         )
 
 
@@ -121,7 +131,7 @@ class ProgramCheckSelection:
         config, names = repaired
         save_check_config(path, config)
         with self._dropped_lock:
-            self._dropped.append(DroppedChecks(path, names))
+            self._dropped.append(DroppedChecks(path, names, none_left=not config.resolve()))
         return config
 
     def load(self) -> CheckConfig:

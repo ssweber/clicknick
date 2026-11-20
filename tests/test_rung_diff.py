@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import json
-import typing
 from pathlib import Path
 
 import pytest
-from laddercodec import Coil, Contact, Rung, write_csv
+from laddercodec import Coil, Rung, write_csv
 
 from clicknick.data.data_source import CsvDataSource
 from clicknick.ladder.program import (
@@ -32,15 +31,12 @@ from clicknick.services.rung_diff import (
     render_diff,
 )
 
-_IT = typing.get_type_hints(Contact)["type"]
-
 
 def _rungs(*coils: str) -> list[Rung]:
     return [
         Rung(
-            logical_rows=1,
             conditions=[["-"] * 31],
-            instructions=[Coil(_IT.COIL_OUT, coil)],
+            instructions=[Coil(coil)],
             comment=None,
         )
         for coil in coils
@@ -49,8 +45,7 @@ def _rungs(*coils: str) -> list[Rung]:
 
 def _commented(*comments: str) -> list[Rung]:
     return [
-        Rung(logical_rows=1, conditions=[["-"] * 31], instructions=[""], comment=comment)
-        for comment in comments
+        Rung(conditions=[["-"] * 31], instructions=[""], comment=comment) for comment in comments
     ]
 
 
@@ -247,14 +242,12 @@ def test_legacy_rung_past_the_end_is_ignored() -> None:
 def test_a_program_with_a_rung_program_save_cannot_read_is_pasted_whole(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from laddercodec.instructions import UnknownCondition
-    from laddercodec.model import Program
+    from laddercodec import Program, UnknownCondition
 
     from clicknick.ladder.program import program_save
 
     good = _rungs("Y001", "Y002", "Y003")
     refused = Rung(
-        logical_rows=1,
         conditions=[[UnknownCondition(raw=b"Compare"), *["-"] * 30]],
         instructions=good[1].instructions,
         comment=None,
@@ -305,8 +298,10 @@ def test_click_copy_that_cannot_be_read_is_a_whole_program_to_paste_again(
     (finding,) = fill.legacy
     assert finding.unreadable
     assert finding.rung is None
+    # The finding leaves out laddercodec's location, which names a file the build may remove
     assert finding.detail == (
-        "ClickNick cannot read CLICK's copy of this program. Unsupported AF instruction: 'bogus'"
+        "ClickNick cannot read CLICK's copy of this program. Could not read 'bogus(Y003)' as an"
+        " instruction. Check its name and its parentheses."
     )
     assert fill.unreadable
     assert fill.changed == (1, 2)

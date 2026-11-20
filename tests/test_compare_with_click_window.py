@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import typing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from laddercodec import Coil, Contact, Rung, read_csv
-from laddercodec.model import Program
+from laddercodec import Coil, Program, Rung, read_csv
 
 from clicknick.app import ClickNickApp
 from clicknick.connection_controller import ConnectionController
@@ -22,14 +20,11 @@ from clicknick.services.click_snapshot import (
     snapshot_dir,
 )
 
-_IT = typing.get_type_hints(Contact)["type"]
-
 
 def _rung(coil: str) -> Rung:
     return Rung(
-        logical_rows=1,
         conditions=[["-"] * 31],
-        instructions=[Coil(_IT.COIL_OUT, coil)],
+        instructions=[Coil(coil)],
         comment=None,
     )
 
