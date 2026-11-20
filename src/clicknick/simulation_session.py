@@ -22,6 +22,7 @@ import enum
 import operator
 import os
 import queue
+import re
 import threading
 import traceback
 from collections.abc import Callable, Iterable, Mapping
@@ -329,12 +330,61 @@ def _waiting_text(waiting: Mapping[str, BenchLink]) -> str:
 
 
 def _unknown_tag(reason: str) -> bool:
-    """Return True if pyrung refused a link because it does not know one of the link's tags.
+    """Return True if pyrung refused a request because it does not know a tag in the request.
 
     pyrung words this in more than one way, such as ``unknown tag: X001`` and
     ``Unknown tag 'X001' (address X001 is not mapped to a tag)``.
     """
     return "unknown tag" in reason.lower()
+
+
+def _unresolved(reason: str, addresses: Iterable[str]) -> str | None:
+    """Return the address in *addresses* that *reason* names as an unknown tag, or None."""
+    if not _unknown_tag(reason):
+        return None
+    for address in addresses:
+        if re.search(rf"\b{re.escape(address)}\b", reason, re.IGNORECASE):
+            return address
+    return None
+
+
+def _send_patches(
+    send: Callable[[dict[str, PlcValue]], object], patches: Mapping[str, PlcValue]
+) -> None:
+    """Send *patches* with *send*, and leave out each address that pyrung cannot resolve.
+
+    pyrung refuses the whole request when it cannot resolve one address in it. The refusal
+    names that address as an unknown tag. This function then sends the request again without
+    that address. Each retry leaves out one more address, so the loop ends. Any other refusal
+    raises.
+
+    The caller keeps the values that this function leaves out, and sends them again with the
+    next patch. A left-out value applies with the first patch after pyrung can resolve its
+    address.
+    """
+    left = dict(patches)
+    while True:
+        try:
+            send(left)
+            return
+        except Exception as exc:
+            address = None if _unavailable(exc) else _unresolved(str(exc), left)
+            if address is None:
+                raise
+            del left[address]
+
+
+def _patch_inputs(dap: Any, patches: Mapping[str, PlcValue]) -> None:
+    """Patch *patches* into the simulation, and leave out each address that pyrung cannot resolve."""
+    _send_patches(dap.patch, patches)
+
+
+def _enter_run(dap: Any, patches: Mapping[str, PlcValue]) -> None:
+    """Switch the simulation to RUN with *patches*.
+
+    Leave out each address that pyrung cannot resolve, so that the switch to RUN goes through.
+    """
+    _send_patches(lambda left: dap.set_mode("run", patches=left), patches)
 
 
 def _send_link(dap: Any, feedback: str, link: BenchLink) -> None:
@@ -1762,9 +1812,7 @@ class SimulationSession:
             if failed:
                 self._post(lambda: self._drop_failed_forces(token, failed))
             if position != "stop":
-                reason = refusal(
-                    "the switch position", partial(dap.set_mode, "run", patches=patches)
-                )
+                reason = refusal("the switch position", partial(_enter_run, dap, patches))
                 if reason is None and position == "run":
                     reason = refusal("the switch position", dap.continue_)
                 if reason is not None:
@@ -2401,13 +2449,11 @@ class SimulationSession:
                 # Forces stay too, because the launch set keepForcesOnRun.
                 reason = refusal("STOP", partial(dap.set_mode, "stop"))
                 if reason is None:
-                    reason = refusal(
-                        "the switch position", partial(dap.set_mode, "run", patches=patches)
-                    )
+                    reason = refusal("the switch position", partial(_enter_run, dap, patches))
             elif position != "stop" and patches:
                 # Send the inputs again. An input whose tag was renamed lost its value under the
                 # old name.
-                reason = refusal("the switch position", partial(dap.patch, patches))
+                reason = refusal("the switch position", partial(_patch_inputs, dap, patches))
             if reason is None and position == "run":
                 reason = refusal("the switch position", dap.continue_)
             if reason is not None:
@@ -2651,7 +2697,7 @@ class SimulationSession:
         dap = self._dap
         if dap is None:
             return  # The values are applied when the simulation (re)starts or enters RUN.
-        self._submit(lambda: dap.patch(values), what)
+        self._submit(lambda: _patch_inputs(dap, values), what)
 
     def set_modbus_port(self, port: int) -> None:
         """Move the simulation's Modbus server to *port*. This relaunches the simulation."""
@@ -2743,7 +2789,7 @@ class SimulationSession:
         def job() -> None:
             # This runs later on the worker. Send the newest value, not the one that queued it.
             self._analog_queued.discard(address)
-            dap.patch({address: self._state.analog.get(address, float(value))})
+            _patch_inputs(dap, {address: self._state.analog.get(address, float(value))})
 
         self._submit(job, f"Writing {address}")
 
@@ -3009,7 +3055,7 @@ class SimulationSession:
             patches = self._input_patches()
 
             def enter_run() -> None:
-                dap.set_mode("run", patches=patches)
+                _enter_run(dap, patches)
                 if position == "run":
                     dap.continue_()
 

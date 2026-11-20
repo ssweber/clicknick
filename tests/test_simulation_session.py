@@ -102,6 +102,10 @@ class FakeDap:
     the known tags (``program_tags``), and a reload clears that list until the next frame. If
     *frame_after_reload* is set, that frame arrives before the reload's caller sends anything
     more.
+
+    Like pyrung, it refuses a whole patch or ``set_mode`` request when it cannot resolve one
+    address in the patches (*unresolved*). It records the patches of every such request in
+    *patch_attempts*, and records only the requests that it accepts in *calls*.
     """
 
     def __init__(self, **callbacks) -> None:
@@ -134,6 +138,11 @@ class FakeDap:
         self.bench: dict[str, dict] = {}
         self.bench_on = True
         self.refuse_links: dict[str, str] = {}
+        self.unresolved: set[str] = set()  # addresses that the fake cannot resolve
+        self.refuse_patches: str | None = (
+            None  # refuse every request with patches, with this reason
+        )
+        self.patch_attempts: list[dict] = []  # the patches of each patch or set_mode request
         self.reload_error: Exception | None = None
         self.plans: list[dict] = []  # each pyrungReload's plan
         self.reload_drops: dict[str, tuple[str, str]] = {}  # tag -> (reason, detail)
@@ -225,7 +234,17 @@ class FakeDap:
         self.links_revision += 1
         return {"result": "Reloaded at scan 7 (3 tag(s))", "carried": carried}
 
+    def _check_patches(self, patches) -> None:
+        """Refuse the whole request, as pyrung does, if one address in *patches* is unresolved."""
+        if patches and self.refuse_patches is not None:
+            raise DapRequestError(self.refuse_patches)
+        for address in patches or ():
+            if address in self.unresolved:
+                raise DapRequestError(f"Unknown tag '{address}'.")
+
     def set_mode(self, mode, patches=None, forces=None):
+        self.patch_attempts.append(dict(patches or {}))
+        self._check_patches(patches)
         self.calls.append(("set_mode", mode, patches, forces))
 
     def continue_(self):
@@ -260,6 +279,10 @@ class FakeDap:
         self.calls.append(("clear_forces",))
 
     def patch(self, patches):
+        if not patches:
+            return  # DapService sends no request for an empty patch
+        self.patch_attempts.append(dict(patches))
+        self._check_patches(patches)
         self.calls.append(("patch", dict(patches)))
 
     # Bench links: a small model of pyrung's overlay, keyed by tag name.
@@ -4007,3 +4030,154 @@ def test_a_write_keeps_a_link_waiting_from_the_new_tags_without_sending_it(witho
     assert ("link", "X003") in [c[:2] for c in harness.dap.calls[mark:]]
     assert harness.dap.bench["X003"]["enable"] == "Y001"
     assert not harness.sim.link_waits("X003")
+
+
+# ----------------------------------------------------------------------
+# A switch on an address that pyrung cannot resolve
+# ----------------------------------------------------------------------
+
+
+def _sent_inputs(dap: FakeDap, mark: int) -> list[dict]:
+    """Return the inputs of each patch and each switch to RUN that pyrung took since *mark*."""
+    return [
+        call[1] if call[0] == "patch" else call[2]
+        for call in dap.calls[mark:]
+        if call[0] == "patch" or call[:2] == ("set_mode", "run")
+    ]
+
+
+def test_a_switch_that_pyrung_cannot_resolve_stays_on_and_run_goes_through(ready):
+    ready.open()
+    ready.dap.unresolved.add("X002")
+
+    ready.sim.toggle_switch("X001")
+    ready.sim.toggle_switch("X002")
+    ready.sim.set_switch_position("run")
+    ready.scheduler.run_ready()
+
+    # Each request goes again without X002. The patch of X002 alone leaves nothing to send.
+    assert ready.dap.patch_attempts == [
+        {"X001": True},
+        {"X002": True},
+        {"X001": True, "X002": True},
+        {"X001": True},
+    ]
+    assert ready.dap.calls[-2:] == [("set_mode", "run", {"X001": True}, None), ("continue",)]
+    assert ready.messages("error") == ""
+    assert ready.sim.switch_on("X002")
+
+
+@pytest.mark.parametrize("write", ["run_time_edit", "stop_and_write"])
+def test_a_write_sends_a_left_out_switch_again_and_pyrung_takes_it_once_it_resolves(ready, write):
+    _running_with_settings(ready)
+    ready.dap.unresolved.add("X003")
+    ready.sim.toggle_switch("X003")
+    ready.scheduler.run_ready()
+
+    _rebuild(ready)
+    mark = len(ready.dap.calls)
+    getattr(ready.sim, write)()
+    ready.scheduler.run_ready()
+    assert _sent_inputs(ready.dap, mark) == [{"X001": True}]
+
+    ready.dap.unresolved.clear()  # the program that the next write loads maps X003
+    _rebuild(ready, uses=("X003",))
+    mark = len(ready.dap.calls)
+    getattr(ready.sim, write)()
+    ready.scheduler.run_ready()
+    assert _sent_inputs(ready.dap, mark) == [{"X001": True, "X003": True}]
+    assert ready.messages("error") == ""
+
+
+def test_a_relaunch_in_run_leaves_out_a_switch_that_pyrung_cannot_resolve(ready):
+    ready.open()
+    ready.sim.toggle_switch("X001")
+    ready.sim.toggle_switch("X002")
+    ready.sim.set_switch_position("run")
+    ready.dap.frame(mode="run", running=True)
+    ready.scheduler.run_ready()
+    ready.launch_hook = lambda: ready.daps[-1].unresolved.add("X002")
+
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+
+    assert ready.dap.calls[1:] == [("set_mode", "run", {"X001": True}, None), ("continue",)]
+    assert ready.messages("error") == ""
+    assert ready.sim.switch_on("X002")
+
+
+@pytest.mark.parametrize(
+    ("reason", "attempts"),
+    [
+        ("X002 is read-only", 1),
+        ("Unknown tag 'Pump'.", 1),  # names no address in the patch
+        ("Unknown tag 'X001'.", 2),  # names X001 again after the retry left it out
+    ],
+)
+def test_any_other_refusal_of_a_patch_shows_its_error(ready, reason, attempts):
+    ready.open()
+    ready.sim.toggle_switch("X001")
+    ready.sim.toggle_switch("X002")
+    ready.scheduler.run_ready()
+    ready.dap.refuse_patches = reason
+    mark = len(ready.dap.patch_attempts)
+
+    ready.sim.set_switch_position("run")
+    ready.scheduler.run_ready()
+
+    assert (
+        ready.dap.patch_attempts[mark:] == [{"X001": True, "X002": True}, {"X002": True}][:attempts]
+    )
+    assert ready.messages("error") == f"Switching to RUN failed: {reason}"
+    assert ("set_mode", "run") not in [call[:2] for call in ready.dap.calls]
+
+
+_UNMAPPED_PROGRAM = """\
+import warnings
+warnings.simplefilter("ignore")
+from pyrung import PLC, Program, rung, out
+from pyrung.click import ClickBlocks, TagMap
+x, y, *_ = ClickBlocks()
+X001 = x[1]
+Y001 = y[1]
+mapping = TagMap({})
+with Program(strict=False) as logic:
+    with rung(X001):
+        out(Y001)
+runner = PLC(logic, dt=0.010)
+"""
+
+
+def test_a_switch_that_pyrung_cannot_resolve_does_not_stop_run_on_pyrung(tmp_path, pyrung_dap):
+    """The program's TagMap maps no address, and no rung names X002, so pyrung cannot resolve X002."""
+    dap_class = pyrung_dap
+    project = tmp_path / "project"
+    project.mkdir()
+    harness = Harness(tmp_path, _ready_analysis(project, used=("X001", "Y001")))
+    (project / "run.py").write_text(_UNMAPPED_PROGRAM, encoding="utf-8")
+
+    def factory(**callbacks):
+        dap = dap_class(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    harness.open()
+    dap = harness.dap
+    dap.frame()
+    harness.scheduler.run_ready()
+    with pytest.raises(DapRequestError, match="Unknown tag 'X002'"):
+        dap.patch({"X001": True, "X002": True})
+
+    harness.sim.toggle_switch("X001")
+    harness.sim.toggle_switch("X002")
+    harness.sim.set_switch_position("run")
+    harness.scheduler.run_ready()
+    dap.scan(1)
+    dap.frame()
+    harness.scheduler.run_ready()
+
+    assert harness.messages("error") == ""
+    assert harness.sim.switch_position == "run"
+    assert dap.tag("Y001") is True, "the switch on X001 went with the switch to RUN"
+    assert harness.sim.switch_on("X002")

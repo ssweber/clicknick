@@ -75,7 +75,7 @@ refusals rely on that split.
   ClickNick generates, was observed to make pyrung know none of X003 to X010.
 - pyrung was observed to accept a force or a patch on such a slot. A patch on X005 moved DS1. It refuses a
   force or a patch on an address that no rung names or reaches and that the project's TagMap does not map,
-  with `Unknown tag 'X020'.` The Console's `why` answers for any address. `simplified` and `how` answer for a
+  with `Unknown tag 'X002' (address X002 is not mapped to a tag)`. The Console's `why` answers for any address. `simplified` and `how` answer for a
   slot that a rung reaches, and refuse any other address that pyrung does not know.
 - The Simulator draws every point the same way, and every action works on every point. A link drag can start
   and end on any point. Only a bench link depends on the named addresses.
@@ -98,9 +98,24 @@ refusals rely on that split.
   `unlinked`) lose the entry as before.
 - The texts never say that the program does not use an address, because a range can reach it. They say that
   no rung in the simulation names it.
+
+## A switch on an address that pyrung cannot resolve
+
 - Switch and analog values stay in the desired state on any address and go with every patch. pyrung 0.18.0
-  was observed to refuse a whole patch when it cannot resolve one address in it. A switch on such an address
-  then keeps `set_mode("run")` from going through.
+  was observed to refuse a whole `patch` or `set_mode` request when it cannot resolve one address in it. The
+  refusal names that address as an unknown tag.
+- Every patch that the session sends goes through `_send_patches`. That covers a switch, a button, an analog
+  value, the switch to RUN, the settings after a launch and the inputs after a write. When pyrung refuses
+  the request with "unknown tag" and names an address in the patch, `_send_patches` sends the request again
+  without that address. The match ignores case. Each retry leaves out one more address, so the loop ends.
+  No error is shown for a left-out address. Any other refusal raises, and its error is shown as before.
+- The switch, its shown position and the saved setting stay. The session remembers no left-out address, so
+  the next patch sends it again. After a write whose program resolves it, the next patch applies it. In RUN
+  and STEP, that is the patch that the write sends after the reload.
+- In a workspace that ClickNick generates, pyrung 0.18.0 was observed to resolve every CLICK address that
+  was tried through the workspace's TagMap. With a CPU and no rungs, X001, X101, X816 and DF5 resolved. With
+  one rung on X001, X002 resolved. An address goes unresolved when the workspace's TagMap does not map it
+  and no rung names or reaches it, as with a hand-written `TagMap({})`.
 
 ## Restoring saved settings
 
