@@ -28,13 +28,15 @@ from pyclickplc.banks import (
     DataType,
 )
 from pyclickplc.blocks import compute_all_block_ranges, find_paired_tag_index, parse_block_tag
-from pyclickplc.validation import SYSTEM_NICKNAME_TYPES, validate_initial_value
+from pyclickplc.validation import SYSTEM_NICKNAME_TYPES
 
 from ..models.address_row import AddressRow, initial_values_differ
 from ..models.validation import (
     TRIMMED_FIELDS,
+    cp1252_error,
     trim_entry,
     validate_comment,
+    validate_initial_value,
     validate_nickname,
 )
 from ..services.block_service import BlockService, compute_block_colors, same_block_tag
@@ -85,6 +87,9 @@ def _flag_loaded_error(row: AddressRow) -> AddressRow:
             row.nickname, row.addr_key, lambda _name, _key: False, system_bank=system_bank
         )
         flagged = not is_valid
+    if flagged and cp1252_error(row.nickname):
+        # A nickname that CLICK cannot hold is an error to fix, never one to hide
+        flagged = False
     if row.loaded_with_error == flagged:
         return row
     return replace(row, loaded_with_error=flagged)
@@ -257,7 +262,9 @@ class AddressStore:
             # as loaded, loaded_with_error hides its errors. The trimmed name differs
             # from the loaded one, so the flag is off. Skip the format rules for it,
             # as the flag did, but check it for duplicates.
-            if self.is_duplicate_nickname(row.nickname, addr_key):
+            if error := cp1252_error(row.nickname):
+                nickname_valid, nickname_error = False, error
+            elif self.is_duplicate_nickname(row.nickname, addr_key):
                 nickname_valid, nickname_error = False, "Duplicate"
             else:
                 nickname_valid, nickname_error = True, ""

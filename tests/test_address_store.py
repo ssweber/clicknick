@@ -1218,6 +1218,56 @@ class TestSaveRefusesErrors:
         assert store.is_dirty(c2)
         assert store.can_undo()
 
+    @pytest.mark.parametrize("field", ["nickname", "comment", "initial_value"])
+    def test_a_character_cp1252_lacks_blocks_save(self, field):
+        c1 = get_addr_key("C", 1)
+        store, source = _live_store({})
+        with store.edit_session("Edit") as session:
+            session.set_field(c1, field, "a→b")
+
+        row = store.visible_state[c1]
+        assert row.has_reportable_error
+        assert "CLICK cannot hold '→'" in getattr(row, f"{field}_error")
+        with pytest.raises(RuntimeError, match="validation errors"):
+            store.save_all_changes()
+        assert source.saved == []
+
+    @pytest.mark.parametrize(
+        ("memory_type", "nickname"), [("X", "a→b"), ("SC", "_Always→ON"), ("SD", "x→y")]
+    )
+    def test_a_loaded_system_row_with_a_character_cp1252_lacks_still_blocks_save(
+        self, memory_type, nickname
+    ):
+        key = get_addr_key(memory_type, 1)
+        store, source = _live_store({key: AddressRow(memory_type, 1, nickname=nickname)})
+        c1 = get_addr_key("C", 1)
+        with store.edit_session("Edit") as session:
+            session.set_field(c1, "nickname", "Pump")
+
+        row = store.visible_state[key]
+        assert not row.loaded_with_error
+        assert row.has_reportable_error
+        assert "CLICK cannot hold" in row.nickname_error
+        with pytest.raises(RuntimeError, match="validation errors"):
+            store.save_all_changes()
+        assert source.saved == []
+
+    def test_a_masked_system_nickname_stays_masked_when_the_comment_has_an_emoji(self):
+        """Only a nickname that CLICK cannot hold lifts the mask. A comment does not."""
+        sc1 = get_addr_key("SC", 1)
+        store, source = _live_store(
+            {sc1: AddressRow(memory_type="SC", address=1, nickname="log", comment="hot 🔥")}
+        )
+        assert store.visible_state[sc1].loaded_with_error
+        with store.edit_session("Comment") as session:
+            session.set_field(sc1, "comment", "hot")
+
+        row = store.visible_state[sc1]
+        assert row.loaded_with_error
+        assert not row.has_reportable_error
+        assert store.save_all_changes() == {sc1}
+        assert source.saved[0][0].comment == "hot"
+
     def test_masked_system_nickname_does_not_block_save(self):
         sc1, c1 = get_addr_key("SC", 1), get_addr_key("C", 1)
         store, source = _live_store({sc1: AddressRow(memory_type="SC", address=1, nickname="log")})

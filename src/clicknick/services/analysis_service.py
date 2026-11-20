@@ -88,11 +88,22 @@ def _read_nickname_rows(db_path: Path) -> dict[int, AddressRow]:
 
 
 def _write_nicknames_csv(csv_dir: Path, nickname_rows: Mapping[int, AddressRow]) -> Path:
-    """Write the nickname snapshot to csv_dir/nicknames.csv for pyrung."""
+    """Write the nickname snapshot to csv_dir/nicknames.csv for pyrung, which reads UTF-8."""
     from ..data.data_source import CsvDataSource
+    from ..models.validation import cp1252_problems
 
+    problems = cp1252_problems(nickname_rows.values())
+    if problems:
+        shown = problems[:_CP1252_LISTED]
+        if len(problems) > len(shown):
+            shown.append(f"and {len(problems) - len(shown)} more.")
+        raise ValueError(
+            "\n".join(shown) + "\nChange the characters in the Address Editor and Sync."
+        )
     nick_dest = csv_dir / "nicknames.csv"
-    CsvDataSource(str(nick_dest)).save_changes(list(nickname_rows.values()))
+    # pyclickplc's format_csv refuses a character that CLICK cannot hold. The check above
+    # names every such row first.
+    CsvDataSource(str(nick_dest), encoding="utf-8").save_changes(list(nickname_rows.values()))
     return nick_dest
 
 
@@ -158,6 +169,9 @@ def _build_tag_addr_key_map(
     tag_to_key = {tag: addr_key for addr_key, tag in key_to_tag.items()}
     return tag_to_key, key_to_tag
 
+
+# The build error lists this many addresses that CLICK cannot hold a character of, and counts the rest
+_CP1252_LISTED = 10
 
 _GENERATED_DIR_NAMES = {"src", "csv", "csv_output"}
 _GENERATED_FILE_NAMES = {

@@ -6,8 +6,36 @@ from pyclickplc.validation import validate_initial_value
 
 from clicknick.models.validation import (
     nickname_duplicate_checker,
+    validate_comment,
     validate_nickname,
 )
+from clicknick.models.validation import validate_initial_value as validate_row_initial_value
+
+
+class TestCharactersCp1252Lacks:
+    """CLICK turns an emoji in a comment into "??", so ClickNick flags it."""
+
+    def test_a_comment_with_an_emoji_is_an_error_that_names_it(self):
+        is_valid, error = validate_comment("Pump 😊")
+
+        assert not is_valid
+        assert error == "CLICK cannot hold '😊'. Replace it"
+
+    def test_a_nickname_with_an_arrow_is_an_error_that_names_it(self):
+        is_valid, error = validate_nickname("a→b", 1, lambda _name, _key: False)
+
+        assert not is_valid
+        assert "'→'" in error
+
+    @pytest.mark.parametrize("data_type", [DataType.TXT, DataType.INT])
+    def test_an_initial_value_with_an_arrow_is_an_error(self, data_type):
+        is_valid, error = validate_row_initial_value("→", data_type)
+
+        assert not is_valid
+        assert "'→'" in error
+
+    def test_a_character_cp1252_has_is_still_valid(self):
+        assert validate_comment("Café 5°C") == (True, "")
 
 
 def _format_only(nickname: str) -> tuple[bool, str]:

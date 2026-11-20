@@ -188,7 +188,7 @@ def test_load_export_rows_reads_src_plc_tags(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tag_commands,
         "_export_nicknames",
-        lambda source, _path: exported.append(source),
+        lambda source, _path, **_kw: exported.append(source),
     )
 
     class FakeDataSource:
@@ -204,6 +204,38 @@ def test_load_export_rows_reads_src_plc_tags(tmp_path, monkeypatch):
 
     assert exported == ["baseline tags\n", "current tags\n"]
     assert regenerated_with == [frozenset({"DF1"})]
+
+
+def test_load_export_rows_says_where_each_character_comes_from(tmp_path, monkeypatch):
+    from clicknick.live import rung_commands
+
+    clean = (
+        "from pyrung.click import ClickBlocks, TagMap\n"
+        "blocks = ClickBlocks()\n"
+        "mapping = TagMap([], include_system=False)\n"
+    )
+    tags_dir = tmp_path / "src" / "plc"
+    tags_dir.mkdir(parents=True)
+    (tmp_path / "csv").mkdir()
+    (tmp_path / "csv" / "analog_inputs.json").write_text("[]\n", encoding="utf-8")
+    monkeypatch.setattr(
+        rung_commands, "_get_before_files", lambda _d, **_kw: {"src/plc/tags.py": clean}
+    )
+
+    # The agent's tags.py holds the character, and the baseline is clean.
+    (tags_dir / "tags.py").write_text(_TAGS_WITH_AN_ARROW, encoding="utf-8")
+    with pytest.raises(ValueError, match="src/plc/tags.py"):
+        tag_commands._load_export_rows(tmp_path)
+
+    # The baseline holds it, which comes from the project's nicknames.
+    monkeypatch.setattr(
+        rung_commands,
+        "_get_before_files",
+        lambda _d, **_kw: {"src/plc/tags.py": _TAGS_WITH_AN_ARROW},
+    )
+    (tags_dir / "tags.py").write_text(clean, encoding="utf-8")
+    with pytest.raises(ValueError, match="Address Editor and Sync"):
+        tag_commands._load_export_rows(tmp_path)
 
 
 # --- a real workspace generated from CLICK's nicknames -----------------------
@@ -350,3 +382,24 @@ def test_tag_apply_refuses_annotations_that_clash_with_the_comment(store):
 
     with pytest.raises(ValueError, match="DS1"):
         _compute_tag_changes(base, cur, store)
+
+
+_TAGS_WITH_AN_ARROW = (
+    "from pyrung.click import ClickBlocks, TagMap\n"
+    "blocks = ClickBlocks()\n"
+    "mapping = TagMap([], include_system=False)\n"
+    'blocks.c.slot(1, name="Motor", comment="a\\u2192b")\n'
+)
+
+
+@pytest.mark.parametrize(
+    ("fix", "message"),
+    [
+        ("Change it in the Address Editor and Sync.", "Address Editor and Sync"),
+        ("Change it in src/plc/tags.py.", "src/plc/tags.py"),
+    ],
+)
+def test_a_character_click_cannot_hold_says_where_to_change_it(tmp_path, fix, message) -> None:
+    """Run pyrung's own ``to_nickname_file``, which pyclickplc's ``write_csv`` refuses."""
+    with pytest.raises(ValueError, match=rf"C1.*→.*{message}"):
+        tag_commands._export_nicknames(_TAGS_WITH_AN_ARROW, tmp_path / "out.csv", fix=fix)

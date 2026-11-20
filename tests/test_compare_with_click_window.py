@@ -124,6 +124,35 @@ def test_a_database_that_cannot_be_read_leaves_only_the_nicknames_out(
     assert not (dest / "nicknames.csv").exists()
 
 
+def test_the_copy_writes_its_nicknames_as_utf8(
+    click_dir: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """pyrung reads the copy's nicknames.csv as UTF-8."""
+    rows = {1: AddressRow("X", 1, nickname="Café", comment="5°")}
+    monkeypatch.setattr("clicknick.utils.mdb_operations.load_all_addresses", lambda _conn: rows)
+    dest = tmp_path / "copy"
+
+    snapshot_click_program(click_dir, dest)
+
+    text = (dest / "nicknames.csv").read_bytes().decode("utf-8")
+    assert "Café" in text
+    assert "5°" in text
+
+
+def test_a_nickname_cp1252_lacks_leaves_only_the_nicknames_out(
+    click_dir: Path, tmp_path: Path, monkeypatch
+) -> None:
+    rows = {1: AddressRow("X", 1, nickname="Start→PB")}
+    monkeypatch.setattr("clicknick.utils.mdb_operations.load_all_addresses", lambda _conn: rows)
+    dest = tmp_path / "copy"
+
+    note = snapshot_click_program(click_dir, dest)
+
+    assert note.startswith("its nicknames were left out: X001")
+    assert (dest / "main.csv").exists()
+    assert not (dest / "nicknames.csv").exists()
+
+
 def test_a_copy_that_cannot_be_swapped_in_leaves_the_last_one_whole(
     click_dir: Path, tmp_path: Path, monkeypatch
 ) -> None:

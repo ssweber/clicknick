@@ -1270,3 +1270,70 @@ def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, 
     main = (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8")
     assert STAND_IN_COMMENT in main
     assert "out(C3)" in main
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        AddressRow("Y", 1, nickname="Motor", comment="Max 50\u00b0C"),
+        AddressRow("Y", 1, nickname="Caf\u00e9"),
+    ],
+    ids=["comment with a degree sign", "nickname with an e-acute"],
+)
+def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
+    tmp_path, monkeypatch, row
+) -> None:
+    """pyrung reads the workspace's nickname CSV as UTF-8, so ClickNick writes it as UTF-8."""
+    import typing
+
+    from laddercodec import Coil, Contact, Rung, write_csv
+
+    contact_type = typing.get_type_hints(Contact)["type"]
+
+    def fake_program_save(_scr_folder, csv_dir, *, index):
+        rung = Rung(
+            logical_rows=1,
+            conditions=[["-"] * 31],
+            instructions=[Coil(contact_type.COIL_OUT, "Y001")],
+            comment=None,
+        )
+        write_csv(csv_dir / "main.csv", [rung], index=index)
+
+    monkeypatch.setattr("clicknick.ladder.program.program_save", fake_program_save)
+    persist = tmp_path / "workspace"
+
+    _regenerate_persisted_project(tmp_path, {1: row}, persist, analog_inputs=frozenset())
+
+    nicknames = persist / "csv" / "nicknames.csv"
+    assert row.nickname in nicknames.read_text(encoding="utf-8")
+
+
+def test_every_row_click_cannot_hold_is_listed_before_the_nickname_csv_is_written(
+    tmp_path,
+) -> None:
+    rows = {
+        1: AddressRow("Y", 1, nickname="Motor", comment="a→b"),
+        2: AddressRow("Y", 2, nickname="PumpЖ"),
+        3: AddressRow("Y", 3, nickname="Fine"),
+    }
+
+    with pytest.raises(ValueError) as caught:
+        _write_nicknames_csv(tmp_path, rows)
+
+    assert str(caught.value) == (
+        "Y001's comment has '→', which CLICK cannot hold.\n"
+        "Y002's nickname has 'Ж', which CLICK cannot hold.\n"
+        "Change the characters in the Address Editor and Sync."
+    )
+    assert not (tmp_path / "nicknames.csv").exists()
+
+
+def test_the_nickname_csv_error_lists_ten_rows_and_counts_the_rest(tmp_path) -> None:
+    rows = {i: AddressRow("DS", i, nickname=f"Tag{i}→") for i in range(1, 14)}
+
+    with pytest.raises(ValueError) as caught:
+        _write_nicknames_csv(tmp_path, rows)
+
+    lines = str(caught.value).splitlines()
+    assert len(lines) == 12
+    assert lines[10] == "and 3 more."

@@ -365,19 +365,25 @@ def _cmd_clear_physical(ctx: DispatchContext, parts: list[str]) -> str:
     )
 
 
-def _export_nicknames(tags_source: str, out_csv) -> None:
+def _export_nicknames(tags_source: str, out_csv, *, fix: str) -> None:
     """Exec a ``src/plc/tags.py`` source and write its full Click nickname CSV.
 
     Passes the ``blocks`` ClickBlockSet so configured-but-unmapped slots (plain
     nicknames + annotations, the bulk of the table) are written, not just the
     TagMap ``map_to`` entries. tags.py is generated project code, trusted here.
+
+    *fix* says where to change a character that CLICK cannot hold. pyclickplc refuses the
+    character, and this function raises ``ValueError`` with *fix* added to its message.
     """
     ns: dict[str, object] = {}
     exec(compile(tags_source, "src/plc/tags.py", "exec"), ns)  # noqa: S102
     mapping = ns.get("mapping")
     if mapping is None:
         raise ValueError("tags.py did not define `mapping`")
-    mapping.to_nickname_file(out_csv, blocks=ns.get("blocks"))  # type: ignore[attr-defined]
+    try:
+        mapping.to_nickname_file(out_csv, blocks=ns.get("blocks"))  # type: ignore[attr-defined]
+    except ValueError as exc:  # format_csv refuses a character that CLICK cannot hold
+        raise ValueError(f"{exc} {fix}") from exc
 
 
 def _load_export_rows(project_dir):
@@ -413,8 +419,8 @@ def _load_export_rows(project_dir):
     with tempfile.TemporaryDirectory(prefix="clicknick_tagapply_") as td:
         base_csv = Path(td) / "baseline.csv"
         cur_csv = Path(td) / "current.csv"
-        _export_nicknames(baseline_src, base_csv)
-        _export_nicknames(current_src, cur_csv)
+        _export_nicknames(baseline_src, base_csv, fix="Change it in the Address Editor and Sync.")
+        _export_nicknames(current_src, cur_csv, fix="Change it in src/plc/tags.py.")
         return (
             CsvDataSource(str(base_csv)).load_all_addresses(),
             CsvDataSource(str(cur_csv)).load_all_addresses(),

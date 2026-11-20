@@ -1,6 +1,33 @@
 """Tests for read_mdb_csv in clicknick.data.data_source."""
 
-from clicknick.data.data_source import read_mdb_csv
+import pytest
+
+from clicknick.data.data_source import convert_mdb_csv_to_user_csv, read_mdb_csv
+
+MDB_HEADER = "AddrKey,MemoryType,Address,DataType,Nickname,Use,InitialValue,Retentive,Comment\r\n"
+
+
+class TestConvertMdbCsvToUserCsv:
+    # The source is UTF-8 with a BOM because read_mdb_csv assumes it. No recording of CLICK's
+    # Address.csv with a non-ASCII nickname shows that CLICK writes it so.
+    def test_writes_the_copy_in_cp1252(self, tmp_path):
+        source = tmp_path / "Address.csv"
+        source.write_bytes((MDB_HEADER + "100663297,DS,1,1,Café,1,0,1,\r\n").encode("utf-8-sig"))
+        dest = tmp_path / "copy.csv"
+
+        convert_mdb_csv_to_user_csv(str(source), str(dest))
+
+        assert b'"Caf\xe9"' in dest.read_bytes()
+
+    def test_refuses_a_nickname_cp1252_lacks_and_writes_no_copy(self, tmp_path):
+        source = tmp_path / "Address.csv"
+        source.write_bytes((MDB_HEADER + "100663297,DS,1,1,a→b,1,0,1,\r\n").encode("utf-8-sig"))
+        dest = tmp_path / "copy.csv"
+
+        with pytest.raises(ValueError, match="DS1"):
+            convert_mdb_csv_to_user_csv(str(source), str(dest))
+
+        assert not dest.exists()
 
 
 class TestReadMdbCsv:
