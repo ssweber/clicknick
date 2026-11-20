@@ -1181,19 +1181,24 @@ class SimulatorWindow(tk.Toplevel):
         self._draw_rows(x, y + HEADER_H + BODY_PAD, inputs, outputs, analog_in, analog_out)
 
     def _placeholder_text(self) -> str:
-        text = (
-            "No CPU configured. In CLICK Programming Software, open System "
-            "Configuration, choose your CPU and modules, then save the project. "
-            "This panel updates on the next save."
-        )
         error = self._simulation.layout_error
-        return f"{error}\n\n{text}" if error else text
+        if error:
+            return error
+        return (
+            "No CPU configured. The Simulator still runs the program. Dashed cards show the "
+            "X and Y addresses that the program uses. To see your hardware, choose the CPU and "
+            "modules in System Configuration in CLICK, then save the project."
+        )
 
     def _placeholder_height(self) -> float:
-        return 230.0 if self._simulation.layout_error else 170.0
+        return 230.0 if self._simulation.layout_error else 200.0
 
     def _draw_placeholder(self, x: float, y: float) -> None:
-        self._draw_card_frame(x, y, self._placeholder_height(), "No CPU", "System Configuration")
+        if self._simulation.layout_error:
+            title, subtitle = "Hardware", "Project.ini"
+        else:
+            title, subtitle = "No CPU", "System Configuration"
+        self._draw_card_frame(x, y, self._placeholder_height(), title, subtitle)
         self._canvas.create_text(
             x + 10, y + HEADER_H + 10, text=self._placeholder_text(), anchor="nw", fill=P.TEXT,
             font=_FONT_SMALL, width=self._card_w - 20,

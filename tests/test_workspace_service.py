@@ -266,6 +266,7 @@ def test_app_refreshes_on_the_tk_thread_when_a_build_finishes() -> None:
     app._request_ui_refresh = MagicMock()
     app._report_legacy_encodings = MagicMock()
     app._report_dropped_checks = MagicMock()
+    app._report_build_warning = MagicMock()
 
     app._on_build_finished()
 
@@ -273,10 +274,12 @@ def test_app_refreshes_on_the_tk_thread_when_a_build_finishes() -> None:
         call(0, app._request_ui_refresh),
         call(0, app._report_legacy_encodings),
         call(0, app._report_dropped_checks),
+        call(0, app._report_build_warning),
     ]
     app._request_ui_refresh.assert_not_called()
     app._report_legacy_encodings.assert_not_called()
     app._report_dropped_checks.assert_not_called()
+    app._report_build_warning.assert_not_called()
 
 
 def test_failure_before_the_build_starts_does_not_stay_preparing(tmp_path, monkeypatch) -> None:
@@ -952,6 +955,34 @@ def test_superseded_build_reports_failure_and_skips_selection_sync(tmp_path, mon
     selection.sync.assert_not_called()
     ok, error = callback.call_args.args
     assert ok is False and "changed while ClickNick was building the workspace" in error
+
+
+def test_a_build_warning_is_reported_once_and_again_when_it_comes_back() -> None:
+    from clicknick.services.analysis_service import (
+        AnalysisResult,
+        AnalysisService,
+        AnalysisStatus,
+    )
+
+    session = ConnectionSession(ClickConnection("1", 2, "Example.ckp"), has_database=True)
+    session.analysis = AnalysisService()
+    assert session.build_warning_to_report() is None  # Nothing has been built
+
+    def finish(warning):
+        session.analysis._result = AnalysisResult(
+            dataview=MagicMock(), program=MagicMock(), warning=warning
+        )
+        session.analysis._status = AnalysisStatus.READY
+
+    finish("could not read")
+    assert session.build_warning_to_report() == "could not read"
+    assert session.build_warning_to_report() is None
+    finish("could not read")  # A rebuild with the same warning
+    assert session.build_warning_to_report() is None
+    finish(None)  # The next build reads the file
+    assert session.build_warning_to_report() is None
+    finish("could not read")
+    assert session.build_warning_to_report() == "could not read"
 
 
 def test_a_build_keeps_the_check_names_it_removed_until_they_are_reported(

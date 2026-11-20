@@ -39,6 +39,10 @@ and the nicknames from its database, and generates the workspace again.
 - `clicknick-cli` finds tags by the workspace's names (`project_tag_to_addr_key`).
 - `csv/analog_inputs.json` records the analog inputs that a workspace was generated with. `tag apply`
   regenerates its baseline `tags.py` from them, never from CLICK's Project.ini at the time it runs.
+- If pyclickplc raises `ValueError` while the build reads Project.ini (an unknown module, or a malformed
+  file), the build goes on with no analog inputs. It stores a warning in `AnalysisResult.warning`
+  (`AnalysisService.build_warning`). `ConnectionSession.build_warning_to_report` hands it to the main window
+  once, and `clicknick-cli check` prints it as a `NOTE:` line. `OSError` still fails the build.
 
 ## Backups of src/plc
 

@@ -99,6 +99,20 @@ def test_dispatch_check_lints_editable_project(tmp_path, monkeypatch) -> None:
     assert dispatch(ctx, "check").startswith(f"checked {tmp_path}")
 
 
+def test_dispatch_check_prints_the_build_warning_as_a_note(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "clicknick.services.program_check.run_project_check",
+        lambda project_dir: f"checked {project_dir}",
+    )
+    analysis = _Analysis(tmp_path)
+    analysis.build_warning = "ClickNick could not read the hardware."
+    ctx = DispatchContext(store=_Store(), analysis=analysis)
+
+    assert dispatch(ctx, "check").startswith(
+        f"NOTE: ClickNick could not read the hardware.\nchecked {tmp_path}"
+    )
+
+
 def test_dispatch_check_refreshes_app_defaults_before_running(tmp_path, monkeypatch):
     from pyrung.validation import CheckConfig, load_check_config
 

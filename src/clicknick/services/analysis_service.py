@@ -73,6 +73,8 @@ class AnalysisResult:
     addr_key_to_tag: dict[int, str] = field(default_factory=dict)
     role_cache: dict[str, set[int]] = field(default_factory=dict)
     project_dir: Path | None = None
+    #: A message for the user about what the build could not read, or None.
+    warning: str | None = None
 
 
 def _read_nickname_rows(db_path: Path) -> dict[int, AddressRow]:
@@ -127,6 +129,30 @@ def _channel_inputs(scr_folder: Path) -> frozenset[str]:
     try:
         return read_channel_parameters(scr_folder / "Project.ini").inputs
     except FileNotFoundError:
+        return frozenset()
+
+
+def _read_channel_inputs(
+    scr_folder: Path, on_warning: Callable[[str], None] | None
+) -> frozenset[str]:
+    """Return the analog inputs in *scr_folder*'s Project.ini, or none if pyclickplc rejects it.
+
+    pyclickplc raises ``ValueError`` for a module that it does not know and for a malformed
+    file. The ladder does not depend on the answer, so the build goes on without analog inputs
+    and calls *on_warning* with what the user needs to know. ``OSError`` is not caught. The
+    build fails, because a file that exists and cannot be read may be readable on a later try.
+    A later build retries: the next save in CLICK, Reload from CLICK, or Retry in the Simulator.
+    """
+    try:
+        return _channel_inputs(scr_folder)
+    except ValueError as exc:
+        if on_warning is not None:
+            on_warning(
+                f"ClickNick could not read the hardware configuration in CLICK's Project.ini: "
+                f"{exc}. ClickNick does not know which addresses are analog inputs. If you turn "
+                "on the check Comparison Operand Has No Ladder Writer, Check Program reports "
+                "an analog input that a comparison reads as a value that nothing writes."
+            )
         return frozenset()
 
 
@@ -386,6 +412,7 @@ def _build_graph(
     *,
     workspace_kind: WorkspaceKind = "temporary",
     on_project_generated: Callable[[Path, _TagMaps], None] | None = None,
+    on_warning: Callable[[str], None] | None = None,
 ) -> tuple[DataView, Program, Path | None, _TagMaps]:
     """Run the full pipeline: Scr*.tmp -> CSV -> pyrung code -> exec -> DataView.
 
@@ -396,6 +423,8 @@ def _build_graph(
     Return the program's DataView, the program, the persisted project folder, and the tag maps of the
     nickname snapshot that the code was generated from. Without a database, the maps name
     every address by its display address.
+
+    *on_warning* receives a message when the build goes on without something it could not read.
     """
     from pyrung.click import ladder_to_pyrung
 
@@ -403,7 +432,7 @@ def _build_graph(
 
     nickname_rows = _read_nickname_rows(db_path) if db_path is not None else None
     # Read Project.ini once, like the nicknames, and use it for both the code and the workspace.
-    analog_inputs = _channel_inputs(scr_folder)
+    analog_inputs = _read_channel_inputs(scr_folder, on_warning)
 
     with tempfile.TemporaryDirectory(prefix="clicknick_analysis_") as tmp:
         csv_dir = Path(tmp)
@@ -521,6 +550,16 @@ class AnalysisService:
         """
 
         return self._system_nickname_repairs
+
+    @property
+    def build_warning(self) -> str | None:
+        """The warning from the latest build that succeeded, or None.
+
+        The build reads CLICK's Project.ini for the analog inputs. If pyclickplc cannot read it,
+        the build goes on without them and this property says so.
+        """
+        result = self._result
+        return result.warning if result is not None else None
 
     @property
     def needs_comment_upgrade(self) -> bool:
@@ -746,6 +785,7 @@ class AnalysisService:
                     self._project_tags, self._project_keys = tag_maps
                     self._project_is_current = True
 
+        warnings: list[str] = []
         try:
             dataview, program, project_dir, (tag_to_key, key_to_tag) = _build_graph(
                 scr_folder,
@@ -753,6 +793,7 @@ class AnalysisService:
                 persist_dir,
                 workspace_kind=workspace_kind,
                 on_project_generated=_project_generated,
+                on_warning=warnings.append,
             )
         except Exception as exc:
             with self._lock:
@@ -780,6 +821,7 @@ class AnalysisService:
                 tag_to_addr_key=tag_to_key,
                 addr_key_to_tag=key_to_tag,
                 project_dir=project_dir,
+                warning="\n".join(warnings) or None,
             )
             if serves >= self._builds_asked:
                 if self._failed_request is not None:
