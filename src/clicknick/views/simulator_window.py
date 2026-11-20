@@ -18,6 +18,10 @@ switch. The chip is blue for the program's link and purple for a bench link. Hov
 chip to draw the wire to the driving terminal. You make, cut and save links to the
 project from the right-click menu, and the Wiring menu lists them all.
 
+pyrung links only an address that a rung in the simulation names. A bench link on any other
+address waits, and the Wiring menu marks it "bench, waiting". The tooltip of the input's
+switch, or of an analog input's live value, says what the link waits for.
+
 Cards are compact and flow into rows in rack order. A full rack fits without horizontal
 scrolling: the CPU, two option slots and eight expansions. A card that is not installed
 is still drawn in its place, off the rail. With no CPU, a "No CPU" card stands first.
@@ -385,9 +389,47 @@ class SimulatorWindow(tk.Toplevel):
         enable_names = (self._names(link.enable)[0], link.enable)
         return comment_has_link(comment, link, enable_names)
 
-    def _link_text(self, address: str) -> str:
-        """Return the tooltip text for an input's link chip or cut mark."""
+    def _waiting_text(self, address: str) -> str:
+        """Return what the bench link on *address* waits for, or "" if it does not wait."""
         sim = self._simulation
+        link = sim.bench_links.get(address)
+        if link is None or not sim.link_waits(address):
+            return ""
+        what = "The cut" if link.cut else "The bench link"
+        ends = [a for a in (address, link.enable) if a is not None]
+        missing = [a for a in ends if not sim.is_named(a)]
+        if not missing:
+            # pyrung refused the link, and ClickNick cannot tell which end it lacks.
+            names = ends[0] if len(ends) == 1 else f"both {ends[0]} and {ends[1]}"
+            return (
+                f"{what} applies once a rung in the simulation names {names}, and you write "
+                "the program to the simulation."
+            )
+        pronoun = "it" if len(missing) == 1 else "both"
+        return (
+            f"No rung in the simulation names {' or '.join(missing)} yet. {what} applies once a "
+            f"rung names {pronoun} and you write the program to the simulation."
+        )
+
+    def _switch_text(self, address: str) -> str:
+        """Return the tooltip text for an input's switch or pushbutton."""
+        text = (
+            "Momentary pushbutton: on while held. Right-click to change."
+            if self._simulation.is_momentary(address)
+            else "Maintained switch: click to latch. Right-click to change."
+        ) + "\nDrag its label onto an output to link them."
+        waiting = self._waiting_text(address)
+        return f"{text}\n{waiting}" if waiting else text
+
+    def _link_text(self, address: str) -> str:
+        """Return the tooltip text for an input's link chip or cut mark, or an analog live value.
+
+        If the input's bench link waits, the text says what it waits for.
+        """
+        sim = self._simulation
+        waiting = self._waiting_text(address)
+        if waiting:
+            return f"{waiting}\nRight-click for options."
         link = sim.driving_link(address)
         if link is None:
             bench = sim.bench_links.get(address)
@@ -842,17 +884,7 @@ class SimulatorWindow(tk.Toplevel):
             x + 15, cy - 5, x + 25, cy + 5, fill=P.BUTTON_CAP, outline=P.SWITCH_KNOB,
             state="hidden", tags=(tag, switch),
         )  # fmt: skip
-        self._tooltip_item(
-            (track, knob, bezel, cap),
-            lambda a=address: (
-                (
-                    "Momentary pushbutton: on while held. Right-click to change."
-                    if self._simulation.is_momentary(a)
-                    else "Maintained switch: click to latch. Right-click to change."
-                )
-                + "\nDrag its label onto an output to link them."
-            ),
-        )
+        self._tooltip_item((track, knob, bezel, cap), lambda a=address: self._switch_text(a))
         pending = c.create_oval(
             x + 30, cy - 11, x + 36, cy - 5, fill=P.PENDING, outline="", state="hidden", tags=(tag,)
         )
@@ -1344,6 +1376,8 @@ class SimulatorWindow(tk.Toplevel):
             c.itemconfigure(info["pending"], state="normal" if waiting else "hidden")
             bench = sim.bench_links.get(address)
             cut = bench is not None and bench.cut and bench.enabled and sim.bench_wiring
+            # A cut that waits is not in the simulation yet.
+            cut = cut and not sim.link_waits(address)
             c.itemconfigure(info["cut"], state="normal" if cut else "hidden")
 
     def _refresh_outputs(self, values: dict, forces: dict) -> None:
@@ -1582,7 +1616,7 @@ class SimulatorWindow(tk.Toplevel):
                 var = tk.BooleanVar(value=link.enabled)
                 self._link_vars.append(var)
                 menu.add_checkbutton(
-                    label=f"{label}   bench",
+                    label=f"{label}   bench, waiting" if link.waiting else f"{label}   bench",
                     variable=var,
                     command=lambda f=link.feedback, v=var: sim.set_link_enabled(f, v.get()),
                 )

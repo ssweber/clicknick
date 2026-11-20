@@ -109,28 +109,22 @@ def test_existing_workspace_file_wins_and_user_is_told(tmp_path):
     assert not app_data_state_path("PLC", root=app_root).exists()
 
 
-def test_restore_keeps_only_addresses_the_hardware_provides():
-    result = restore_state(
-        _state(),
-        inputs=["X001", "X002"],
-        analog_inputs=[],
-        modules=("cpu:C2-03CPU",),
-    )
-    assert result.state.switches == {"X001": True}
-    assert result.state.momentary == frozenset({"X002"})
+def test_restore_keeps_only_analog_values_the_hardware_provides():
+    result = restore_state(_state(), analog_inputs=[], modules=("cpu:C2-03CPU",))
+    # A switch on X102 stays, though no module has X102.
+    assert result.state.switches == _state().switches
+    assert result.state.momentary == _state().momentary
     assert result.state.analog == {}
     # Forces may target any address, so they all survive.
     assert result.state.forces == _state().forces
-    assert result.dropped == ("X102", "DF1")
+    assert result.dropped == ("DF1",)
     assert result.hardware_changed is True
     assert result.state.modules == ("cpu:C2-03CPU",)
 
 
 def test_restore_on_unchanged_hardware_drops_nothing():
     state = _state()
-    result = restore_state(
-        state, inputs=["X001", "X002", "X102"], analog_inputs=["DF1"], modules=state.modules
-    )
+    result = restore_state(state, analog_inputs=["DF1"], modules=state.modules)
     assert result.dropped == ()
     assert result.hardware_changed is False
     assert result.state == state

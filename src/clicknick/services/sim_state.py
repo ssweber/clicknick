@@ -392,16 +392,15 @@ def adopt_snapshot(
 def restore_state(
     state: SimulatorState,
     *,
-    inputs: Iterable[str],
     analog_inputs: Iterable[str],
     modules: tuple[str, ...],
 ) -> RestoreResult:
-    """Keep only the entries whose addresses the current hardware still provides.
+    """Keep only the analog values whose DF the current hardware assigns to an analog input.
 
-    Forces and bench links may target any CLICK address, so they are kept as long as the
-    address is valid. The module list is updated to *modules*.
+    A switch stays, even on an X address that no module provides. Forces and bench links may
+    target any CLICK address, so they are kept as long as the address is valid. The module list
+    is updated to *modules*.
     """
-    input_set = set(inputs)
     analog_set = set(analog_inputs)
     dropped: list[str] = []
 
@@ -411,8 +410,6 @@ def restore_state(
         dropped.append(address)
         return False
 
-    switches = {a: v for a, v in state.switches.items() if keep(a, input_set)}
-    momentary = frozenset(a for a in state.momentary if a in input_set)
     analog = {a: v for a, v in state.analog.items() if keep(a, analog_set)}
     forces = {a: v for a, v in state.forces.items() if normalize_address(a) == a}
     dropped.extend(a for a in state.forces if a not in forces)
@@ -421,8 +418,6 @@ def restore_state(
     hardware_changed = bool(state.modules) and tuple(state.modules) != tuple(modules)
     trimmed = replace(
         state,
-        switches=switches,
-        momentary=momentary,
         analog=analog,
         forces=forces,
         links=links,

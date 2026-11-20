@@ -8,10 +8,17 @@
 
 ## Unreleased
 
+### Changed
+
+- The Simulator now keeps a saved switch position on an input that no installed module has and no rung uses. 0.25.0 removed it when it loaded your saved settings, and the notice said that no installed input had the address.
+
 ### Fixed
 
 - ClickNick now builds the workspace when it cannot read the hardware in CLICK's Project.ini. This happens for a module that ClickNick does not know yet. Check Program, Review Changes, `clicknick-cli` and the Simulator then work. 0.25.0 stopped with **Could not build the workspace**, and the Simulator's hardware panel said that no CPU was configured. The panel now shows the read error. A message box in the main window tells you that ClickNick does not know which addresses are analog inputs. If you turn on the check Comparison Operand Has No Ladder Writer, Check Program then reports an analog input that a comparison reads as a value that nothing writes. For a project with no CPU, the panel now says that the Simulator still runs the program, that the dashed cards show the X and Y addresses that the program uses, and how to see your hardware.
 - ClickNick now builds the workspace for a CLICK PLUS project with an empty option slot, and the Simulator shows the project's hardware. CLICK 4.00 saves an empty option slot as the slot cover C2-FILL. ClickNick now reads C2-FILL through pyclickplc 0.11.2, and the Simulator shows it as a card with no I/O. For such a project, 0.25.0 showed **Could not build the workspace**, and the Simulator showed no hardware.
+- The Simulator no longer shows an error when you link an address that no rung in the simulation names. The simulation can link only an address that a rung names. A slot that a rung reaches only through a range, such as X005 in `pack_bits(X003..X010, DS1)`, does not count. The bench link now waits. The **Wiring** menu shows it as `bench, waiting`, and the input's tooltip says what it waits for. While the link waits, the simulation runs the program's own wiring on that input. To apply it, name the address in a rung, in CLICK or in the workspace's `src/plc`, and write the program to the simulation. 0.25.0 showed an error, such as `Linking X001 failed: cannot link X001: unknown tag: X001` in an empty project, and did not keep the link.
+- The Simulator now keeps a bench link that you saved on an address that no rung in the simulation names. The link waits, and the Simulator applies it after you write a program in which a rung names the address. 0.25.0 showed an error when the simulation started, and removed the link.
+- The Simulator now keeps a bench link or a force on an address when you write a program in which no rung names that address. This holds for either end of a bench link. The link waits until a rung names both ends again. 0.25.0 removed the link and the force.
 
 ## v0.26.0 - 2026-11-20
 

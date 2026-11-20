@@ -99,6 +99,7 @@ class DapService:
         self._state = SimState.IDLE
 
         self._tag_types: dict[str, str] = {}
+        self._program_tags: frozenset[str] | None = None
         self._tag_hints: dict[str, dict[str, Any]] = {}
         self._tag_groups: dict[str, list[str]] = {}
         self._tag_values: TagValues = {}
@@ -132,6 +133,15 @@ class DapService:
     def known_tags(self) -> frozenset[str]:
         """Return every pyrung tag name seen so far. The set is empty until the first scan."""
         return frozenset(self._tag_types.keys())
+
+    @property
+    def program_tags(self) -> frozenset[str] | None:
+        """The tag names that a rung of the running program names, as the latest frame lists them.
+
+        pyrung accepts a link only between these tags. The set is None until the first frame,
+        and from a planned reload that went through until the frame after it.
+        """
+        return self._program_tags
 
     @property
     def tag_hints(self) -> dict[str, dict[str, Any]]:
@@ -302,6 +312,10 @@ class DapService:
     def _handle_response(self, msg: dict[str, Any]) -> None:
         request_seq = msg.get("request_seq")
         if request_seq is not None:
+            if msg.get("command") == "pyrungReload" and msg.get("success"):
+                # The new program may know other tags. pyrung lists them in the frame that it
+                # sends after this response.
+                self._program_tags = None
             with self._lock:
                 self._responses[request_seq] = msg
                 event = self._pending.get(request_seq)
@@ -310,6 +324,11 @@ class DapService:
 
     def _cache_tag_metadata(self, trace: dict[str, Any]) -> None:
         tag_types = trace.get("tagTypes")
+        if isinstance(tag_types, Mapping):
+            # An empty program lists no tags, and that is an answer too.
+            names = frozenset(tag_types)
+            if names != self._program_tags:
+                self._program_tags = names
         if tag_types:
             self._tag_types = tag_types
         tag_hints = trace.get("tagHints")
