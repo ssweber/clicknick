@@ -19,7 +19,7 @@ How to use it:
 
 ## Order
 
-1. The next release, 0.26.0 (waits on laddercodec, pyrung and pyclickplc). The steps are below.
+1. The next release, 0.26.0. The steps are below.
 2. The CLICK runner's waiting jobs (CLICK). Sam ruled on 2026-11-17 that they come ahead of recording.
 3. Recording, ClickNick side (item 10; waits on pyrung's recording core and console commands for every
    change).
@@ -30,19 +30,16 @@ How to use it:
 The ClickNick session runs these steps. Its build notes for them, with the sibling commits that each branch
 was tested against, are in `../clicknick-wt/buildbot/jobs/next-pins/`.
 
-1. Move onto laddercodec 0.5.0 and pyrung 0.18.0. The branch `bob/laddercodec-next` does the first part of
-   item 9 below. It pins laddercodec 0.5.0, pyclickplc 0.11.1 and pyrung 0.18.0, and waits for review and CI.
-   The rest of item 9 waits on pyrung's release after 0.18.0.
-2. Check the encoding of CLICK's Address.csv. ClickNick reads it (`read_mdb_csv`) as UTF-8 with a BOM, and no
-   recording shows a non-ASCII nickname in it.
-3. Read the CHANGELOG from v0.25.0 against what merged, and write the summary.
+1. Done in #156. `main` pins laddercodec 0.5.0, pyclickplc 0.11.1 and pyrung 0.18.0. The rest of item 9 waits
+   on pyrung's release after 0.18.0.
+2. Done. CLICK 4.00 writes Address.csv in UTF-8 with a BOM, so `read_mdb_csv` reads it correctly. The runner
+   imported a cp1252 nickname CSV that holds `Café` and `50°C`, then saved the project. The import wrote no
+   Address.csv. The save wrote one that starts with `EF BB BF` and holds `é` as `C3 A9` and `°` as `C2 B0`, with
+   CRLF line ends. No one has checked CLICK 3.43 or 2.x. Item 4 lists that check as a runner job. The run
+   is in `../clicknick-wt/buildbot/jobs/release-0.26.0/runs/v400/`.
+3. The branch `docs/prepare-v0.26.0` reads the CHANGELOG from v0.25.0 against what merged, and writes the
+   summary.
 4. Sam's smoke test of the release candidate, then his tag. ClickNick goes last of the four repos.
-
-## pyrung's nickname reader (done in 0.18.0)
-
-pyrung 0.18.0 reads a nicknames.csv with pyclickplc's `read_csv`, which takes UTF-8 and cp1252, and writes the
-copy in a generated project in cp1252. ClickNick writes the workspace's csv/ copy and the Compare copy in
-cp1252 too. Every nicknames.csv in a workspace is in one encoding.
 
 ## 1. Housekeeping (nothing)
 
@@ -58,11 +55,11 @@ on 2026-11-18, until he writes "StopRuns". The runner never writes to the PLC. A
 project to the conformance PLC needs Sam's go for each run. The PLC login is `admin` (prefilled) /
 `123click`, which is deliberately not secret.
 
-The runner imports laddercodec 0.4.0's names. When the main checkout's venv holds laddercodec's `main`
-(`make install-dev`), the runner's decode step fails on the renamed names until `bob/laddercodec-next`
-merges. A job that uses `--keep` or `--wire` then decodes with a script of its own.
-
 Jobs waiting, from the plan's item 4 and the other sessions:
+- The encoding of the Address.csv that CLICK 3.43 and 2.x write, once the branch `probe/click-export-mdb`
+  merges with the runner's CLICK 3.x support. `read_mdb_csv` reads Address.csv only as UTF-8 with a BOM
+  (`utf-8-sig`). If an older CLICK writes it in cp1252, the read raises `UnicodeDecodeError` for a file with a
+  non-ASCII nickname or comment.
 - The dialog grids, in Sam's order of 2026-11-17: Fill mode, then the Timer, Counter, Shift, For and Drum
   dialogs, then what is left of the full Math, Copy and Out grids, and the Address Picker's Pickup Mode lists
   for the other fields. A Pickup Mode case takes about 4 s.
