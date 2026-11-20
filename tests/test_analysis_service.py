@@ -1289,7 +1289,7 @@ def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, 
 def test_the_workspace_builds_from_a_nickname_or_comment_outside_ascii(
     tmp_path, monkeypatch, row
 ) -> None:
-    """pyrung reads the workspace's nickname CSV as UTF-8, so ClickNick writes it as UTF-8."""
+    """ClickNick writes the workspace's csv/nicknames.csv in UTF-8, so a nickname outside ASCII builds."""
     from laddercodec import Coil, Rung, write_csv
 
     def fake_program_save(_scr_folder, csv_dir, *, index):

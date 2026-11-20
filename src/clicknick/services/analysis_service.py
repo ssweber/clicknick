@@ -88,7 +88,7 @@ def _read_nickname_rows(db_path: Path) -> dict[int, AddressRow]:
 
 
 def _write_nicknames_csv(csv_dir: Path, nickname_rows: Mapping[int, AddressRow]) -> Path:
-    """Write the nickname snapshot to csv_dir/nicknames.csv for pyrung, which reads UTF-8 and cp1252."""
+    """Write the nickname snapshot to csv_dir/nicknames.csv in UTF-8, for pyrung."""
     from ..data.data_source import CsvDataSource
     from ..models.validation import cp1252_problems
 

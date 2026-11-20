@@ -240,6 +240,24 @@ def test_load_export_rows_says_where_each_character_comes_from(tmp_path, monkeyp
         tag_commands._load_export_rows(tmp_path)
 
 
+def test_load_export_rows_keeps_its_advice_for_an_older_workspaces_nickname_csv(tmp_path):
+    """0.25.0 wrote csv/nicknames.csv with any character, and pyrung refuses one that cp1252 lacks."""
+    (tmp_path / "src" / "plc").mkdir(parents=True)
+    (tmp_path / "src" / "plc" / "tags.py").write_text("unused\n", encoding="utf-8")
+    csv_dir = tmp_path / "csv"
+    csv_dir.mkdir()
+    (csv_dir / "main.csv").write_text("", encoding="utf-8")
+    (csv_dir / "analog_inputs.json").write_text("[]\n", encoding="utf-8")
+    (csv_dir / "nicknames.csv").write_text(
+        "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment\r\n"
+        'X001,BIT,"Go\u2192",0,No,""\r\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Address Editor and Sync"):
+        tag_commands._load_export_rows(tmp_path)
+
+
 # --- a real workspace generated from CLICK's nicknames -----------------------
 
 

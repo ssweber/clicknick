@@ -365,6 +365,10 @@ def _cmd_clear_physical(ctx: DispatchContext, parts: list[str]) -> str:
     )
 
 
+#: Where to change a character that CLICK cannot hold, when it comes from the project's nicknames.
+_FIX_IN_ADDRESS_EDITOR = "Change it in the Address Editor and Sync."
+
+
 def _export_nicknames(tags_source: str, out_csv, *, fix: str) -> None:
     """Exec a ``src/plc/tags.py`` source and write its full Click nickname CSV.
 
@@ -406,9 +410,16 @@ def _load_export_rows(project_dir):
     from .rung_commands import _get_before_files
 
     analog_inputs = read_analog_inputs(project_dir / "csv")
-    baseline_src = _get_before_files(project_dir, analog_inputs=analog_inputs).get(
-        "src/plc/tags.py"
-    )
+    try:
+        baseline_src = _get_before_files(project_dir, analog_inputs=analog_inputs).get(
+            "src/plc/tags.py"
+        )
+    except ValueError as exc:
+        # An older workspace's csv/nicknames.csv can hold a character that CLICK cannot hold.
+        # pyclickplc refuses it while pyrung reads the file.
+        if "cp1252" not in str(exc):
+            raise
+        raise ValueError(f"{exc} {_FIX_IN_ADDRESS_EDITOR}") from exc
     if not baseline_src:
         raise ValueError(
             "tag apply: could not rebuild the original tags.py from the workspace's csv folder."
@@ -419,7 +430,7 @@ def _load_export_rows(project_dir):
     with tempfile.TemporaryDirectory(prefix="clicknick_tagapply_") as td:
         base_csv = Path(td) / "baseline.csv"
         cur_csv = Path(td) / "current.csv"
-        _export_nicknames(baseline_src, base_csv, fix="Change it in the Address Editor and Sync.")
+        _export_nicknames(baseline_src, base_csv, fix=_FIX_IN_ADDRESS_EDITOR)
         _export_nicknames(current_src, cur_csv, fix="Change it in src/plc/tags.py.")
         return (
             CsvDataSource(str(base_csv)).load_all_addresses(),

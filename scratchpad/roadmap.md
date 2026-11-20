@@ -168,10 +168,10 @@ The branch `bob/laddercodec-next` did this much:
   (`prepare_rungs_load`).
 - `program_save` writes each subroutine with `stop="return"`.
 
-pyrung's 0.18.0 and its main at 34746bc cannot run the marker. Its `ladder_to_pyrung` raises `ValueError`, because the AF
-column holds `undecoded`, which pyrung does not know. The builder of `bob/laddercodec-next` checked this on
-2026-11-20. The planner placed pyrung's support for the marker in pyrung's release after 0.18.0. These
-steps wait on that release:
+pyrung 0.18.0 and its main at 34746bc cannot run the marker. Its `ladder_to_pyrung` raises `ValueError`,
+because the AF column holds `undecoded`, which pyrung does not know. The builder of `bob/laddercodec-next`
+checked this on 2026-11-20. The planner placed pyrung's support for the marker in pyrung's release after
+0.18.0. These steps wait on that release:
 
 - Drop the empty stand-in rung (`_replace_unreadable`, `is_stand_in`, and the refusals in `prepare_rungs_load`
   and `_empty_refusal`). Then `write_csv` writes the marker.
