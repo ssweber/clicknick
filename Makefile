@@ -16,10 +16,12 @@ install:
 # Work on ClickNick with local pyclickplc, pyrung and laddercodec without changing release dependencies.
 # Set UV_NO_SYNC=1 for subsequent make lint/test and app runs in this environment.
 # SIBLINGS is the folder holding those checkouts (a worktree elsewhere passes it).
+# --no-sources ignores each checkout's [tool.uv.sources]. pyrung's names laddercodec's git main,
+# and uv refuses that beside the editable laddercodec checkout.
 SIBLINGS ?= ..
 .PHONY: install-dev
 install-dev:
-	uv pip install --editable $(SIBLINGS)/pyclickplc --editable $(SIBLINGS)/pyrung --editable $(SIBLINGS)/laddercodec
+	uv pip install --no-sources --editable $(SIBLINGS)/pyclickplc --editable $(SIBLINGS)/pyrung --editable $(SIBLINGS)/laddercodec
 
 lint:
 	uv run python devtools/lint.py
