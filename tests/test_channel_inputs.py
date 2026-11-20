@@ -135,3 +135,18 @@ def test_the_analysis_service_keeps_the_build_warning(tmp_path, monkeypatch):
     assert service.build(tmp_path, None, tmp_path / "workspace")
 
     assert "Unsupported module ID -1" in service.build_warning
+
+
+def test_an_empty_option_slot_does_not_hide_the_analog_inputs_of_the_next_slot(tmp_path):
+    # CLICK 4.00 saves a CLICK PLUS option slot that holds no module as module 8192 (C2-FILL).
+    # Slot 1 holds a C2-08D1-4VC (8208), with two analog inputs and two analog outputs.
+    record = "3,1,10.0,0.0,100.0,0.0,{},0.0122085215,0.0000000000,"
+    channels = "12,1,DF499,1,DF498,6,0,0,0,0,1\t" + "\t".join(
+        record.format(address) for address in ("DF1", "DF2", "DF3", "DF4")
+    )
+    (tmp_path / "Project.ini").write_text(
+        "[SystemConfig]\nItem1=200\nItem10=8192\nItem11=8208\n"
+        f"[SystemConfigData]\nItem11={channels}\n",
+        encoding="utf-8",
+    )
+    assert _channel_inputs(tmp_path) == frozenset({"DF1", "DF2"})
