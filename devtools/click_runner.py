@@ -9,12 +9,14 @@
     uv run python devtools/click_runner.py reopen --out DIR [--ini-add LINES] [--record]
     uv run python devtools/click_runner.py read-data --out DIR [--record]
     uv run python devtools/click_runner.py picker --out DIR [--key KEY ...] [--ok] [--record]
+    uv run python devtools/click_runner.py new --cpu MODEL --out DIR [--record]
 
-The runner starts its own CLICK. It connects to the one PLC on the LAN, so the new project
-takes that PLC's hardware. It answers "Don't read" to the question about reading the PLC's
-project. ``paste`` then pastes the CSV into the main program and runs Syntax Check. It saves
-the project as ``DIR/<CSV name>.ckp`` and copies CLICK's Scr*.tmp files and Project.ini into
-``DIR/click/``. It disconnects, closes CLICK and decodes ``DIR/click/`` into ``DIR/csv/``.
+The runner starts its own CLICK. In every mode but ``new``, it connects to the one PLC on the
+LAN, so the new project takes that PLC's hardware. It answers "Don't read" to the question
+about reading the PLC's project. ``paste`` then pastes the CSV into the main program and
+runs Syntax Check. It saves the project as ``DIR/<CSV name>.ckp`` and copies CLICK's Scr*.tmp
+files and Project.ini into ``DIR/click/``. It disconnects, closes CLICK and decodes
+``DIR/click/`` into ``DIR/csv/``.
 
 ``paste --add-end`` adds an unconditional end() after the CSV's last rung, unless that rung is
 one already (``ends_unconditionally``). The added rung is ``END_ROW``: a wire across columns A to
@@ -242,6 +244,30 @@ After each key result.json keeps the editor's text, whether it shows and the hin
 shows under it (``keys``). ``--ok`` closes the picker by OK. Without it, WM_CLOSE closes the
 picker. The runner reads the copies through Access ODBC once CLICK has ended. ``read-data``
 and ``picker`` dump CLICK's windows into ``DIR/record/`` only with ``--record``.
+
+``new`` makes a project for the CPU ``--cpu`` through CLICK's new-project wizard. It never
+connects. ``--cpu`` must be one of ``CPU_MODELS``, the CPUs that the wizard lists. Otherwise
+the runner refuses the run before CLICK starts. The runner presses Start a new project on
+Startup. In Select a CPU Module, it sends Home and then Down keys to the list of CPUs, waits
+until the list selects the model, and presses OK. For some CPUs, CLICK then shows User Account
+Setup. If it shows, the runner presses its Cancel, and the project's admin account has no
+password. Once the main window is alone, the runner saves the project as ``DIR/<model>.ckp``
+and copies CLICK's Scr*.tmp files and Project.ini into ``DIR/click/``. pyclickplc's
+``read_modules`` then reads the CPU and modules from that Project.ini. The run stops if that
+Project.ini names a CPU other than ``--cpu``. result.json holds these fields:
+
+- ``cpu_list``: the CPUs that the list showed, in its order;
+- ``user_accounts``: ``cancelled`` if User Account Setup showed, otherwise null;
+- ``project``: the CPU, the option slots and the expansion modules that Project.ini names,
+  and its ``[Sec21]`` section as CLICK wrote it.
+
+Then the runner closes CLICK, and CLICK removes its temp folder. A script can pass
+``on_new_project`` to ``Run`` to act on the project while CLICK has it open. ``new`` calls it
+after the check, with the run and a ``NewProject``: the model, the project file, CLICK's pid,
+its main window and its temp folder. The run then terminates CLICK instead of closing it. If
+the call changed the project, closing could show a save prompt. CLICK's temp folder then
+stays. If a Scr*.tmp is in CLICK's temp folder before the save (``scr_before_save``) and the
+save does not rewrite it, the run stops, as it does in ``paste``.
 
 Before every Syntax Check (``paste``'s too), the runner empties Output. A result that
 reads the same as the one before is then still seen. CLICK ignores a Syntax Check posted
@@ -616,6 +642,61 @@ SYSTEM_CONFIG_NOTICE = Expect(
     "TfrmInformationSystemConfigDlg",
     "System Configuration",
     "system_config",
+)
+# Startup's "Start a new project" opens CLICK's new-project wizard, as live runs on 2026-11-20
+# dumped it. "Select a CPU Module" is a Delphi form that Startup owns. Its list box lists the CPUs
+# (CPU_MODELS), with the first one selected. Above the list are a search field and a filter by
+# series, which reads ALL as the form opens. A key sent to the list moves its selection, and the
+# form then describes the CPU selected. After OK, CLICK closes the form and Startup. For some CPUs
+# it first shows User Account Setup, which Startup owns. Live runs showed it for C0-11DD1E-D,
+# C2-03CPU and C2-03CPU-2, and not for C0-02DD1-D. A new project's admin account has no password.
+# So the OK of User Account Setup shows the error box GUI-153 ("admin password setting is
+# required."). Its Cancel closes it, and the project keeps the CPU
+NEW_CPU = Expect("new_cpu", "TfrmCPU", "Select a CPU Module", "startup")
+USER_ACCOUNTS = Expect("user_accounts", "TfrmUserAccountsSetupDlg", "User Account Setup", "startup")
+# The class of the buttons on User Account Setup (TNT Unicode controls for Delphi)
+TNT_BUTTON = "TTntButton.UnicodeClass"
+# The CPUs that the list in "Select a CPU Module" shows, in its order, as CLICK 4.00 lists them.
+# Each is a model name in pyclickplc's module catalog. The catalog also has five CPUs that the
+# list leaves out: C0-00DA-D, C0-00AA-D, C0-01DA-D, C0-01AA-D and C0-02DA-D
+CPU_MODELS = (
+    "C0-00DD1-D",
+    "C0-00DD2-D",
+    "C0-00DR-D",
+    "C0-00AR-D",
+    "C0-01DD1-D",
+    "C0-01DD2-D",
+    "C0-01DR-D",
+    "C0-01AR-D",
+    "C0-02DD1-D",
+    "C0-02DD2-D",
+    "C0-02DR-D",
+    "C0-10DD1E-D",
+    "C0-10DD2E-D",
+    "C0-10DRE-D",
+    "C0-10ARE-D",
+    "C0-11DD1E-D",
+    "C0-11DD2E-D",
+    "C0-11DRE-D",
+    "C0-11ARE-D",
+    "C0-12DD1E-D",
+    "C0-12DD2E-D",
+    "C0-12DRE-D",
+    "C0-12ARE-D",
+    "C0-12DD1E-1-D",
+    "C0-12DD2E-1-D",
+    "C0-12DRE-1-D",
+    "C0-12ARE-1-D",
+    "C0-12DD1E-2-D",
+    "C0-12DD2E-2-D",
+    "C0-12DRE-2-D",
+    "C0-12ARE-2-D",
+    "C2-01CPU",
+    "C2-02CPU",
+    "C2-03CPU",
+    "C2-01CPU-2",
+    "C2-02CPU-2",
+    "C2-03CPU-2",
 )
 # The instruction dialog ``try`` has open, and the error box it may own after OK
 DIALOG = "dialog"
@@ -1575,7 +1656,8 @@ def _json_default(value: object) -> object:
 
 @dataclass
 class Settings:
-    # "paste", "record", "try", "import", "export-nicknames", "read-data", "reopen" or "picker"
+    # "paste", "record", "try", "import", "export-nicknames", "read-data", "reopen", "picker"
+    # or "new"
     command: str
     out: Path
     # The rest are keyword-only. A field added among them then cannot shift a caller's
@@ -1594,6 +1676,7 @@ class Settings:
     ini_add: str | None = None  # reopen: lines added to the end of the project's Project.ini
     keys: tuple[str, ...] = ()  # picker: keys sent to the Address Picker's grid or editor
     ok: bool = False  # picker: close the Address Picker by OK (else by WM_CLOSE)
+    cpu: str | None = None  # new: the CPU model to pick (CPU_MODELS)
     exe: Path = DEFAULT_EXE
     password: str = DEFAULT_PASSWORD
     user_type: str = DEFAULT_USER_TYPE
@@ -1796,8 +1879,42 @@ def _read_stored(scr: Path) -> dict[str, Any]:
     return {"program": header.name, "prog_idx": header.prog_idx, "rungs": rungs, "error": error}
 
 
+@dataclass(frozen=True)
+class NewProject:
+    """The project that ``new`` saved, in the CLICK that has it open."""
+
+    model: str  # The CPU picked
+    ckp: Path  # The project file that CLICK saved
+    pid: int  # CLICK's process
+    main: int  # CLICK's main window
+    temp: Path  # CLICK's temp folder for the project (``click_temp_dir``)
+
+
+def _ini_section(data: bytes, name: str) -> str | None:
+    """Return the lines of the section [*name*] in the Project.ini *data*, or None if it has none.
+
+    The text is decoded as Latin-1, so every byte is kept. It starts with the section's header
+    and keeps the line ends. A line ends at LF.
+    """
+    lines = data.decode("latin-1").split("\n")
+    header = f"[{name}]"
+    for start, line in enumerate(lines):
+        if line.removesuffix("\r") == header:
+            end = start + 1
+            while end < len(lines) and not lines[end].startswith("["):
+                end += 1
+            return "\n".join(lines[start:end]) + ("\n" if end < len(lines) else "")
+    return None
+
+
 class Run:
-    """One run of the runner against one CLICK it starts."""
+    """One run of the runner against one CLICK it starts.
+
+    With *on_new_project*, ``new`` calls it with the run and the ``NewProject`` once CLICK has
+    saved the project. CLICK still has the project open. The run then terminates CLICK instead
+    of closing it. If the call changed the project, closing could show a save prompt. CLICK's
+    temp folder then stays. If the call raises, the run stops as it does at any step.
+    """
 
     def __init__(
         self,
@@ -1810,6 +1927,7 @@ class Run:
         read_nicknames: Callable[[Path, list[str]], dict[str, str | None]] = _read_nicknames,
         read_rows: Callable[[Path], dict[str, dict[str, Any]]] = _read_rows,
         read_stored: Callable[[Path], dict[str, Any]] = _read_stored,
+        on_new_project: Callable[[Run, NewProject], None] | None = None,
         stderr: Any = None,
     ) -> None:
         self.desktop = desktop
@@ -1820,6 +1938,7 @@ class Run:
         self.read_nicknames = read_nicknames
         self.read_rows = read_rows
         self.read_stored = read_stored
+        self.on_new_project = on_new_project
         self.cases: list[Case] = []
         self.nickname_addresses: list[str] = []
         # These three serve try --resume and are keyed by case id. ``carried`` holds the
@@ -1897,6 +2016,8 @@ class Run:
             self.result.update(reading_seen=False)
         if settings.command == "picker":
             self.result.update(mdb_copies={}, keys=[])
+        if settings.command == "new":
+            self.result.update(cpu=settings.cpu, cpu_list=None, user_accounts=None, project=None)
 
     # -- logging, timing, dumps ---------------------------------------------
 
@@ -2079,9 +2200,12 @@ class Run:
 
     def press(self, window: Window, button: Control) -> None:
         """Post BM_CLICK to *button*, a button found among *window*'s controls."""
-        if button.cls not in ("Button", "TButton", "TRadioButton") or button.hwnd not in {
-            c.hwnd for c in self.controls(window)
-        }:
+        if button.cls not in (
+            "Button",
+            "TButton",
+            "TRadioButton",
+            TNT_BUTTON,
+        ) or button.hwnd not in {c.hwnd for c in self.controls(window)}:
             raise Aborted(f"{button.cls} {button.hwnd} is not a button of {_describe(window)}")
         self.log(f"press {button.text or button.cls}, id {button.id}, in {window.title!r}")
         self.desktop.press(button.hwnd)
@@ -2223,6 +2347,11 @@ class Run:
         if self.s.command == "export-nicknames" and self.s.csv is not None:
             if not self.s.csv.is_file():
                 raise Refused(f"no CSV at {self.s.csv} to import before the export")
+        if self.s.command == "new" and self.s.cpu not in CPU_MODELS:
+            raise Refused(
+                f"--cpu {self.s.cpu!r} is not a CPU that CLICK's new-project wizard lists. "
+                f"Use one of {', '.join(CPU_MODELS)}."
+            )
         if self.s.ini_add is not None and not self.s.ini_add.isascii():
             raise Refused(f"--ini-add is not ASCII: {self.s.ini_add!r}")
         for token in self.s.keys:
@@ -2300,31 +2429,38 @@ class Run:
                 )
                 self.record("guide_closed")
 
+    def operations(self) -> tuple[Window, list[Control]]:
+        """Wait for Startup, and return it with its three textless buttons, from left to right.
+
+        The buttons are Start a new project, Open an existing project and Connect to PLC.
+        Raise Aborted if Startup has another number of textless buttons.
+        """
+        startup = self.wait("Startup", [STARTUP], lambda f: f.get(STARTUP.name))
+        group = self.wait(
+            "the 'Select an Operation' group",
+            [STARTUP],
+            lambda f: next(
+                (
+                    c
+                    for c in self.controls(startup)
+                    if c.cls == "TGroupBox" and c.text == "Select an Operation"
+                ),
+                None,
+            ),
+        )
+        buttons = [
+            c
+            for c in self.controls(startup)
+            if c.parent == group.hwnd and c.cls == "TButton" and c.text == ""
+        ]
+        if len(buttons) != 3:
+            raise Aborted(f"Startup has {len(buttons)} textless operation button(s), expected 3")
+        return startup, sorted(buttons, key=lambda c: c.rect[0])
+
     def connect(self) -> None:
         with self.step("startup"):
-            startup = self.wait("Startup", [STARTUP], lambda f: f.get(STARTUP.name))
-            group = self.wait(
-                "the 'Select an Operation' group",
-                [STARTUP],
-                lambda f: next(
-                    (
-                        c
-                        for c in self.controls(startup)
-                        if c.cls == "TGroupBox" and c.text == "Select an Operation"
-                    ),
-                    None,
-                ),
-            )
-            buttons = [
-                c
-                for c in self.controls(startup)
-                if c.parent == group.hwnd and c.cls == "TButton" and c.text == ""
-            ]
-            if len(buttons) != 3:
-                raise Aborted(
-                    f"Startup has {len(buttons)} textless operation button(s), expected 3"
-                )
-            self.press(startup, max(buttons, key=lambda c: c.rect[0]))  # Connect to PLC
+            startup, buttons = self.operations()
+            self.press(startup, buttons[-1])  # Connect to PLC
 
         with self.step("connect"):
             presses = 1
@@ -2589,6 +2725,130 @@ class Run:
             [STARTUP, CONNECT, LOGIN, READ_PROMPT],
             answered,
         )
+
+    # -- new: a project for a CPU, through CLICK's new-project wizard ----------------
+
+    def new_project(self) -> NewProject:
+        """Make a project for ``--cpu`` through Startup's Start a new project, save it, and check it.
+
+        CLICK stays offline. The runner picks the CPU in Select a CPU Module (``pick_cpu``) and
+        presses OK. If User Account Setup shows, the runner presses its Cancel. The project's
+        admin account then has no password, which is how CLICK makes it. Once the main window
+        is alone, the runner saves the project as ``DIR/<model>.ckp`` and copies CLICK's files
+        into ``DIR/click/``. Then it reads the CPU and modules from that Project.ini
+        (``check_new_project``).
+        """
+        assert self.s.cpu is not None and self.pid is not None
+        model = self.s.cpu
+        wizard = [STARTUP, NEW_CPU, USER_ACCOUNTS]
+        with self.step("startup"):
+            startup, buttons = self.operations()
+            self.press(startup, buttons[0])  # Start a new project
+        with self.step("cpu"):
+            form = self.wait(
+                "Select a CPU Module",
+                [STARTUP, NEW_CPU],
+                lambda f: (
+                    f[NEW_CPU.name] if NEW_CPU.name in f and f[NEW_CPU.name].enabled else None
+                ),
+            )
+            self.record("cpu_form")
+            self.pick_cpu(form, model)
+            self.record("cpu_picked")
+            ok = _require(
+                _labelled(self.controls(form), "TButton", "OK"), "Select a CPU Module's OK"
+            )
+            self.press(form, ok)
+            # The main window is disabled until Startup closes, and Startup stays open while
+            # User Account Setup shows. So the main window alone means that it did not show
+            shown = self.wait(
+                "User Account Setup or the main window alone",
+                wizard,
+                lambda f: f.get(USER_ACCOUNTS.name) or self.only_main(f),
+            )
+        if isinstance(shown, Window):
+            with self.step("user_accounts"):
+                accounts = shown
+                self.record("user_accounts")
+                cancel = _require(
+                    _labelled(self.controls(accounts), TNT_BUTTON, "Cancel"),
+                    "User Account Setup's Cancel",
+                )
+                self.press(accounts, cancel)
+                self.result["user_accounts"] = "cancelled"
+        with self.step("new_project"):
+            self.wait("the main window with the new project", wizard, self.only_main)
+            self.status_bar("new_project")
+            self.record("new_project")
+            # The temp folder is named after the main window's hwnd, and a terminated CLICK
+            # leaves its folder. So a CLICK that gets an earlier CLICK's hwnd can find that
+            # CLICK's Scr*.tmp files there. save() stops if the save does not rewrite them
+            assert self.main is not None
+            self._scr_before = _scr_state(self.desktop.temp_dir(self.main))
+            if self._scr_before:
+                names = [name for name, _, _ in self._scr_before]
+                self.result["scr_before_save"] = names
+                self.log(f"CLICK's temp folder holds {', '.join(names)} before the save")
+        ckp = self.save()
+        with self.step("check"):
+            self.check_new_project(model)
+        assert self.main is not None
+        return NewProject(model, ckp, self.pid, self.main, self.desktop.temp_dir(self.main))
+
+    def pick_cpu(self, form: Window, model: str) -> None:
+        """Select *model* in the form's list of CPUs: Home, then Down once for each row above it.
+
+        The keys are sent to the list only. The run stops if the list does not show *model*,
+        or if the list does not select it once the keys are handled. The method stores the
+        list's items in the result's ``cpu_list``.
+        """
+        boxes = [c for c in self.controls(form) if c.cls == "TListBox"]
+        if len(boxes) != 1:
+            raise Aborted(f"Select a CPU Module has {len(boxes)} list box(es), not one")
+        box = boxes[0]
+        read = self.desktop.list_box(box.hwnd)
+        if read is None:
+            raise Aborted("the list of CPUs does not answer")
+        items, _ = read
+        self.result["cpu_list"] = items
+        if model not in items:
+            raise Aborted(f"the list of CPUs does not show {model}. It shows {', '.join(items)}.")
+        row = items.index(model)
+        for vk in [_VIRTUAL_KEYS["HOME"], *[_VIRTUAL_KEYS["DOWN"]] * row]:
+            if not self.desktop.send_key(box.hwnd, vk):
+                raise Aborted("the list of CPUs did not answer a key")
+        self.log(f"pick {model}: Home, then Down {row} time(s)")
+
+        def picked(_: dict[str, Window]) -> bool:
+            read = self.desktop.list_box(box.hwnd)
+            return read is not None and read[1] == row and read[0][row] == model
+
+        self.wait(f"the list of CPUs to select {model}", [STARTUP, NEW_CPU], picked)
+
+    def check_new_project(self, model: str) -> None:
+        """Read the CPU and modules from ``DIR/click/Project.ini`` into the result's ``project``.
+
+        pyclickplc's ``read_modules`` reads them. ``project`` also keeps the file's [Sec21]
+        lines, where CLICK writes the CPU and the modules. The run stops if the file names
+        another CPU than *model*, or if pyclickplc cannot read it.
+        """
+        from pyclickplc import read_modules
+
+        ini = self.s.out / "click" / "Project.ini"
+        try:
+            modules = read_modules(ini)
+        except (OSError, ValueError) as exc:
+            raise Aborted(f"pyclickplc cannot read the modules in {ini}: {exc}") from exc
+        saved = modules.cpu.model if modules.cpu is not None else None
+        self.result["project"] = {
+            "cpu": saved,
+            "slots": {str(n): m.model for n, m in modules.slots.items()},
+            "expansions": {str(n): m.model for n, m in modules.expansions.items()},
+            "sec21": _ini_section(ini.read_bytes(), "Sec21"),
+        }
+        self.log(f"Project.ini: {self.result['project']}")
+        if saved != model:
+            raise Aborted(f"the saved Project.ini names the CPU {saved}, not {model}")
 
     def paste(self) -> None:
         assert self.main is not None and self.paste_csv is not None
@@ -4762,16 +5022,23 @@ class Run:
         )
 
     def save(self) -> Path:
-        assert self.main is not None and self.s.csv is not None
-        ckp = (self.s.out / f"{self.s.csv.stem}.ckp").resolve()
+        """Save the project as ``DIR/<name>.ckp`` and copy CLICK's files into ``DIR/click/``.
+
+        The name is the CSV's stem in ``paste`` and the CPU's model in ``new``. Job scripts
+        override this method to act after the save, so it takes no arguments.
+        """
+        name = self.s.cpu if self.s.command == "new" else self.s.csv and self.s.csv.stem
+        assert self.main is not None and name is not None
+        ckp = (self.s.out / f"{name}.ckp").resolve()
         temp = self.desktop.temp_dir(self.main)
         with self.step("save"):
             self.save_as(ckp, temp)
             stale = sorted(set(self._scr_before) & set(_scr_state(temp)))
             if stale:
+                before = "the paste" if self.s.command == "paste" else "the save"
                 raise Aborted(
                     f"{', '.join(name for name, _, _ in stale)} in CLICK's temp folder "
-                    "predates the paste, and the save did not change it. It may be left over "
+                    f"predates {before}, and the save did not change it. It may be left over "
                     "from another run."
                 )
             self.result["files"]["ckp"] = ckp
@@ -5080,7 +5347,13 @@ class Run:
         try:
             try:
                 self.launch()
-                self.connect()
+                if self.s.command == "new":
+                    project = self.new_project()
+                    if self.on_new_project is not None:
+                        with self.step("on_new_project"):
+                            self.on_new_project(self, project)
+                else:
+                    self.connect()
                 if self.s.command == "paste":
                     self.paste()
                     self.syntax_check()
@@ -5099,13 +5372,15 @@ class Run:
                     self.picker()
                 if self.connected:
                     self.disconnect_step()
-                if self.s.command == "paste":
+                if self.s.command == "paste" or (
+                    self.s.command == "new" and self.on_new_project is None
+                ):
                     self.close()
                 else:
                     # End CLICK instead of closing it, because closing may show a save prompt
                     # that nobody has recorded yet. Either the new project was never saved,
                     # or (try --keep) a Delete changed it after the last save. Every try
-                    # leaves the project changed
+                    # leaves the project changed. In new, on_new_project may change it too
                     with self.step("close"):
                         self.end_click()
                     if not self.result["click"]["closed"]:
@@ -5418,6 +5693,19 @@ def _parser() -> argparse.ArgumentParser:
     reopens.add_argument(
         "--record", action="store_true", help="also dump every window at each step"
     )
+    news = commands.add_parser(
+        "new",
+        parents=[common],
+        help="make a new project for a CPU through CLICK's new-project wizard, offline, and "
+        "save it",
+    )
+    news.add_argument(
+        "--cpu",
+        required=True,
+        metavar="MODEL",
+        help=f"the CPU, by the model name that CLICK lists: {', '.join(CPU_MODELS)}",
+    )
+    news.add_argument("--record", action="store_true", help="also dump every window at each step")
     return parser
 
 
@@ -5439,6 +5727,7 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         ini_add=getattr(args, "ini_add", None),
         keys=tuple(getattr(args, "keys", ())),
         ok=getattr(args, "ok", False),
+        cpu=getattr(args, "cpu", None),
         exe=args.click_exe,
         password=args.password or env.get("CLICK_RUNNER_PASSWORD") or DEFAULT_PASSWORD,
         user_type=args.user_type or env.get("CLICK_RUNNER_USER_TYPE") or DEFAULT_USER_TYPE,
