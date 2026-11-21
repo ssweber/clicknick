@@ -1285,7 +1285,7 @@ class SimulatorWindow(tk.Toplevel):
         for card in layout.cards:
             draw = partial(self._draw_card, card=card)
             if not card.installed:
-                gap = HOUSING_GAP if card.location == "slot" else CARD_GAP
+                gap = HOUSING_GAP if card.location in ("cpu", "slot") else CARD_GAP
                 height = self._module_height(card)
                 pieces.append(_Piece(self._card_w, height, draw, on_rail=False, gap=gap))
             elif card.location == "cpu":

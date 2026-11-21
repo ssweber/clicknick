@@ -8,6 +8,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- The Simulator now shows X001 to X016 and Y001 to Y016 of a CLICK PLUS on an **Option slot 0 - unassigned** card, right after option slot 0, when the program uses them and no module provides them. On a CLICK PLUS, these addresses belong to option slot 0. 0.26.0 showed them on a **CPU - unassigned** card after the last option slot. With a C0 CPU or no CPU, the **CPU - unassigned** card now comes before an **Option slot 1 - unassigned** card. 0.26.0 showed it after that card.
+
 ## v0.26.0 - 2026-11-20
 
 Every ClickNick user should upgrade for the fixes from pyrung 0.18.0 and laddercodec 0.5.0. The Simulator now runs a `copy()` of a number into TXT in your `src/plc` code the same as a CLICK PLC. Review Changes now pastes some code from `src/plc` correctly. 0.25.0 pasted that code wrongly.
