@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from .data.nickname_manager import NicknameManager
     from .data_session import DataSession
     from .services.click_redraw import RedrawResult
+    from .utils.dialog_queue import DialogQueue
     from .views.redraw_splash import RedrawSplash
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,8 @@ class ConnectionHost(Protocol):
 
     root: tk.Tk
     settings: AppSettings
+    # The message boxes that wait for each other
+    _dialogs: DialogQueue
     # The connected session and the loaded data live only here. Assigning either one
     # refreshes the main window.
     _session: ConnectionSession | None
@@ -341,13 +344,15 @@ class ConnectionController:
                 app._show_main_window()
                 app._update_status("⚠ Could not read CLICK's database", "error")
                 self._odbc_warning_shown = True
-                messagebox.showerror(
-                    "Database Connection",
-                    f"Could not read the database of {click.filename}: {error}",
-                    parent=app.root,
-                )
-                if session.loads(token):
-                    self._connect_csv_fallback(click.filename, click.hwnd)
+                text = f"Could not read the database of {click.filename}: {error}"
+
+                def report() -> None:
+                    # Fall back to CSV only once the user has read why.
+                    messagebox.showerror("Database Connection", text, parent=app.root)
+                    if session.loads(token):
+                        self._connect_csv_fallback(click.filename, click.hwnd)
+
+                app._dialogs.show(report)
                 return
 
             # The save prompt runs Tk's loop: the session may close meanwhile
@@ -466,12 +471,14 @@ class ConnectionController:
 
         app.root.after(2000, self.refresh_click_instances)
         if dropped_choice:
-            messagebox.showwarning(
-                "Workspace",
-                "Workspace setup closed because the CLICK window closed. The location you "
-                "chose was not applied. Open the project in CLICK, then open Workspace setup "
-                "and choose the location again.",
-                parent=app.root,
+            app._dialogs.show(
+                lambda: messagebox.showwarning(
+                    "Workspace",
+                    "Workspace setup closed because the CLICK window closed. The location you "
+                    "chose was not applied. Open the project in CLICK, then open Workspace "
+                    "setup and choose the location again.",
+                    parent=app.root,
+                )
             )
 
     def _keeps_edits_for(self, old_filename: str, new_filename: str) -> bool:
@@ -565,6 +572,7 @@ class ConnectionController:
                 "Project Changed",
                 f"The CLICK window now shows {new_filename}. {' and '.join(closing)} will "
                 "now close.",
+                parent=app.root,
             )
 
         dropped_choice = self.close_session()
@@ -591,12 +599,14 @@ class ConnectionController:
 
         # A dialog, not a status message, because the load rewrites the status line.
         if dropped_choice:
-            messagebox.showwarning(
-                "Workspace",
-                "Workspace setup closed because the project in CLICK changed. The location "
-                "you chose was not applied. Open Workspace setup and choose the location "
-                "again.",
-                parent=app.root,
+            app._dialogs.show(
+                lambda: messagebox.showwarning(
+                    "Workspace",
+                    "Workspace setup closed because the project in CLICK changed. The location "
+                    "you chose was not applied. Open Workspace setup and choose the location "
+                    "again.",
+                    parent=app.root,
+                )
             )
 
     # -- The watch and the popup -----------------------------------------------
@@ -785,7 +795,10 @@ class ConnectionController:
         if not settings.redraw_notice_due:
             return
         settings.mark_redraw_notice_shown()
-        messagebox.showinfo(REDRAW_ON_SYNC, REDRAW_NOTICE, parent=self._app.root)
+        root = self._app.root
+        self._app._dialogs.show(
+            lambda: messagebox.showinfo(REDRAW_ON_SYNC, REDRAW_NOTICE, parent=root)
+        )
 
     def _show_splash(self, click_hwnd: int) -> RedrawSplash | None:
         """Show the notice over the CLICK window *click_hwnd*, or return None if it fails.

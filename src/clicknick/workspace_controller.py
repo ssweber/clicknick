@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         WorkspacePairing,
     )
     from .services.workspace_service import WorkspaceStatus
+    from .utils.dialog_queue import DialogQueue
 
 
 class WorkspaceHost(Protocol):
@@ -30,6 +31,8 @@ class WorkspaceHost(Protocol):
 
     root: tk.Tk
     _live_server: LiveServer | None
+    # The message boxes that wait for each other
+    _dialogs: DialogQueue
     # The details that Workspace setup shows. The main window shows them too.
     plc_name_var: tk.StringVar
     mirror_setup_status_var: tk.StringVar
@@ -205,7 +208,9 @@ class WorkspaceController:
             app._request_ui_refresh()
             return
         message = error or "ClickNick could not reload the workspace from CLICK."
-        messagebox.showerror("Reload from CLICK", message, parent=app.root)
+        app._dialogs.show(
+            lambda: messagebox.showerror("Reload from CLICK", message, parent=app.root)
+        )
         app._update_status("Reload from CLICK failed", "error")
         app._request_ui_refresh()
 

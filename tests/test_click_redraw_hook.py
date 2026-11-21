@@ -23,6 +23,7 @@ from clicknick.services import click_redraw
 from clicknick.services.click_redraw import RedrawOutcome, RedrawResult
 from clicknick.services.settings_file import SavedSettings, read_settings, write_settings
 from clicknick.utils import mdb_operations, win32_desktop
+from clicknick.utils.dialog_queue import DialogQueue
 
 CLICK = ClickConnection("111", 222, "Main.ckp")
 C1 = get_addr_key("C", 1)
@@ -99,6 +100,7 @@ def _app(click: ClickConnection | None = CLICK) -> ClickNickApp:
     app.__dict__["_ui_refresh_id"] = None
     app._request_ui_refresh = MagicMock()
     app.root = FakeRoot()
+    app._dialogs = DialogQueue()
     app.settings = FakeSettings()
     app._session = ConnectionSession(click) if click is not None else None
     app._data = None

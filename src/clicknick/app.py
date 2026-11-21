@@ -21,6 +21,7 @@ from .detection.window_mapping import CLICK_PLC_WINDOW_MAPPING
 from .resources.action_icons import ActionIconCache
 from .resources.icon_data import ICON_PNG_BASE64
 from .utils.click_temp import scr_files
+from .utils.dialog_queue import DialogQueue
 from .utils.filters import (  # preserve lru_cache
     ContainsFilter,
     ContainsPlusFilter,
@@ -1678,6 +1679,10 @@ class ClickNickApp:
         # Pending idle refresh of the title and Workspace details (_request_ui_refresh)
         self._ui_refresh_id = None
 
+        # The message boxes that a build, a Sync or the connection opens wait here for each
+        # other, so that only one shows at a time. src/clicknick/CONNECTION.md lists them.
+        self._dialogs = DialogQueue()
+
         self.filter_strategies = {
             "none": NoneFilter(),
             "prefix": PrefixFilter(),
@@ -1838,8 +1843,12 @@ class ClickNickApp:
           message offers Review Changes, which pastes the rung again.
 
         ``ConnectionSession.legacy_encodings_to_report`` returns nothing unless a finding is
-        new. So the message shows once for each set of findings.
+        new. So the message shows once for each set of findings. The findings are read when
+        the box opens. A box that waits for another box shows what the latest build found.
         """
+        self._dialogs.show(self._show_legacy_encodings)
+
+    def _show_legacy_encodings(self) -> None:
         from .ladder.program import describe_legacy_encoding, stand_in_fix
 
         found = self._session.legacy_encodings_to_report() if self._session else ()
@@ -1888,17 +1897,35 @@ class ClickNickApp:
             return
         message += "\n\nOpen Review Changes now?"
         if messagebox.askyesno("Paste Again", message, icon=messagebox.WARNING, parent=self.root):
-            self._workspace.review_changes()
+            # Review Changes opens its window once Tk is idle. Queued, it opens after the
+            # boxes that wait, and not while one of them is open.
+            self._dialogs.show(self._workspace.review_changes)
 
     def _report_dropped_checks(self, parent: tk.Misc | None = None) -> None:
-        """Tell the user which rule names ClickNick removed from a saved check selection."""
-        found = self._session.dropped_checks_to_report() if self._session else ()
-        if found:
+        """Tell the user which rule names ClickNick removed from a saved check selection.
+
+        The names are read when the box opens. If *parent* has closed by then, the box opens
+        over the main window.
+        """
+
+        def show() -> None:
+            found = self._session.dropped_checks_to_report() if self._session else ()
+            if not found:
+                return
             message = "\n\n".join(item.describe() for item in found)
-            messagebox.showwarning("Check Program", message, parent=parent or self.root)
+            owner = parent if parent is not None and parent.winfo_exists() else self.root
+            messagebox.showwarning("Check Program", message, parent=owner)
+
+        self._dialogs.show(show)
 
     def _report_build_warning(self) -> None:
-        """Tell the user what the latest build went on without, once for each warning."""
+        """Tell the user what the latest build went on without, once for each warning.
+
+        The warning is read when the box opens.
+        """
+        self._dialogs.show(self._show_build_warning)
+
+    def _show_build_warning(self) -> None:
         warning = self._session.build_warning_to_report() if self._session else None
         if warning:
             messagebox.showwarning("Workspace", warning, parent=self.root)

@@ -15,6 +15,7 @@ import pyodbc
 import pytest
 
 from clicknick.utils import jet_sidecar, mdb_operations, mdb_shared
+from clicknick.utils.dialog_queue import DialogQueue
 
 
 @pytest.fixture(autouse=True)
@@ -393,6 +394,7 @@ def test_unloadable_odbc_loads_off_ui_thread_and_handles_result(jet_database, mo
         nickname_manager=Mock(),
         _start_analysis_build=Mock(),
         _on_database_synced=Mock(),
+        _dialogs=DialogQueue(),
     )
     view._open_data = lambda store, **kw: app_module.ClickNickApp._open_data(view, store, **kw)
     view._get_store = lambda: app_module.ClickNickApp._get_store(view)

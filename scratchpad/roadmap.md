@@ -41,8 +41,6 @@ for this in next release". Each item says what it needs, as above.
   against both texts.
 - An unknown module (waits on pyclickplc). pyclickplc would read a module that it does not know as unknown,
   instead of raising `ValueError`. This is item 3 of pyclickplc's roadmap.
-- Stacked message boxes (nothing). When a build finishes, ClickNick can show several message boxes, one on
-  top of another. This happened before 0.26.0 too.
 
 ## 1. Housekeeping (nothing)
 

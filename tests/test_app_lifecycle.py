@@ -16,6 +16,7 @@ from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data_session import DataSession
 from clicknick.detection.window_detector import ClickInstance
 from clicknick.services.workspace_mirror import ProjectWorkspaceConfig
+from clicknick.utils.dialog_queue import DialogQueue
 from clicknick.workspace_controller import WorkspaceController
 
 
@@ -148,6 +149,7 @@ def _app(monkeypatch, *, answer=None, yes_no=False) -> tuple[ClickNickApp, list]
     app._connection = ConnectionController(app)
     app._request_ui_refresh = MagicMock()
     app.root = FakeRoot()
+    app._dialogs = DialogQueue()
     app._session = _session()
     app._data = None
     app._update_status = MagicMock()
