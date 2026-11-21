@@ -481,7 +481,7 @@ class ConnectionController:
                 )
             )
 
-    def _keeps_edits_for(self, old_filename: str, new_filename: str) -> bool:
+    def _keeps_edits_for(self, old_filename: str, new_filename: str, *, unloaded: bool) -> bool:
         """Ask whether unsaved edits stay with the project CLICK shows now.
 
         CLICK's Save As keeps the window's temp folder, its database and its DataView
@@ -491,6 +491,10 @@ class ConnectionController:
         edits count on CSV data too, because the Data View Editor shows the window's
         DataView folder. CSV address edits belong to the CSV file, so the question does
         not cover them. Nothing is saved here. Return False if nothing is unsaved.
+
+        *unloaded* is True when the title named no project before it named *new_filename*
+        (``ConnectionSession.project_unloaded``). Save As never shows such a title, so the
+        question then does not tell the user to choose Yes after a Save As.
         """
         data = self._app._data
         if data is None:
@@ -513,12 +517,12 @@ class ConnectionController:
                 )
         if not unsaved:
             return False
+        save_as = "" if unloaded else "Choose Yes if you used Save As in CLICK. "
         return messagebox.askyesno(
             "Project Changed",
             f"The CLICK window now shows {new_filename}. You have unsaved "
             f"{' and '.join(unsaved)} made in {old_filename}.\n\n"
-            f"Keep them as unsaved changes for {new_filename}? Choose Yes if you used Save As "
-            f"in CLICK. {' '.join(saves)}\n\n"
+            f"Keep them as unsaved changes for {new_filename}? {save_as}{' '.join(saves)}\n\n"
             "Choose No if you opened another project. No discards the changes and saves "
             "nothing.",
             icon=messagebox.WARNING,
@@ -560,7 +564,9 @@ class ConnectionController:
         if session is None:
             return
         click = session.click
-        keep = self._keeps_edits_for(click.filename, new_filename)
+        keep = self._keeps_edits_for(
+            click.filename, new_filename, unloaded=session.project_unloaded
+        )
         closes_data = app.using_database and not keep
         closing = []
         if closes_data and app._data.has_open_windows:
@@ -668,7 +674,12 @@ class ConnectionController:
 
         current_title = app.detector.get_window_title(click.hwnd)
         new_filename = ClickWindowDetector.parse_click_filename(current_title)
-        if new_filename and new_filename != click.filename:
+        if current_title and not new_filename:
+            # CLICK unloaded the project. File > New in an unsaved NewProject1.ckp makes
+            # another NewProject1.ckp, so the file name alone cannot show the change. A title
+            # that could not be read is None or empty, and it does not count.
+            session.project_unloaded = True
+        if new_filename and (new_filename != click.filename or session.project_unloaded):
             try:
                 self._handle_project_change(current_title, new_filename)
             finally:

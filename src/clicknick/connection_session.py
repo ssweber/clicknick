@@ -174,6 +174,10 @@ class ConnectionSession:
         # The connected window, for the session's lifetime. A project change replaces the
         # session.
         self.click = click
+        # Whether the connection watch has seen the window's title name no project. CLICK's
+        # title names none while File > New or File > Open replaces the project. The project
+        # that the title names next is another project, even if its file name is the same.
+        self.project_unloaded = False
         # Whether ClickNick read CLICK's database for this project. A session opens before the
         # database loads. This stays False if there is no database backend or the load fails,
         # and ClickNick then falls back to CSV. The analysis reads SC_.mdb through ODBC or Jet,

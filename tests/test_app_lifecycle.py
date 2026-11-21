@@ -373,6 +373,7 @@ def test_project_change_can_keep_unsaved_database_edits_for_the_new_project(monk
     assert title == "Project Changed"
     assert "Keep them as unsaved changes for Renamed.ckp?" in message
     assert "Sync writes the address changes to Renamed.ckp." in message
+    assert "Choose Yes if you used Save As in CLICK." in message
     assert "Data View" not in message
     assert app._data.store is store
     assert not editor.closed
@@ -729,6 +730,114 @@ def test_stopped_monitoring_still_notices_a_project_change(monkeypatch):
     _assert_loads(app, ClickConnection("111", 222, "Next.ckp"))
     app.detector.detect_child_window.assert_not_called()
     assert app.root.pending(100) == 1
+
+
+# The titles of CLICK's window during File > New, from a live run of CLICK 4.00 that started on
+# an unsaved NewProject1.ckp. CLICK named the new project NewProject1.ckp too.
+_NEW_PROJECT1 = "CLICK Programming Software (Version4.00) - NewProject1.ckp - [Main Program]"
+_FILE_NEW_TITLES = [
+    _NEW_PROJECT1,
+    "CLICK Programming Software (Version4.00) - NewProject1.ckp",
+    "CLICK Programming Software (Version4.00)",
+    "CLICK Programming Software (Version4.00) - NewProject1.ckp",
+    _NEW_PROJECT1,
+]
+
+
+def _watch_titles(app: ClickNickApp, titles: list[str | None]) -> None:
+    """Start the watch, and run one tick for each title in *titles*, in order."""
+    for n, title in enumerate(titles):
+        app.detector.get_window_title = lambda _hwnd, title=title: title
+        if n == 0:
+            app._connection._watch_connection()
+        else:
+            (tick,) = app.root.take(100)
+            tick()
+
+
+def test_file_new_that_reuses_the_file_name_is_another_project(monkeypatch):
+    app, prompts = _app(monkeypatch, yes_no=False)
+    click = ClickConnection("111", 222, "NewProject1.ckp")
+    app._session = old_session = _session(click)
+    editor = _open(app, FakeStore(is_database=True, unsaved=True))
+
+    _watch_titles(app, _FILE_NEW_TITLES)
+
+    assert [prompt[:2] for prompt in prompts] == [
+        ("askyesno", "Project Changed"),
+        ("Project Changed",),
+    ]
+    # Save As never shows a title without a project, so the question does not suggest one.
+    assert "Save As" not in prompts[0][2]
+    old_session.close.assert_called_once()
+    assert editor.closed
+    assert app._data is None
+    assert app._session is not old_session
+    _assert_loads(app, click)
+    assert app.root.pending(100) == 1
+
+
+def test_file_open_of_a_project_with_the_same_file_name_is_another_project(monkeypatch):
+    app, prompts = _app(monkeypatch)
+    click = ClickConnection("111", 222, "Plant.ckp")
+    app._session = old_session = _session(click)
+    editor = _open(app, FakeStore(is_database=True))
+
+    _watch_titles(
+        app,
+        [
+            "CLICK Programming Software (Version4.00) - Plant.ckp - [Main Program]",
+            "CLICK Programming Software (Version4.00) - Plant.ckp",
+            "CLICK Programming Software (Version4.00)",
+            "CLICK Programming Software (Version4.00) - Plant.ckp - [Main Program]",
+        ],
+    )
+
+    assert prompts == [("Project Changed",)]
+    old_session.close.assert_called_once()
+    assert editor.closed
+    assert app._data is None
+    _assert_loads(app, click)
+
+
+def test_kept_edits_after_file_new_go_to_a_new_session(monkeypatch):
+    monkeypatch.setattr(ConnectionSession, "start_analysis", MagicMock())
+    app, prompts = _app(monkeypatch, yes_no=True)
+    click = ClickConnection("111", 222, "NewProject1.ckp")
+    app._session = old_session = _session(click)
+    store = FakeStore(is_database=True, unsaved=True)
+    editor = _open(app, store)
+
+    _watch_titles(app, _FILE_NEW_TITLES)
+
+    ((_, title, message),) = prompts
+    assert title == "Project Changed"
+    assert "Keep them as unsaved changes for NewProject1.ckp?" in message
+    assert "Save As" not in message
+    assert app._data.store is store
+    assert not editor.closed
+    app._connection._load_instance_database.assert_not_called()
+    old_session.close.assert_called_once()
+    new_session = app._session
+    assert new_session is not old_session
+    assert new_session.click == click
+    assert new_session.has_database
+    assert not new_session.project_unloaded
+    new_session.start_analysis.assert_called_once_with(app.root)
+
+
+@pytest.mark.parametrize("unread", [None, ""], ids=["none", "empty"])
+def test_a_title_that_cannot_be_read_is_not_a_project_change(monkeypatch, unread):
+    app, prompts = _app(monkeypatch)
+    app._session = session = _session(ClickConnection("111", 222, "NewProject1.ckp"))
+    _open(app, FakeStore(is_database=True, unsaved=True))
+
+    _watch_titles(app, [_NEW_PROJECT1, unread, _NEW_PROJECT1])
+
+    assert prompts == []
+    session.close.assert_not_called()
+    assert app._session is session
+    app._connection._load_instance_database.assert_not_called()
 
 
 def test_the_popup_goes_with_the_window_it_was_shown_over(monkeypatch):
