@@ -44,6 +44,8 @@ CPU_TYPE_TEXT = (
     "Unknown is installed, please supply the CPU with 24VDC."
 )
 MAIN_CLASS = "Afx:002E0000:8:00010003:00000000:10D30AE3"
+# The module ids that CLICK 4.00 wrote in [Sec21] for these CPUs in live runs on 2026-11-20
+CPU_IDS = {"C0-02DD1-D": 241, "C0-11DD1E-D": 212, "C2-03CPU": 198, "C2-03CPU-2": 201}
 OUTPUT_BAR = "Afx:ControlBar:2e0000:8:10003:10"
 
 
@@ -294,6 +296,15 @@ class FakeClick(cd.Desktop):
     (``SYSTEM_ROWS``). Closing the Picker without OK writes nothing. That matches real
     CLICK for a Picker closed with nothing typed. Nobody has closed it that way after
     typing.
+
+    Startup's left button opens Select a CPU Module, as a live run on 2026-11-20 dumped it.
+    Its list box lists *cpu_list*, and its OK makes a project for the CPU selected. For a
+    CLICK PLUS CPU, and for a CPU whose name holds "E-" (an Ethernet CPU), User Account Setup
+    shows first. Live runs showed it for C0-11DD1E-D, C2-03CPU and C2-03CPU-2. Its OK shows the
+    error box GUI-153, and its Cancel makes the project. The project's Project.ini then names
+    that CPU in [Sec21], or the CPU *saved_cpu* if given. With *lists_follow_keys* off, Down
+    does not move the list's selection. With *user_accounts* True or False, User Account Setup
+    shows for every CPU or for none. With *accounts_cancel* off, it has no Cancel.
     """
 
     def __init__(
@@ -361,6 +372,10 @@ class FakeClick(cd.Desktop):
         export_writes: bool = True,
         export_box: str | None = "completed",
         create_prompt: str | None = None,
+        cpu_list: tuple[str, ...] = cr.CPU_MODELS,
+        saved_cpu: str | None = None,
+        user_accounts: bool | None = None,
+        accounts_cancel: bool = True,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -473,6 +488,11 @@ class FakeClick(cd.Desktop):
         self.create_prompt = create_prompt
         self.exported: list[Path] = []
         self.opened: list[Path] = []
+        self.cpu_list = cpu_list
+        self.saved_cpu = saved_cpu
+        self.user_accounts = user_accounts
+        self.accounts_cancel = accounts_cancel
+        self.cpu: str | None = None  # The CPU of the project that the wizard made
 
     @property
     def placed(self) -> str | None:
@@ -607,8 +627,10 @@ class FakeClick(cd.Desktop):
         for name in list(lefts)[: self.options["startup_buttons"]]:
             if name == "right":
                 action = lambda s=startup: self._later("startup", lambda: self._show_connect(s))
+            elif name == "left":
+                action = lambda s=startup: self._later("cpu", lambda: self._select_cpu(s))
             else:
-                action = lambda: self._later("cpu", self._select_cpu)
+                action = None  # Open an existing project, which no test presses
             self._control(
                 startup,
                 "TButton",
@@ -623,9 +645,90 @@ class FakeClick(cd.Desktop):
         for control in startup.controls:
             control.id = control.hwnd  # A Delphi control's id is its hwnd
 
-    def _select_cpu(self) -> None:
+    def _select_cpu(self, startup: FakeWindow) -> None:
+        """Show Select a CPU Module, owned by Startup, with the first CPU selected.
+
+        A key sent to the list box moves its selection. OK makes the project for the CPU
+        selected. For some CPUs, User Account Setup shows first."""
+        startup.enabled = False
+        form = self._window("TfrmCPU", "Select a CPU Module", startup.hwnd)
+        self._control(form, "TComboBox", "", 0, value="ALL")
+        self._control(form, "TTntListView.UnicodeClass", "", 0)
+        self._control(form, "TMemo", "", 0)
+        self._control(form, "TEdit", "", 0)
+        cpus = self._control(form, "TListBox", "", 0, options=list(self.cpu_list), selected=0)
+
+        def key(vk: int) -> None:
+            if vk == cr._VIRTUAL_KEYS["HOME"]:
+                cpus.selected = 0
+            elif vk == cr._VIRTUAL_KEYS["DOWN"] and self.lists_follow_keys:
+                cpus.selected = min(cpus.selected + 1, len(cpus.options) - 1)
+
+        def ok() -> None:
+            model = cpus.options[cpus.selected]
+            self._drop(form)
+            # Live runs showed User Account Setup for C2-03CPU, C2-03CPU-2 and C0-11DD1E-D, and
+            # not for C0-02DD1-D. The fake extends that to every PLUS and Ethernet CPU
+            accounts = model.startswith("C2-") or "E-" in model
+            if accounts if self.user_accounts is None else self.user_accounts:
+                self._show_user_accounts(startup, model)
+            else:
+                self._made_project(startup, model)
+
+        cpus.on_key = key
+        self._control(form, "TButton", "OK", 0, on_press=lambda: self._later("cpu_ok", ok))
+        self._control(form, "TButton", "Cancel", 0)
+        self._control(form, "TButton", "Help", 0)
+        for control in form.controls:
+            control.id = control.hwnd  # A Delphi control's id is its hwnd
+
+    def _show_user_accounts(self, startup: FakeWindow, model: str) -> None:
+        """Show User Account Setup. OK shows the error box GUI-153. Cancel makes the project."""
+        dialog = self._window("TfrmUserAccountsSetupDlg", "User Account Setup", startup.hwnd)
+
+        def ok() -> None:
+            dialog.enabled = False
+            box = self._window("#32770", "CLICK Programming Software", dialog.hwnd)
+            self._control(box, "Button", "OK", 2)
+            self._control(box, "Static", "", 20)
+            self._control(box, "Static", "GUI-153\nadmin password setting is required.", 65535)
+
+        def cancel() -> None:
+            self._drop(dialog)
+            self._made_project(startup, model)
+
+        tnt = "TTntButton.UnicodeClass"
+        self._control(dialog, "TTntCheckBox.UnicodeClass", "Disable Password Requirement", 0)
+        self._control(dialog, tnt, "Password Setting", 0)
+        self._control(dialog, tnt, "OK", 0, on_press=lambda: self._later("accounts_ok", ok))
+        if self.accounts_cancel:
+            self._control(
+                dialog, tnt, "Cancel", 0, on_press=lambda: self._later("accounts_cancel", cancel)
+            )
+        self._control(dialog, tnt, "Help", 0)
+        for control in dialog.controls:
+            control.id = control.hwnd
+
+    def _made_project(self, startup: FakeWindow, model: str) -> None:
+        """Close Startup and make the project for *model*, as CLICK writes its [Sec21]."""
         assert self.main is not None
-        self._window("TfrmCPU", "Select a CPU Module", self.main.hwnd)
+        self._drop(startup)
+        self.cpu = model
+        saved = self.saved_cpu or model
+        # Key3_1 is the CPU. Key3_10 and Key3_11 are the option slots, and CLICK fills each
+        # slot that a CLICK PLUS CPU has with C2-FILL (8192)
+        modules = [0] * 12
+        modules[1] = CPU_IDS[saved]
+        if saved.startswith("C2-"):
+            modules[10] = 8192
+            if saved.endswith("-2"):
+                modules[11] = 8192
+        lines = ["[Sec21]", "Key4=0", "Key1=0", "Key2=1"]
+        lines += [f"Key3_{n}={module}" for n, module in enumerate(modules)]
+        lines += ["[Sec24]", f"Key1={CPU_IDS[saved]}"]
+        ini = "".join(f"{line}\r\n" for line in lines)
+        (self.temp_dir(self.main.hwnd) / "Project.ini").write_bytes(ini.encode("ascii"))
+        self.main.enabled = True
 
     def _show_connect(self, startup: FakeWindow) -> None:
         startup.enabled = False
@@ -1773,6 +1876,13 @@ class FakeClick(cd.Desktop):
     def button_checked(self, hwnd: int) -> int | None:
         return self._find(hwnd).checked if self._message("BM_GETCHECK") else None
 
+    def list_box(self, hwnd: int) -> tuple[list[str], int] | None:
+        if not self._message("LB_GETCOUNT"):
+            return None
+        control = self._find(hwnd)
+        assert control.cls == "TListBox", f"LB_GETCOUNT sent to {control.cls}"
+        return list(control.options), control.selected
+
     def combo_box(self, hwnd: int) -> tuple[list[str], int] | None:
         if not self._message("CB_GETCOUNT"):
             return None
@@ -1813,7 +1923,7 @@ class FakeClick(cd.Desktop):
             "Ascii",
             mode,
             f"{self.steps:04d}/8000",
-            "C2-03CPU" if self.connected else "No select CPU",
+            "C2-03CPU" if self.connected else self.cpu or "No select CPU",
             f"{self.cursor_rung}:1:{self.cursor_column}",
             "",
             "",
@@ -6724,6 +6834,264 @@ def test_picker_refuses_a_key_it_does_not_know(tmp_path, setup):
         "LEFT, UP, RIGHT, DOWN, F2, or chars:TEXT, text:TEXT or find:TEXT."
     )
     assert fake.pid is None
+
+
+# ---------------------------------------------------------------------------
+# new: a project for a CPU, through CLICK's new-project wizard
+# ---------------------------------------------------------------------------
+
+HOME, DOWN = cr._VIRTUAL_KEYS["HOME"], cr._VIRTUAL_KEYS["DOWN"]
+
+
+@pytest.mark.parametrize(
+    ("model", "pressed", "slots"),
+    [
+        ("C0-02DD1-D", ["TButton@747", "OK", "&Save"], {}),
+        ("C0-11DD1E-D", ["TButton@747", "OK", "Cancel", "&Save"], {}),
+        ("C2-03CPU", ["TButton@747", "OK", "Cancel", "&Save"], {"0": "C2-FILL"}),
+        ("C2-03CPU-2", ["TButton@747", "OK", "Cancel", "&Save"], {"0": "C2-FILL", "1": "C2-FILL"}),
+    ],
+)
+def test_new_picks_the_cpu_by_name_and_saves_the_project(tmp_path, setup, model, pressed, slots):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", model)
+    assert code == cr.EXIT_OK, result["reason"]
+    out = tmp_path / "out"
+    # The runner pressed Start a new project, the leftmost of Startup's three buttons. It never
+    # pressed Connect, and it sent no command but Save As
+    assert fake.pressed == pressed
+    assert fake.commands == ["Save Project As"]
+    assert not fake.connected and not fake.went_offline
+    # Home, then Down once for each CPU above the model in CLICK's list
+    assert fake.keys == [("TListBox", HOME)] + [("TListBox", DOWN)] * cr.CPU_MODELS.index(model)
+    assert result["cpu"] == model
+    assert result["cpu_list"] == list(cr.CPU_MODELS)
+    accounts = "Cancel" in pressed
+    assert result["user_accounts"] == ("cancelled" if accounts else None)
+    assert result["project"]["cpu"] == model
+    assert result["project"]["slots"] == slots
+    assert result["project"]["expansions"] == {}
+    assert result["project"]["sec21"].startswith("[Sec21]\r\nKey4=0\r\n")
+    assert f"Key3_1={CPU_IDS[model]}\r\n" in result["project"]["sec21"]
+    assert "[Sec24]" not in result["project"]["sec21"]
+    assert result["status_bar"]["new_project"][10] == model
+    assert Path(result["files"]["ckp"]) == out / f"{model}.ckp"
+    assert sorted(p.name for p in (out / "click").iterdir()) == ["Project.ini", "Scr1.tmp"]
+    assert list(result["timings"]) == [
+        "refuse",
+        "launch",
+        "startup",
+        "cpu",
+        *(["user_accounts"] if accounts else []),
+        "new_project",
+        "save",
+        "copy",
+        "check",
+        "close",
+    ]
+    # The project was saved, so CLICK closed cleanly and removed its own temp folder
+    assert fake.exited_cleanly and not fake.terminated
+    assert_temp_left_to_click(fake, out, still_there=False)
+
+
+@pytest.mark.parametrize("model", ["C9-99CPU", "c2-03cpu", "C0-00DA-D"])
+def test_new_refuses_a_cpu_that_the_wizard_does_not_list_before_click_starts(
+    tmp_path, setup, model
+):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", model)
+    assert code == cr.EXIT_REFUSED
+    assert result["status"] == "refused"
+    assert result["reason"].startswith(
+        f"--cpu {model!r} is not a CPU that CLICK's new-project wizard lists. "
+        "Use one of C0-00DD1-D, C0-00DD2-D,"
+    )
+    assert fake.pid is None
+
+
+@pytest.mark.parametrize(
+    ("model", "event", "step"),
+    [
+        ("C0-02DD1-D", "cpu", "cpu"),
+        ("C0-02DD1-D", "cpu_ok", "cpu"),
+        ("C2-03CPU", "cpu_ok", "cpu"),
+        ("C2-03CPU", "accounts_cancel", "new_project"),
+        ("C0-02DD1-D", "save", "save"),
+    ],
+)
+def test_new_stops_at_an_unexpected_window(tmp_path, setup, model, event, step):
+    _, exe = setup
+    fake = FakeClick(tmp_path, surprise=event)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", model)
+    assert_aborted(fake, tmp_path / "out", code, result, "unexpected window")
+    assert "'Set a Project Password'" in result["reason"]
+    assert result["step"] == step
+    assert "Connect" not in fake.pressed
+
+
+@pytest.mark.parametrize("shown", [True, False])
+def test_new_cancels_user_account_setup_whenever_it_shows(tmp_path, setup, shown):
+    # The runner does not decide from the model whether User Account Setup shows
+    _, exe = setup
+    fake = FakeClick(tmp_path, user_accounts=shown)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C2-03CPU")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert result["user_accounts"] == ("cancelled" if shown else None)
+    assert ("Cancel" in fake.pressed) is shown
+    assert result["project"]["slots"] == {"0": "C2-FILL"}
+
+
+def test_new_record_dumps_each_window_of_the_wizard(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C2-03CPU", "--record")
+    assert code == cr.EXIT_OK, result["reason"]
+    labels = {p.name.split("-")[1] for p in (tmp_path / "out" / "record").glob("*.json")}
+    assert {"cpu_form", "cpu_picked", "user_accounts", "new_project"} <= labels
+
+
+def test_new_counts_the_keys_from_the_list_that_click_shows(tmp_path, setup):
+    # The row comes from the list box, not from CPU_MODELS
+    _, exe = setup
+    fake = FakeClick(tmp_path, cpu_list=("C2-01CPU", "C2-02CPU", "C2-03CPU"))
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C2-03CPU")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.keys == [("TListBox", HOME), ("TListBox", DOWN), ("TListBox", DOWN)]
+    assert result["cpu_list"] == ["C2-01CPU", "C2-02CPU", "C2-03CPU"]
+
+
+def test_new_never_presses_user_account_setups_ok(tmp_path, setup):
+    # Without a Cancel, the run stops. OK would show the error box GUI-153
+    _, exe = setup
+    fake = FakeClick(tmp_path, accounts_cancel=False)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C2-03CPU")
+    assert_aborted(fake, tmp_path / "out", code, result, "User Account Setup's Cancel not found")
+    assert result["step"] == "user_accounts"
+    # The only OK pressed is Select a CPU Module's
+    assert fake.pressed.count("OK") == 1
+
+
+@pytest.mark.parametrize(("leftover", "ok"), [("Scr2.tmp", False), ("Scr1.tmp", True)])
+def test_new_stops_at_a_stale_scr_file_that_the_save_does_not_rewrite(
+    tmp_path, setup, leftover, ok
+):
+    # A terminated CLICK leaves its temp folder, and a later CLICK with the same hwnd reuses it
+    _, exe = setup
+    fake = FakeClick(tmp_path, leftover=(leftover,))
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C0-02DD1-D")
+    assert result["scr_before_save"] == [leftover]
+    if ok:
+        assert code == cr.EXIT_OK, result["reason"]
+        return
+    assert_aborted(
+        fake, tmp_path / "out", code, result, "Scr2.tmp in CLICK's temp folder predates the save"
+    )
+    assert result["step"] == "save"
+    assert not (tmp_path / "out" / "click").exists()
+
+
+def test_new_stops_when_the_list_does_not_show_the_cpu(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, cpu_list=cr.CPU_MODELS[:-1])
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C2-03CPU-2")
+    assert_aborted(
+        fake, tmp_path / "out", code, result, "the list of CPUs does not show C2-03CPU-2"
+    )
+    assert result["step"] == "cpu"
+    assert fake.keys == [] and "OK" not in fake.pressed
+
+
+def test_new_stops_when_the_list_does_not_select_the_cpu(tmp_path, setup):
+    # Down does not move the selection, so the list stays on its first CPU
+    _, exe = setup
+    fake = FakeClick(tmp_path, lists_follow_keys=False)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C2-03CPU")
+    assert_aborted(fake, tmp_path / "out", code, result, "the list of CPUs to select C2-03CPU")
+    assert result["step"] == "cpu"
+    assert "OK" not in fake.pressed
+
+
+def test_new_stops_when_the_saved_project_names_another_cpu(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, saved_cpu="C0-11DD1E-D")
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C0-02DD1-D")
+    assert_aborted(
+        fake,
+        tmp_path / "out",
+        code,
+        result,
+        "the saved Project.ini names the CPU C0-11DD1E-D, not C0-02DD1-D",
+    )
+    assert result["step"] == "check"
+    assert result["project"]["cpu"] == "C0-11DD1E-D"
+
+
+def test_new_calls_on_new_project_while_click_has_the_project_open(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    seen: list[tuple[cr.NewProject, bool, str]] = []
+
+    def on_new_project(run: cr.Run, project: cr.NewProject) -> None:
+        assert fake.main is not None
+        seen.append((project, fake.is_running, fake.main.title))
+        run.log("on_new_project ran")
+
+    code, result = run_command(
+        fake, tmp_path, exe, "new", "--cpu", "C2-03CPU", on_new_project=on_new_project
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    out = tmp_path / "out"
+    assert fake.main is not None
+    [(project, running, title)] = seen
+    assert project == cr.NewProject(
+        model="C2-03CPU",
+        ckp=(out / "C2-03CPU.ckp").resolve(),
+        pid=4242,
+        main=fake.main.hwnd,
+        temp=fake.temp_dir(fake.main.hwnd),
+    )
+    assert running and "C2-03CPU.ckp" in title
+    assert list(result["timings"])[-3:] == ["check", "on_new_project", "close"]
+    # The call may have changed the project, so the runner ended CLICK instead of closing it
+    assert fake.terminated and not fake.exited_cleanly
+    assert "on_new_project ran" in (out / "run.log").read_text(encoding="utf-8")
+
+
+def test_new_stops_when_on_new_project_raises(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+
+    def on_new_project(run: cr.Run, project: cr.NewProject) -> None:
+        raise cr.Aborted("the smoke found a fault")
+
+    code, result = run_command(
+        fake, tmp_path, exe, "new", "--cpu", "C0-02DD1-D", on_new_project=on_new_project
+    )
+    assert_aborted(fake, tmp_path / "out", code, result, "the smoke found a fault")
+    assert result["step"] == "on_new_project"
+
+
+def test_ini_section_keeps_the_sections_lines_as_clicks_file_holds_them():
+    data = (
+        b"[Sec21]\r\nKey1=0\r\nKey3_1=198\r\n"
+        b"[Sec52]\r\nKey11_1=1\nKey10_1=1\r\n"
+        b"[Sec13]\r\nKey13=0\nKey4=\xb0"
+    )
+    assert cr._ini_section(data, "Sec21") == "[Sec21]\r\nKey1=0\r\nKey3_1=198\r\n"
+    assert cr._ini_section(data, "Sec52") == "[Sec52]\r\nKey11_1=1\nKey10_1=1\r\n"
+    assert cr._ini_section(data, "Sec13") == "[Sec13]\r\nKey13=0\nKey4=°"
+    assert cr._ini_section(data, "Sec2") is None
+
+
+def test_every_cpu_the_wizard_lists_is_in_pyclickplcs_catalog():
+    # pyclickplc has no public list of its models, so this reads its private catalog
+    from pyclickplc._module_catalog import _MODULE_CATALOG
+
+    models = {module.model for module in _MODULE_CATALOG.values()}
+    assert set(cr.CPU_MODELS) <= models
+    assert len(set(cr.CPU_MODELS)) == len(cr.CPU_MODELS) == 37
 
 
 # ---------------------------------------------------------------------------

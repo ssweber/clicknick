@@ -199,9 +199,9 @@ run with `make test`.
 ## CLICK runner
 
 `devtools/click_runner.py` drives CLICK v4 on this desktop with nobody at it. laddercodec and
-pyrung use it to ask CLICK what it makes of a rung. The runner starts its own CLICK and connects
-to the one PLC on the LAN without reading its project. It pastes the CSV, runs Syntax Check, and
-saves. Then it decodes what CLICK saved:
+pyrung use it to ask CLICK what it makes of a rung. The runner starts its own CLICK. In every
+command but `new`, it connects to the one PLC on the LAN without reading its project. `paste`
+pastes the CSV, runs Syntax Check, and saves. Then it decodes what CLICK saved:
 
 ```bat
 set UV_NO_SYNC=1
@@ -209,6 +209,7 @@ uv run python devtools/click_runner.py paste rung.csv --out runs\one
 uv run python devtools/click_runner.py record --out runs\dialogs
 uv run python devtools/click_runner.py try cases.json --out runs\cases --wire --keep
 uv run python devtools/click_runner.py export-nicknames --out runs\export --import nicknames.csv
+uv run python devtools/click_runner.py new --cpu C2-03CPU --out runs\plus
 ```
 
 `paste --add-end` adds an unconditional `end()` rung after the CSV's rungs before it pastes them,
@@ -230,6 +231,15 @@ option buttons. You name a button by the label CLICK shows on it or by its id.
 `result.json` says what the bytes are: the byte order mark, whether they decode as UTF-8 and as
 CP1252, the line ends, and each character that is not ASCII. With `--import`, the runner first
 imports that nickname CSV, as the `import` command does.
+
+`new` makes a project for one CPU through CLICK's own new-project wizard, and it never connects.
+Give `--cpu` a model name from pyclickplc's catalog that the wizard lists, such as `C0-02DD1-D` or
+`C2-03CPU`. The runner refuses any other name before CLICK starts. It picks the CPU. If User
+Account Setup shows, the runner presses its Cancel. The project's admin account then has no
+password. The runner saves the project as `<model>.ckp` in the `--out` folder. `result.json` holds
+the CPU and the modules that the saved Project.ini names. It also holds that file's `[Sec21]`
+section. A script that needs CLICK open on that project passes `on_new_project` to `Run` (see the
+file's docstring). The runner then terminates CLICK, so CLICK's temp folder stays.
 
 `result.json` in the `--out` folder (also printed on stdout) says how the run went, and `run.log`
 logs each step. If a paste's rungs are not in the saved main program, the run ends `aborted`.

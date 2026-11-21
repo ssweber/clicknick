@@ -303,6 +303,11 @@ class Desktop(ABC):
         for none), or None if it does not answer. It only reads."""
 
     @abstractmethod
+    def list_box(self, hwnd: int) -> tuple[list[str], int] | None:
+        """Return a list box's items (LB_GETTEXT) and the selected index (LB_GETCURSEL, -1 for
+        none), or None if it does not answer. It only reads."""
+
+    @abstractmethod
     def edit_limit(self, hwnd: int) -> int | None:
         """Return an edit's EM_GETLIMITTEXT, or None if it does not answer.
 
@@ -402,6 +407,11 @@ CB_GETCURSEL = 0x0147
 CB_GETLBTEXT = 0x0148
 CB_GETLBTEXTLEN = 0x0149
 CB_ERR = 0xFFFFFFFF
+LB_GETTEXT = 0x0189
+LB_GETTEXTLEN = 0x018A
+LB_GETCOUNT = 0x018B
+LB_GETCURSEL = 0x0188
+LB_ERR = 0xFFFFFFFF
 BM_CLICK = 0x00F5
 LVM_GETITEMCOUNT = 0x1004
 IPM_SETADDRESS = 0x0400 + 101  # WM_USER + 101
@@ -880,6 +890,26 @@ class Win32Desktop(Desktop):
         if selected is None:
             return None
         return items, -1 if selected & CB_ERR == CB_ERR else selected
+
+    def list_box(self, hwnd: int) -> tuple[list[str], int] | None:
+        # Windows copies LB_GETTEXT's text across processes, as it copies CB_GETLBTEXT's. A live
+        # run on 2026-11-20 read CLICK's list of CPUs (a Delphi TListBox) this way
+        count = self._send(hwnd, LB_GETCOUNT)
+        if count is None or count & LB_ERR == LB_ERR:
+            return None
+        items: list[str] = []
+        for index in range(count):
+            length = self._send(hwnd, LB_GETTEXTLEN, index)
+            if length is None or length & LB_ERR == LB_ERR:
+                return None
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            if self._send(hwnd, LB_GETTEXT, index, ctypes.addressof(buffer)) is None:
+                return None
+            items.append(buffer.value)
+        selected = self._send(hwnd, LB_GETCURSEL)
+        if selected is None:
+            return None
+        return items, -1 if selected & LB_ERR == LB_ERR else selected
 
     def edit_limit(self, hwnd: int) -> int | None:
         return self._send(hwnd, EM_GETLIMITTEXT)
