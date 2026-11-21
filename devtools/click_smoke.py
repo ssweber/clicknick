@@ -24,17 +24,44 @@ Then the smoke runs the checks in ``CHECKS`` in order:
   there;
 - ``simulation``: the simulation reaches READY, and it scans in RUN;
 - ``check_program``: Check Program runs both ways, as ``analysis.run_validation()`` and as
-  ``clicknick-cli check`` through ``dispatch()``, and both report the same findings.
+  ``clicknick-cli check`` through ``dispatch()``, and both report the same findings;
+- ``sync``: the check sets DS100's nickname to ``Smoke_Init`` and its comment to ``50→60``
+  through an edit session. Sync (``save_all_changes``) must refuse, because cp1252 has no
+  ``→``. SC_.mdb must stay as it was. Then the check changes the comment to ``50°C``, and Sync
+  must write the row with the initial value 0. The row must show no unsaved edit. A store
+  that loads SC_.mdb again must show the same row, and CLICK's own nickname export (the
+  runner's ``export``) must show it.
+  The check does not redraw CLICK's ladder after the Sync, because the redraw opens CLICK's
+  Import dialog, and the runner stops at a window that it does not expect;
+- ``csv_round_trip``: File > Export to CSV (``CsvDataSource.save_changes``) writes the
+  nicknames. The file must be cp1252, with ``°`` as the byte B0. The runner imports the file
+  into the same CLICK (``import_one``). The import picks Delete Existing, so CLICK first
+  empties its address table. The import must change SC_.mdb, and SC_.mdb must then hold a
+  row for each address in the file and no other row. CLICK's export after the import must show
+  ``Smoke_Init`` with ``50°C``.
+
+``sync`` and ``csv_round_trip`` write SC_.mdb, so they run after the checks that read the
+project as CLICK made it. They run on every project. In a live run on 2026-11-20 they took
+about 13 s for each project, so the whole smoke took about 80 s longer. In return, the smoke
+checks Sync and CLICK's import against the SC_.mdb of each CPU's project. The import goes into
+the same CLICK, because a second project would need a second runner run and a second CLICK.
+CLICK empties its table before the import. So the ``Smoke_Init`` row in CLICK's export after
+the import comes from ClickNick's file.
 
 A check passes or fails, and it says why. A check that needs another check runs only when that
 one passed. To add a check, add a ``CheckSpec`` to ``CHECKS``. Its function receives the
 ``Project`` and a dict for details, returns the text for a pass, and raises ``CheckFailed`` for a
 fail. ``Project.run`` is the runner's ``Run``, so a check can also ask the runner to act in CLICK.
+If the runner stops while it acts for a check, it raises ``cr.Aborted``. The check then fails,
+and the smoke runs no more checks on the project. The runner then ends the run as it ends any
+other: it dumps CLICK's windows, ends CLICK and records why.
 
 A check that a later change adds must follow two rules:
 
-- While a check calls a runner method, no scheduled callback runs. After the call, call
-  ``project.scheduler.wait(...)``, so that ScrWatcher sees CLICK's save.
+- While a check calls a runner method, no scheduled callback runs. Call the method through
+  ``project.in_click``, which runs the callbacks for ``AFTER_RUNNER`` seconds after the call.
+  After a call that saves the project in CLICK, also call ``project.scheduler.wait(...)``, so
+  that ScrWatcher sees CLICK's save.
 - A check that changes the project, such as Sync or ``rung apply``, changes what the checks after
   it see. So the order in ``CHECKS`` is part of the contract.
 
@@ -44,7 +71,12 @@ root. Whenever the smoke waits, ``Scheduler`` runs the callbacks that ClickNick 
 
 Each project gets a folder ``DIR/<model>/``, or ``DIR/none/``:
 
-- ``runner/``: the runner's ``--out`` folder, with its result.json and run.log;
+- ``runner/``: the runner's ``--out`` folder, with its result.json and run.log. Its
+  ``mdb/`` holds the copy of SC_.mdb that the runner made after the import in ``csv_round_trip``;
+- ``mdb/``: the copies of SC_.mdb that ``sync`` read, before and after each Sync;
+- ``sync/`` and ``csv_import/``: CLICK's nickname export after the Sync and after the import,
+  as ``click/nicknames.csv`` and its copy ``export.csv``;
+- ``csv/clicknick.csv``: the file that ``csv_round_trip`` wrote with Export to CSV;
 - ``result.json``: the smoke's result for the project. The smoke writes it again after each
   check.
 
@@ -95,10 +127,15 @@ These rules keep the smoke away from your own work:
 from __future__ import annotations
 
 import argparse
+import codecs
+import csv
+import hashlib
 import heapq
+import io
 import itertools
 import json
 import os
+import shutil
 import socket
 import sys
 import threading
@@ -117,6 +154,7 @@ import click_runner as cr  # noqa: E402
 if TYPE_CHECKING:
     from clicknick.connection_session import ConnectionSession
     from clicknick.data.address_store import AddressStore
+    from clicknick.data.data_source import DataSource
     from clicknick.simulation_session import SimulationSession
 
 # The projects that the smoke makes, in order. Each is a CPU in cr.CPU_MODELS, or cr.NO_CPU for
@@ -136,6 +174,16 @@ CLOSE_WAIT = 20.0
 RUN_SCANS = 10
 # How long the simulation check waits for RUN, and then for RUN_SCANS scans, in seconds
 RUN_WAIT = 60.0
+# The row that the sync and csv_round_trip checks write. A new project has no rungs, so no rung
+# uses the address
+SMOKE_ADDRESS = "DS100"
+SMOKE_NICKNAME = "Smoke_Init"
+# cp1252 has no "→", so Sync must refuse this comment
+REFUSED_COMMENT = "50→60"
+# cp1252 has "°", as the byte B0
+SYNCED_COMMENT = "50°C"
+# How long the smoke runs ClickNick's callbacks after each call to the runner, in seconds
+AFTER_RUNNER = 1.0
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
@@ -315,6 +363,35 @@ class Project:
         """Return the session's simulation. ``ensure_simulation`` makes it on the first call."""
         return self.session.ensure_simulation(self.scheduler)  # pyright: ignore[reportArgumentType]
 
+    def data_source(self) -> DataSource:
+        """Return a data source for the project's SC_.mdb, as the app makes it after you connect."""
+        from clicknick.data.data_source import MdbDataSource
+
+        click = self.session.click
+        return MdbDataSource(click_pid=click.pid, click_hwnd=click.hwnd)
+
+    def read_database(self, label: str) -> tuple[Path, dict[str, dict[str, Any]]]:
+        """Copy CLICK's SC_.mdb to ``mdb/<label>.mdb`` in the project's folder, and read the copy.
+
+        Return the copy and its address table by address ("DS100"). The runner's
+        ``read_rows`` reads the copy through Access ODBC, so a text keeps every character.
+        """
+        folder = self.folder / "mdb"
+        folder.mkdir(exist_ok=True)
+        copy = Path(shutil.copy2(self.new.temp / "SC_.mdb", folder / f"{label}.mdb"))
+        return copy, self.run.read_rows(copy)
+
+    def in_click[T](self, call: Callable[[], T]) -> T:
+        """Call *call*, which asks the runner to act in CLICK, and return what it returns.
+
+        No scheduled callback runs during the call. So after the call, whether it raised or
+        not, the smoke runs ClickNick's callbacks for ``AFTER_RUNNER`` seconds.
+        """
+        try:
+            return call()
+        finally:
+            self.scheduler.pump(AFTER_RUNNER)
+
     def close(self) -> dict[str, Any]:
         """Close the session, and wait until the Modbus port is free and the threads have ended.
 
@@ -358,13 +435,11 @@ class CheckSpec:
 def check_load(project: Project, details: dict[str, Any]) -> str:
     """Read the project's SC_.mdb into an ``AddressStore``, as the app does after you connect."""
     from clicknick.data.address_store import AddressStore
-    from clicknick.data.data_source import MdbDataSource
 
-    session = project.session
-    store = AddressStore(MdbDataSource(click_pid=session.click.pid, click_hwnd=session.click.hwnd))
+    store = AddressStore(project.data_source())
     store.load_initial_data()
     project.store = store
-    session.has_database = True
+    project.session.has_database = True
     details["rows"] = store.loaded_row_count
     return f"Read {store.loaded_row_count} rows from SC_.mdb."
 
@@ -549,12 +624,262 @@ def check_program(project: Project, details: dict[str, Any]) -> str:
     return f"Both report: {app_text.splitlines()[0]}"
 
 
+def _row(store: AddressStore, key: int) -> dict[str, Any]:
+    """Return the fields of the row *key* that the Address Editor shows, and its edit state."""
+    row = store.visible_state[key]
+    return {
+        "nickname": row.nickname,
+        "comment": row.comment,
+        "initial_value": row.initial_value,
+        "retentive": row.retentive,
+        "used": row.used,
+        "comment_error": row.comment_error,
+        "dirty": store.is_dirty(key),
+    }
+
+
+def stored_forms(data: bytes, text: str) -> dict[str, dict[str, Any]]:
+    """Count how often the file *data* holds *text* in each form that Access may store it in.
+
+    The forms are UTF-16-LE, and Jet 4's Unicode compression. Jet 4 stores a compressed text
+    as the bytes FF FE, then one byte for each character. Only a text whose characters are
+    all below U+0100 has that form. The result maps each form to its bytes in hex and its
+    count.
+    """
+    forms = {"utf-16-le": text.encode("utf-16-le")}
+    try:
+        forms["compressed"] = b"\xff\xfe" + text.encode("latin-1")
+    except UnicodeEncodeError:
+        pass
+    return {name: {"bytes": raw.hex(" "), "found": data.count(raw)} for name, raw in forms.items()}
+
+
+def exported_row(data: bytes, nickname: str) -> dict[str, Any]:
+    """Return the row for *nickname* in the nickname CSV *data* that CLICK exported.
+
+    A file that starts with the UTF-8 byte order mark is read as UTF-8, and any other file as
+    cp1252. A file without the mark is not read as UTF-8 even when it decodes as UTF-8. If it
+    were, a cp1252 file that holds "50Â°C" would read as "50°C". The result holds the
+    encoding, the row's address, initial value and comment, and the bytes of the comment and
+    of its line, in hex.
+
+    Raises:
+        CheckFailed: The file does not decode in its encoding, or no row has *nickname*.
+    """
+    encoding = "utf-8-sig" if data.startswith(codecs.BOM_UTF8) else "cp1252"
+    try:
+        text = data.decode(encoding)
+    except UnicodeDecodeError as exc:
+        raise CheckFailed(f"CLICK's export does not decode as {encoding}: {exc}") from exc
+    found = next(
+        (
+            row
+            for row in csv.DictReader(io.StringIO(text, newline=""))
+            if row.get("Nickname") == nickname
+        ),
+        None,
+    )
+    if found is None:
+        raise CheckFailed(f"CLICK's export has no row for {nickname}.")
+    comment = found.get("Address Comment") or ""
+    plain = encoding.removesuffix("-sig")
+    line = next(line for line in data.splitlines() if nickname.encode(plain) in line)
+    return {
+        "encoding": encoding,
+        "address": found.get("Address"),
+        "initial_value": found.get("Initial Value"),
+        "comment": comment,
+        "comment_bytes": comment.encode(plain).hex(" "),
+        "line_bytes": line.hex(" "),
+    }
+
+
+def check_exported(found: dict[str, Any]) -> None:
+    """Raise ``CheckFailed`` unless CLICK's export shows the row that the sync check wrote."""
+    got = (found["address"], found["initial_value"], found["comment"])
+    expected = (SMOKE_ADDRESS, "0", SYNCED_COMMENT)
+    if got != expected:
+        raise CheckFailed(
+            f"CLICK's export shows {SMOKE_NICKNAME} as {got!r}, not {expected!r}. Its "
+            f"comment's bytes are {found['comment_bytes']} ({found['encoding']})."
+        )
+
+
+def check_sync(project: Project, details: dict[str, Any]) -> str:
+    """Give an empty DS row a nickname and a comment, as the Address Editor does, and Sync.
+
+    Sync must refuse the comment ``REFUSED_COMMENT`` and leave SC_.mdb as it was. It must
+    write ``SYNCED_COMMENT``, with the initial value 0. A fresh store must read the same row
+    from SC_.mdb, and CLICK's own nickname export must show it. The check calls
+    ``save_all_changes`` as the Address Editor's Sync does. The store has no sync listener, so
+    nothing redraws CLICK's ladder. The redraw would open CLICK's Import dialog, and the runner
+    stops at a window that it does not expect.
+
+    The details hold the bytes of the comment in SC_.mdb (``stored_forms``) and in CLICK's
+    export (``exported_row``).
+    """
+    from pyclickplc.addresses import get_addr_key, parse_address
+
+    from clicknick.data.address_store import AddressStore
+
+    store = project.store
+    assert store is not None
+    key = get_addr_key(*parse_address(SMOKE_ADDRESS))
+    details["row_before"] = _row(store, key)
+    if store.visible_state[key].has_content or store.visible_state[key].used:
+        raise CheckFailed(f"{SMOKE_ADDRESS} is not an empty row that no rung uses.")
+    copy, table = project.read_database("before_sync")
+    file_before = hashlib.sha256(copy.read_bytes()).hexdigest()
+
+    with store.edit_session(f"Smoke: {SMOKE_NICKNAME}") as session:
+        session.set_field(key, "nickname", SMOKE_NICKNAME)
+        session.set_field(key, "comment", REFUSED_COMMENT)
+    details["refused_row"] = _row(store, key)
+    try:
+        written = store.save_all_changes()
+    except RuntimeError as exc:
+        details["refusal"] = str(exc)
+    else:
+        raise CheckFailed(
+            f"Sync did not refuse the comment {REFUSED_COMMENT!r}. It wrote {len(written)} row(s)."
+        )
+    copy, refused = project.read_database("after_refusal")
+    details["file_unchanged_after_refusal"] = (
+        hashlib.sha256(copy.read_bytes()).hexdigest() == file_before
+    )
+    if refused != table:
+        raise CheckFailed("Sync refused the comment, but SC_.mdb changed.")
+
+    with store.edit_session(f"Smoke: {SYNCED_COMMENT}") as session:
+        session.set_field(key, "comment", SYNCED_COMMENT)
+    written = store.save_all_changes()
+    details["written"] = [hex(written_key) for written_key in sorted(written)]
+    synced = _row(store, key)
+    details["synced_row"] = synced
+    if key not in written:
+        raise CheckFailed(f"Sync did not write {SMOKE_ADDRESS}.")
+    expected = (SMOKE_NICKNAME, SYNCED_COMMENT, "0", False)
+    got = (synced["nickname"], synced["comment"], synced["initial_value"], synced["dirty"])
+    if got != expected or store.has_unsaved_changes():
+        raise CheckFailed(
+            f"After the Sync, {SMOKE_ADDRESS} shows {got!r} (nickname, comment, initial value, "
+            f"unsaved edit), not {expected!r}, or the store still has unsaved edits."
+        )
+
+    copy, table = project.read_database("after_sync")
+    stored = table.get(SMOKE_ADDRESS)
+    details["mdb_row"] = stored
+    details["mdb_comment"] = stored_forms(copy.read_bytes(), SYNCED_COMMENT)
+    got = None if stored is None else (stored["Nickname"], stored["Comment"])
+    if got != (SMOKE_NICKNAME, SYNCED_COMMENT):
+        raise CheckFailed(
+            f"SC_.mdb holds {got!r} for {SMOKE_ADDRESS}, not {(SMOKE_NICKNAME, SYNCED_COMMENT)!r}."
+        )
+
+    fresh = AddressStore(project.data_source())
+    fresh.load_initial_data()
+    details["reloaded_row"] = _row(fresh, key)
+    if details["reloaded_row"] != synced or fresh.has_unsaved_changes():
+        raise CheckFailed(
+            f"A store loaded from SC_.mdb again shows {SMOKE_ADDRESS} differently, or it has "
+            "unsaved edits."
+        )
+
+    export = project.in_click(lambda: project.run.export(project.folder / "sync"))
+    found = exported_row(Path(export["copy"]).read_bytes(), SMOKE_NICKNAME)
+    details["click_export"] = found
+    check_exported(found)
+    return (
+        f"Sync refused {REFUSED_COMMENT!r}. It wrote {SYNCED_COMMENT!r} and the initial value "
+        f"0, and a reload shows the same. CLICK's export ({found['encoding']}) shows the "
+        f"comment as {found['comment_bytes']}."
+    )
+
+
+def check_csv_round_trip(project: Project, details: dict[str, Any]) -> str:
+    """Export the nicknames to CSV, as File > Export to CSV does, and import the file into CLICK.
+
+    ClickNick's file must be cp1252, with ``SYNCED_COMMENT`` as the bytes ``35 30 B0 43``.
+    The runner imports the file into the same CLICK. Its import picks Delete Existing, so
+    CLICK first empties its address table. The import must change SC_.mdb, and SC_.mdb must
+    then hold a row for each address in the file and no other row. CLICK's own export after
+    the import must show the row that the sync check wrote.
+
+    The check compares the file's addresses with SC_.mdb, not with CLICK's export. The export
+    also lists each system address that has a built-in nickname, and SC_.mdb has no row for
+    most of them.
+    """
+    from clicknick.data.data_source import CsvDataSource
+
+    store = project.store
+    assert store is not None
+    folder = project.folder / "csv"
+    folder.mkdir()
+    path = folder / "clicknick.csv"
+    count = CsvDataSource(str(path)).save_changes(list(store.visible_state.values()))
+    data = path.read_bytes()
+    facts = cr.export_facts(data)
+    line = next((line for line in data.splitlines() if SMOKE_NICKNAME.encode() in line), b"")
+    details.update(
+        csv=path,
+        rows=count,
+        bom=facts["bom"],
+        utf8=facts["utf8"],
+        cp1252=facts["cp1252"],
+        line_bytes=line.hex(" "),
+    )
+    if (
+        facts["bom"] is not None
+        or not facts["cp1252"]
+        or SYNCED_COMMENT.encode("cp1252") not in line
+    ):
+        raise CheckFailed(
+            f"Export to CSV did not write {SMOKE_NICKNAME}'s comment {SYNCED_COMMENT!r} in "
+            f"cp1252 with no byte order mark. The file's line for it is {line!r}."
+        )
+
+    entry = project.in_click(lambda: project.run.import_one(1, "clicknick", path, None, None))
+    details["import"] = {
+        name: entry[name] for name in ("answer", "message", "errors", "mdb", "mdb_changed")
+    }
+    if entry["answer"] != "completed":
+        raise CheckFailed(
+            f"CLICK did not import ClickNick's CSV cleanly. It answered: {entry['message']}"
+        )
+    if not entry["mdb_changed"]:
+        raise CheckFailed(
+            "CLICK answered that it imported ClickNick's CSV, but SC_.mdb did not change."
+        )
+    in_file = {
+        row["Address"] for row in csv.DictReader(io.StringIO(data.decode("cp1252"), newline=""))
+    }
+    stored = set(project.run.read_rows(Path(entry["mdb"])))
+    details["addresses"] = {"file": sorted(in_file), "mdb": sorted(stored)}
+    if stored != in_file:
+        raise CheckFailed(
+            f"After the import, SC_.mdb lacks {sorted(in_file - stored)} from ClickNick's CSV "
+            f"and holds {sorted(stored - in_file)} that the file lacks."
+        )
+    export = project.in_click(lambda: project.run.export(project.folder / "csv_import"))
+    found = exported_row(Path(export["copy"]).read_bytes(), SMOKE_NICKNAME)
+    details["click_export"] = found
+    check_exported(found)
+    return (
+        f"CLICK imported the {count} row(s) of ClickNick's cp1252 CSV, and its export shows "
+        f"{SMOKE_NICKNAME} with {SYNCED_COMMENT!r}."
+    )
+
+
 CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec("load", check_load),
     CheckSpec("build", check_build, needs=("load",)),
     CheckSpec("layout", check_layout),
     CheckSpec("simulation", check_simulation, needs=("build",)),
     CheckSpec("check_program", check_program, needs=("build",)),
+    # Sync and CLICK's import write SC_.mdb. The checks above must see the project as CLICK
+    # made it, so these two run last
+    CheckSpec("sync", check_sync, needs=("load",)),
+    CheckSpec("csv_round_trip", check_csv_round_trip, needs=("sync",)),
 )
 
 
@@ -568,10 +893,15 @@ def run_checks(
 
     Call *written* after each check, so that the project's result.json keeps what was done
     if the process dies.
+
+    Raises:
+        cr.Aborted: A check asked the runner to act in CLICK, and the runner stopped. The
+            check's entry is in *results*, and the checks after it do not run.
     """
     for spec in checks:
         began = time.monotonic()
         details: dict[str, Any] = {}
+        aborted: cr.Aborted | None = None
         failed = [name for name in spec.needs if results.get(name, {}).get("status") != "pass"]
         if failed:
             status, text = "fail", f"Not run, because {', '.join(failed)} did not pass."
@@ -581,6 +911,12 @@ def run_checks(
                 status, text = "pass", spec.run(project, details)
             except CheckFailed as exc:
                 status, text = "fail", str(exc)
+            except cr.Aborted as exc:
+                # The runner stopped in CLICK. The run must end as the runner ends it, with its
+                # dump of CLICK's windows and the code of CLICK's error box
+                aborted = exc
+                status, text = "fail", f"The runner stopped: {type(exc).__name__}: {exc}"
+                details["traceback"] = traceback.format_exc()
             except Exception as exc:
                 status, text = "fail", f"{type(exc).__name__}: {exc}"
                 details["traceback"] = traceback.format_exc()
@@ -592,6 +928,8 @@ def run_checks(
             "details": details,
         }
         written()
+        if aborted is not None:
+            raise aborted
 
 
 # ---------------------------------------------------------------------------
@@ -824,6 +1162,10 @@ def main(
         summary["status"] = "fail"
         code = EXIT_FAIL
     (out / "summary.json").write_text(_json(summary), encoding="utf-8")
+    # When stdout is a file, its encoding is cp1252, which has no "→". Python's stderr writes
+    # such a character as an escape. The smoke prints the summary the same way
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(errors="backslashreplace")
     print("\n".join(summary_lines(summary)), flush=True)
     return code
 

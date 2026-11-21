@@ -271,8 +271,10 @@ run stops if the saved Project.ini names a CPU. result.json holds these fields:
 Then the runner closes CLICK, and CLICK removes its temp folder. A script can pass
 ``on_new_project`` to ``Run`` to act on the project while CLICK has it open. ``new`` calls it
 after the check, with the run and a ``NewProject``: the model, the project file, CLICK's pid,
-its main window and its temp folder. The model is None for ``none``. The run then terminates
-CLICK instead of closing it. If the call changed the project, closing could show a save
+its main window and its temp folder. The model is None for ``none``. The call may import a
+nickname CSV with ``Run.import_one`` and export the nicknames with ``Run.export``. It must pass
+``export`` a folder of its own, because ``DIR/click/`` exists already. After the call, the run
+terminates CLICK instead of closing it. If the call changed the project, closing could show a save
 prompt. CLICK's temp folder then stays. If a Scr*.tmp is in CLICK's temp folder before the
 save (``scr_before_save``) and the save does not rewrite it, the run stops, as it does in
 ``paste``.
@@ -4343,10 +4345,12 @@ class Run:
 
     def import_one(
         self, number: int, name: str, csv: Path, line: int | None, row: bytes | None
-    ) -> None:
+    ) -> dict[str, Any]:
         """Import *csv* by File > Import > Nickname, record CLICK's answer and copy SC_.mdb.
 
-        The import's entry in ``imports`` has these keys. ``name`` is ``whole``, or
+        Return the import's entry. The method also appends the entry to ``imports`` in the
+        result, and adds that list if the result has none. ``on_new_project`` can then import
+        in ``new`` mode. The entry has these keys. ``name`` is ``whole``, or
         ``line014`` for the row starting on line 14. ``csv`` is the file imported. ``line``
         and ``row`` are the row's line and text (its bytes as Latin-1). ``answer`` is
         ``completed`` for the box reading "Completed!", ``message`` for that box with any
@@ -4356,7 +4360,8 @@ class Run:
         SC_.mdb had changed when the answer showed, ``mdb_changed`` whether it had changed
         once it settled, and ``mdb_changed_after_answer`` whether it changed between the two.
         ``stored`` holds the rows read from the copy once CLICK has ended. ``seconds`` is how
-        long the import took.
+        long the import took. The copy goes into ``DIR/mdb/``, and the method makes that
+        folder if it is missing.
 
         The mode is ``IMPORT_MODE`` (Delete Existing). CLICK empties the address table and
         stores what it accepts from the file. In a live run, an import in which every row
@@ -4380,7 +4385,7 @@ class Run:
             "stored": None,
             "seconds": None,
         }
-        self.result["imports"].append(entry)
+        self.result.setdefault("imports", []).append(entry)
         began = time.monotonic()
         self.log(f"{label}: {name}, {csv}")
         mdb = self.desktop.temp_dir(self.main) / "SC_.mdb"
@@ -4490,6 +4495,7 @@ class Run:
         )
         entry["mdb_changed"] = held[0] != before
         entry["mdb_changed_after_answer"] = held[0] != at_answer
+        (self.s.out / "mdb").mkdir(exist_ok=True)
         copy = Path(shutil.copy2(mdb, self.s.out / "mdb" / f"{number:02d}-{name}.mdb"))
         entry["mdb"] = copy
         self.result["files"].setdefault("mdb", []).append(copy)
@@ -4502,6 +4508,7 @@ class Run:
         )
         self.record(f"{label}_done")
         entry["seconds"] = round(time.monotonic() - began, 3)
+        return entry
 
     def read_imports(self) -> None:
         """Read the rows each import left from its copy of SC_.mdb (CLICK's file is not opened)."""
@@ -4533,10 +4540,19 @@ class Run:
         with self.step("export"):
             self.export()
 
-    def export(self) -> None:
+    def export(self, folder: Path | None = None) -> dict[str, Any]:
+        """Export the nicknames into *folder*, or into ``DIR`` if *folder* is None.
+
+        CLICK writes ``click/nicknames.csv`` in that folder (``EXPORT_WRITTEN``), and the
+        runner copies its bytes to ``export.csv`` there (``EXPORT_COPY``). The ``click``
+        folder must not exist yet. Return the export's entry, which the method also stores
+        under ``export`` in the result. ``on_new_project`` can pass a folder of its own for
+        each export, because ``new`` has already copied CLICK's files into ``DIR/click/``.
+        """
         assert self.main is not None
-        written = (self.s.out / EXPORT_WRITTEN).resolve()
-        written.parent.mkdir()
+        folder = self.s.out if folder is None else folder
+        written = (folder / EXPORT_WRITTEN).resolve()
+        written.parent.mkdir(parents=True)
         self.wait("the main window alone", [], self.only_main)
         self.command(EXPORT_NICKNAME)
         dialog = self.wait(
@@ -4614,7 +4630,7 @@ class Run:
             timeout=self.s.paste_timeout,
             on_timeout=timed_out,
         )
-        copy = self.s.out / EXPORT_COPY
+        copy = folder / EXPORT_COPY
         copy.write_bytes(written.read_bytes())
         self.result["files"]["export"] = copy
         facts = export_facts(copy.read_bytes())
@@ -4632,6 +4648,7 @@ class Run:
                 f"CP1252 {character['cp1252']!r})"
             )
         self.record("exported")
+        return entry
 
     def answer_create(self, prompt: Window, written: Path, entry: dict[str, Any]) -> None:
         """Press Yes in the box in which Windows asks whether to create *written*.

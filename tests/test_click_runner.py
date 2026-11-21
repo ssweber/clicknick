@@ -7114,6 +7114,40 @@ def test_new_stops_when_on_new_project_raises(tmp_path, setup):
     assert result["step"] == "on_new_project"
 
 
+def test_on_new_project_can_import_and_export_into_folders_of_its_own(tmp_path, setup):
+    # new has already copied CLICK's files into DIR/click/, where export writes by default
+    _, exe = setup
+    csv = tmp_path / "nicknames.csv"
+    csv.write_bytes(IMPORT_CSV)
+    fake = FakeClick(tmp_path)
+    out = tmp_path / "out"
+    seen: dict[str, Any] = {}
+
+    def on_new_project(run: cr.Run, project: cr.NewProject) -> None:
+        seen["import"] = run.import_one(1, "smoke", csv, None, None)
+        seen["first"] = run.export(out / "first")
+        seen["second"] = run.export(out / "second")
+
+    code, result = run_command(
+        fake, tmp_path, exe, "new", "--cpu", "C2-03CPU", on_new_project=on_new_project
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.imported == [("Delete Existing", "nicknames.csv")]
+    assert seen["import"]["answer"] == "errors"
+    assert seen["import"]["mdb"] == out / "mdb" / "01-smoke.mdb"
+    assert result["imports"] == [json.loads(json.dumps(seen["import"], default=str))]
+    for name in ("first", "second"):
+        assert seen[name]["copy"] == out / name / "export.csv"
+        assert (
+            fake.exported[-1 if name == "second" else 0]
+            == (out / name / "click" / "nicknames.csv").resolve()
+        )
+        # The fake's export lists what the import stored
+        assert [line.split(",")[0] for line in seen[name]["first_lines"][1:]] == ["DS20", "TXT20"]
+    # The result keeps the last export
+    assert result["export"]["copy"] == str(out / "second" / "export.csv")
+
+
 # ---------------------------------------------------------------------------
 # new --cpu none: a project with no CPU
 # ---------------------------------------------------------------------------

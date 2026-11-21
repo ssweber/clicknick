@@ -7,24 +7,29 @@ of ``make smoke`` is the real check.
 
 from __future__ import annotations
 
+import dataclasses
+import io
 import json
 import os
 import socket
 import subprocess
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
+from pyclickplc.banks import DataType
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "devtools"))
 
 import click_runner as cr  # noqa: E402
 import click_smoke as cs  # noqa: E402
 
+from clicknick.models.address_row import AddressRow  # noqa: E402
 from clicknick.simulation_session import SimStatus  # noqa: E402
+from clicknick.utils import mdb_operations  # noqa: E402
 
 
 class FakeRun:
@@ -44,8 +49,9 @@ class FakeRunner:
     ``on_new_project`` first. For any other status it does not, as when the runner stops before
     CLICK has the project. ``reasons`` maps a CPU model to the reason for that status.
 
-    As the runner does, the fake catches a ``KeyboardInterrupt`` from ``on_new_project`` and
-    ends the run ``aborted``. ``raises`` maps a CPU model to an exception that the fake raises
+    As the runner does, the fake catches a ``KeyboardInterrupt`` or a ``cr.Aborted`` from
+    ``on_new_project`` and ends the run ``aborted``. For a ``cr.ClickErrorBox`` it records the
+    box's code as ``click_error``. ``raises`` maps a CPU model to an exception that the fake raises
     itself, as when something outside the runner's own handlers fails.
     """
 
@@ -102,6 +108,10 @@ class FakeRunner:
                 result.update(
                     status="aborted", reason="interrupted (Ctrl+C)", step="on_new_project"
                 )
+            except cr.Aborted as exc:
+                result.update(status="aborted", reason=str(exc), step="on_new_project")
+                if isinstance(exc, cr.ClickErrorBox):
+                    result["click_error"] = exc.code
         if self.after is not None:
             self.after(model)
         return result
@@ -365,6 +375,18 @@ def test_an_exception_in_the_smoke_writes_the_summary_and_stops_it(tmp_path, por
     assert captured.out.splitlines()[-2] == summary["stopped"]
     # The traceback goes to stderr, with the rest of the smoke's log
     assert "OSError: the desktop is locked" in captured.err
+
+
+def test_the_summary_escapes_a_character_that_stdouts_encoding_lacks(tmp_path, port, monkeypatch):
+    # Redirected to a file, stdout is cp1252, which has no "→"
+    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout)
+    checks = (cs.CheckSpec("arrow", passes("Sync refused '50→60'.")),)
+    code, _ = smoke(tmp_path, FakeRunner(), checks, "C2-03CPU")
+    assert code == cs.EXIT_PASS
+    stdout.flush()
+    text = stdout.buffer.getvalue().decode("cp1252")  # pyright: ignore[reportAttributeAccessIssue]
+    assert "Sync refused '50\\u219260'." in text
 
 
 def test_ctrl_c_in_a_check_stops_the_smoke(tmp_path, port):
@@ -764,3 +786,524 @@ def test_the_simulation_check_fails_when_the_plc_leaves_run_before_ten_scans(
     monkeypatch.setattr(cs, "RUN_WAIT", 0.2)
     details = check_simulation_with(tmp_path, FakeSimulation(leaves_run=True))
     assert details["failed"] == "Timed out after 0.2 s waiting for 10 scans in RUN."
+
+
+# ---------------------------------------------------------------------------
+# The sync and csv_round_trip checks
+# ---------------------------------------------------------------------------
+
+EXPORT_HEADER = "Address,Data Type,Nickname,Initial Value,Retentive,Address Comment"
+
+
+class FakeDatabase:
+    """Stands in for CLICK's SC_.mdb, as ``MdbDataSource`` reads and writes it.
+
+    It keeps each row that ClickNick writes, as ``stored_row`` says SC_.mdb keeps it. After each
+    write it writes the file *path* again. The file holds each row's address, and its comment
+    in Jet 4's compressed form if the comment has one, and in UTF-16-LE if not.
+    """
+
+    supports_used_field = True
+    is_read_only = False
+    is_database = True
+    stored_row = staticmethod(mdb_operations.stored_row)
+
+    def __init__(self, path: Path, rows: Sequence[AddressRow] = ()) -> None:
+        self.path = path
+        self.rows = {row.addr_key: row for row in rows}
+        self.write_file()
+
+    @property
+    def file_path(self) -> str:
+        return str(self.path)
+
+    def load_all_addresses(self) -> dict[int, AddressRow]:
+        return dict(self.rows)
+
+    def save_changes(self, rows: Sequence[AddressRow]) -> int:
+        for row in rows:
+            stored = self.stored_row(row)
+            if stored.has_content:
+                self.rows[row.addr_key] = stored
+            else:
+                self.rows.pop(row.addr_key, None)
+        self.write_file()
+        return len(rows)
+
+    def write_file(self) -> None:
+        parts = [b"Standard Jet DB"]
+        for row in self.rows.values():
+            parts.append(row.display_address.encode())
+            try:
+                parts.append(b"\xff\xfe" + row.comment.encode("latin-1"))
+            except UnicodeEncodeError:
+                parts.append(row.comment.encode("utf-16-le"))
+        self.path.write_bytes(b"\x00".join(parts))
+
+    def table(self) -> dict[str, dict[str, Any]]:
+        """Return the rows by address, as the runner's ``read_rows`` returns them."""
+        return {
+            row.display_address: {
+                "Nickname": row.nickname,
+                "InitialValue": row.initial_value,
+                "Retentive": row.retentive,
+                "Comment": row.comment,
+                "Use": row.used,
+            }
+            for row in self.rows.values()
+        }
+
+
+class FakeClickRun(FakeRun):
+    """Stands in for the runner's ``Run`` with a CLICK whose SC_.mdb is a ``FakeDatabase``.
+
+    ``export`` writes the rows in the form of CLICK's nickname export. It encodes the file as
+    *encoding*, and it writes a "?" for a character that *encoding* does not have.
+    ``import_one`` replaces the rows with the rows of the CSV, as Delete Existing does, and
+    copies the file to ``imported.mdb``. *misread* changes the rows that it reads from the CSV
+    before it stores them. With *import_errors*, it answers with that Import Error List and
+    changes nothing. With *ignores_import*, it answers "Completed!" and changes nothing.
+    ``calls`` records each call.
+    """
+
+    def __init__(
+        self,
+        database: FakeDatabase,
+        *,
+        encoding: str = "cp1252",
+        import_errors: str = "",
+        misread: Callable[[dict[int, AddressRow]], dict[int, AddressRow]] | None = None,
+        ignores_import: bool = False,
+    ) -> None:
+        super().__init__()
+        self.database = database
+        self.encoding = encoding
+        self.import_errors = import_errors
+        self.misread = misread
+        self.ignores_import = ignores_import
+        self.calls: list[tuple[str, str]] = []
+
+    def read_rows(self, mdb: Path) -> dict[str, dict[str, Any]]:
+        self.calls.append(("read_rows", mdb.name))
+        return self.database.table()
+
+    def export(self, folder: Path) -> dict[str, Any]:
+        self.calls.append(("export", folder.name))
+        lines = [EXPORT_HEADER] + [
+            f'{row.display_address},{row.data_type_display},"{row.nickname}",'
+            f'{row.initial_value},{"Yes" if row.retentive else "No"},"{row.comment}"'
+            for row in self.database.rows.values()
+        ]
+        folder.mkdir(parents=True)
+        copy = folder / "export.csv"
+        copy.write_bytes(("\r\n".join(lines) + "\r\n").encode(self.encoding, "replace"))
+        return {"copy": copy}
+
+    def import_one(
+        self, number: int, name: str, csv: Path, line: int | None, row: bytes | None
+    ) -> dict[str, Any]:
+        self.calls.append(("import_one", csv.name))
+        if self.import_errors:
+            return {
+                "answer": "errors",
+                "message": self.import_errors,
+                "errors": [],
+                "mdb": None,
+                "mdb_changed": False,
+            }
+        from clicknick.data.data_source import CsvDataSource
+
+        before = self.database.path.read_bytes()
+        if not self.ignores_import:
+            rows = dict(CsvDataSource(str(csv)).load_all_addresses())
+            self.database.rows = rows if self.misread is None else self.misread(rows)
+            self.database.write_file()
+        copy = self.database.path.with_name("imported.mdb")
+        copy.write_bytes(self.database.path.read_bytes())
+        return {
+            "answer": "completed",
+            "message": "Completed!",
+            "errors": None,
+            "mdb": copy,
+            "mdb_changed": copy.read_bytes() != before,
+        }
+
+
+class FakeDatabaseProject(cs.Project):
+    """A ``Project`` whose data source is the fake CLICK's ``FakeDatabase``."""
+
+    run: FakeClickRun  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    def data_source(self) -> FakeDatabase:  # pyright: ignore[reportIncompatibleMethodOverride]
+        return self.run.database
+
+
+def click_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rows: Sequence[AddressRow] = (),
+    **run: Any,
+) -> FakeDatabaseProject:
+    """Return a project whose store has read a fake CLICK's SC_.mdb."""
+    from clicknick.data.address_store import AddressStore
+
+    monkeypatch.setattr(cs, "AFTER_RUNNER", 0.0)
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    database = FakeDatabase(temp / "SC_.mdb", rows)
+    new = cr.NewProject("C2-03CPU", tmp_path / "C2-03CPU.ckp", 4242, 0x1234, temp)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    fake_run = FakeClickRun(database, **run)
+    project = FakeDatabaseProject(fake_run, new, folder, cs.Scheduler())  # pyright: ignore[reportArgumentType]
+    project.store = AddressStore(database)  # pyright: ignore[reportArgumentType]
+    project.store.load_initial_data()
+    return project
+
+
+def run_check(
+    check: Callable[[cs.Project, dict[str, Any]], str], project: cs.Project
+) -> dict[str, Any]:
+    details: dict[str, Any] = {}
+    try:
+        details["text"] = check(project, details)
+    except cs.CheckFailed as exc:
+        details["failed"] = str(exc)
+    return details
+
+
+def test_the_sync_check_passes_when_click_keeps_what_clicknick_writes(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch)
+    details = run_check(cs.check_sync, project)
+    assert "failed" not in details, details["failed"]
+    assert details["text"] == (
+        "Sync refused '50→60'. It wrote '50°C' and the initial value 0, and a reload shows the "
+        "same. CLICK's export (cp1252) shows the comment as 35 30 b0 43."
+    )
+    assert details["refused_row"]["comment_error"] == "CLICK cannot hold '→'. Replace it"
+    assert details["refusal"] == "Cannot save: 1 row has validation errors. Fix them first."
+    assert details["file_unchanged_after_refusal"] is True
+    assert details["synced_row"] == details["reloaded_row"]
+    assert details["mdb_row"]["InitialValue"] == "0"
+    assert details["mdb_comment"] == {
+        "utf-16-le": {"bytes": "35 00 30 00 b0 00 43 00", "found": 0},
+        "compressed": {"bytes": "ff fe 35 30 b0 43", "found": 1},
+    }
+    assert details["click_export"] == {
+        "encoding": "cp1252",
+        "address": "DS100",
+        "initial_value": "0",
+        "comment": "50°C",
+        "comment_bytes": "35 30 b0 43",
+        "line_bytes": 'DS100,INT,"Smoke_Init",0,Yes,"50°C"'.encode("cp1252").hex(" "),
+    }
+    # The check read three copies of SC_.mdb, then asked the runner for one export
+    assert project.run.calls == [
+        ("read_rows", "before_sync.mdb"),
+        ("read_rows", "after_refusal.mdb"),
+        ("read_rows", "after_sync.mdb"),
+        ("export", "sync"),
+    ]
+    assert (project.folder / "mdb" / "after_sync.mdb").is_file()
+
+
+def test_the_sync_check_reads_an_export_in_utf8_with_a_bom(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch, encoding="utf-8-sig")
+    details = run_check(cs.check_sync, project)
+    assert "failed" not in details, details["failed"]
+    found = details["click_export"]
+    assert (found["encoding"], found["comment"]) == ("utf-8-sig", "50°C")
+    assert found["comment_bytes"] == "35 30 c2 b0 43"
+
+
+def test_the_sync_check_fails_when_clicks_export_loses_the_degree_sign(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch, encoding="ascii")
+    details = run_check(cs.check_sync, project)
+    assert details["failed"] == (
+        "CLICK's export shows Smoke_Init as ('DS100', '0', '50?C'), not ('DS100', '0', '50°C'). "
+        "Its comment's bytes are 35 30 3f 43 (cp1252)."
+    )
+
+
+def test_exported_row_reads_a_file_without_a_byte_order_mark_as_cp1252():
+    # As UTF-8, these bytes would read as "50°C"
+    data = f'{EXPORT_HEADER}\r\nDS100,INT,"Smoke_Init",0,Yes,"50°C"\r\n'.encode()
+    found = cs.exported_row(data, "Smoke_Init")
+    assert (found["encoding"], found["comment"]) == ("cp1252", "50Â°C")
+    assert found["comment_bytes"] == "35 30 c2 b0 43"
+
+
+def test_exported_row_fails_when_a_file_does_not_decode_as_cp1252():
+    data = f'{EXPORT_HEADER}\r\nDS100,INT,"Smoke_Init",0,Yes,"x"\r\n'.encode() + b"\x81"
+    with pytest.raises(cs.CheckFailed, match=r"^CLICK's export does not decode as cp1252: "):
+        cs.exported_row(data, "Smoke_Init")
+
+
+def test_the_sync_check_fails_when_sync_does_not_refuse_the_comment(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(cs, "REFUSED_COMMENT", "50-60")
+    details = run_check(cs.check_sync, project)
+    assert details["failed"] == "Sync did not refuse the comment '50-60'. It wrote 1 row(s)."
+
+
+def test_the_sync_check_fails_when_sc_mdb_changes_although_sync_refused(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch)
+    store = project.store
+    assert store is not None
+    save = store.save_all_changes
+    other = AddressRow(memory_type="DS", address=200, nickname="Other", data_type=DataType.INT)
+    details: dict[str, Any] = {}
+
+    def writes_then_refuses() -> set[int]:
+        # The first Sync writes a row to SC_.mdb, then refuses
+        if "refusal" not in details:
+            project.run.database.rows[other.addr_key] = other
+            project.run.database.write_file()
+        return save()
+
+    monkeypatch.setattr(store, "save_all_changes", writes_then_refuses)
+    with pytest.raises(cs.CheckFailed) as failed:
+        cs.check_sync(project, details)
+    assert str(failed.value) == "Sync refused the comment, but SC_.mdb changed."
+    assert details["file_unchanged_after_refusal"] is False
+
+
+def test_the_sync_check_fails_when_sync_does_not_write_the_row(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch)
+    store = project.store
+    assert store is not None
+    save = store.save_all_changes
+
+    def writes_but_names_no_row() -> set[int]:
+        save()
+        return set()
+
+    monkeypatch.setattr(store, "save_all_changes", writes_but_names_no_row)
+    details = run_check(cs.check_sync, project)
+    assert details["failed"] == "Sync did not write DS100."
+
+
+def test_the_sync_check_fails_when_the_row_keeps_no_initial_value(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch)
+    # SC_.mdb keeps the row as ClickNick wrote it, with no initial value
+    monkeypatch.setattr(project.run.database, "stored_row", lambda row: row)
+    details = run_check(cs.check_sync, project)
+    assert details["failed"] == (
+        "After the Sync, DS100 shows ('Smoke_Init', '50°C', '', False) (nickname, comment, "
+        "initial value, unsaved edit), not ('Smoke_Init', '50°C', '0', False), or the store "
+        "still has unsaved edits."
+    )
+
+
+def test_the_sync_check_fails_when_sc_mdb_holds_another_comment(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch)
+    read_rows = project.run.read_rows
+
+    def loses_the_degree_sign(mdb: Path) -> dict[str, dict[str, Any]]:
+        table = read_rows(mdb)
+        if mdb.name == "after_sync.mdb":
+            table["DS100"]["Comment"] = "50?C"
+        return table
+
+    monkeypatch.setattr(project.run, "read_rows", loses_the_degree_sign)
+    details = run_check(cs.check_sync, project)
+    assert details["failed"] == (
+        "SC_.mdb holds ('Smoke_Init', '50?C') for DS100, not ('Smoke_Init', '50°C')."
+    )
+
+
+def test_the_sync_check_fails_when_a_reload_shows_another_row(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch)
+    reloaded = AddressRow(
+        memory_type="DS",
+        address=100,
+        nickname="Smoke_Init",
+        comment="50?C",
+        initial_value="0",
+        data_type=DataType.INT,
+    )
+    other = FakeDatabase(tmp_path / "reloaded.mdb", [reloaded])
+    monkeypatch.setattr(project, "data_source", lambda: other)
+    details = run_check(cs.check_sync, project)
+    assert details["failed"] == (
+        "A store loaded from SC_.mdb again shows DS100 differently, or it has unsaved edits."
+    )
+    assert details["reloaded_row"]["comment"] == "50?C"
+
+
+def test_the_sync_check_leaves_a_row_with_content_alone(tmp_path, monkeypatch):
+    taken = AddressRow(memory_type="DS", address=100, nickname="Taken", data_type=DataType.INT)
+    project = click_project(tmp_path, monkeypatch, [taken])
+    details = run_check(cs.check_sync, project)
+    assert details["failed"] == "DS100 is not an empty row that no rung uses."
+    assert project.run.calls == []
+    assert project.run.database.rows == {taken.addr_key: taken}
+
+
+def test_the_csv_round_trip_check_passes_when_click_imports_clicknicks_file(tmp_path, monkeypatch):
+    project = click_project(tmp_path, monkeypatch)
+    assert "failed" not in run_check(cs.check_sync, project)
+    # CLICK's import empties the table first. So a row that SC_.mdb holds and the file lacks
+    # is gone after it
+    left_over = AddressRow(memory_type="DS", address=200, nickname="Gone", data_type=DataType.INT)
+    project.run.database.rows[left_over.addr_key] = left_over
+    project.run.database.write_file()
+    details = run_check(cs.check_csv_round_trip, project)
+    assert "failed" not in details, details["failed"]
+    assert left_over.addr_key not in project.run.database.rows
+    assert details["addresses"] == {"file": ["DS100"], "mdb": ["DS100"]}
+    assert details["import"]["mdb_changed"] is True
+    assert details["text"] == (
+        "CLICK imported the 1 row(s) of ClickNick's cp1252 CSV, and its export shows Smoke_Init "
+        "with '50°C'."
+    )
+    assert (details["bom"], details["utf8"], details["cp1252"]) == (None, False, True)
+    assert "35 30 b0 43" in details["line_bytes"]
+    assert details["import"]["answer"] == "completed"
+    assert details["click_export"]["comment_bytes"] == "35 30 b0 43"
+    assert project.run.calls[-3:] == [
+        ("import_one", "clicknick.csv"),
+        ("read_rows", "imported.mdb"),
+        ("export", "csv_import"),
+    ]
+    assert (project.folder / "csv" / "clicknick.csv").is_file()
+
+
+def test_the_csv_round_trip_check_fails_when_click_lists_import_errors(tmp_path, monkeypatch):
+    errors = "Unable to import Address Comment.\r\nLine 2 : Address = DS100"
+    project = click_project(tmp_path, monkeypatch, import_errors=errors)
+    assert "failed" not in run_check(cs.check_sync, project)
+    details = run_check(cs.check_csv_round_trip, project)
+    assert details["failed"] == (
+        f"CLICK did not import ClickNick's CSV cleanly. It answered: {errors}"
+    )
+    assert project.run.calls[-1] == ("import_one", "clicknick.csv")
+
+
+def rewrite_clicknicks_csv(
+    monkeypatch: pytest.MonkeyPatch, rewrite: Callable[[bytes], bytes]
+) -> None:
+    """Make Export to CSV write the bytes that *rewrite* makes of the file that it writes now."""
+    from clicknick.data.data_source import CsvDataSource
+
+    save = CsvDataSource.save_changes
+
+    def save_changes(self: CsvDataSource, rows: Sequence[AddressRow]) -> int:
+        count = save(self, rows)
+        path = Path(self.file_path)
+        path.write_bytes(rewrite(path.read_bytes()))
+        return count
+
+    monkeypatch.setattr(CsvDataSource, "save_changes", save_changes)
+
+
+@pytest.mark.parametrize(
+    "rewrite",
+    [
+        # The file is UTF-8, so CLICK would read "50Â°C"
+        pytest.param(lambda data: data.decode("cp1252").encode("utf-8"), id="utf-8"),
+        # The file starts with a byte order mark
+        pytest.param(lambda data: b"\xef\xbb\xbf" + data, id="byte-order-mark"),
+        # The file holds a byte that cp1252 does not have
+        pytest.param(lambda data: data + b'DS101,INT,"\x81",0,No,""\r\n', id="not-cp1252"),
+    ],
+)
+def test_the_csv_round_trip_check_fails_when_clicknicks_file_is_not_cp1252(
+    tmp_path, monkeypatch, rewrite
+):
+    project = click_project(tmp_path, monkeypatch)
+    assert "failed" not in run_check(cs.check_sync, project)
+    rewrite_clicknicks_csv(monkeypatch, rewrite)
+    details = run_check(cs.check_csv_round_trip, project)
+    line = bytes.fromhex(details["line_bytes"])
+    assert details["failed"] == (
+        "Export to CSV did not write Smoke_Init's comment '50°C' in cp1252 with no byte order "
+        f"mark. The file's line for it is {line!r}."
+    )
+    assert not any(call[0] == "import_one" for call in project.run.calls)
+
+
+def test_the_csv_round_trip_check_fails_when_the_import_leaves_sc_mdb_as_it_was(
+    tmp_path, monkeypatch
+):
+    project = click_project(tmp_path, monkeypatch, ignores_import=True)
+    assert "failed" not in run_check(cs.check_sync, project)
+    details = run_check(cs.check_csv_round_trip, project)
+    assert details["failed"] == (
+        "CLICK answered that it imported ClickNick's CSV, but SC_.mdb did not change."
+    )
+
+
+def test_the_csv_round_trip_check_fails_when_sc_mdb_lacks_a_row_of_the_file(tmp_path, monkeypatch):
+    def drops_ds100(rows: dict[int, AddressRow]) -> dict[int, AddressRow]:
+        return {key: row for key, row in rows.items() if row.display_address != "DS100"}
+
+    project = click_project(tmp_path, monkeypatch, misread=drops_ds100)
+    assert "failed" not in run_check(cs.check_sync, project)
+    details = run_check(cs.check_csv_round_trip, project)
+    assert details["failed"] == (
+        "After the import, SC_.mdb lacks ['DS100'] from ClickNick's CSV and holds [] that the "
+        "file lacks."
+    )
+
+
+def test_the_csv_round_trip_check_fails_when_click_misreads_the_comment(tmp_path, monkeypatch):
+    def loses_the_degree_sign(rows: dict[int, AddressRow]) -> dict[int, AddressRow]:
+        return {
+            key: dataclasses.replace(row, comment=row.comment.replace("°", "?"))
+            for key, row in rows.items()
+        }
+
+    project = click_project(tmp_path, monkeypatch, misread=loses_the_degree_sign)
+    assert "failed" not in run_check(cs.check_sync, project)
+    details = run_check(cs.check_csv_round_trip, project)
+    assert details["failed"] == (
+        "CLICK's export shows Smoke_Init as ('DS100', '0', '50?C'), not ('DS100', '0', '50°C'). "
+        "Its comment's bytes are 35 30 3f 43 (cp1252)."
+    )
+
+
+def test_a_runner_stop_in_a_check_ends_the_checks_and_reaches_the_runner(tmp_path, port):
+    def error_box(project: cs.Project, details: dict[str, Any]) -> str:
+        details["asked"] = "export"
+        raise cr.ClickErrorBox("PTC-013", "The file is in use.")
+
+    checks = (
+        cs.CheckSpec("first", passes("OK.")),
+        cs.CheckSpec("in_click", error_box),
+        cs.CheckSpec("after", passes("OK.")),
+    )
+    runner = FakeRunner()
+    code, out = smoke(tmp_path, runner, checks, "C2-03CPU", "C0-02DD1-D")
+    assert code == cs.EXIT_FAIL
+    # The smoke goes on to the next project
+    assert [s.cpu for s in runner.settings] == ["C2-03CPU", "C0-02DD1-D"]
+    result = read(out / "C2-03CPU" / "result.json")
+    entry = result["checks"]["in_click"]
+    assert (entry["status"], entry["text"]) == (
+        "fail",
+        "The runner stopped: ClickErrorBox: CLICK error PTC-013: The file is in use.",
+    )
+    assert entry["details"]["asked"] == "export"
+    assert "after" not in result["checks"]
+    assert result["runner"]["status"] == "aborted"
+    assert result["runner"]["reason"] == "CLICK error PTC-013: The file is in use."
+    assert result["teardown"]["port_free"] is True
+    assert result["problems"] == [
+        "The runner ended aborted at step on_new_project: CLICK error PTC-013: The file is in use.",
+        "These checks failed: in_click.",
+        "These checks did not run: after.",
+    ]
+
+
+def test_exported_row_fails_when_no_row_has_the_nickname():
+    data = f'{EXPORT_HEADER}\r\nDS1,INT,"Other",0,No,""\r\n'.encode("cp1252")
+    with pytest.raises(cs.CheckFailed, match=r"^CLICK's export has no row for Smoke_Init\.$"):
+        cs.exported_row(data, "Smoke_Init")
+
+
+def test_the_checks_that_write_sc_mdb_run_after_the_checks_that_read_the_project():
+    names = [spec.name for spec in cs.CHECKS]
+    assert names[-3:] == ["check_program", "sync", "csv_round_trip"]
+    needs = {spec.name: spec.needs for spec in cs.CHECKS}
+    assert (needs["sync"], needs["csv_round_trip"]) == (("load",), ("sync",))
