@@ -273,11 +273,12 @@ Then the runner closes CLICK, and CLICK removes its temp folder. A script can pa
 after the check, with the run and a ``NewProject``: the model, the project file, CLICK's pid,
 its main window and its temp folder. The model is None for ``none``. The call may import a
 nickname CSV with ``Run.import_one`` and export the nicknames with ``Run.export``. It must pass
-``export`` a folder of its own, because ``DIR/click/`` exists already. After the call, the run
-terminates CLICK instead of closing it. If the call changed the project, closing could show a save
-prompt. CLICK's temp folder then stays. If a Scr*.tmp is in CLICK's temp folder before the
-save (``scr_before_save``) and the save does not rewrite it, the run stops, as it does in
-``paste``.
+``export`` a folder of its own, because ``DIR/click/`` exists already. It may also paste rungs
+with ``Run.paste_payload`` and save the project under another name with ``Run.save_as``. After
+the call, the run terminates CLICK instead of closing it. If the call changed the project,
+closing could show a save prompt. CLICK's temp folder then stays. If a Scr*.tmp is in CLICK's
+temp folder before the save (``scr_before_save``) and the save does not rewrite it, the run
+stops, as it does in ``paste``.
 
 Before every Syntax Check (``paste``'s too), the runner empties Output. A result that
 reads the same as the one before is then still seen. CLICK ignores a Syntax Check posted
@@ -2930,21 +2931,35 @@ class Run:
                 names = [name for name, _, _ in self._scr_before]
                 self.result["scr_before_paste"] = names
                 self.log(f"CLICK's temp folder holds {', '.join(names)} before the first save")
-            before = self.status_bar("before_paste")
-            main = self.main
-            self.on_clipboard(
-                "paste", "set", lambda: self.desktop.set_clipboard(prepared.payload, main)
-            )
-            self.command(PASTE)
-            how = self.wait(
-                "CLICK to finish the paste",
-                [],
-                self._pasted(before, prepared.rung_count),
-                timeout=self.s.paste_timeout,
-            )
-            self.log(f"paste done: {how}")
-            self.status_bar("pasted")
-            self.record("pasted")
+            self.paste_payload(prepared.payload, prepared.rung_count)
+
+    def paste_payload(
+        self, payload: bytes, rungs: int, *, before: str = "before_paste", after: str = "pasted"
+    ) -> str:
+        """Paste *payload*, CLICK's clipboard data for *rungs* rungs, at the ladder's cursor.
+
+        The runner waits until the main window is alone, puts *payload* on the clipboard,
+        posts Paste and waits until CLICK has pasted (``_pasted``). It records the status bar
+        in the result's ``status_bar`` under the labels *before* and *after*, and with
+        ``--record`` it dumps CLICK's windows under the label *after*. Return how the wait saw the paste end. ``paste`` calls this method, and so can
+        ``on_new_project``.
+        """
+        self.wait("the main window alone", [], self.only_main)
+        before_bar = self.status_bar(before)
+        main = self.main
+        assert main is not None
+        self.on_clipboard("paste", "set", lambda: self.desktop.set_clipboard(payload, main))
+        self.command(PASTE)
+        how = self.wait(
+            "CLICK to finish the paste",
+            [],
+            self._pasted(before_bar, rungs),
+            timeout=self.s.paste_timeout,
+        )
+        self.log(f"paste done: {how}")
+        self.status_bar(after)
+        self.record(after)
+        return how
 
     def _pasted(
         self, before: StatusBar | None, rungs: int

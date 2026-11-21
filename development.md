@@ -301,14 +301,23 @@ ClickNick connects to it with no window and runs these checks:
   B0. CLICK imports the file into the same project with Delete Existing. SC_.mdb must then hold
   a row for each address in the file and no other row, and CLICK's nickname export must show
   `Smoke_Init` with `50°C`.
+- `rung_apply`: the smoke adds a rung to the workspace's `src\plc\main.py`: a contact on X001
+  that drives an Out coil on C1. `rung apply` must propose that rung for CLICK's empty main
+  program. ClickNick copies the proposal as Review Changes' Copy does, and Copy adds X001 and C1
+  to SC_.mdb. CLICK pastes the rungs at rung 1 and saves the project. After ClickNick rebuilds
+  the workspace from that save, CLICK's saved program must start with the rung, Review Changes
+  must have nothing left to paste, and `rung apply` must answer `(no changes)`.
 
-`sync` and `csv_round_trip` write SC_.mdb, so they run after the other checks. They run on every
-project and add about 13 s to each, so the whole smoke takes about 2.5 minutes. `result.json`
-holds the bytes of the comment in SC_.mdb and in CLICK's export.
+`sync` and `csv_round_trip` write SC_.mdb, so they run after the checks that read the project
+as CLICK made it. They add about 13 s to each project. `result.json` holds the bytes of the
+comment in SC_.mdb and in CLICK's export. `rung_apply` saves the project in CLICK, so it runs
+last. It adds about 6 s to each project. All the checks run on every project, and the whole
+smoke takes about 3 minutes.
 
 The smoke writes its results into `--out` (by default `tmp\smoke\<date and time>`). Each
 project gets a folder of its own. It holds the runner's `--out` folder, `runner\`, and a
-`result.json` with each check's status (pass or fail), text and time. `summary.json` lists every
+`result.json` with each check's status (pass or fail), text and time. `rung_apply\` holds the
+project that CLICK saved with the rung, and its Scr*.tmp files. `summary.json` lists every
 project, and the smoke prints the same summary. The exit code is 0 when every project passed, 1
 when any project failed and 2 when the smoke refused to start or stopped early. A project fails
 when a check fails, when the runner does not end `ok`, when a scheduled callback raises, or when
