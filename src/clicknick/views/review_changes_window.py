@@ -256,21 +256,34 @@ def _legacy_note(change: ProgramChange, *, instead: str = "") -> str:
     return "\n".join([f"{head} {again}", *lines])
 
 
-def _empty_refusal(name: str, change: ProgramChange) -> str:
+def _placeholder_refusal(name: str, change: ProgramChange) -> str:
     """Return why the program may not be copied yet, or an empty string.
 
     ClickNick pastes a program whole when it cannot read all of CLICK's copy. An empty
-    rung in the folder may stand in for one of CLICK's rungs. The whole paste would then
-    leave that rung empty in CLICK.
+    rung or an UNDECODED marker in the folder may stand in for one of CLICK's rungs. A
+    whole paste of an empty rung would leave that rung empty in CLICK.
+    ``prepare_rungs_load`` also refuses a marker, but only at the copy, and its text does
+    not name the program. This function refuses before the copy.
+    The text numbers the folder's rungs from 1. laddercodec's comment on a marker numbers
+    them from 0.
     """
-    empty = change.empty_rungs
-    if not change.unreadable or not empty:
+    empty, markers = change.empty_rungs, change.marker_rungs
+    if not change.unreadable or not (empty or markers):
         return ""
     program = next((item.program for item in change.legacy if item.program), Path(name).stem)
-    if len(empty) == 1:
-        head = f"Rung {empty[0]} of {program} is empty in this folder."
-    else:
-        head = f"Rungs {_listed_rungs(empty)} of {program} are empty in this folder."
+    heads: list[tuple[int, str]] = []
+    for rungs, one, many in (
+        (empty, "is empty", "are empty"),
+        (markers, "is an UNDECODED marker", "are UNDECODED markers"),
+    ):
+        if len(rungs) == 1:
+            heads.append((rungs[0], f"Rung {rungs[0]} of {program} {one} in this folder."))
+        elif rungs:
+            heads.append(
+                (rungs[0], f"Rungs {_listed_rungs(rungs)} of {program} {many} in this folder.")
+            )
+    # The sentence about the first of the folder's rungs comes first
+    head = " ".join(text for _first, text in sorted(heads))
     unread = sorted({item.rung for item in change.legacy if item.unreadable and item.rung})
     if not unread:
         what = "ClickNick cannot read CLICK's copy of the program."
@@ -278,8 +291,14 @@ def _empty_refusal(name: str, change: ProgramChange) -> str:
         what = f"CLICK's rung {unread[0]} cannot be read."
     else:
         what = f"CLICK's rungs {_listed_rungs(unread)} cannot be read."
-    rung = "those rungs" if len(empty) > 1 else "that rung"
-    return f"{head} {what} Paste {rung} from your own copy of the program first."
+    rung = "those rungs" if len(empty) + len(markers) > 1 else "that rung"
+    refusal = f"{head} {what} Paste {rung} from your own copy of the program first."
+    if markers:
+        refusal += (
+            " In this folder, replace each marker with the logic of the rung that it stands for,"
+            " or delete the marker."
+        )
+    return refusal
 
 
 def _change_label(change: ProgramChange) -> str:
@@ -1507,7 +1526,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 )
             if change.legacy:
                 prompt += f"\n{_legacy_note(change)}"
-            if refusal := _empty_refusal(name, change) or self._whole_refusal(name):
+            if refusal := _placeholder_refusal(name, change) or self._whole_refusal(name):
                 prompt += f"\n{refusal}"
             elif name in self._unplaced:
                 prompt += (
@@ -1856,7 +1875,7 @@ class ReviewChangesWindow(tk.Toplevel):
         try:
             if program is None or program.rungs is None:
                 raise ValueError(program.error if program else "it is not in this folder")
-            refusal = _empty_refusal(name, change) if change is not None else ""
+            refusal = _placeholder_refusal(name, change) if change is not None else ""
             if refusal:
                 raise ValueError(refusal)
             if group is None:

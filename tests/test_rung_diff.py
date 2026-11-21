@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
-from laddercodec import Coil, Rung, write_csv
+from laddercodec import Coil, Rung, Undecoded, write_csv
 
 from clicknick.data.data_source import CsvDataSource
 from clicknick.ladder.program import (
@@ -420,7 +420,29 @@ def test_the_users_own_copy_has_no_empty_rung() -> None:
 
     assert change.changed == (2,)
     assert change.empty_rungs == ()
+    assert change.marker_rungs == ()
     assert change.steps() == ()
+
+
+def test_a_marker_read_from_the_folder_is_listed(tmp_path: Path) -> None:
+    """Find laddercodec's marker for a rung in a folder CSV, numbered from 1.
+
+    The marker's comment counts rungs from 0, so it says rung 1 for the folder's rung 2.
+    """
+    current = _bundle(tmp_path / "current", {"main.csv": [*_rungs("Y001"), _STAND_IN]})
+    write_legacy_encodings(current, [_unreadable(2)])
+    marker = Rung(
+        [["-"] * 31],
+        [Undecoded("bad bytes after DS1", rung=1, row=0)],
+        "UNDECODED: rung 1, row 0: bad bytes after DS1",
+    )
+    proposed = _bundle(tmp_path / "proposed", {"main.csv": [*_rungs("Y001"), marker]})
+
+    main = _compare(proposed, current).changes["main.csv"]
+
+    assert main.unreadable
+    assert main.marker_rungs == (2,)
+    assert main.empty_rungs == ()
 
 
 def test_skipping_a_difference_cannot_leave_part_of_a_program_pasted() -> None:

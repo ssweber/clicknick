@@ -27,6 +27,7 @@ from ..ladder.program import (
     count_csv_rungs,
     empty_rung,
     is_empty_rung,
+    is_marker,
     list_csv_folder,
     read_csv_comment,
     read_legacy_encodings,
@@ -167,6 +168,11 @@ class ProgramChange:
     def empty_rungs(self) -> tuple[int, ...]:
         """Return the proposed rung numbers that hold no instruction, such as a stand-in."""
         return tuple(number for number, rung in enumerate(self.after, 1) if is_empty_rung(rung))
+
+    @property
+    def marker_rungs(self) -> tuple[int, ...]:
+        """The proposed rung numbers, counted from 1, that hold laddercodec's UNDECODED marker."""
+        return tuple(number for number, rung in enumerate(self.after, 1) if is_marker(rung))
 
     @property
     def changed(self) -> tuple[int, ...]:
