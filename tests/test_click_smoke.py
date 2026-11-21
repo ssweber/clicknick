@@ -19,6 +19,7 @@ import sys
 import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -1858,7 +1859,7 @@ def pasted_program() -> cs.PastedProgram:
     return cs.PastedProgram(program_rows(), cs.PROGRAM_ADDRESSES)
 
 
-def test_the_projects_that_click_made_empty_run_every_check_but_the_paste():
+def test_the_projects_that_click_made_empty_run_every_check_but_the_paste_and_the_panel():
     checks = cs.project_checks(cs.CHECKS, program=False)
     assert [spec.name for spec in checks] == [
         "load",
@@ -1871,7 +1872,7 @@ def test_the_projects_that_click_made_empty_run_every_check_but_the_paste():
         "rung_apply",
     ]
     assert {spec.name: spec.needs for spec in checks} == {
-        spec.name: spec.needs for spec in cs.CHECKS if spec.name != "paste"
+        spec.name: spec.needs for spec in cs.CHECKS if spec.projects != "program"
     }
 
 
@@ -1883,20 +1884,47 @@ def test_the_project_with_rungs_pastes_first_and_runs_every_check_but_rung_apply
         "build",
         "layout",
         "simulation",
+        "panel",
         "check_program",
         "sync",
         "csv_round_trip",
     ]
-    # If the paste fails, CLICK does not hold the program, so no other check runs
+    # If the paste fails, CLICK does not hold the program, so no other check runs. The panel
+    # check needs the paste through the simulation check. If the panel check fails, the checks
+    # after it still run
     assert {spec.name: spec.needs for spec in checks} == {
         "paste": (),
         "load": ("paste",),
         "build": ("paste", "load"),
         "layout": ("paste",),
         "simulation": ("paste", "build"),
+        "panel": ("simulation",),
         "check_program": ("paste", "build"),
         "sync": ("paste", "load"),
         "csv_round_trip": ("paste", "sync"),
+    }
+
+
+def test_only_the_program_checks_at_the_start_are_needed_by_the_checks_for_every_project():
+    checks = (
+        cs.CheckSpec("paste", passes("pasted"), projects="program"),
+        cs.CheckSpec("load", passes("loaded")),
+        cs.CheckSpec("panel", passes("pressed"), needs=("load",), projects="program"),
+        cs.CheckSpec("sync", passes("synced"), needs=("load",)),
+        cs.CheckSpec("rung_apply", passes("applied"), projects="empty"),
+    )
+    program = cs.project_checks(checks, program=True)
+    assert {spec.name: spec.needs for spec in program} == {
+        "paste": (),
+        "load": ("paste",),
+        "panel": ("load",),
+        "sync": ("paste", "load"),
+    }
+    empty = cs.project_checks(checks, program=False)
+    assert {spec.name: spec.needs for spec in empty} == {
+        "load": (),
+        "sync": ("load",),
+        "rung_apply": (),
     }
 
 
@@ -2239,6 +2267,421 @@ def test_the_simulation_check_fails_when_x001_does_not_turn_y001_on(tmp_path, po
     details, simulation = check_program_simulation(tmp_path, FakeProgramSimulation(dead=True))
     assert details["failed"] == "Timed out after 1 s waiting for Y001 to turn on after X001."
     assert simulation.watched is None
+
+
+# The panel check
+
+
+class PanelPlant:
+    """Runs the first rung of click_smoke_rungs.csv on the fake pyrung of a ``Harness``.
+
+    X001 latches Y001. Each ``pump`` runs the simulation's scheduled callbacks, answers the DAP
+    requests that the simulation sent since the last pump, runs one scan in RUN, and hands the
+    values of X001 and Y001 to the simulation, as Modbus does. In STOP, Y001 reads off. A force
+    on Y001 replaces its value. Each flag breaks one part of that:
+
+    - with *latches* False, X001 does not turn Y001 on;
+    - with *holds* False, Y001 follows X001, as an Out coil does;
+    - with *clears* False, the switch from STOP to RUN does not clear Y001;
+    - with *forces* False, a force on Y001 does not change its value.
+
+    With *stale_stop* True, the plant does what pyrung 0.18.0 does after STOP. It sends the
+    frame of STOP, then the frame of its last scan in RUN once more: mode run, not running.
+    """
+
+    def __init__(
+        self,
+        harness: Any,
+        *,
+        latches: bool = True,
+        holds: bool = True,
+        clears: bool = True,
+        forces: bool = True,
+        stale_stop: bool = False,
+    ) -> None:
+        self.harness = harness
+        self.latches, self.holds, self.clears, self.forces = latches, holds, clears, forces
+        self.stale_stop = stale_stop
+        self.seen = 0
+        self.inputs: dict[str, bool] = {}
+        self.output = False
+
+    def pump(self) -> None:
+        harness = self.harness
+        harness.scheduler.run_ready()
+        dap = harness.dap
+        while self.seen < len(dap.calls):
+            call = dap.calls[self.seen]
+            self.seen += 1
+            if call[0] == "set_mode":
+                self.inputs.update(call[2] or {})
+                if call[1] == "stop":
+                    dap.frame(mode="stop", running=False)
+                    if self.stale_stop:
+                        dap.frame(mode="run", running=False)
+                else:
+                    if self.clears:
+                        self.output = False
+                    dap.frame(mode="run", running=False)
+            elif call[0] == "continue":
+                dap.frame(running=True)
+            elif call[0] == "patch":
+                self.inputs.update(call[1])
+        x001 = bool(self.inputs.get("X001"))
+        if dap.mode == "run" and dap.running:
+            if x001 and self.latches:
+                self.output = True
+            if not self.holds:
+                self.output = x001
+            dap.frame(scan_id=(dap.scan_id or 0) + 1)
+        y001 = self.output and dap.mode == "run"
+        forced = dap.forces.get("Y001") if self.forces else None
+        if forced is not None:
+            y001 = forced
+        harness.modbus[-1].kwargs["on_values"]({"X001": x001, "Y001": y001})
+        harness.scheduler.run_ready()
+
+
+class PlantScheduler(cs.Scheduler):
+    """A ``cs.Scheduler`` whose ``run_due`` pumps a ``PanelPlant``."""
+
+    def __init__(self, plant: PanelPlant) -> None:
+        super().__init__()
+        self.plant = plant
+
+    def run_due(self) -> None:
+        self.plant.pump()
+
+
+@pytest.fixture
+def panel_harness(tmp_path, monkeypatch):
+    from test_simulation_session import Harness, _ready_analysis
+
+    from clicknick.views.console_panel import ConsolePanel
+
+    # The Console's grammar loads on a thread, which no panel test needs
+    monkeypatch.setattr(ConsolePanel, "_start_background", lambda _self, _target, *, name: None)
+    project_dir = tmp_path / "workspace"
+    project_dir.mkdir()
+    return Harness(tmp_path, _ready_analysis(project_dir))
+
+
+def press_panel_with(
+    tmp_path: Path, root: Any, harness: Any, plant: PanelPlant
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Leave the harness's simulation in RUN as the simulation check does, then press the panel.
+
+    The simulation check left X001's switch on and Y001 latched. Return the check's details,
+    with its text or failure, and the details' steps by name.
+    """
+    harness.open()
+    harness.sim.set_switch_position("run")
+    harness.sim.toggle_switch("X001")
+    for _ in range(3):
+        plant.pump()
+    assert harness.sim.values == {"X001": True, "Y001": plant.latches}
+    new = cr.NewProject(cs.PROGRAM_CPU, tmp_path / "program.ckp", 4242, 0x1234, tmp_path)
+    project = cs.Project(FakeRun(), new, tmp_path, PlantScheduler(plant))  # pyright: ignore[reportArgumentType]
+    project._session = SimpleNamespace(  # pyright: ignore[reportAttributeAccessIssue]
+        ensure_simulation=lambda _scheduler: harness.sim, analysis=harness.analysis
+    )
+    details: dict[str, Any] = {}
+    try:
+        details["text"] = cs.press_panel(project, root, details, timeout=1.0, realtime=False)
+    except cs.CheckFailed as exc:
+        details["failed"] = str(exc)
+    return details, {step.pop("step"): step for step in details.get("steps", [])}
+
+
+def test_the_panel_check_presses_x001_and_forces_y001_on_the_panel(
+    tmp_path, tk_root, panel_harness
+):
+    details, steps = press_panel_with(tmp_path, tk_root, panel_harness, PanelPlant(panel_harness))
+    assert "failed" not in details, details["failed"]
+    assert details["text"] == (
+        "On the Simulator's panel, STOP and RUN moved the CPU's switch. X001's switch turned "
+        "Y001 on, and Y001 stayed on after X001 turned off. A double-click forced Y001 off and "
+        "showed its padlock, and a click on the padlock released the force."
+    )
+    assert list(steps) == [
+        "stop",
+        "X001 off in STOP",
+        "run",
+        "X001 on",
+        "X001 off",
+        "Y001 forced",
+        "Y001 released",
+    ]
+    shown = {
+        name: (step["switch_position"], step["run_led"], step["X001"], step["Y001"])
+        for name, step in steps.items()
+    }
+    # In STOP, PanelPlant still reads X001 on. After the release, Y001 shows the latch again,
+    # because PanelPlant keeps the latch under the force
+    off = {"switch": False, "lit": False, "padlock": False}
+    on = {"switch": True, "lit": True, "padlock": False}
+    assert shown == {
+        "stop": ("stop", False, on, {"lit": False, "padlock": False}),
+        "X001 off in STOP": ("stop", False, off, {"lit": False, "padlock": False}),
+        "run": ("run", True, off, {"lit": False, "padlock": False}),
+        "X001 on": ("run", True, on, {"lit": True, "padlock": False}),
+        "X001 off": ("run", True, off, {"lit": True, "padlock": False}),
+        "Y001 forced": ("run", True, off, {"lit": False, "padlock": True}),
+        "Y001 released": ("run", True, off, {"lit": True, "padlock": False}),
+    }  # fmt: skip
+    assert steps["Y001 forced"]["forces"] == {"Y001": False}
+    assert steps["Y001 forced"]["forces_button"] == "Forces (1)"
+    assert steps["Y001 released"]["forces_button"] == "Forces"
+    # The panel's clicks reached the simulation as the DAP requests that the panel sends
+    dap = panel_harness.dap
+    assert ("set_mode", "stop", None, None) in dap.calls
+    assert ("patch", {"X001": False}) in dap.calls
+    assert ("force", "Y001", False) in dap.calls
+    assert ("unforce", "Y001") in dap.calls
+    # The check closed the window, which stopped watching the panel's addresses
+    assert len(panel_harness.sim._watched) == 0
+
+
+def test_the_panel_check_fails_when_x001_does_not_light_y001(tmp_path, tk_root, panel_harness):
+    plant = PanelPlant(panel_harness, latches=False)
+    details, steps = press_panel_with(tmp_path, tk_root, panel_harness, plant)
+    assert details["failed"] == (
+        "On the Simulator's panel, the check timed out waiting for Y001's LED to light after "
+        "X001 turned on."
+    )
+    assert list(steps) == [
+        "stop",
+        "X001 off in STOP",
+        "run",
+        "timed out waiting for Y001's LED to light after X001 turned on",
+    ]
+    # The step at the timeout shows what the panel showed then
+    timed_out = steps["timed out waiting for Y001's LED to light after X001 turned on"]
+    assert timed_out["switch_position"] == "run"
+    assert timed_out["X001"] == {"switch": True, "lit": True, "padlock": False}
+    assert timed_out["Y001"] == {"lit": False, "padlock": False}
+
+
+def test_the_panel_check_names_pyrung_when_the_switch_shows_step_after_stop(
+    tmp_path, tk_root, panel_harness
+):
+    plant = PanelPlant(panel_harness, stale_stop=True)
+    details, steps = press_panel_with(tmp_path, tk_root, panel_harness, plant)
+    assert details["failed"] == (
+        "On the Simulator's panel, the switch shows STEP after the click on STOP. pyrung 0.18.0 "
+        "has a fault that shows this way: after it enters STOP, it sends the state of its last "
+        "scan in RUN once more, and ClickNick shows RUN with the scans paused as STEP. The fault "
+        "is not in ClickNick."
+    )
+    assert list(steps) == ["timed out waiting for STOP, with the RUN LED off"]
+    assert steps["timed out waiting for STOP, with the RUN LED off"]["switch_position"] == "step"
+
+
+FORCE_WAIT = (
+    "the double-click to force Y001 off, with its LED dark, its padlock showing and the "
+    "toolbar's Forces (1)"
+)
+RELEASE_WAIT = "the click on the padlock to release Y001's force and hide the padlock"
+
+
+def fill(item: str, color: str) -> Callable[[Any], None]:
+    """Return a step that colors the panel's *item* (``"RUN"``, or an address and a part)."""
+
+    def step(win: Any) -> None:
+        if item == "RUN":
+            canvas_item = win._cpu_leds["RUN"]
+        else:
+            address, part = item.split(".")
+            rows = win._inputs if address.startswith("X") else win._outputs
+            canvas_item = rows[address][part]
+        win._canvas.itemconfigure(canvas_item, fill=color)
+
+    return step
+
+
+def after_first_force(step: Callable[[Any, bool], None]) -> Callable[[Any], None]:
+    """Return a step that calls *step* with True once the simulation has held a force."""
+    forced: list[bool] = []
+
+    def after(win: Any) -> None:
+        if win._simulation.forces:
+            forced.append(True)
+        step(win, bool(forced))
+
+    return after
+
+
+def panel_faults() -> dict[str, tuple[str, Callable[[Any], None], str, dict[str, bool]]]:
+    """Return the ways that a test breaks the panel, by name.
+
+    Each fault names the ``SimulatorWindow`` method after which it draws one thing wrong, the
+    step that draws it, the wait that must time out, and the flags for ``PanelPlant``.
+    """
+    from clicknick.views import sim_palette as p
+
+    def padlock(win: Any, shown: bool) -> None:
+        win._show_badge(win._outputs["Y001"]["badge"], shown)
+
+    def counted(win: Any, shown: bool) -> None:
+        win._forces_btn.configure(text="Forces (1)" if shown else "Forces")
+
+    def dark_while_forced(win: Any, forced: bool) -> None:
+        if forced:
+            fill("Y001.led", p.LED_OFF)(win)
+
+    return {
+        "the RUN LED stays dark": (
+            "_refresh_cpu", fill("RUN", p.LED_OFF), "RUN, with the RUN LED lit", {}
+        ),
+        "the RUN LED stays lit": (
+            "_refresh_cpu", fill("RUN", p.LED_ON), "STOP, with the RUN LED off", {}
+        ),
+        "X001's switch stays off": (
+            "_refresh_inputs", fill("X001.track", p.SWITCH_OFF),
+            "X001's switch and LED to show on", {},
+        ),
+        "X001's LED stays lit": (
+            "_refresh_inputs", fill("X001.led", p.LED_ON), "X001's switch and LED to show off", {}
+        ),
+        "Y001's LED stays dark": (
+            "_refresh_outputs", fill("Y001.led", p.LED_OFF),
+            "Y001's LED to light after X001 turned on", {},
+        ),
+        "Y001 shows no padlock": (
+            "_refresh_outputs", lambda win: padlock(win, False), FORCE_WAIT, {}
+        ),
+        "Y001 keeps its padlock": ("_refresh_outputs", after_first_force(padlock), RELEASE_WAIT, {}),
+        "the Forces button counts no force": (
+            "_refresh_toolbar", lambda win: counted(win, False), FORCE_WAIT, {}
+        ),
+        "the Forces button keeps its count": (
+            "_refresh_toolbar", after_first_force(counted), RELEASE_WAIT, {}
+        ),
+        # The simulation never applies the force, but the panel draws Y001 dark anyway
+        "Y001 shows dark while the simulation reads it on": (
+            "_refresh_outputs", after_first_force(dark_while_forced), FORCE_WAIT,
+            {"forces": False},
+        ),
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize("fault", list(panel_faults()))
+def test_the_panel_check_fails_when_the_panel_draws_something_wrong(
+    tmp_path, tk_root, panel_harness, monkeypatch, fault
+):
+    from clicknick.views.simulator_window import SimulatorWindow
+
+    method, step, wait, flags = panel_faults()[fault]
+    original = getattr(SimulatorWindow, method)
+
+    def wrong(self: Any, *args: Any) -> None:
+        original(self, *args)
+        step(self)
+
+    monkeypatch.setattr(SimulatorWindow, method, wrong)
+    plant = PanelPlant(panel_harness, **flags)
+    details, steps = press_panel_with(tmp_path, tk_root, panel_harness, plant)
+    # A timeout at STOP names pyrung only when the switch shows STEP. "The RUN LED stays lit"
+    # times out at STOP with the switch at STOP.
+    assert (
+        details.get("failed")
+        == f"On the Simulator's panel, the check timed out waiting for {wait}."
+    )
+    assert list(steps)[-1] == f"timed out waiting for {wait}"
+    # The check released the force that it left in place
+    assert panel_harness.sim.forces == {}
+
+
+def test_the_panel_check_fails_when_y001_goes_off_with_x001(tmp_path, tk_root, panel_harness):
+    plant = PanelPlant(panel_harness, holds=False)
+    details, steps = press_panel_with(tmp_path, tk_root, panel_harness, plant)
+    assert details["failed"] == ("The program latches Y001, but it went off after X001 turned off.")
+    assert list(steps)[-1] == "X001 off"
+
+
+def test_the_panel_check_fails_when_y001_is_on_after_stop_and_run(tmp_path, tk_root, panel_harness):
+    plant = PanelPlant(panel_harness, clears=False)
+    details, steps = press_panel_with(tmp_path, tk_root, panel_harness, plant)
+    assert details["failed"] == (
+        "Y001 is on after STOP and RUN with X001 off, so the check cannot show that X001 turns "
+        "it on."
+    )
+    assert list(steps)[-1] == "run"
+
+
+def test_the_panel_check_fails_and_releases_a_force_that_does_not_reach_y001(
+    tmp_path, tk_root, panel_harness
+):
+    plant = PanelPlant(panel_harness, forces=False)
+    details, steps = press_panel_with(tmp_path, tk_root, panel_harness, plant)
+    assert details["failed"] == (
+        "On the Simulator's panel, the check timed out waiting for the double-click to force "
+        "Y001 off, with its LED dark, its padlock showing and the toolbar's Forces (1)."
+    )
+    assert list(steps)[-2:] == ["X001 off", f"timed out waiting for {FORCE_WAIT}"]
+    assert panel_harness.sim.forces == {}
+    assert ("clear_forces",) in panel_harness.dap.calls
+
+
+def test_the_panel_check_closes_the_window_when_the_release_of_the_forces_raises(
+    tmp_path, tk_root, panel_harness, monkeypatch
+):
+    def raises() -> None:
+        raise RuntimeError("the worker is gone")
+
+    monkeypatch.setattr(panel_harness.sim, "release_all_forces", raises)
+    plant = PanelPlant(panel_harness, forces=False)
+    details, _steps = press_panel_with(tmp_path, tk_root, panel_harness, plant)
+    # The scene's failure stands, and the window closed after the release raised
+    assert (
+        details["failed"]
+        == f"On the Simulator's panel, the check timed out waiting for {FORCE_WAIT}."
+    )
+    assert len(panel_harness.sim._watched) == 0
+
+
+def test_the_panel_check_fails_when_the_close_of_the_window_raises_after_a_pass(
+    tmp_path, tk_root, panel_harness, monkeypatch
+):
+    from clicknick.views.simulator_window import SimulatorWindow
+
+    original = SimulatorWindow._on_close
+
+    def close_and_raise(self: Any) -> None:
+        original(self)
+        raise RuntimeError("the window is gone")
+
+    monkeypatch.setattr(SimulatorWindow, "_on_close", close_and_raise)
+    details, _steps = press_panel_with(tmp_path, tk_root, panel_harness, PanelPlant(panel_harness))
+    assert details["failed"] == (
+        "The steps on the Simulator's panel passed, but the check could not close the Simulator "
+        "window (RuntimeError: the window is gone)."
+    )
+
+
+class TimeoutPlant(PanelPlant):
+    """A ``PanelPlant`` whose pump raises ``TimeoutError`` once, after the panel check starts.
+
+    The pumps after that one work, so the check's cleanup runs as it does after any failure.
+    """
+
+    def __init__(self, harness: Any) -> None:
+        super().__init__(harness)
+        self.pumps = 0
+
+    def pump(self) -> None:
+        self.pumps += 1
+        # press_panel_with pumps 3 times before the check starts
+        if self.pumps == 6:
+            raise TimeoutError("timed out")
+        super().pump()
+
+
+def test_the_panel_check_does_not_report_a_timeout_in_a_pump_as_a_wait(
+    tmp_path, tk_root, panel_harness
+):
+    with pytest.raises(TimeoutError, match="^timed out$"):
+        press_panel_with(tmp_path, tk_root, panel_harness, TimeoutPlant(panel_harness))
 
 
 # The csv_round_trip check
