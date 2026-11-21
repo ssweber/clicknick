@@ -6813,6 +6813,7 @@ def test_picker_ok_writes_the_names_taken_and_the_system_rows(tmp_path, setup):
     assert rows.read == [out / "before.mdb", out / "after.mdb"]
     copies = result["mdb_copies"]
     assert copies["before"]["rows"] == {}
+    assert result["close"] == "ok"
     # The editor refused the reserved word Max, so OK wrote only Test
     assert copies["after"]["rows"] == {**SYSTEM_ROWS, "X001": {"Nickname": "Test"}}
     assert fake.commands == ["Address Picker", "Disconnect"]
@@ -6840,6 +6841,64 @@ def test_picker_closed_with_nothing_typed_writes_nothing(tmp_path, setup):
     copies = result["mdb_copies"]
     assert copies["before"]["rows"] == copies["after"]["rows"] == {}
     assert "picker_close" in fake.events
+    assert result["close"] == "wm_close"
+
+
+def test_picker_cancel_presses_cancel_and_the_fake_writes_nothing(tmp_path, setup):
+    # The fake's Cancel closes the picker without writing SC_.mdb. CLICK 4.00 was observed to
+    # do the same: it asked nothing, and SC_.mdb stayed byte for byte the same.
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    rows = PickerRows()
+    keys = name_keys("DS2", "Test")
+    code, result = run_command(fake, tmp_path, exe, "picker", *keys, "--cancel", read_rows=rows)
+    assert code == cr.EXIT_OK, result["reason"]
+    # Cancel closed the picker, and &Yes answered the question about disconnecting
+    assert fake.pressed[fake.pressed.index("Find") + 1 :] == ["Cancel", "&Yes"]
+    assert "picker_close" not in fake.events
+    copies = result["mdb_copies"]
+    assert copies["before"]["rows"] == copies["after"]["rows"] == {}
+    assert result["close"] == "cancel"
+    timings = list(result["timings"])
+    assert timings[-6:] == ["before", "picker", "after", "disconnect", "close", "read"]
+
+
+def test_a_find_while_the_editor_shows_stops_the_run(tmp_path, setup):
+    # In CLICK, Find does not move the cursor while the editor shows, so the keys after it
+    # would edit the editor's row. The runner stops before it presses Find
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    rows = PickerRows()
+    keys = name_keys("X001", "Test")[:-1] + name_keys("DS1", "Max")
+    code, result = run_command(fake, tmp_path, exe, "picker", *keys, "--ok", read_rows=rows)
+    assert_aborted(
+        fake,
+        tmp_path / "out",
+        code,
+        result,
+        "the key 'find:DS1' came while CLICK's editor showed. Find does not move the cursor "
+        "while the editor shows, so the keys after it would edit the editor's row. Send RETURN "
+        "before the find: key to close the editor.",
+    )
+    assert result["step"] == "picker"
+    # Find was pressed once, for X001, and OK never
+    assert fake.pressed[fake.pressed.index("Find") :] == ["Find"]
+    assert [k["key"] for k in result["keys"]][-1] == "chars:Test"
+    assert result["close"] is None
+
+
+def test_picker_refuses_ok_with_cancel(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_command(fake, tmp_path, exe, "picker", "--ok", "--cancel")
+    assert code == cr.EXIT_REFUSED
+    assert result["reason"] == "--ok and --cancel both close the Address Picker. Give one of them."
+    assert fake.pid is None
+
+
+def test_settings_take_picker_cancel():
+    assert cr.settings_from(["picker", "--out", "o", "--cancel"], environ={}).cancel
+    assert not cr.settings_from(["picker", "--out", "o", "--ok"], environ={}).cancel
 
 
 def test_a_picker_key_that_opens_a_box_stops_the_run(tmp_path, setup):

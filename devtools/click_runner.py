@@ -8,7 +8,8 @@
     uv run python devtools/click_runner.py export-nicknames --out DIR [--import CSV] [--record]
     uv run python devtools/click_runner.py reopen --out DIR [--ini-add LINES] [--record]
     uv run python devtools/click_runner.py read-data --out DIR [--record]
-    uv run python devtools/click_runner.py picker --out DIR [--key KEY ...] [--ok] [--record]
+    uv run python devtools/click_runner.py picker --out DIR [--key KEY ...] [--ok | --cancel]
+        [--record]
     uv run python devtools/click_runner.py new --cpu MODEL|none --out DIR [--record]
 
 The runner starts its own CLICK. In every mode but ``new``, it connects to the one PLC on the
@@ -241,9 +242,30 @@ the last one left the cursor. The run stops if
 CLICK does not answer a key within 5 s, as happens when a key opens a box over the picker
 (the abort dump shows the box). It also stops if a window is over the picker after a key.
 After each key result.json keeps the editor's text, whether it shows and the hints CLICK
-shows under it (``keys``). ``--ok`` closes the picker by OK. Without it, WM_CLOSE closes the
-picker. The runner reads the copies through Access ODBC once CLICK has ended. ``read-data``
-and ``picker`` dump CLICK's windows into ``DIR/record/`` only with ``--record``.
+shows under it (``keys``). ``--ok`` closes the picker by OK, and ``--cancel`` closes it by
+Cancel. The runner finds each of the two buttons by its text (``_labelled``). With neither
+option, WM_CLOSE closes the picker. result.json names the way under ``close``: ``ok``,
+``cancel`` or ``wm_close``. If a box shows after the close, the run stops, and the
+abort dump shows the box. The runner reads the copies through Access ODBC once CLICK has
+ended. ``read-data`` and ``picker`` dump CLICK's windows into ``DIR/record/`` only with
+``--record``.
+
+CLICK 4.00 was observed to do the following in the picker. A script that sends keys must
+allow for each of them:
+
+- In one run, the editor showed on Initial Value, and Find closed it without moving the
+  cursor. The keys after it then edited the editor's row. No one has tried Find while the
+  Nickname or Address Comment editor shows. The run stops at a ``find:`` key that comes
+  while any editor shows. Send RETURN before it to close the editor.
+- Find moves the cursor to the Address column of the row that it finds. From there, two
+  RIGHT keys reach Nickname, four reach Initial Value, five reach Retentive and six reach
+  Address Comment.
+- While Retentive is Yes, Initial Value opens no editor, and a TXT row's Initial Value
+  shows "Disable". RETURN on Retentive changed it from Yes to No. A space or ``N`` typed
+  there changed nothing.
+- On Initial Value, F2 showed no editor. RETURN showed it, with or without F2 before it.
+  A Find after that F2 moved the cursor as usual. On Nickname and Address Comment, F2 shows
+  it.
 
 ``new`` makes a project for the CPU ``--cpu`` through CLICK's new-project wizard. It never
 connects. ``--cpu`` must be one of ``CPU_MODELS``, the CPUs that the wizard lists, or ``none``.
@@ -1692,7 +1714,9 @@ class Settings:
     stop_after: int | None = None  # try: stop cleanly once this many cases were tried
     ini_add: str | None = None  # reopen: lines added to the end of the project's Project.ini
     keys: tuple[str, ...] = ()  # picker: keys sent to the Address Picker's grid or editor
-    ok: bool = False  # picker: close the Address Picker by OK (else by WM_CLOSE)
+    ok: bool = False  # picker: close the Address Picker by OK
+    # picker: close the Address Picker by Cancel. With neither ok nor cancel, WM_CLOSE closes it
+    cancel: bool = False
     cpu: str | None = None  # new: the CPU model to pick (CPU_MODELS), or NO_CPU
     exe: Path = DEFAULT_EXE
     password: str = DEFAULT_PASSWORD
@@ -2032,7 +2056,7 @@ class Run:
         if settings.command == "read-data":
             self.result.update(reading_seen=False)
         if settings.command == "picker":
-            self.result.update(mdb_copies={}, keys=[])
+            self.result.update(mdb_copies={}, keys=[], close=None)
         if settings.command == "new":
             cpu = None if settings.cpu == NO_CPU else settings.cpu
             self.result.update(cpu=cpu, cpu_list=None, user_accounts=None, project=None)
@@ -2378,6 +2402,8 @@ class Run:
                     f"--key {token!r} is not a key the runner knows. "
                     f"Use one of {', '.join(_VIRTUAL_KEYS)}, or chars:TEXT, text:TEXT or find:TEXT."
                 )
+        if self.s.ok and self.s.cancel:
+            raise Refused("--ok and --cancel both close the Address Picker. Give one of them.")
 
     def add_end(self, csv: Path) -> Path:
         """Return the ladder CSV that ``paste --add-end`` pastes in place of *csv*.
@@ -4817,6 +4843,13 @@ class Run:
                 target = new[-1] if new else grid
                 self.log(f"key {token!r} to {target.cls} {target.hwnd}")
                 if token.startswith("find:"):
+                    if new:
+                        raise Aborted(
+                            f"the key {token!r} came while CLICK's editor showed. Find does "
+                            "not move the cursor while the editor shows, so the keys after it "
+                            "would edit the editor's row. Send RETURN before the find: key to "
+                            "close the editor."
+                        )
                     # The Find box (an Edit in a TComboBox) and its Find button
                     boxes = {c.hwnd for c in now if c.cls == "TComboBox"}
                     edit = _require(
@@ -4849,12 +4882,14 @@ class Run:
                 )
                 self.after_key(window, token, at_open)
                 self.record(f"key{number:02d}")
-            if self.s.ok:
-                ok = _require(
-                    _labelled(self.controls(window), "TButton", "OK"),
-                    "the Address Picker's OK",
+            self.result["close"] = "ok" if self.s.ok else "cancel" if self.s.cancel else "wm_close"
+            if self.s.ok or self.s.cancel:
+                label = "OK" if self.s.ok else "Cancel"
+                button = _require(
+                    _labelled(self.controls(window), "TButton", label),
+                    f"the Address Picker's {label}",
                 )
-                self.press(window, ok)
+                self.press(window, button)
             else:
                 self.desktop.close(window.hwnd)
             self.wait("the Address Picker to close", [PICKER], self.only_main)
@@ -5769,6 +5804,7 @@ def _parser() -> argparse.ArgumentParser:
         "Find). Repeat the option to send more keys",
     )
     pickers.add_argument("--ok", action="store_true", help="close the Address Picker by OK")
+    pickers.add_argument("--cancel", action="store_true", help="close the Address Picker by Cancel")
     reopens = commands.add_parser(
         "reopen",
         parents=[common],
@@ -5819,6 +5855,7 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         ini_add=getattr(args, "ini_add", None),
         keys=tuple(getattr(args, "keys", ())),
         ok=getattr(args, "ok", False),
+        cancel=getattr(args, "cancel", False),
         cpu=getattr(args, "cpu", None),
         exe=args.click_exe,
         password=args.password or env.get("CLICK_RUNNER_PASSWORD") or DEFAULT_PASSWORD,
