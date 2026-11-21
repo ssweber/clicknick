@@ -280,18 +280,32 @@ make smoke SMOKE_ARGS="--cpu C2-03CPU --out runs\smoke"
 ```
 
 `devtools/click_smoke.py` runs the runner's `new` mode once for each CPU: C0-00DD1-D, C0-02DD1-D,
-C0-11DD1E-D, C0-12DD1E-2-D and C2-03CPU. Then it runs `new` once more, for a project with no CPU
-(`--cpu none`). `--cpu` picks other CPUs, or `none`. While CLICK has the new project open,
-ClickNick connects to it with no window and runs these checks:
+C0-11DD1E-D, C0-12DD1E-2-D and C2-03CPU. Then it runs `new` for a project with no CPU (`--cpu
+none`), and for a C0-11DD1E-D project with rungs (`--cpu rungs`). `--cpu` picks other CPUs,
+`none` or `rungs`. While CLICK has the new project open, ClickNick connects to it with no window
+and runs these checks:
 
+- `paste`: only in `rungs`, before the other checks. ClickNick copies the nine rungs of
+  `devtools/click_smoke_rungs.csv` as Review Changes' Copy does, and Copy adds their addresses
+  to SC_.mdb. CLICK pastes the rungs at rung 1 and saves the project. The program in CLICK's
+  save must be the program in the file. The rungs come from pyrung's tests. They use X001-X004,
+  X006, X007, Y001 and Y002, two timers, two counters and a compare. If the paste fails, no
+  other check runs on `rungs`.
 - `load`: ClickNick reads the project's SC_.mdb.
-- `build`: the workspace builds with no warning.
+- `build`: the workspace builds with no warning. In `rungs`, its `csv\main.csv` must hold the
+  program that CLICK saved.
 - `layout`: the Simulator's cards are the ones that `read_panel_layout` reads in the project's
   Project.ini. For a project with no CPU, the layout must have no CPU card. The Simulator then
   shows its No CPU card. For the projects in `devtools/click_smoke_layouts.json`, the cards must
-  also be the cards recorded there.
-- `simulation`: the simulation starts and scans in RUN.
-- `check_program`: Check Program and `clicknick-cli check` both run and report the same.
+  also be the cards recorded there. In `rungs`, the Simulator must count each X and Y that the
+  program uses as used. The CPU has all of them, so the Simulator must show no card for
+  unassigned I/O.
+- `simulation`: the simulation starts and scans in RUN. In `rungs`, the simulation must read the
+  program's X and Y addresses over Modbus, and switching X001 on must turn Y001 on.
+- `check_program`: Check Program and `clicknick-cli check` both run and report the same. In
+  `rungs`, both report an error and a warning, because two Out coils drive Y002. Both must
+  report the error, `COIL_CONFLICTING_OUTPUT` on Y002. The check keeps the reports and does not
+  judge the other findings.
 - `sync`: ClickNick gives DS100 the nickname `Smoke_Init` and the comment `50→60`. Sync must
   refuse the comment, because cp1252 has no `→`, and SC_.mdb must stay as it was. Then ClickNick
   changes the comment to `50°C`, and Sync must write the row with the initial value 0. A fresh
@@ -300,19 +314,23 @@ ClickNick connects to it with no window and runs these checks:
 - `csv_round_trip`: ClickNick's Export to CSV must write a cp1252 file, with `°` as the byte
   B0. CLICK imports the file into the same project with Delete Existing. SC_.mdb must then hold
   a row for each address in the file and no other row, and CLICK's nickname export must show
-  `Smoke_Init` with `50°C`.
+  `Smoke_Init` with `50°C`. The comparison is the same in `rungs`. ClickNick's file has no row
+  for the program's addresses, because none of them has a nickname, a comment or a changed
+  setting. CLICK 4.00 was observed to remove their rows from SC_.mdb when it imports the file
+  with Delete Existing.
 - `rung_apply`: the smoke adds a rung to the workspace's `src\plc\main.py`: a contact on X001
   that drives an Out coil on C1. `rung apply` must propose that rung for CLICK's empty main
   program. ClickNick copies the proposal as Review Changes' Copy does, and Copy adds X001 and C1
   to SC_.mdb. CLICK pastes the rungs at rung 1 and saves the project. After ClickNick rebuilds
   the workspace from that save, CLICK's saved program must start with the rung, Review Changes
-  must have nothing left to paste, and `rung apply` must answer `(no changes)`.
+  must have nothing left to paste, and `rung apply` must answer `(no changes)`. It needs an
+  empty main program, so it does not run in `rungs`.
 
 `sync` and `csv_round_trip` write SC_.mdb, so they run after the checks that read the project
 as CLICK made it. They add about 13 s to each project. `result.json` holds the bytes of the
 comment in SC_.mdb and in CLICK's export. `rung_apply` saves the project in CLICK, so it runs
-last. It adds about 6 s to each project. All the checks run on every project, and the whole
-smoke takes about 3 minutes.
+last. It adds about 6 s to each project. `paste` adds about 5 s to `rungs`. Each project takes
+about 30 s, and the whole smoke takes about 3.5 minutes.
 
 The smoke writes its results into `--out` (by default `tmp\smoke\<date and time>`). Each
 project gets a folder of its own. It holds the runner's `--out` folder, `runner\`, and a

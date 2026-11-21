@@ -2941,8 +2941,8 @@ class Run:
         The runner waits until the main window is alone, puts *payload* on the clipboard,
         posts Paste and waits until CLICK has pasted (``_pasted``). It records the status bar
         in the result's ``status_bar`` under the labels *before* and *after*, and with
-        ``--record`` it dumps CLICK's windows under the label *after*. Return how the wait saw the paste end. ``paste`` calls this method, and so can
-        ``on_new_project``.
+        ``--record`` it dumps CLICK's windows under the label *after*. Return how the wait saw
+        the paste end. ``paste`` calls this method, and so can ``on_new_project``.
         """
         self.wait("the main window alone", [], self.only_main)
         before_bar = self.status_bar(before)

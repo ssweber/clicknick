@@ -1,30 +1,46 @@
-"""Check ClickNick against new projects that the CLICK runner makes, one CPU at a time.
+"""Check ClickNick against new projects that the CLICK runner makes, one project at a time.
 
-    uv run python devtools/click_smoke.py [--out DIR] [--cpu MODEL|none ...] [--timeout S]
+    uv run python devtools/click_smoke.py [--out DIR] [--cpu MODEL|none|rungs ...] [--timeout S]
 
-For each CPU, the smoke runs the runner's ``new`` mode (click_runner.py). CLICK makes a project
-for that CPU through its new-project wizard and saves it. For ``none``, the runner cancels the
-wizard's choice of CPU, and CLICK saves a project with no CPU. CLICK never connects to a PLC.
-While CLICK still has the project open, the runner calls ``on_new_project``. There ClickNick
-connects to that CLICK with no window, the way the app does after you pick the window:
+For each project, the smoke runs the runner's ``new`` mode (click_runner.py). CLICK makes a
+project for a CPU through its new-project wizard and saves it. For ``none``, the runner cancels
+the wizard's choice of CPU, and CLICK saves a project with no CPU. For ``rungs``
+(``PROGRAM_PROJECT``), CLICK makes a project for ``PROGRAM_CPU``. CLICK never connects to a
+PLC. While CLICK still has the project open, the runner calls ``on_new_project``. There
+ClickNick connects to that CLICK with no window, the way the app does after you pick the
+window:
 
 - ``ClickConnection(pid, hwnd, filename)`` and a ``ConnectionSession``;
 - an ``AddressStore`` that reads the project's SC_.mdb (``MdbDataSource``);
 - the workspace build (``ConnectionSession.start_analysis``);
 - a ``SimulationSession`` from ``ConnectionSession.ensure_simulation``.
 
-Then the smoke runs the checks in ``CHECKS`` in order:
+Then the smoke runs the checks in ``CHECKS`` in order. ``project_checks`` picks the checks for
+each project:
 
+- ``paste``: only in ``rungs``, before ClickNick reads the project. CLICK's main program is
+  empty. The check copies the rungs of ``PROGRAM_CSV`` as Review Changes' Copy does, and Copy
+  adds their addresses to SC_.mdb. SC_.mdb must then hold a row for each address that
+  laddercodec finds in the copied bytes. The runner pastes the rungs at rung 1 and saves the
+  project. The main program that laddercodec decodes from CLICK's saved Scr*.tmp must hold the
+  same rungs. In ``rungs``, every other check needs this one;
 - ``load``: the store reads SC_.mdb;
-- ``build``: the workspace builds, with no warning, into CLICK's temp folder;
+- ``build``: the workspace builds, with no warning, into CLICK's temp folder. In ``rungs``, the
+  workspace's csv/main.csv must hold the rungs that CLICK saved;
 - ``layout``: ``SimulationSession.layout`` has no error, and its cards are what
   ``read_panel_layout`` reads in the project's Project.ini. Its CPU card must be the project's
   CPU. For ``none``, the layout must have no CPU card. The Simulator then shows its No CPU card.
   For a project in ``click_smoke_layouts.json``, the cards must also be the cards recorded
-  there;
-- ``simulation``: the simulation reaches READY, and it scans in RUN;
+  there. In ``rungs``, the check passes the program's X and Y addresses to
+  ``read_panel_layout``, and the simulation must list each of them as used. ``PROGRAM_CPU``
+  has all of them, so the cards must still be the recorded cards, with no placeholder card;
+- ``simulation``: the simulation reaches READY, and it scans in RUN. In ``rungs``, the
+  simulation must read each X and Y address of the program over Modbus. ``PROGRAM_OUTPUT``
+  must be off. After the check turns ``PROGRAM_INPUT`` on, the program must turn
+  ``PROGRAM_OUTPUT`` on;
 - ``check_program``: Check Program runs both ways, as ``analysis.run_validation()`` and as
-  ``clicknick-cli check`` through ``dispatch()``, and both report the same findings;
+  ``clicknick-cli check`` through ``dispatch()``, and both report the same findings. In
+  ``rungs``, both must report ``PROGRAM_FINDING`` on ``PROGRAM_FINDING_ADDRESS``;
 - ``sync``: the check sets DS100's nickname to ``Smoke_Init`` and its comment to ``50→60``
   through an edit session. Sync (``save_all_changes``) must refuse, because cp1252 has no
   ``→``. SC_.mdb must stay as it was. Then the check changes the comment to ``50°C``, and Sync
@@ -37,8 +53,9 @@ Then the smoke runs the checks in ``CHECKS`` in order:
   nicknames. The file must be cp1252, with ``°`` as the byte B0. The runner imports the file
   into the same CLICK (``import_one``). The import picks Delete Existing, so CLICK first
   empties its address table. The import must change SC_.mdb, and SC_.mdb must then hold a
-  row for each address in the file and no other row. CLICK's export after the import must show
-  ``Smoke_Init`` with ``50°C``;
+  row for each address in the file and no other row. In ``rungs`` too, SC_.mdb must then hold
+  no row for an address of the program that the file lacks. CLICK's export after the import
+  must show ``Smoke_Init`` with ``50°C``;
 - ``rung_apply``: the check adds a rung to the workspace's main.py: a contact on X001 that
   drives an Out coil on C1. ``rung apply`` through ``dispatch()`` must propose that rung for
   CLICK's empty main program. The check copies the proposal as Review Changes' Copy does.
@@ -46,8 +63,9 @@ Then the smoke runs the checks in ``CHECKS`` in order:
   address that laddercodec finds in the copied bytes. The runner pastes the rungs at rung 1
   (``paste_payload``) and saves the project (``save_as``). The check waits until ScrWatcher
   has counted the save and the build after the save has finished. Then laddercodec decodes
-  CLICK's saved Scr*.tmp. Its main program must start with the rung. Review Changes must have nothing left to paste, and
-  ``rung apply`` must answer "(no changes)".
+  CLICK's saved Scr*.tmp. Its main program must start with the rung. Review Changes must have
+  nothing left to paste, and ``rung apply`` must answer "(no changes)". The check needs an
+  empty main program, so it does not run in ``rungs``.
 
 ``sync`` and ``csv_round_trip`` write SC_.mdb, so they run after the checks that read the
 project as CLICK made it. They run on every project. In a live run on 2026-11-20 they took
@@ -57,10 +75,11 @@ the same CLICK, because a second project would need a second runner run and a se
 CLICK empties its table before the import. So the ``Smoke_Init`` row in CLICK's export after
 the import comes from ClickNick's file.
 
-``rung_apply`` saves the project in CLICK, so it runs last. It also runs on every project. In
-a live run on 2026-11-21 it took about 6 s for each project, so the whole smoke took about 35 s
-longer. In return, the smoke pastes into and saves the project of each CPU, and the project
-with no CPU.
+``rung_apply`` saves the project in CLICK, so it runs last. It runs on every project except
+``rungs``. In a live run on 2026-11-21 it took about 6 s for each project, so the whole smoke
+took about 35 s longer. In return, the smoke pastes into and saves the project of each CPU,
+and the project with no CPU. In the same run, ``paste`` took about 5 s, and ``rungs`` took
+about 32 s, as long as each of the other projects.
 
 A check passes or fails, and it says why. A check that needs another check runs only when that
 one passed. To add a check, add a ``CheckSpec`` to ``CHECKS``. Its function receives the
@@ -83,12 +102,14 @@ ClickNick runs in the runner's process. A check can then call the runner's metho
 while ClickNick's build and simulation threads keep running. ``Scheduler`` stands in for the Tk
 root. Whenever the smoke waits, ``Scheduler`` runs the callbacks that ClickNick scheduled.
 
-Each project gets a folder ``DIR/<model>/``, or ``DIR/none/``:
+Each project gets a folder ``DIR/<model>/``, ``DIR/none/`` or ``DIR/rungs/``:
 
 - ``runner/``: the runner's ``--out`` folder, with its result.json and run.log. Its
   ``mdb/`` holds the copy of SC_.mdb that the runner made after the import in ``csv_round_trip``;
 - ``mdb/``: the copies of SC_.mdb that ``sync`` read, before and after each Sync, and the
-  copy that ``rung_apply`` read before the paste;
+  copies that ``paste`` and ``rung_apply`` read before their paste;
+- ``paste/``: the project that ``paste`` saved in CLICK, as ``program.ckp``, and its Scr*.tmp
+  files and Project.ini, in ``click/``;
 - ``sync/`` and ``csv_import/``: CLICK's nickname export after the Sync and after the import,
   as ``click/nicknames.csv`` and its copy ``export.csv``;
 - ``csv/clicknick.csv``: the file that ``csv_round_trip`` wrote with Export to CSV;
@@ -99,6 +120,8 @@ Each project gets a folder ``DIR/<model>/``, or ``DIR/none/``:
 
 The project's result.json holds these fields:
 
+- ``project``: the project's name;
+- ``cpu``: the CPU that the runner picked, or ``none``;
 - ``status``: ``pass`` or ``fail``;
 - ``problems``: why the project failed, one sentence each;
 - ``runner``: the runner's status, reason, step, timings and ``scr_before_save``;
@@ -152,6 +175,7 @@ import io
 import itertools
 import json
 import os
+import re
 import shutil
 import socket
 import sys
@@ -160,7 +184,7 @@ import time
 import traceback
 import warnings
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -176,9 +200,63 @@ if TYPE_CHECKING:
     from clicknick.ladder.program import PrepareResult
     from clicknick.simulation_session import SimulationSession
 
-# The projects that the smoke makes, in order. Each is a CPU in cr.CPU_MODELS, or cr.NO_CPU for
-# a project with no CPU
-PROJECTS = ("C0-00DD1-D", "C0-02DD1-D", "C0-11DD1E-D", "C0-12DD1E-2-D", "C2-03CPU", cr.NO_CPU)
+# The name of the project that holds a program. The runner makes a new project for PROGRAM_CPU,
+# and the paste check pastes PROGRAM_CSV into its main program before the other checks
+PROGRAM_PROJECT = "rungs"
+# The CPU's built-in I/O is X001-X008 and Y001-Y006, so it has every X and Y that the program
+# uses
+PROGRAM_CPU = "C0-11DD1E-D"
+# Nine of the 23 rungs of tests/click/ladder_realistic_output/main.csv in pyrung (commit
+# 98b0bfb), copied as they are: rungs 1 to 6 and 21 to 23. They hold contacts, edge contacts,
+# latch and reset coils, an on-delay and an off-delay timer, an up and a down counter, a
+# compare, an Out coil and END. Rungs 7 to 13 use ranges, a pointer, text or drums. No check
+# has shown that Copy adds every address of a range or a drum to SC_.mdb, and rung 7 also uses
+# DS100, which the sync check needs unused. Rung 17 calls a subroutine, and a paste into the
+# main program cannot make the subroutine. Rungs 19 and 20 send and receive over Modbus.
+# Rungs 14 to 16 (a For loop, its Out coil on Y002 and Next) and rung 18 (four Copy
+# instructions) have none of these problems. They are left out because no check reads what
+# they add, and each new instruction is one more thing that the paste could get wrong
+PROGRAM_CSV = Path(__file__).resolve().parent / "click_smoke_rungs.csv"
+# The addresses that laddercodec's addresses() finds in the program's clipboard data
+PROGRAM_ADDRESSES = (
+    "X001",
+    "Y001",
+    "X002",
+    "X003",
+    "X007",
+    "T1",
+    "TD1",
+    "X006",
+    "T2",
+    "TD2",
+    "CT1",
+    "CTD1",
+    "CT2",
+    "CTD2",
+    "X004",
+    "Y002",
+    "C1",
+    "DS3",
+)
+# The simulation check turns this input on in RUN. The program's first rung must then latch
+# the output
+PROGRAM_INPUT = "X001"
+PROGRAM_OUTPUT = "Y001"
+# Rungs 7 and 8 of PROGRAM_CSV both drive Y002 with an Out coil, so Check Program must report
+# this finding on that address
+PROGRAM_FINDING = "COIL_CONFLICTING_OUTPUT"
+PROGRAM_FINDING_ADDRESS = "Y002"
+# The projects that the smoke makes, in order. Each is a CPU in cr.CPU_MODELS, cr.NO_CPU for a
+# project with no CPU, or PROGRAM_PROJECT
+PROJECTS = (
+    "C0-00DD1-D",
+    "C0-02DD1-D",
+    "C0-11DD1E-D",
+    "C0-12DD1E-2-D",
+    "C2-03CPU",
+    cr.NO_CPU,
+    PROGRAM_PROJECT,
+)
 # The port that the simulation's Modbus server listens on, with ClickNick's default settings
 MODBUS_PORT = 502
 # The cards that read_panel_layout read in the Project.ini that CLICK 4.00 wrote for each CPU,
@@ -362,6 +440,21 @@ class Scheduler:
         return [thread.name for thread in self.threads if thread.is_alive()]
 
 
+@dataclass(frozen=True)
+class PastedProgram:
+    """The rungs that the paste check pasted into CLICK's main program and that CLICK saved."""
+
+    # The rungs as the rows of laddercodec's CSV
+    rows: list[list[str]]
+    # The addresses that laddercodec found in the clipboard data
+    addresses: tuple[str, ...]
+
+    @property
+    def io(self) -> tuple[str, ...]:
+        """The X and Y addresses among ``addresses``. XD and YD are not among them."""
+        return tuple(address for address in self.addresses if re.fullmatch(r"[XY]\d+", address))
+
+
 class Project:
     """ClickNick connected to the project that the runner's ``new`` made, with no window.
 
@@ -378,6 +471,7 @@ class Project:
         *,
         timeout: float = DEFAULT_TIMEOUT,
         save_timeout: float | None = None,
+        program: Path | None = None,
     ) -> None:
         self.run = run
         self.new = new
@@ -385,8 +479,12 @@ class Project:
         self.scheduler = scheduler
         self.timeout = timeout
         # How long a check waits for ScrWatcher to count a save in CLICK and for the build
-        # after it. It is *timeout* unless the caller gives its own
+        # after it. Unless the caller passes save_timeout, the wait uses *timeout*.
         self.save_timeout = timeout if save_timeout is None else save_timeout
+        # The ladder CSV that the paste check pastes before the other checks, or None
+        self.program = program
+        # What the paste check pasted, once CLICK has saved it
+        self.pasted: PastedProgram | None = None
         self.store: AddressStore | None = None
         self._session: ConnectionSession | None = None
 
@@ -432,7 +530,9 @@ class Project:
         from clicknick.ladder.program import prepare_rungs_load
         from clicknick.utils.mdb_shared import find_click_database
 
-        hwnd = self.session.click.hwnd
+        # The paste check copies before the session exists. ``new.main`` is the window that the
+        # session connects to
+        hwnd = self.new.main
         mdb = find_click_database(click_hwnd=hwnd)
         return prepare_rungs_load(
             list(rungs), click_v4=is_click_v4(hwnd), mdb_path=Path(mdb) if mdb else None
@@ -487,6 +587,27 @@ class CheckSpec:
     run: Callable[[Project, dict[str, Any]], str]
     # The checks that must pass before this one runs
     needs: tuple[str, ...] = ()
+    # The projects that the check runs on: "all", "program" for only the project that holds a
+    # program (``Project.program``), or "empty" for only the projects that CLICK made empty
+    projects: str = "all"
+
+
+def project_checks(checks: Sequence[CheckSpec], *, program: bool) -> tuple[CheckSpec, ...]:
+    """Return the specs of *checks* that run on a project, in order.
+
+    With *program* True, the project holds a program, and the specs for "program" and "all"
+    run. Each of the other specs then also needs every "program" spec. If the paste fails,
+    CLICK's program is not the program that those checks expect.
+    With *program* False, the specs for "empty" and "all" run.
+    """
+    if not program:
+        return tuple(spec for spec in checks if spec.projects in ("all", "empty"))
+    first = tuple(spec.name for spec in checks if spec.projects == "program")
+    return tuple(
+        spec if spec.projects == "program" else replace(spec, needs=(*first, *spec.needs))
+        for spec in checks
+        if spec.projects in ("all", "program")
+    )
 
 
 def check_load(project: Project, details: dict[str, Any]) -> str:
@@ -539,7 +660,32 @@ def check_build(project: Project, details: dict[str, Any]) -> str:
         raise CheckFailed(f"The workspace has no {main}.")
     if analysis.build_warning:
         raise CheckFailed(f"The build warned: {analysis.build_warning}")
-    return f"Built the workspace in {project_dir}."
+    if project.pasted is None:
+        return f"Built the workspace in {project_dir}."
+    built = built_main_program(project_dir / "csv")
+    details["main_csv"] = built
+    if built != project.pasted.rows:
+        raise CheckFailed(
+            f"The workspace's csv/{MAIN_CSV} is not the program that CLICK saved. The details "
+            "hold it as main_csv, and the paste check's details hold CLICK's save."
+        )
+    return (
+        f"Built the workspace in {project_dir}. Its csv/{MAIN_CSV} holds the "
+        f"{len(built)} rows that CLICK saved."
+    )
+
+
+def built_main_program(csv_dir: Path) -> list[list[str]] | None:
+    """Return the main program in the workspace's *csv_dir* as laddercodec's CSV rows.
+
+    Return None when the folder has no main program or laddercodec cannot read it.
+    """
+    from clicknick.services.rung_diff import load_bundle
+
+    for program in load_bundle(csv_dir):
+        if program.name == MAIN_CSV:
+            return None if program.rungs is None else rung_rows(program.rungs)
+    return None
 
 
 def _cards(layout: Any) -> list[dict[str, Any]]:
@@ -566,8 +712,13 @@ def check_layout(project: Project, details: dict[str, Any]) -> str:
     """Compare the simulation's panel layout with what ``read_panel_layout`` reads.
 
     The program of a new project uses no I/O, so ``read_panel_layout`` reads the Project.ini
-    with no used I/O. In a project with no CPU, the layout must have no CPU card. The Simulator
-    then shows its No CPU card in its place.
+    with no used I/O. In the project that holds a program, it reads the Project.ini with the X
+    and Y addresses that the paste check found in the program. For a used address that no
+    module has, the layout gets a placeholder card, and its cards then differ from the cards
+    that ``click_smoke_layouts.json`` records for the CPU. ``PROGRAM_CPU`` has every one of
+    them, so the cards stay the same if the Simulator finds no used I/O. So the simulation must
+    also list each of them as used. In a project with no CPU, the layout must have no CPU card.
+    The Simulator then shows its No CPU card in its place.
     """
     from clicknick.services.sim_hardware import read_panel_layout
 
@@ -582,7 +733,20 @@ def check_layout(project: Project, details: dict[str, Any]) -> str:
         raise CheckFailed(f"The simulation could not read the hardware: {error}")
     if layout is None:
         raise CheckFailed("The simulation has no layout.")
-    expected = _cards(read_panel_layout(project.session.project_ini))
+    used = project.pasted.io if project.pasted is not None else ()
+    details["program_io"] = list(used)
+    if used:
+        # SimulationSession has no public way to give its used I/O. refresh_layout passes this
+        # set to the layout reader, so it is the set that the Simulator's cards come from
+        simulator_used = simulation._used_io()  # noqa: SLF001
+        details["simulator_used_io"] = sorted(simulator_used)
+        unseen = [address for address in used if address not in simulator_used]
+        if unseen:
+            raise CheckFailed(
+                f"The program uses {', '.join(unseen)}, but the simulation does not list them as "
+                "used."
+            )
+    expected = _cards(read_panel_layout(project.session.project_ini, used))
     if cards != expected:
         details["read_panel_layout"] = expected
         raise CheckFailed("The simulation's cards differ from what read_panel_layout reads.")
@@ -647,7 +811,56 @@ def check_simulation(project: Project, details: dict[str, Any]) -> str:
     )
     seconds = round(time.monotonic() - began, 3)
     details.update(mode=simulation.mode, first_scan=first, last_scan=last, run_seconds=seconds)
-    return f"READY. In RUN it scanned from scan {first} to scan {last} in {seconds:g} s."
+    text = f"READY. In RUN it scanned from scan {first} to scan {last} in {seconds:g} s."
+    if project.pasted is None:
+        return text
+    return f"{text} {drive_program(project, simulation, project.pasted, details)}"
+
+
+def drive_program(
+    project: Project, simulation: SimulationSession, pasted: PastedProgram, details: dict[str, Any]
+) -> str:
+    """Turn ``PROGRAM_INPUT`` on in the simulation, and wait until ``PROGRAM_OUTPUT`` is on.
+
+    The simulation polls the program's X and Y addresses over Modbus, as the Simulator's panel
+    does. The check waits until it has read each of them once. ``PROGRAM_OUTPUT`` must be off
+    then, and ``PROGRAM_INPUT``'s switch turns it on through the program's first rung. Return
+    the text for a pass.
+
+    Raises:
+        CheckFailed: Modbus never answers for an address, ``PROGRAM_OUTPUT`` is already on, or
+            it does not turn on.
+    """
+    io = pasted.io
+
+    def read_all() -> dict[str, Any] | None:
+        values = simulation.values
+        return {address: values[address] for address in io} if set(io) <= set(values) else None
+
+    def output_on() -> dict[str, Any] | None:
+        values = simulation.values
+        return values if values.get(PROGRAM_OUTPUT) else None
+
+    simulation.watch(project, io)
+    try:
+        before = project.scheduler.wait(f"Modbus values for {', '.join(io)}", read_all, RUN_WAIT)
+        details["io_before"] = before
+        if before[PROGRAM_OUTPUT]:
+            raise CheckFailed(
+                f"{PROGRAM_OUTPUT} is on before the check turns {PROGRAM_INPUT} on, so the check "
+                "cannot show that the program drives it."
+            )
+        simulation.toggle_switch(PROGRAM_INPUT)
+        after = project.scheduler.wait(
+            f"{PROGRAM_OUTPUT} to turn on after {PROGRAM_INPUT}", output_on, RUN_WAIT
+        )
+        details["io_after"] = {address: after.get(address) for address in io}
+    finally:
+        simulation.unwatch(project)
+    return (
+        f"Modbus read the program's {len(io)} X and Y addresses. {PROGRAM_INPUT} on turned "
+        f"{PROGRAM_OUTPUT} on."
+    )
 
 
 def check_program(project: Project, details: dict[str, Any]) -> str:
@@ -656,8 +869,10 @@ def check_program(project: Project, details: dict[str, Any]) -> str:
     The CLI's text holds notes and a status line around the report, so the check passes when
     the CLI's text contains the app's report.
 
-    A new project has no rungs. So this check shows only that both ways run and print the same
-    report. It does not show that both ways report a finding the same way.
+    A new project has no rungs, so there the check shows only that both ways run and print the
+    same report. In the project that holds a program, both ways check that program, and both
+    reports must hold ``PROGRAM_FINDING`` on ``PROGRAM_FINDING_ADDRESS``. The check keeps both
+    reports in its details and judges no other finding.
     """
     from clicknick.live.dispatch import DispatchContext, dispatch
     from clicknick.services.program_check import format_validation_report
@@ -678,6 +893,13 @@ def check_program(project: Project, details: dict[str, Any]) -> str:
     details["cli"] = cli_text
     if app_text not in cli_text:
         raise CheckFailed("The CLI's check does not report what Check Program reports.")
+    if project.pasted is not None:
+        for way, text in (("Check Program", app_text), ("The CLI's check", cli_text)):
+            if PROGRAM_FINDING not in text or PROGRAM_FINDING_ADDRESS not in text:
+                raise CheckFailed(
+                    f"{way} does not report {PROGRAM_FINDING} on {PROGRAM_FINDING_ADDRESS}, but "
+                    f"two rungs of the program drive {PROGRAM_FINDING_ADDRESS} with an Out coil."
+                )
     return f"Both report: {app_text.splitlines()[0]}"
 
 
@@ -862,6 +1084,12 @@ def check_csv_round_trip(project: Project, details: dict[str, Any]) -> str:
     then hold a row for each address in the file and no other row. CLICK's own export after
     the import must show the row that the sync check wrote.
 
+    The comparison holds in the project that holds a program too. ClickNick's file holds only
+    the rows with content (``AddressRow.has_content``), so it lacks the addresses of the
+    program that have none. Before the import, SC_.mdb holds rows for them. In a live run on
+    2026-11-21, CLICK's Delete Existing removed those rows, and CLICK's own nickname export did
+    not list them either.
+
     The check compares the file's addresses with SC_.mdb, not with CLICK's export. The export
     also lists each system address that has a built-in nickname, and SC_.mdb has no row for
     most of them.
@@ -912,6 +1140,8 @@ def check_csv_round_trip(project: Project, details: dict[str, Any]) -> str:
     }
     stored = set(project.run.read_rows(Path(entry["mdb"])))
     details["addresses"] = {"file": sorted(in_file), "mdb": sorted(stored)}
+    if project.pasted is not None:
+        details["addresses"]["program"] = sorted(project.pasted.addresses)
     if stored != in_file:
         raise CheckFailed(
             f"After the import, SC_.mdb lacks {sorted(in_file - stored)} from ClickNick's CSV "
@@ -977,6 +1207,84 @@ def saved_main_program(click_dir: Path) -> tuple[list[Any], list[str]]:
     if rungs is None:
         raise CheckFailed(f"No Scr*.tmp file in {click_dir} holds the main program.")
     return rungs, [f"{warning.category.__name__}: {warning.message}" for warning in caught]
+
+
+def check_paste(project: Project, details: dict[str, Any]) -> str:
+    """Paste the project's program into CLICK's empty main program, and save the project.
+
+    The check reads the ladder CSV ``Project.program`` and copies its rungs as Review Changes'
+    Copy does (``Project.prepare_paste``). Copy adds the rungs' addresses to SC_.mdb. The
+    addresses that laddercodec's ``addresses`` finds in the copied bytes must be
+    ``PROGRAM_ADDRESSES``, and SC_.mdb must then hold a row for each of them. CLICK drops a
+    pasted operand whose address SC_.mdb lacks.
+
+    The runner pastes the rungs at rung 1 and saves the project as ``paste/program.ckp``. The
+    main program that laddercodec decodes from the saved Scr*.tmp must hold the same rungs as
+    the CSV. The check runs before ClickNick reads the project, so no build and no ScrWatcher
+    sees the save.
+    """
+    from laddercodec import addresses, read_csv
+
+    assert project.program is not None
+    rungs = list(read_csv(project.program))
+    rows = rung_rows(rungs)
+    details["csv"] = project.program
+    details["rows"] = rows
+    prepared = project.prepare_paste(rungs)
+    needed = addresses(prepared.payload)
+    details["copy"] = {
+        "rungs": prepared.rung_count,
+        "clicknick_addresses": prepared.addresses,
+        "laddercodec_addresses": needed,
+        "inserted": prepared.addresses_inserted,
+        "mdb_error": prepared.mdb_error,
+    }
+    if prepared.mdb_error:
+        raise CheckFailed(
+            f"Copy could not add the rungs' addresses to SC_.mdb: {prepared.mdb_error}"
+        )
+    if sorted(needed) != sorted(PROGRAM_ADDRESSES):
+        raise CheckFailed(
+            f"laddercodec finds {', '.join(needed) or 'no address'} in the copied rungs, not "
+            f"{', '.join(PROGRAM_ADDRESSES)}."
+        )
+    _copy, table = project.read_database("before_program_paste")
+    missing = [address for address in needed if address not in table]
+    if missing:
+        raise CheckFailed(
+            f"SC_.mdb has no row for {', '.join(missing)} after Copy. CLICK would drop those "
+            "operands from the paste."
+        )
+
+    folder = project.folder / "paste"
+    folder.mkdir()
+    ckp = folder / "program.ckp"
+
+    def paste_and_save() -> str:
+        run, temp = project.run, project.new.temp
+        how = run.paste_payload(
+            prepared.payload, prepared.rung_count, before="before_program", after="program_pasted"
+        )
+        run.save_as(ckp, temp, prefix="program_")
+        run.copy_temp(temp, folder / "click")
+        return how
+
+    details["paste"] = project.in_click(paste_and_save)
+    # CLICK's window names the saved file now, so the session that the next checks make must too
+    project.new = replace(project.new, ckp=ckp)
+    saved, found = saved_main_program(folder / "click")
+    details["click_saved"] = rung_rows(saved)
+    details["decode_warnings"] = found
+    if details["click_saved"] != rows:
+        raise CheckFailed(
+            f"The main program in CLICK's save is not the program in {project.program.name}. "
+            "The check's details hold both, as click_saved and rows."
+        )
+    project.pasted = PastedProgram(rows, tuple(needed))
+    return (
+        f"CLICK pasted the {len(rungs)} rungs of {project.program.name} at rung 1 and saved "
+        f"them. SC_.mdb held their {len(needed)} addresses before the paste."
+    )
 
 
 def check_rung_apply(project: Project, details: dict[str, Any]) -> str:
@@ -1119,7 +1427,10 @@ def check_rung_apply(project: Project, details: dict[str, Any]) -> str:
             numbers = ", ".join(map(str, after.removed))
             work.append(f"CLICK's rung(s) {numbers} to delete")
         if not work:
-            work.append("CLICK's rungs that it cannot read to paste again")
+            raise CheckFailed(
+                "After CLICK's save and the build, ClickNick cannot read CLICK's copy of the main "
+                "program, so Review Changes would paste it whole again."
+            )
         raise CheckFailed(
             f"After CLICK's save and the build, Review Changes still has {' and '.join(work)} "
             "in the main program."
@@ -1138,6 +1449,8 @@ def check_rung_apply(project: Project, details: dict[str, Any]) -> str:
 
 
 CHECKS: tuple[CheckSpec, ...] = (
+    # The checks below must see the program that CLICK saved, so the paste runs first
+    CheckSpec("paste", check_paste, projects="program"),
     CheckSpec("load", check_load),
     CheckSpec("build", check_build, needs=("load",)),
     CheckSpec("layout", check_layout),
@@ -1147,11 +1460,11 @@ CHECKS: tuple[CheckSpec, ...] = (
     # made it, so these two run after them
     CheckSpec("sync", check_sync, needs=("load",)),
     # After the import, SC_.mdb must hold a row for each address in ClickNick's CSV and no
-    # other row. With a rung in the program, SC_.mdb can hold rows for the rung's addresses
-    # that the file lacks. So this check runs before rung_apply adds the rung
+    # other row. The check's docstring says why that holds in a project with rungs too
     CheckSpec("csv_round_trip", check_csv_round_trip, needs=("sync",)),
-    # rung_apply pastes a rung and saves the project in CLICK, so it runs last
-    CheckSpec("rung_apply", check_rung_apply, needs=("build",)),
+    # rung_apply pastes a rung and saves the project in CLICK, so it runs last. Its proof
+    # needs a main program with no rungs, so it runs only on the projects that CLICK made empty
+    CheckSpec("rung_apply", check_rung_apply, needs=("build",), projects="empty"),
 )
 
 
@@ -1222,22 +1535,33 @@ def _json(value: object) -> str:
     return json.dumps(value, indent=2, default=str, ensure_ascii=False) + "\n"
 
 
+def project_cpu(name: str) -> str:
+    """Return the CPU that the runner picks for the project *name*, or cr.NO_CPU."""
+    return PROGRAM_CPU if name == PROGRAM_PROJECT else name
+
+
 def smoke_project(
-    model: str,
+    name: str,
     folder: Path,
     *,
     checks: Sequence[CheckSpec] = CHECKS,
     runner: RunNew = run_new,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> dict[str, Any]:
-    """Make the project for *model* with the runner, run *checks* on it, and return the result.
+    """Make the project *name* with the runner, run *checks* on it, and return the result.
 
-    The function writes the result to ``folder/result.json`` and returns it.
+    *name* is a CPU model, cr.NO_CPU or PROGRAM_PROJECT. For PROGRAM_PROJECT, the runner makes
+    a project for PROGRAM_CPU, and the project's ``program`` is PROGRAM_CSV. The checks that
+    run are the ones that ``project_checks`` picks from *checks*. The function writes the
+    result to ``folder/result.json`` and returns it.
     """
+    program = PROGRAM_CSV if name == PROGRAM_PROJECT else None
+    checks = project_checks(checks, program=program is not None)
     folder.mkdir(parents=True)
     began = time.monotonic()
     result: dict[str, Any] = {
-        "project": model,
+        "project": name,
+        "cpu": project_cpu(name),
         "status": None,
         "problems": [],
         "elapsed": None,
@@ -1252,7 +1576,7 @@ def smoke_project(
 
     def on_new_project(run: cr.Run, new: cr.NewProject) -> None:
         scheduler = Scheduler()
-        project = Project(run, new, folder, scheduler, timeout=timeout)
+        project = Project(run, new, folder, scheduler, timeout=timeout, program=program)
         try:
             run_checks(project, checks, result["checks"], write)
         finally:
@@ -1261,7 +1585,7 @@ def smoke_project(
             write()
 
     write()
-    settings = cr.Settings("new", folder / "runner", cpu=model)
+    settings = cr.Settings("new", folder / "runner", cpu=result["cpu"])
     runner_result = runner(settings, on_new_project)
     result["runner"] = {
         "status": runner_result.get("status"),
@@ -1342,9 +1666,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cpu",
         action="append",
-        choices=(*cr.CPU_MODELS, cr.NO_CPU),
-        metavar="MODEL|none",
-        help=f"make a project for this CPU only, or {cr.NO_CPU} for a project with no CPU. "
+        choices=(*cr.CPU_MODELS, cr.NO_CPU, PROGRAM_PROJECT),
+        metavar=f"MODEL|{cr.NO_CPU}|{PROGRAM_PROJECT}",
+        help=f"make a project for this CPU only, {cr.NO_CPU} for a project with no CPU, or "
+        f"{PROGRAM_PROJECT} for a {PROGRAM_CPU} project with the rungs of {PROGRAM_CSV.name}. "
         f"Repeat it for more projects (default: {', '.join(PROJECTS)})",
     )
     parser.add_argument(
