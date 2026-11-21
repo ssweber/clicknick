@@ -447,6 +447,8 @@ class FakeClick(cd.Desktop):
         self.copy_payload: bytes | None = None  # None makes Edit > Copy use RUNG_CSV's payload
         self.commands: list[str] = []
         self.keys: list[tuple[str, int | str]] = []
+        # The keys posted to a top-level window: (class, key)
+        self.window_keys: list[tuple[str, int]] = []
         self.pressed: list[str] = []
         self.typed: dict[int, str] = {}
         self.events: list[str] = []
@@ -648,6 +650,14 @@ class FakeClick(cd.Desktop):
     def _show_startup(self) -> None:
         assert self.main is not None
         startup = self._window("TfrmStartup", "Startup", self.main.hwnd)
+
+        def closed() -> None:
+            # Closing Startup leaves the new project open, offline, with the main window enabled
+            self._drop(startup)
+            assert self.main is not None
+            self.main.enabled = True
+
+        startup.on_close = lambda: self._later("startup_closed", closed)
         group = self._control(startup, "TGroupBox", "Select an Operation", 0)
         # CLICK lists the three buttons in this order: middle, right, left
         lefts = {"middle": 891, "right": 1035, "left": 747}
@@ -2089,6 +2099,14 @@ class FakeClick(cd.Desktop):
             self.editor_keys(vk)
         return True
 
+    def post_key(self, hwnd: int, vk: int) -> None:
+        self._message("WM_KEYDOWN")
+        window = self.wins[hwnd]
+        self.window_keys.append((window.cls, vk))
+        # Escape closes a dialog, as its Cancel does
+        if vk == 0x1B and window.on_close is not None:
+            window.on_close()
+
     def send_chars(self, hwnd: int, text: str) -> bool:
         if not self._message("WM_CHAR"):
             return False
@@ -2771,6 +2789,8 @@ def test_record_dumps_each_step_and_ends_click(tmp_path, setup, capsys):
     assert code == cr.EXIT_OK, result["reason"]
     assert fake.commands == ["Disconnect"]
     assert not fake.connected and fake.terminated and not fake.saved
+    # The runner closed the What's New guide by Escape
+    assert fake.window_keys == [("#32770", 0x1B)]
     labels = {p.name.split("-")[1] for p in (out / "record").glob("*.json")}
     assert labels == {
         "launched",
@@ -3560,6 +3580,15 @@ def test_a_paste_shows_by_the_cursor_or_the_steps():
             "a - b.ckp",
         ),
         ("CLICK Programming Software (Version4.00) - rung.ckp (Not Responding)", "rung.ckp"),
+        # CLICK 3.92 and 3.43, as live runs showed them
+        (
+            "CLICK Programming Software (Version3.92) - NewProject7.ckp - [Main Program]",
+            "NewProject7.ckp",
+        ),
+        (
+            "CLICK Programming Software (Version 3.43) - NewProject1.ckp - [Main Program]",
+            "NewProject1.ckp",
+        ),
         ("CLICK Programming Software", None),
     ],
 )
@@ -6802,6 +6831,259 @@ def test_export_nicknames_refuses_an_import_csv_that_is_not_there(tmp_path, setu
     assert fake.pid is None
 
 
+class Writer:
+    """A stand-in for write_mdb that adds DS21 to the fake's SC_.mdb, which holds JSON.
+
+    It records the script and the SC_.mdb that it was given, and how many exports and opens
+    the fake had made by then. With *returncode* other than 0, it writes nothing.
+    """
+
+    def __init__(self, fake: FakeClick, *, returncode: int = 0) -> None:
+        self.fake = fake
+        self.returncode = returncode
+        self.calls: list[tuple[Path, Path, int, int]] = []
+
+    def __call__(self, script: Path, mdb: Path) -> dict:
+        self.calls.append((script, mdb, len(self.fake.exported), len(self.fake.opened)))
+        if self.returncode == 0:
+            table = json.loads(mdb.read_text(encoding="utf-8"))
+            table["DS21"] = {**table["DS20"], "Nickname": "Written", "InitialValue": ""}
+            mdb.write_text(json.dumps(table), encoding="utf-8")
+        return {"returncode": self.returncode, "stdout": "wrote DS21\n", "stderr": ""}
+
+
+def test_export_nicknames_writes_into_sc_mdb_before_the_export(tmp_path, setup):
+    _, exe = setup
+    csv = tmp_path / "nicknames.csv"
+    csv.write_bytes(IMPORT_CSV)
+    script = tmp_path / "write.py"
+    script.write_text("", encoding="utf-8")
+    fake = FakeClick(tmp_path)
+    writer = Writer(fake)
+    rows = Rows()
+    out = tmp_path / "out"
+
+    code, result = run_command(
+        fake,
+        tmp_path,
+        exe,
+        "export-nicknames",
+        "--import",
+        str(csv),
+        "--write",
+        str(script),
+        read_rows=rows,
+        write_mdb=writer,
+    )
+
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.commands == ["Import Nickname", "Export Nickname", "Disconnect"]
+    # The script ran on the CLICK's own SC_.mdb, after the import and before the export
+    mdb = fake.temp_dir(fake.main.hwnd) / "SC_.mdb"
+    assert writer.calls == [(script.resolve(), mdb, 0, 0)]
+    assert result["write"] == {
+        "script": str(script.resolve()),
+        "returncode": 0,
+        "stdout": "wrote DS21\n",
+        "stderr": "",
+    }
+    lines = result["export"]["first_lines"]
+    assert [line.split(",")[0] for line in lines[1:]] == ["DS20", "TXT20", "DS21"]
+    copies = result["mdb_copies"]
+    assert list(copies) == ["before_write", "written", "exported"]
+    assert set(copies["before_write"]["rows"]) == {"DS20", "TXT20"}
+    assert set(copies["written"]["rows"]) == set(copies["exported"]["rows"])
+    assert copies["written"]["rows"]["DS21"]["Nickname"] == "Written"
+    assert list(result["timings"])[-6:] == [
+        "import",
+        "write",
+        "export",
+        "disconnect",
+        "close",
+        "read",
+    ]
+    assert "  stdout: wrote DS21" in (out / "run.log").read_text(encoding="utf-8")
+
+
+def test_export_nicknames_reopen_exports_the_opened_save_again(tmp_path, setup):
+    _, exe = setup
+    csv = tmp_path / "nicknames.csv"
+    csv.write_bytes(IMPORT_CSV)
+    fake = FakeClick(tmp_path)
+    out = tmp_path / "out"
+
+    code, result = run_command(
+        fake, tmp_path, exe, "export-nicknames", "--import", str(csv), "--reopen", read_rows=Rows()
+    )
+
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.commands == [
+        "Import Nickname",
+        "Export Nickname",
+        "Disconnect",
+        "Save Project As",
+        "Open Project",
+        "Export Nickname",
+    ]
+    saved = (out / "saved.ckp").resolve()
+    assert fake.opened == [saved] and result["files"]["ckp"] == str(saved)
+    reopened = (out / "reopened" / "click" / "nicknames.csv").resolve()
+    assert fake.exported == [(out / "click" / "nicknames.csv").resolve(), reopened]
+    assert result["export_reopened"]["written"] == str(reopened)
+    assert (out / "reopened" / "export.csv").read_bytes() == reopened.read_bytes()
+    assert result["files"]["export_reopened"] == str(out / "reopened" / "export.csv")
+    assert result["export_reopened"]["first_lines"] == result["export"]["first_lines"]
+    assert list(result["mdb_copies"]) == ["exported", "saved", "opened"]
+    assert list(result["timings"])[-7:] == [
+        "export",
+        "disconnect",
+        "save",
+        "open",
+        "export_reopened",
+        "close",
+        "read",
+    ]
+    assert not fake.connected and fake.terminated
+
+
+def test_export_nicknames_open_first_writes_into_the_opened_save(tmp_path, setup):
+    _, exe = setup
+    csv = tmp_path / "nicknames.csv"
+    csv.write_bytes(IMPORT_CSV)
+    script = tmp_path / "write.py"
+    script.write_text("", encoding="utf-8")
+    fake = FakeClick(tmp_path)
+    writer = Writer(fake)
+    out = tmp_path / "out"
+
+    code, result = run_command(
+        fake,
+        tmp_path,
+        exe,
+        "export-nicknames",
+        "--import",
+        str(csv),
+        "--open-first",
+        "--write",
+        str(script),
+        "--reopen",
+        read_rows=Rows(),
+        write_mdb=writer,
+    )
+
+    assert code == cr.EXIT_OK, result["reason"]
+    # One Disconnect: the save before the write disconnects, and the one after finds CLICK
+    # disconnected already
+    assert fake.commands == [
+        "Import Nickname",
+        "Disconnect",
+        "Save Project As",
+        "Open Project",
+        "Export Nickname",
+        "Save Project As",
+        "Open Project",
+        "Export Nickname",
+    ]
+    first, saved = (out / "first.ckp").resolve(), (out / "saved.ckp").resolve()
+    assert fake.opened == [first, saved]
+    assert result["files"]["first_ckp"] == str(first) and result["files"]["ckp"] == str(saved)
+    # The script ran once the first save was open, and before the first export
+    assert [call[2:] for call in writer.calls] == [(0, 1)]
+    assert list(result["mdb_copies"]) == [
+        "first_saved",
+        "first_opened",
+        "before_write",
+        "written",
+        "exported",
+        "saved",
+        "opened",
+    ]
+    assert "DS21" in result["mdb_copies"]["opened"]["rows"]
+    assert list(result["timings"])[-11:] == [
+        "import",
+        "disconnect",
+        "first_save",
+        "first_open",
+        "write",
+        "export",
+        "save",
+        "open",
+        "export_reopened",
+        "close",
+        "read",
+    ]
+
+
+def test_export_nicknames_offline_closes_startup_by_escape_and_never_connects(tmp_path, setup):
+    _, exe = setup
+    csv = tmp_path / "nicknames.csv"
+    csv.write_bytes(IMPORT_CSV)
+    fake = FakeClick(tmp_path)
+    code, result = run_command(
+        fake,
+        tmp_path,
+        exe,
+        "export-nicknames",
+        "--offline",
+        "--import",
+        str(csv),
+        "--reopen",
+        read_rows=Rows(),
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    # Escape closed the guide, then Startup
+    assert fake.window_keys == [("#32770", 0x1B), ("TfrmStartup", 0x1B)]
+    assert fake.commands == [
+        "Import Nickname",
+        "Export Nickname",
+        "Save Project As",
+        "Open Project",
+        "Export Nickname",
+    ]
+    assert "Connect to CLICK PLC" not in [w.title for w in fake.wins.values()]
+    assert result["plc"] is None and not fake.connected and fake.terminated
+    assert "disconnect" not in result["timings"]
+
+
+def test_export_nicknames_stops_before_the_export_when_the_write_fails(tmp_path, setup):
+    _, exe = setup
+    script = tmp_path / "write.py"
+    script.write_text("", encoding="utf-8")
+    fake = FakeClick(tmp_path)
+    writer = Writer(fake, returncode=1)
+    out = tmp_path / "out"
+    code, result = run_command(
+        fake, tmp_path, exe, "export-nicknames", "--write", str(script), write_mdb=writer
+    )
+    assert_aborted(fake, out, code, result, "write.py exited with 1")
+    assert result["step"] == "write" and result["write"]["returncode"] == 1
+    assert "Export Nickname" not in fake.commands
+    assert list(result["mdb_copies"]) == ["before_write"]
+
+
+def test_export_nicknames_refuses_a_write_script_that_is_not_there(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    missing = tmp_path / "missing.py"
+    code, result = run_command(fake, tmp_path, exe, "export-nicknames", "--write", str(missing))
+    assert code == cr.EXIT_REFUSED
+    assert result["reason"] == f"no script at {missing} to write into SC_.mdb"
+    assert fake.pid is None
+
+
+def test_write_mdb_runs_the_script_with_the_mdb_path(tmp_path):
+    script = tmp_path / "write.py"
+    script.write_text(
+        "import sys\nprint(sys.argv[1])\nprint('warned', file=sys.stderr)\nsys.exit(3)\n",
+        encoding="utf-8",
+    )
+    mdb = tmp_path / "SC_.mdb"
+    answer = cr._write_mdb(script, mdb)
+    assert answer["returncode"] == 3
+    assert answer["stdout"].strip() == str(mdb)
+    assert answer["stderr"].strip() == "warned"
+
+
 def test_export_facts_of_utf8_with_a_bom():
     facts = cr.export_facts(UTF8_BOM_EXPORT)
     assert facts["size"] == len(UTF8_BOM_EXPORT)
@@ -7790,3 +8072,19 @@ def test_file_new_refuses_a_project_with_no_cpu(tmp_path, setup):
     code, result, _ = run_file_new(fake, tmp_path, exe, "none")
     assert_aborted(fake, tmp_path / "out", code, result, "needs a CPU that the wizard lists")
     assert "New Project" not in fake.commands
+
+
+def test_picker_offline_closes_startup_by_escape_and_never_connects(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    rows = PickerRows()
+    keys = name_keys("X001", "Test")
+    code, result = run_command(
+        fake, tmp_path, exe, "picker", "--offline", *keys, "--ok", read_rows=rows
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    assert fake.window_keys == [("#32770", 0x1B), ("TfrmStartup", 0x1B)]
+    assert fake.commands == ["Address Picker"]
+    assert result["mdb_copies"]["after"]["rows"]["X001"] == {"Nickname": "Test"}
+    assert result["plc"] is None and not fake.connected and fake.terminated
+    assert "disconnect" not in result["timings"]

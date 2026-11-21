@@ -5,11 +5,12 @@
     uv run python devtools/click_runner.py try CASES.json --out DIR [--wire] [--keep]
         [--resume PREV_DIR] [--stop-after N] [--record]
     uv run python devtools/click_runner.py import CSV --out DIR [--each-row] [--record]
-    uv run python devtools/click_runner.py export-nicknames --out DIR [--import CSV] [--record]
+    uv run python devtools/click_runner.py export-nicknames --out DIR [--import CSV]
+        [--offline] [--open-first] [--write SCRIPT] [--reopen] [--record]
     uv run python devtools/click_runner.py reopen --out DIR [--ini-add LINES] [--record]
     uv run python devtools/click_runner.py read-data --out DIR [--record]
     uv run python devtools/click_runner.py picker --out DIR [--key KEY ...] [--ok | --cancel]
-        [--record]
+        [--offline] [--record]
     uv run python devtools/click_runner.py new --cpu MODEL|none --out DIR [--record]
 
 The runner starts its own CLICK. In every mode but ``new``, it connects to the one PLC on the
@@ -204,6 +205,31 @@ in the bytes:
 Live runs on 2026-11-18 confirmed the Save As and the "Export Database" box. Neither run saw
 Windows' question or a progress window. The comment at ``EXPORT_SAVE`` says what each of the
 export's windows rests on.
+
+``export-nicknames --write SCRIPT`` changes SC_.mdb behind CLICK's back, as ClickNick's Sync
+does, and then exports. After the import, the runner runs ``python SCRIPT MDB`` with its own
+Python. MDB is the SC_.mdb in the temp folder of the CLICK that the runner started. The runner
+copies SC_.mdb into ``DIR/mdb/`` before the script (``before_write``), after it (``written``)
+and after the export (``exported``). Each copy waits until the main window is alone and
+SC_.mdb has been unchanged for ``IMPORT_SETTLE``. result.json keeps the script's exit code
+and output under ``write``. The run stops if the script exits with a code other than 0.
+
+``export-nicknames --reopen`` then disconnects CLICK if it is still connected. It saves the
+project as ``DIR/saved.ckp``, opens that file by File > Open Project and exports again. The
+second export writes ``DIR/reopened/click/nicknames.csv``, and the runner copies it to
+``DIR/reopened/export.csv``. result.json keeps it under ``export_reopened``. SC_.mdb is
+copied once the save is done (``saved``) and once the project is open (``opened``). Under
+``mdb_copies``, result.json holds the rows of each copy, read once CLICK has ended.
+
+``export-nicknames --open-first`` does the same save and open before ``--write``, so that the
+script writes into a project that CLICK opened from a file. The save is ``DIR/first.ckp``,
+and the copies of SC_.mdb are ``first_saved`` and ``first_opened``.
+
+``export-nicknames --offline`` and ``picker --offline`` never connect. Once the guide has
+closed, the runner posts Escape to Startup, as a user closes it, and goes on with the new
+project that CLICK opened under Startup. CLICK 3.43 needs this. In live runs on 2026-11-20,
+the Conformance PLC refused 3.43's Connect with PTC-019 ("There is already an active
+session detected with the PLC"), while v4.00 connected to it at once.
 
 ``reopen`` asks what CLICK does with a project's Project.ini. It disconnects, saves the new
 project as ``DIR/first.ckp``, adds the ASCII lines of ``--ini-add`` to the end of the
@@ -526,7 +552,9 @@ EXIT_OK = 0
 EXIT_ABORTED = 1
 EXIT_REFUSED = 2
 
-_MAIN_TITLE = re.compile(r"^CLICK Programming Software \(Version4\.\d+\) - ")
+# Live runs on 2026-11-20 showed the main window of CLICK 3.92 titled "CLICK Programming
+# Software (Version3.92) - ...", and that of CLICK 3.43 "... (Version 3.43) - ...", with a space
+_MAIN_TITLE = re.compile(r"^CLICK Programming Software \(Version ?[234]\.\d+\) - ")
 _NOT_RESPONDING = " (Not Responding)"
 _CURSOR = re.compile(r"\b(\d+):(\d+):([A-Z]+)\b")
 _STEPS = re.compile(r"\b(\d+)/(\d+)\b")
@@ -653,6 +681,12 @@ EXPORT_COMPLETED = "Completed!"
 # The file that CLICK writes, under DIR, and the copy of it that the runner reads
 EXPORT_WRITTEN = Path("click") / "nicknames.csv"
 EXPORT_COPY = "export.csv"
+# export-nicknames --reopen: the project that the runner saves and opens, and the folder
+# of the second export. That folder holds its own EXPORT_WRITTEN and EXPORT_COPY.
+EXPORT_SAVED = "saved.ckp"
+EXPORT_REOPENED = "reopened"
+# export-nicknames --open-first: the project that the runner saves and opens before the write
+EXPORT_FIRST = "first.ckp"
 # File > Open Project: while CLICK reads the project, it shows this progress box. A live
 # run on 2026-11-16 found a progress bar, "Reading ..." and a hidden button in it. CLICK
 # also leaves the project's name out of the main window's title
@@ -1751,6 +1785,14 @@ class Settings:
     wire: bool = False  # try: wire each case into a rung of its own (contact, coil)
     resume: Path | None = None  # try: the run whose answers to carry (its DIR)
     stop_after: int | None = None  # try: stop cleanly once this many cases were tried
+    # export-nicknames: the script that writes into CLICK's SC_.mdb before the export (--write)
+    write: Path | None = None
+    # export-nicknames: save, open the save and export again (--reopen)
+    reopen_export: bool = False
+    # export-nicknames: save and open the save before the write (--open-first)
+    open_first: bool = False
+    # export-nicknames and picker: close Startup and never connect (--offline)
+    offline: bool = False
     ini_add: str | None = None  # reopen: lines added to the end of the project's Project.ini
     keys: tuple[str, ...] = ()  # picker: keys sent to the Address Picker's grid or editor
     ok: bool = False  # picker: close the Address Picker by OK
@@ -1920,6 +1962,25 @@ def _read_rows(mdb: Path) -> dict[str, dict[str, Any]]:
     return _rows_by_address(rows)
 
 
+def _write_mdb(script: Path, mdb: Path) -> dict[str, Any]:
+    """Run *script* as ``python SCRIPT MDB`` with this Python, and return what it answered.
+
+    The answer holds the exit code (``returncode``) and the text of ``stdout`` and
+    ``stderr``. The script gets no stdin. It must finish within ``DEFAULT_PASTE_TIMEOUT``.
+    """
+    import subprocess
+
+    done = subprocess.run(
+        [sys.executable, str(script), str(mdb)],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=DEFAULT_PASTE_TIMEOUT,
+        check=False,
+    )
+    return {"returncode": done.returncode, "stdout": done.stdout, "stderr": done.stderr}
+
+
 def _read_stored(scr: Path) -> dict[str, Any]:
     """Return the instructions in the Scr*.tmp at *scr* with the tags CLICK stored for them.
 
@@ -2007,6 +2068,7 @@ class Run:
         read_nicknames: Callable[[Path, list[str]], dict[str, str | None]] = _read_nicknames,
         read_rows: Callable[[Path], dict[str, dict[str, Any]]] = _read_rows,
         read_stored: Callable[[Path], dict[str, Any]] = _read_stored,
+        write_mdb: Callable[[Path, Path], dict[str, Any]] = _write_mdb,
         on_new_project: Callable[[Run, NewProject], None] | None = None,
         stderr: Any = None,
     ) -> None:
@@ -2018,6 +2080,7 @@ class Run:
         self.read_nicknames = read_nicknames
         self.read_rows = read_rows
         self.read_stored = read_stored
+        self.write_mdb = write_mdb
         self.on_new_project = on_new_project
         self.cases: list[Case] = []
         self.nickname_addresses: list[str] = []
@@ -2090,6 +2153,12 @@ class Run:
             if settings.csv is not None:
                 self.result.update(import_mode=IMPORT_MODE, imports=[])
             self.result.update(export=None)
+            if settings.write is not None:
+                self.result.update(write=None)
+            if settings.reopen_export:
+                self.result.update(export_reopened=None)
+            if settings.write is not None or settings.reopen_export or settings.open_first:
+                self.result.update(mdb_copies={})
         if settings.command == "reopen":
             self.result.update(ini_add=settings.ini_add, points={})
         if settings.command == "read-data":
@@ -2428,6 +2497,8 @@ class Run:
         if self.s.command == "export-nicknames" and self.s.csv is not None:
             if not self.s.csv.is_file():
                 raise Refused(f"no CSV at {self.s.csv} to import before the export")
+        if self.s.write is not None and not self.s.write.is_file():
+            raise Refused(f"no script at {self.s.write} to write into SC_.mdb")
         if self.s.command == "new" and self.s.cpu not in (*CPU_MODELS, NO_CPU):
             raise Refused(
                 f"--cpu {self.s.cpu!r} is not a CPU that CLICK's new-project wizard lists. "
@@ -2503,8 +2574,9 @@ class Run:
             )
             self.record("launched")
             if GUIDE.name in found:
-                self.log("close the What's New guide")
-                self.desktop.close(found[GUIDE.name].hwnd)
+                # Sam asked for Escape, the key that a user presses to close the guide
+                self.log("close the What's New guide by Escape")
+                self.desktop.post_key(found[GUIDE.name].hwnd, _VIRTUAL_KEYS["ESCAPE"])
                 self.wait(
                     "Startup after the guide",
                     [GUIDE, STARTUP],
@@ -2543,6 +2615,15 @@ class Run:
         if len(buttons) != 3:
             raise Aborted(f"Startup has {len(buttons)} textless operation button(s), expected 3")
         return startup, sorted(buttons, key=lambda c: c.rect[0])
+
+    def close_startup(self) -> None:
+        """Post Escape to Startup and wait until the main window is alone, so CLICK stays offline."""
+        with self.step("startup"):
+            startup = self.wait("Startup", [STARTUP], lambda f: f.get(STARTUP.name))
+            self.log("close Startup by Escape")
+            self.desktop.post_key(startup.hwnd, _VIRTUAL_KEYS["ESCAPE"])
+            self.wait("Startup to close", [STARTUP], self.only_main)
+            self.record("offline")
 
     def connect(self) -> None:
         with self.step("startup"):
@@ -4787,17 +4868,72 @@ class Run:
             (self.s.out / "mdb").mkdir()
             with self.step("import"):
                 self.import_one(1, "whole", self.s.csv, None, None)
+        assert self.main is not None
+        temp = self.desktop.temp_dir(self.main)
+        mdb = temp / "SC_.mdb"
+        if self.s.open_first:
+            self.save_and_open(EXPORT_FIRST, mdb, "first_")
+        if self.s.write is not None:
+            with self.step("write"):
+                self.write_into(mdb)
         with self.step("export"):
             self.export()
+        if "mdb_copies" in self.result:
+            self.copy_mdb(mdb, "exported")
+        if self.s.reopen_export:
+            self.save_and_open(EXPORT_SAVED, mdb, "")
+            with self.step("export_reopened"):
+                self.export(self.s.out / EXPORT_REOPENED, key="export_reopened")
 
-    def export(self, folder: Path | None = None) -> dict[str, Any]:
+    def save_and_open(self, name: str, mdb: Path, prefix: str) -> None:
+        """Disconnect if connected, save the project as ``DIR/<name>`` and open that file.
+
+        The steps, the copies of *mdb* (``<prefix>saved``, ``<prefix>opened``) and the
+        save's entry under ``files`` (``<prefix>ckp``) are named with *prefix*.
+        """
+        if self.connected:
+            with self.step("disconnect"):
+                self.disconnect()
+        temp = mdb.parent
+        saved = (self.s.out / name).resolve()
+        with self.step(f"{prefix}save"):
+            self.save_as(saved, temp, prefix=prefix)
+            self.result["files"][f"{prefix}ckp"] = saved
+            self.copy_mdb(mdb, f"{prefix}saved")
+        with self.step(f"{prefix}open"):
+            self.open_project(saved, temp)
+            self.copy_mdb(mdb, f"{prefix}opened")
+
+    def write_into(self, mdb: Path) -> None:
+        """Run ``--write`` on *mdb*, CLICK's SC_.mdb, while CLICK has the project open.
+
+        The runner copies *mdb* as ``before_write`` first and as ``written`` after
+        (``copy_mdb``). It runs the script as ``python SCRIPT MDB`` with this Python and keeps
+        the script's exit code, stdout and stderr under ``write``. The run stops if the
+        script exits with a code other than 0.
+        """
+        self.copy_mdb(mdb, "before_write")
+        assert self.s.write is not None
+        self.log(f"run {self.s.write} on {mdb}")
+        answer = self.write_mdb(self.s.write, mdb)
+        self.result["write"] = {"script": self.s.write, **answer}
+        for name in ("stdout", "stderr"):
+            for line in answer[name].splitlines():
+                self.log(f"  {name}: {line}")
+        if answer["returncode"] != 0:
+            raise Aborted(f"{self.s.write.name} exited with {answer['returncode']}")
+        self.copy_mdb(mdb, "written")
+
+    def export(self, folder: Path | None = None, key: str = "export") -> dict[str, Any]:
         """Export the nicknames into *folder*, or into ``DIR`` if *folder* is None.
 
         CLICK writes ``click/nicknames.csv`` in that folder (``EXPORT_WRITTEN``), and the
         runner copies its bytes to ``export.csv`` there (``EXPORT_COPY``). The ``click``
         folder must not exist yet. Return the export's entry, which the method also stores
-        under ``export`` in the result. ``on_new_project`` can pass a folder of its own for
-        each export, because ``new`` has already copied CLICK's files into ``DIR/click/``.
+        under *key* in the result. The copy is stored under *key* in ``files``.
+        ``on_new_project`` can pass a folder of its own for each export, because ``new`` has
+        already copied CLICK's files into ``DIR/click/``. ``--reopen`` passes
+        ``DIR/reopened`` (``EXPORT_REOPENED``) for its second export.
         """
         assert self.main is not None
         folder = self.s.out if folder is None else folder
@@ -4825,7 +4961,7 @@ class Run:
         self.press(dialog, button)
         # The result holds what the export has answered so far, after an abort too
         entry: dict[str, Any] = {"written": written, "create_prompt": None, "answer": None}
-        self.result["export"] = entry
+        self.result[key] = entry
         prompted: list[int | None] = [None]  # The hwnd of the prompt whose Yes was pressed
         answered: list[int | None] = [None]  # The hwnd of the box whose OK was pressed
         # The file's last state, and the time from which it has read that state with the
@@ -4882,7 +5018,7 @@ class Run:
         )
         copy = folder / EXPORT_COPY
         copy.write_bytes(written.read_bytes())
-        self.result["files"]["export"] = copy
+        self.result["files"][key] = copy
         facts = export_facts(copy.read_bytes())
         entry.update(copy=copy, **facts)
         self.log(
@@ -5687,6 +5823,8 @@ class Run:
                     if self.on_new_project is not None:
                         with self.step("on_new_project"):
                             self.on_new_project(self, project)
+                elif self.s.offline:
+                    self.close_startup()
                 else:
                     self.connect()
                 if self.s.command == "paste":
@@ -5750,7 +5888,9 @@ class Run:
                 self.s.command == "export-nicknames" and self.s.csv is not None
             ):
                 self.read_after_click(self.read_imports, "reading the copies of SC_.mdb")
-            elif self.s.command == "picker":
+            if "mdb_copies" in self.result and self.s.command == "export-nicknames":
+                self.read_after_click(self.read_mdb_copies, "reading the copies of SC_.mdb")
+            if self.s.command == "picker":
                 self.read_after_click(self.read_mdb_copies, "reading the copies of SC_.mdb")
             elif self.s.command == "try" and self.s.keep:
                 self.read_after_click(self.decode_kept, "decoding the kept cases")
@@ -5988,6 +6128,29 @@ def _parser() -> argparse.ArgumentParser:
         help="first import this nickname CSV, as the import command does",
     )
     exports.add_argument(
+        "--write",
+        type=Path,
+        default=None,
+        metavar="SCRIPT",
+        help="before the export, run this Python script with the path of CLICK's SC_.mdb",
+    )
+    exports.add_argument(
+        "--reopen",
+        dest="reopen_export",
+        action="store_true",
+        help="after the export, save the project, open the save and export again",
+    )
+    exports.add_argument(
+        "--offline",
+        action="store_true",
+        help="close Startup by Escape and never connect to the PLC",
+    )
+    exports.add_argument(
+        "--open-first",
+        action="store_true",
+        help="after the import, save the project and open the save, before --write",
+    )
+    exports.add_argument(
         "--record", action="store_true", help="also dump every window at each step"
     )
     reads = commands.add_parser(
@@ -6014,6 +6177,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     pickers.add_argument("--ok", action="store_true", help="close the Address Picker by OK")
     pickers.add_argument("--cancel", action="store_true", help="close the Address Picker by Cancel")
+    pickers.add_argument(
+        "--offline",
+        action="store_true",
+        help="close Startup by Escape and never connect to the PLC",
+    )
     reopens = commands.add_parser(
         "reopen",
         parents=[common],
@@ -6061,6 +6229,10 @@ def settings_from(argv: list[str] | None, environ: dict[str, str] | None = None)
         wire=getattr(args, "wire", False),
         resume=args.resume.resolve() if getattr(args, "resume", None) else None,
         stop_after=getattr(args, "stop_after", None),
+        write=args.write.resolve() if getattr(args, "write", None) else None,
+        reopen_export=getattr(args, "reopen_export", False),
+        open_first=getattr(args, "open_first", False),
+        offline=getattr(args, "offline", False),
         ini_add=getattr(args, "ini_add", None),
         keys=tuple(getattr(args, "keys", ())),
         ok=getattr(args, "ok", False),

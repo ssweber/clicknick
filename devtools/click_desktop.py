@@ -357,6 +357,16 @@ class Desktop(ABC):
         """
 
     @abstractmethod
+    def post_key(self, hwnd: int, vk: int) -> None:
+        """Post WM_KEYDOWN then WM_KEYUP for the virtual key *vk* to *hwnd*.
+
+        A posted key goes through the message loop of *hwnd*'s thread, as a key that a user
+        presses does. A dialog's loop turns Escape into Cancel there. A sent key skips that
+        loop. A live run on 2026-11-20 found that CLICK 3.43's What's New guide ignores a
+        sent Escape.
+        """
+
+    @abstractmethod
     def send_chars(self, hwnd: int, text: str) -> bool:
         """Send a WM_CHAR to *hwnd* per character of *text*. Return whether each was answered."""
 
@@ -987,6 +997,11 @@ class Win32Desktop(Desktop):
         if self._send(hwnd, WM_KEYDOWN, vk, 1 | scan << 16) is None:
             return False
         return self._send(hwnd, WM_KEYUP, vk, 1 | scan << 16 | 1 << 30 | 1 << 31) is not None
+
+    def post_key(self, hwnd: int, vk: int) -> None:
+        scan = self._user32.MapVirtualKeyW(vk, 0) & 0xFF  # MAPVK_VK_TO_VSC
+        self._post(hwnd, WM_KEYDOWN, vk, 1 | scan << 16)
+        self._post(hwnd, WM_KEYUP, vk, 1 | scan << 16 | 1 << 30 | 1 << 31)
 
     def send_chars(self, hwnd: int, text: str) -> bool:
         return all(self._send(hwnd, WM_CHAR, ord(char), 1) is not None for char in text)
