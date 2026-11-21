@@ -292,6 +292,19 @@ ClickNick connects to it with no window and runs these checks:
   also be the cards recorded there.
 - `simulation`: the simulation starts and scans in RUN.
 - `check_program`: Check Program and `clicknick-cli check` both run and report the same.
+- `sync`: ClickNick gives DS100 the nickname `Smoke_Init` and the comment `50→60`. Sync must
+  refuse the comment, because cp1252 has no `→`, and SC_.mdb must stay as it was. Then ClickNick
+  changes the comment to `50°C`, and Sync must write the row with the initial value 0. A fresh
+  load of SC_.mdb and CLICK's own nickname export must both show that row. The smoke does not
+  redraw CLICK's ladder after the Sync, because the redraw opens CLICK's Import dialog.
+- `csv_round_trip`: ClickNick's Export to CSV must write a cp1252 file, with `°` as the byte
+  B0. CLICK imports the file into the same project with Delete Existing. SC_.mdb must then hold
+  a row for each address in the file and no other row, and CLICK's nickname export must show
+  `Smoke_Init` with `50°C`.
+
+`sync` and `csv_round_trip` write SC_.mdb, so they run after the other checks. They run on every
+project and add about 13 s to each, so the whole smoke takes about 2.5 minutes. `result.json`
+holds the bytes of the comment in SC_.mdb and in CLICK's export.
 
 The smoke writes its results into `--out` (by default `tmp\smoke\<date and time>`). Each
 project gets a folder of its own. It holds the runner's `--out` folder, `runner\`, and a
