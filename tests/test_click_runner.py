@@ -6683,6 +6683,25 @@ def test_export_nicknames_copies_the_file_that_click_writes(tmp_path, setup, dat
     assert f"exported {len(data)} bytes into {written}" in log
 
 
+def test_a_plain_export_looks_up_no_temp_folder_before_it_exports(tmp_path, setup):
+    # Only --write, --open-first and --reopen need SC_.mdb in CLICK's temp folder
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    looked: list[list[str]] = []
+    temp_dir = fake.temp_dir
+
+    def spy(hwnd: int) -> Path:
+        # The fake looks up its own temp folder too. Record only the runner's lookups
+        if sys._getframe(1).f_globals.get("__name__") == cr.__name__:
+            looked.append(list(fake.commands))
+        return temp_dir(hwnd)
+
+    fake.temp_dir = spy
+    code, result = run_command(fake, tmp_path, exe, "export-nicknames")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert all("Export Nickname" in commands for commands in looked), looked
+
+
 def test_an_export_without_a_box_ends_once_the_file_stays_the_same(tmp_path, setup):
     _, exe = setup
     fake = FakeClick(tmp_path, export_bytes=CP1252_EXPORT, export_box=None)

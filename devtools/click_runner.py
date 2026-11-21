@@ -218,12 +218,14 @@ and output under ``write``. The run stops if the script exits with a code other 
 project as ``DIR/saved.ckp``, opens that file by File > Open Project and exports again. The
 second export writes ``DIR/reopened/click/nicknames.csv``, and the runner copies it to
 ``DIR/reopened/export.csv``. result.json keeps it under ``export_reopened``. SC_.mdb is
-copied once the save is done (``saved``) and once the project is open (``opened``). Under
-``mdb_copies``, result.json holds the rows of each copy, read once CLICK has ended.
+copied after the first export (``exported``), once the save is done (``saved``) and once the
+project is open (``opened``). Under ``mdb_copies``, result.json holds the rows of each copy,
+read once CLICK has ended.
 
 ``export-nicknames --open-first`` does the same save and open before ``--write``, so that the
 script writes into a project that CLICK opened from a file. The save is ``DIR/first.ckp``,
-and the copies of SC_.mdb are ``first_saved`` and ``first_opened``.
+and the copies of SC_.mdb are ``first_saved`` and ``first_opened``. SC_.mdb is copied after
+the export too (``exported``).
 
 ``export-nicknames --offline`` and ``picker --offline`` never connect. Once the guide has
 closed, the runner posts Escape to Startup, as a user closes it, and goes on with the new
@@ -306,9 +308,11 @@ stops if that Project.ini names a CPU other than ``--cpu``.
 
 ``new --cpu none`` makes a project with no CPU. In Select a CPU Module, the runner presses
 Cancel. CLICK then shows Startup again, with the main window still disabled behind it. The
-runner closes Startup with WM_CLOSE. The main window is then alone, on the project that CLICK
-opened as it started. The runner saves that project as ``DIR/none.ckp``, as for a CPU. The
-run stops if the saved Project.ini names a CPU. result.json holds these fields:
+runner closes Startup with WM_CLOSE. ``--offline`` posts Escape to the first Startup
+instead. Each is the way that live runs confirmed for that Startup. The main window is then
+alone, on the project that CLICK opened as it started. The runner saves that project as
+``DIR/none.ckp``, as for a CPU. The run stops if the saved Project.ini names a CPU.
+result.json holds these fields:
 
 - ``cpu``: the model given to ``--cpu``, or null for ``none``;
 - ``cpu_list``: the CPUs that the list showed, in its order, or null for ``none``;
@@ -2574,7 +2578,8 @@ class Run:
             )
             self.record("launched")
             if GUIDE.name in found:
-                # Sam asked for Escape, the key that a user presses to close the guide
+                # A live run on 2026-11-20 found that CLICK 3.43's guide ignores WM_CLOSE and
+                # a sent Escape. A posted Escape closes it, as the key that a user presses does
                 self.log("close the What's New guide by Escape")
                 self.desktop.post_key(found[GUIDE.name].hwnd, _VIRTUAL_KEYS["ESCAPE"])
                 self.wait(
@@ -2930,6 +2935,8 @@ class Run:
                 shown = self.choose_cpu(form, model)
         if model is None:
             with self.step("close_startup"):
+                # Live runs confirmed WM_CLOSE for this Startup. close_startup posts Escape to
+                # the first Startup, because live runs confirmed Escape there
                 self.log("close Startup")
                 self.desktop.close(startup.hwnd)
                 self.wait("the main window alone after Startup closed", [STARTUP], self.only_main)
@@ -4868,9 +4875,13 @@ class Run:
             (self.s.out / "mdb").mkdir()
             with self.step("import"):
                 self.import_one(1, "whole", self.s.csv, None, None)
+        if "mdb_copies" not in self.result:
+            # Without --write, --open-first or --reopen, the run needs no SC_.mdb
+            with self.step("export"):
+                self.export()
+            return
         assert self.main is not None
-        temp = self.desktop.temp_dir(self.main)
-        mdb = temp / "SC_.mdb"
+        mdb = self.desktop.temp_dir(self.main) / "SC_.mdb"
         if self.s.open_first:
             self.save_and_open(EXPORT_FIRST, mdb, "first_")
         if self.s.write is not None:
@@ -4878,8 +4889,7 @@ class Run:
                 self.write_into(mdb)
         with self.step("export"):
             self.export()
-        if "mdb_copies" in self.result:
-            self.copy_mdb(mdb, "exported")
+        self.copy_mdb(mdb, "exported")
         if self.s.reopen_export:
             self.save_and_open(EXPORT_SAVED, mdb, "")
             with self.step("export_reopened"):
@@ -5972,9 +5982,10 @@ class Run:
 def _project_file(title: str) -> str | None:
     """Return the project file that a main window's title names ("NewProject4.ckp"), or None.
 
-    The title is ``CLICK Programming Software (Version4.00) - <file>.ckp``, then
-    `` - [<program>]`` while a program is open, and `` (Not Responding)`` while CLICK
-    does not answer.
+    In CLICK 4.00 the title starts with ``CLICK Programming Software (Version4.00) - ``.
+    The comment at ``_MAIN_TITLE`` gives the start in 3.x. Then come ``<file>.ckp``,
+    `` - [<program>]`` while a program is open, and `` (Not Responding)`` while CLICK does
+    not answer.
     """
     title = title.removesuffix(_NOT_RESPONDING)
     prefix = _MAIN_TITLE.match(title)
