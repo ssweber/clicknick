@@ -12,6 +12,7 @@
 
 - The Simulator now shows X001 to X016 and Y001 to Y016 of a CLICK PLUS on an **Option slot 0 - unassigned** card, right after option slot 0, when the program uses them and no module provides them. On a CLICK PLUS, these addresses belong to option slot 0. 0.26.0 showed them on a **CPU - unassigned** card after the last option slot. With a C0 CPU or no CPU, the **CPU - unassigned** card now comes before an **Option slot 1 - unassigned** card. 0.26.0 showed it after that card.
 - The Simulator now works when the Windows temp folder is behind a junction, a symbolic link or a subst drive, and you have not set up a workspace in **Workspace setup**. In 0.26.0 the Simulator could not tell which address each tag is on. It refused a force on an address such as X001, and a Write kept the old program running.
+- ClickNick now shows its message boxes one at a time when a workspace build finishes, after a Sync, and when the CLICK window closes or shows another project. The next box opens when you close the one before it. If you answer Yes in **Paste Again**, Review Changes opens after the last box. 0.26.0 could open the **Paste Again**, **Check Program** and **Workspace** boxes on top of each other. The notice about **Redraw Ladder on Sync** and the error from **Reload from CLICK** could open on top of them too.
 
 ## v0.26.0 - 2026-11-20
 

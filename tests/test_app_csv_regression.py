@@ -13,6 +13,7 @@ from clicknick.connection_controller import ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data_session import DataSession
 from clicknick.services.workspace_mirror import ProjectWorkspaceConfig
+from clicknick.utils.dialog_queue import DialogQueue
 
 
 class FakeVar:
@@ -80,6 +81,7 @@ def _make_app_stub() -> ClickNickApp:
     app._data = None
     app._update_status = MagicMock()
     app.root = MagicMock()
+    app._dialogs = DialogQueue()
     app.nickname_manager = SimpleNamespace(set_store=MagicMock())
     app.selected_instance_var = FakeVar("MyProject.ckp")
     connection = app._connection = ConnectionController(app)

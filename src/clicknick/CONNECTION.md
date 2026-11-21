@@ -3,7 +3,8 @@
 Nothing loads this file automatically. The table in the root `AGENTS.md` says when to read it.
 
 These notes cover `app.py`, `connection_controller.py`, `workspace_controller.py` and `connection_session.py`,
-and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`).
+and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`). They also cover the message boxes that
+wait for each other (`utils/dialog_queue.py`).
 
 ## Rules
 
@@ -24,6 +25,34 @@ and CLICK's temp folder (`utils/click_temp.py`, `data/cdv_file.py`).
   workspace.
 - `_refresh_ui` also re-titles the open editor windows, and it skips a window that is being destroyed. The
   windows take the project name and analysis as getters, so they follow a project change.
+
+## Message boxes that wait for each other
+
+- On Windows, Tk runs `after` callbacks while a message box is open. If such a callback opens a box, the new
+  box opens on top of the first.
+- These boxes go through `ClickNickApp._dialogs` (`utils/dialog_queue.py`), so each one waits until the box
+  before it closes:
+  - **Paste Again** (`_report_legacy_encodings`). If you answer Yes, Review Changes opens after the boxes that
+    wait.
+  - **Check Program**, with the rule names that ClickNick removed from a saved check selection
+    (`_report_dropped_checks`). If the window that asked for it has closed, the box opens over the main window.
+  - **Workspace**, with the build's warning (`_report_build_warning`).
+  - **Reload from CLICK**, when the reload fails (`WorkspaceController._reload_finished`).
+  - **Redraw Ladder on Sync**, the notice after the first redraw (`ConnectionController._show_redraw_notice`).
+  - **Database Connection**, when ClickNick cannot read CLICK's database. ClickNick falls back to CSV after the
+    user closes this box.
+  - **Workspace**, when the CLICK window closes or shows another project and Workspace setup held a choice that
+    was not applied.
+- The first three boxes work out their message when they open. If a newer build has replaced the build that
+  asked for a box, the box shows what the newer build found. If the newer build has nothing new to say, the box
+  does not open.
+- If you add a box that can open when a build ends or after a Sync, show it through `_dialogs.show`.
+- A box that does not go through `_dialogs` can still open on top of these. Three boxes open directly:
+  - The two **Project Changed** boxes in `ConnectionController`. The code after each one must wait until the
+    user closes it.
+  - The **Unsaved Changes** reminder that `clicknick-cli` asks for (`LiveServer._show_save_prompt`). The live
+    server shows one reminder at a time by itself.
+- The Simulator offers to write a changed program in a banner in its own window. That offer is not a box.
 
 ## Connection and lifecycle
 

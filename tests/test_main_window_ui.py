@@ -10,6 +10,7 @@ from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.services.workspace_mirror import WorkspaceDirectoryInfo, WorkspacePairing
 from clicknick.services.workspace_service import WorkspaceState, WorkspaceStatus
+from clicknick.utils.dialog_queue import DialogQueue
 from clicknick.workspace_controller import WorkspaceController
 
 
@@ -299,6 +300,7 @@ def test_new_legacy_encodings_pop_up_and_offer_review_changes(monkeypatch, answe
     detail = "it is stored as 16-bit and CLICK runs it as 4464."
     found = (LegacyEncoding("main.csv", "Main Program", 12, "Math", "H70000", detail),)
     app._session = SimpleNamespace(legacy_encodings_to_report=MagicMock(return_value=found))
+    app._dialogs = DialogQueue()
     ask = MagicMock(return_value=answer)
     monkeypatch.setattr("clicknick.app.messagebox.askyesno", ask)
 
@@ -323,6 +325,7 @@ def _popup_app(found):
     app._refresh_ui = MagicMock()
     app._workspace = MagicMock()
     app._session = SimpleNamespace(legacy_encodings_to_report=MagicMock(return_value=found))
+    app._dialogs = DialogQueue()
     return app
 
 
