@@ -241,15 +241,18 @@ def test_every_project_passes_when_every_check_passes(tmp_path, port, capsys):
     runner = FakeRunner(scr_before_save=["Scr1.tmp"])
     code, out = smoke(tmp_path, runner)
     assert code == cs.EXIT_PASS
-    # One runner run in new mode for each CPU, each into the project's runner/ folder
+    # One runner run in new mode for each project, each into the project's runner/ folder. The
+    # project with rungs is a project for the CPU that has the program's I/O
+    cpus = {cs.PROGRAM_PROJECT: "C0-11DD1E-D"}
     assert [(s.command, s.cpu, s.out) for s in runner.settings] == [
-        ("new", model, out / model / "runner") for model in cs.PROJECTS
+        ("new", cpus.get(name, name), out / name / "runner") for name in cs.PROJECTS
     ]
     # ClickNick's settings go into the run's own LOCALAPPDATA
     assert runner.localappdata == [str(out / "localappdata")] * len(cs.PROJECTS)
     result = read(out / "C2-03CPU" / "result.json")
     assert list(result) == [
         "project",
+        "cpu",
         "status",
         "problems",
         "elapsed",
@@ -258,7 +261,7 @@ def test_every_project_passes_when_every_check_passes(tmp_path, port, capsys):
         "callback_errors",
         "teardown",
     ]
-    assert result["project"] == "C2-03CPU"
+    assert (result["project"], result["cpu"]) == ("C2-03CPU", "C2-03CPU")
     assert result["status"] == "pass"
     assert result["problems"] == []
     assert result["runner"] == {
@@ -277,6 +280,9 @@ def test_every_project_passes_when_every_check_passes(tmp_path, port, capsys):
     assert first["details"] == {"model": "C2-03CPU"}
     # The project with no CPU reaches the checks with no model
     assert read(out / "none" / "result.json")["checks"]["first"]["details"] == {"model": None}
+    rungs = read(out / "rungs" / "result.json")
+    assert (rungs["project"], rungs["cpu"]) == ("rungs", "C0-11DD1E-D")
+    assert rungs["checks"]["first"]["details"] == {"model": "C0-11DD1E-D"}
     assert isinstance(first["seconds"], float)
     assert result["callback_errors"] == []
     assert result["teardown"]["port_free"] is True
@@ -584,9 +590,31 @@ def test_the_scheduler_background_pumps_while_the_call_waits_for_a_callback():
 # ---------------------------------------------------------------------------
 
 
-def test_every_project_is_a_cpu_that_the_wizard_lists_or_no_cpu():
-    assert set(cs.PROJECTS) <= {*cr.CPU_MODELS, cr.NO_CPU}
-    assert cs.PROJECTS[-1] == cr.NO_CPU
+def test_every_project_is_a_cpu_that_the_wizard_lists_no_cpu_or_the_project_with_rungs():
+    assert set(cs.PROJECTS) <= {*cr.CPU_MODELS, cr.NO_CPU, cs.PROGRAM_PROJECT}
+    assert cs.PROJECTS[-2:] == (cr.NO_CPU, cs.PROGRAM_PROJECT)
+    assert cs.PROGRAM_CPU in cr.CPU_MODELS
+    assert [cs.project_cpu(name) for name in cs.PROJECTS[-3:]] == [
+        "C2-03CPU",
+        cr.NO_CPU,
+        cs.PROGRAM_CPU,
+    ]
+
+
+def test_the_io_of_a_pasted_program_is_its_x_and_y_addresses_without_xd_and_yd():
+    pasted = cs.PastedProgram([], ("X001", "XD0", "C1", "Y002", "YD1", "DS3"))
+    assert pasted.io == ("X001", "Y002")
+
+
+def test_the_cpu_of_the_project_with_rungs_has_every_x_and_y_of_the_program():
+    terminals = {
+        terminal[2]
+        for card in cs.recorded_layouts()[cs.PROGRAM_CPU]["cards"]
+        for terminal in card["terminals"]
+    }
+    io = cs.PastedProgram([], cs.PROGRAM_ADDRESSES).io
+    assert io == ("X001", "Y001", "X002", "X003", "X007", "X006", "X004", "Y002")
+    assert set(io) <= terminals
 
 
 def test_the_recorded_layouts_name_cpus_that_the_wizard_lists_or_no_cpu():
@@ -600,8 +628,8 @@ def test_the_recorded_layouts_name_cpus_that_the_wizard_lists_or_no_cpu():
         "C2-03CPU-2",
         "none",
     }
-    # Every project that the smoke makes has recorded cards
-    assert set(cs.PROJECTS) <= set(layouts)
+    # Every CPU that the smoke makes a project for has recorded cards
+    assert {cs.project_cpu(name) for name in cs.PROJECTS} <= set(layouts)
     # With no CPU, the layout has no card, and the Simulator shows its No CPU card
     assert layouts.pop(cr.NO_CPU) == {"has_cpu": False, "cards": []}
     for model, layout in layouts.items():
@@ -617,14 +645,23 @@ def test_the_recorded_layouts_name_cpus_that_the_wizard_lists_or_no_cpu():
 
 
 class FakeLayoutSimulation:
-    """Stands in for ``SimulationSession`` in ``check_layout``. It holds a layout or an error."""
+    """Stands in for ``SimulationSession`` in ``check_layout``.
 
-    def __init__(self, layout: Any, error: str | None = None) -> None:
+    It holds a layout or an error, and the X and Y addresses that it counts as used.
+    """
+
+    def __init__(
+        self, layout: Any, error: str | None = None, used: frozenset[str] = frozenset()
+    ) -> None:
         self.layout = layout
         self.layout_error = error
+        self.used = used
 
     def refresh_layout(self, *, force: bool = False) -> None:
         pass
+
+    def _used_io(self) -> set[str]:
+        return set(self.used)
 
 
 class FakeLayoutSession:
@@ -676,7 +713,7 @@ def test_the_layout_check_fails_when_a_project_with_no_cpu_shows_a_cpu(tmp_path,
     from clicknick.services import sim_hardware
 
     layout = sim_hardware.PanelLayout((sim_hardware.Card("cpu", 0, "C2-03CPU", ()),))
-    monkeypatch.setattr(sim_hardware, "read_panel_layout", lambda path: layout)
+    monkeypatch.setattr(sim_hardware, "read_panel_layout", lambda path, used: layout)
     details = check_layout_with(tmp_path, None, layout)
     assert details["failed"] == (
         "The project has no CPU, but the layout has the CPU card ['C2-03CPU']. The Simulator "
@@ -1309,8 +1346,9 @@ def test_exported_row_fails_when_no_row_has_the_nickname():
 
 def test_the_checks_that_change_the_project_run_after_the_checks_that_read_it():
     names = [spec.name for spec in cs.CHECKS]
-    # rung_apply adds a rung, and csv_round_trip compares SC_.mdb with a file that lacks the
-    # rung's addresses. So rung_apply comes last
+    # The paste gives CLICK the program that the other checks read, so it comes first.
+    # rung_apply adds a rung and saves the project in CLICK, so it comes last
+    assert names[0] == "paste"
     assert names[-4:] == ["check_program", "sync", "csv_round_trip", "rung_apply"]
     needs = {spec.name: spec.needs for spec in cs.CHECKS}
     assert (needs["sync"], needs["csv_round_trip"], needs["rung_apply"]) == (
@@ -1798,3 +1836,589 @@ def test_the_rung_apply_check_fails_when_rung_apply_still_proposes_changes_after
         "After CLICK's save, rung apply still proposes changes: OK: wrote ladder CSVs"
     )
     assert "\nchanged files:\n  main: R3\n" in details["failed"]
+
+
+# ---------------------------------------------------------------------------
+# The project with rungs
+# ---------------------------------------------------------------------------
+
+# CLICK's save after the paste check pasted the rungs of click_smoke_rungs.csv, from a live run
+# of make smoke on 2026-11-21 (C0-11DD1E-D)
+PROGRAM_SCR = FIXTURES / "program_Scr1.tmp"
+
+
+def program_rows() -> Rows:
+    """Return the rungs of click_smoke_rungs.csv as the rows of laddercodec's CSV."""
+    from laddercodec import csv_rows, read_csv
+
+    return csv_rows(list(read_csv(cs.PROGRAM_CSV)))
+
+
+def pasted_program() -> cs.PastedProgram:
+    return cs.PastedProgram(program_rows(), cs.PROGRAM_ADDRESSES)
+
+
+def test_the_projects_that_click_made_empty_run_every_check_but_the_paste():
+    checks = cs.project_checks(cs.CHECKS, program=False)
+    assert [spec.name for spec in checks] == [
+        "load",
+        "build",
+        "layout",
+        "simulation",
+        "check_program",
+        "sync",
+        "csv_round_trip",
+        "rung_apply",
+    ]
+    assert {spec.name: spec.needs for spec in checks} == {
+        spec.name: spec.needs for spec in cs.CHECKS if spec.name != "paste"
+    }
+
+
+def test_the_project_with_rungs_pastes_first_and_runs_every_check_but_rung_apply():
+    checks = cs.project_checks(cs.CHECKS, program=True)
+    assert [spec.name for spec in checks] == [
+        "paste",
+        "load",
+        "build",
+        "layout",
+        "simulation",
+        "check_program",
+        "sync",
+        "csv_round_trip",
+    ]
+    # If the paste fails, CLICK does not hold the program, so no other check runs
+    assert {spec.name: spec.needs for spec in checks} == {
+        "paste": (),
+        "load": ("paste",),
+        "build": ("paste", "load"),
+        "layout": ("paste",),
+        "simulation": ("paste", "build"),
+        "check_program": ("paste", "build"),
+        "sync": ("paste", "load"),
+        "csv_round_trip": ("paste", "sync"),
+    }
+
+
+def test_the_smoke_makes_the_project_with_rungs_for_its_cpu_with_the_program(tmp_path, port):
+    def program(project: cs.Project, details: dict[str, Any]) -> str:
+        details["program"] = project.program
+        raise cs.CheckFailed("CLICK refused the paste.")
+
+    checks = (
+        cs.CheckSpec("paste", program, projects="program"),
+        cs.CheckSpec("first", passes("OK.")),
+        cs.CheckSpec("empty", passes("OK."), projects="empty"),
+    )
+    runner = FakeRunner()
+    code, out = smoke(tmp_path, runner, checks, "rungs", "C2-03CPU")
+    assert code == cs.EXIT_FAIL
+    assert [(s.cpu, s.out) for s in runner.settings] == [
+        ("C0-11DD1E-D", out / "rungs" / "runner"),
+        ("C2-03CPU", out / "C2-03CPU" / "runner"),
+    ]
+    rungs = read(out / "rungs" / "result.json")
+    assert list(rungs["checks"]) == ["paste", "first"]
+    assert rungs["checks"]["paste"]["details"] == {"program": str(cs.PROGRAM_CSV)}
+    assert rungs["checks"]["first"]["text"] == "Not run, because paste did not pass."
+    assert rungs["problems"] == ["These checks failed: paste, first."]
+    cpu = read(out / "C2-03CPU" / "result.json")
+    assert list(cpu["checks"]) == ["first", "empty"]
+    assert cpu["status"] == "pass"
+
+
+# The paste check
+
+
+def paste_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, scr: Path = PROGRAM_SCR
+) -> FakeCopyProject:
+    """Return the project with rungs before the paste check, with CLICK's main program empty.
+
+    After the save, CLICK's temp folder holds *scr* as its Scr1.tmp.
+    """
+    monkeypatch.setattr(cs, "AFTER_RUNNER", 0.0)
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    database = FakeDatabase(temp / "SC_.mdb")
+    new = cr.NewProject(cs.PROGRAM_CPU, tmp_path / "C0-11DD1E-D.ckp", 4242, 0x1234, temp)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    run = FakeRungRun(database, scr=scr)
+    return FakeCopyProject(run, new, folder, cs.Scheduler(), program=cs.PROGRAM_CSV)  # pyright: ignore[reportArgumentType]
+
+
+def test_the_paste_check_passes_when_clicks_save_holds_the_program(tmp_path, monkeypatch):
+    project = paste_project(tmp_path, monkeypatch)
+    details = run_check(cs.check_paste, project)
+    assert "failed" not in details, details["failed"]
+    assert details["text"] == (
+        "CLICK pasted the 9 rungs of click_smoke_rungs.csv at rung 1 and saved them. SC_.mdb "
+        "held their 18 addresses before the paste."
+    )
+    rows = program_rows()
+    assert len(rows) == 16
+    # CLICK's own save, decoded with laddercodec
+    assert details["click_saved"] == details["rows"] == rows
+    assert details["decode_warnings"] == []
+    assert details["copy"]["laddercodec_addresses"] == list(cs.PROGRAM_ADDRESSES)
+    assert project.pasted == cs.PastedProgram(rows, cs.PROGRAM_ADDRESSES)
+    assert project.run.calls == [
+        ("read_rows", "before_program_paste.mdb"),
+        ("paste_payload", "9 rung(s)"),
+        ("save_as", "program.ckp"),
+        ("copy_temp", "click"),
+    ]
+    # CLICK's window names the saved project, so the session must name it too
+    assert project.new.ckp == project.folder / "paste" / "program.ckp"
+    assert (project.folder / "paste" / "click" / "Scr1.tmp").is_file()
+
+
+def test_the_paste_check_fails_when_copy_cannot_add_the_addresses(tmp_path, monkeypatch):
+    project = paste_project(tmp_path, monkeypatch)
+    project.mdb_error = "SC_.mdb is locked"
+    details = run_check(cs.check_paste, project)
+    assert details["failed"] == (
+        "Copy could not add the rungs' addresses to SC_.mdb: SC_.mdb is locked"
+    )
+    assert (project.run.calls, project.pasted) == ([], None)
+
+
+def test_the_paste_check_fails_when_the_copied_rungs_hold_other_addresses(tmp_path, monkeypatch):
+    import laddercodec
+
+    project = paste_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(laddercodec, "addresses", lambda payload: ["X001", "C1"])
+    details = run_check(cs.check_paste, project)
+    assert details["failed"] == (
+        f"laddercodec finds X001, C1 in the copied rungs, not {', '.join(cs.PROGRAM_ADDRESSES)}."
+    )
+    assert (project.run.calls, project.pasted) == ([], None)
+
+
+def test_the_paste_check_fails_when_sc_mdb_lacks_an_address_of_the_program(tmp_path, monkeypatch):
+    project = paste_project(tmp_path, monkeypatch)
+    project.drops = ("TD2", "DS3")
+    details = run_check(cs.check_paste, project)
+    assert details["failed"] == (
+        "SC_.mdb has no row for TD2, DS3 after Copy. CLICK would drop those operands from the "
+        "paste."
+    )
+    assert project.run.calls == [("read_rows", "before_program_paste.mdb")]
+    assert project.pasted is None
+
+
+def test_the_paste_check_fails_when_clicks_save_holds_another_program(tmp_path, monkeypatch):
+    project = paste_project(tmp_path, monkeypatch, scr=RUNG_APPLY_SCR)
+    details = run_check(cs.check_paste, project)
+    assert details["failed"] == (
+        "The main program in CLICK's save is not the program in click_smoke_rungs.csv. The "
+        "check's details hold both, as click_saved and rows."
+    )
+    assert details["click_saved"] == [cs.RUNG_ROW, END_ROW]
+    assert project.pasted is None
+
+
+# The build check
+
+
+class FakeBuildSession:
+    """Stands in for ``ConnectionSession`` in ``check_build``. The build ends READY at once."""
+
+    def __init__(self, analysis: FakeAnalysis) -> None:
+        self.built = analysis
+        self.analysis: FakeAnalysis | None = None
+
+    def start_analysis(self, root: cs.Scheduler) -> None:
+        self.analysis = self.built
+
+
+class FakeBuiltAnalysis(FakeAnalysis):
+    """A ``FakeAnalysis`` with the fields that ``check_build`` reads."""
+
+    error_detail = None
+    build_warning = None
+    project_is_current = True
+
+
+def check_build_with(tmp_path: Path, main_rows: Rows | None) -> dict[str, Any]:
+    """Run ``check_build`` on the project with rungs, whose workspace csv/ holds *main_rows*."""
+    temp = tmp_path / "temp"
+    workspace = temp / "pyrung_project"
+    main = workspace / "src" / "plc" / "main.py"
+    main.parent.mkdir(parents=True)
+    main.write_text(GENERATED_MAIN, encoding="utf-8")
+    if main_rows is not None:
+        write_rows(workspace / "csv" / "main.csv", main_rows)
+    new = cr.NewProject(cs.PROGRAM_CPU, tmp_path / "program.ckp", 4242, 0x1234, temp)
+    project = cs.Project(FakeRun(), new, tmp_path, cs.Scheduler(), timeout=1.0)  # pyright: ignore[reportArgumentType]
+    project._session = FakeBuildSession(FakeBuiltAnalysis(workspace))  # pyright: ignore[reportAttributeAccessIssue]
+    project.pasted = pasted_program()
+    return run_check(cs.check_build, project)
+
+
+def test_the_build_check_passes_when_the_workspace_holds_the_program_that_click_saved(tmp_path):
+    details = check_build_with(tmp_path, program_rows())
+    assert "failed" not in details, details["failed"]
+    assert details["text"].endswith("Its csv/main.csv holds the 16 rows that CLICK saved.")
+    assert details["main_csv"] == program_rows()
+
+
+@pytest.mark.parametrize(
+    "main_rows",
+    [pytest.param(None, id="no-main-csv"), pytest.param([COPY_ROW, END_ROW], id="other-rungs")],
+)
+def test_the_build_check_fails_when_the_workspace_holds_another_program(tmp_path, main_rows):
+    details = check_build_with(tmp_path, main_rows)
+    assert details["failed"] == (
+        "The workspace's csv/main.csv is not the program that CLICK saved. The details hold it "
+        "as main_csv, and the paste check's details hold CLICK's save."
+    )
+    assert details["main_csv"] == main_rows
+
+
+# The layout check
+
+
+PROGRAM_IO = ("X001", "Y001", "X002", "X003", "X007", "X006", "X004", "Y002")
+
+
+def check_program_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, used: frozenset[str]
+) -> tuple[dict[str, Any], list[tuple[str, ...]]]:
+    """Run ``check_layout`` on the project with rungs, whose simulation counts *used* as used.
+
+    Return the check's details and the used I/O that each call to ``read_panel_layout`` got.
+    """
+    from clicknick.services import sim_hardware
+
+    recorded = cs.recorded_layouts()[cs.PROGRAM_CPU]
+    layout = sim_hardware.PanelLayout(
+        tuple(
+            sim_hardware.Card(
+                card["location"],
+                card["position"],
+                card["model"],
+                tuple(sim_hardware.Terminal(*terminal) for terminal in card["terminals"]),
+                card["installed"],
+            )
+            for card in recorded["cards"]
+        )
+    )
+    asked: list[tuple[str, ...]] = []
+
+    def read_panel_layout(path: Path, used: tuple[str, ...]) -> Any:
+        asked.append(tuple(used))
+        return layout
+
+    monkeypatch.setattr(sim_hardware, "read_panel_layout", read_panel_layout)
+    ini = tmp_path / "Project.ini"
+    ini.write_bytes(b"")
+    new = cr.NewProject(cs.PROGRAM_CPU, tmp_path / "program.ckp", 4242, 0x1234, tmp_path)
+    project = cs.Project(FakeRun(), new, tmp_path, cs.Scheduler())  # pyright: ignore[reportArgumentType]
+    simulation = FakeLayoutSimulation(layout, used=used)
+    project._session = FakeLayoutSession(simulation, ini)  # pyright: ignore[reportAttributeAccessIssue]
+    project.pasted = pasted_program()
+    return run_check(cs.check_layout, project), asked
+
+
+def test_the_layout_check_reads_project_ini_with_the_x_and_y_of_the_program(tmp_path, monkeypatch):
+    # The simulation also counts an address that the program does not use
+    used = frozenset({*PROGRAM_IO, "X005"})
+    details, asked = check_program_layout(tmp_path, monkeypatch, used)
+    assert "failed" not in details, details["failed"]
+    assert details["text"] == "1 card(s), as read_panel_layout reads them and as recorded."
+    assert asked == [PROGRAM_IO]
+    assert details["program_io"] == list(PROGRAM_IO)
+    assert details["simulator_used_io"] == sorted(used)
+
+
+@pytest.mark.parametrize(
+    ("used", "unseen"),
+    [
+        pytest.param(frozenset(), ", ".join(PROGRAM_IO), id="none"),
+        pytest.param(frozenset(PROGRAM_IO) - {"X006", "Y002"}, "X006, Y002", id="some"),
+    ],
+)
+def test_the_layout_check_fails_when_the_simulation_does_not_count_the_programs_io_as_used(
+    tmp_path, monkeypatch, used, unseen
+):
+    # The CPU has every X and Y of the program, so the cards are the recorded cards either way
+    details, asked = check_program_layout(tmp_path, monkeypatch, used)
+    assert details["failed"] == (
+        f"The program uses {unseen}, but the simulation does not list them as used."
+    )
+    assert details["simulator_used_io"] == sorted(used)
+    assert asked == []
+
+
+# The simulation check
+
+
+class FakeProgramSimulation(FakeSimulation):
+    """A ``FakeSimulation`` that runs the first rung of click_smoke_rungs.csv.
+
+    Once the check watches addresses, ``values`` holds them all off, as Modbus reads them.
+    With *silent*, Modbus never answers for that address. With *output_on*, Y001 is on from the
+    start. Turning X001 on turns Y001 on, unless *dead* is True.
+    """
+
+    def __init__(
+        self, *, silent: str | None = None, output_on: bool = False, dead: bool = False
+    ) -> None:
+        super().__init__()
+        self.silent = silent
+        self.output_on = output_on
+        self.dead = dead
+        self.io: dict[str, bool] = {}
+        self.watched: tuple[str, ...] | None = None
+
+    def watch(self, owner: object, addresses: Sequence[str]) -> None:
+        self.watched = tuple(addresses)
+        self.io = {address: False for address in addresses if address != self.silent}
+        if self.output_on:
+            self.io["Y001"] = True
+
+    def unwatch(self, owner: object) -> None:
+        self.watched = None
+
+    @property
+    def values(self) -> dict[str, bool]:
+        return dict(self.io)
+
+    def toggle_switch(self, address: str) -> None:
+        self.io[address] = not self.io[address]
+        if address == "X001" and self.io[address] and not self.dead:
+            self.io["Y001"] = True
+
+
+def check_program_simulation(
+    tmp_path: Path, simulation: FakeProgramSimulation
+) -> tuple[dict[str, Any], FakeProgramSimulation]:
+    new = cr.NewProject(cs.PROGRAM_CPU, tmp_path / "program.ckp", 4242, 0x1234, tmp_path)
+    project = cs.Project(FakeRun(), new, tmp_path, cs.Scheduler())  # pyright: ignore[reportArgumentType]
+    project._session = FakeSession(simulation)  # pyright: ignore[reportAttributeAccessIssue]
+    project.pasted = pasted_program()
+    return run_check(cs.check_simulation, project), simulation
+
+
+def test_the_simulation_check_turns_x001_on_and_sees_y001_turn_on(tmp_path, port):
+    details, simulation = check_program_simulation(tmp_path, FakeProgramSimulation())
+    assert "failed" not in details, details["failed"]
+    assert details["text"].endswith(
+        " Modbus read the program's 8 X and Y addresses. X001 on turned Y001 on."
+    )
+    io = ("X001", "Y001", "X002", "X003", "X007", "X006", "X004", "Y002")
+    assert details["io_before"] == dict.fromkeys(io, False)
+    assert details["io_after"] == {**dict.fromkeys(io, False), "X001": True, "Y001": True}
+    assert simulation.watched is None
+
+
+def test_the_simulation_check_fails_when_modbus_never_reads_an_address(tmp_path, port, monkeypatch):
+    monkeypatch.setattr(cs, "RUN_WAIT", 1.0)
+    details, simulation = check_program_simulation(tmp_path, FakeProgramSimulation(silent="X006"))
+    assert details["failed"] == (
+        "Timed out after 1 s waiting for Modbus values for X001, Y001, X002, X003, X007, "
+        "X006, X004, Y002."
+    )
+    assert simulation.watched is None
+
+
+def test_the_simulation_check_fails_when_y001_is_on_before_x001(tmp_path, port):
+    details, simulation = check_program_simulation(tmp_path, FakeProgramSimulation(output_on=True))
+    assert details["failed"] == (
+        "Y001 is on before the check turns X001 on, so the check cannot show that the program "
+        "drives it."
+    )
+    assert simulation.io["X001"] is False
+    assert simulation.watched is None
+
+
+def test_the_simulation_check_fails_when_x001_does_not_turn_y001_on(tmp_path, port, monkeypatch):
+    monkeypatch.setattr(cs, "RUN_WAIT", 1.0)
+    details, simulation = check_program_simulation(tmp_path, FakeProgramSimulation(dead=True))
+    assert details["failed"] == "Timed out after 1 s waiting for Y001 to turn on after X001."
+    assert simulation.watched is None
+
+
+# The csv_round_trip check
+
+
+def program_click_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **run: Any
+) -> FakeDatabaseProject:
+    """Return the project with rungs after the paste, whose SC_.mdb holds the program's rows.
+
+    Each of those rows is used and has no content.
+    """
+    from pyclickplc.addresses import parse_address
+    from pyclickplc.banks import DEFAULT_RETENTIVE, MEMORY_TYPE_TO_DATA_TYPE
+
+    rows = []
+    for address in cs.PROGRAM_ADDRESSES:
+        memory_type, number = parse_address(address)
+        row = AddressRow(
+            memory_type=memory_type,
+            address=number,
+            data_type=MEMORY_TYPE_TO_DATA_TYPE[memory_type],
+            retentive=DEFAULT_RETENTIVE[memory_type],
+            used=True,
+        )
+        assert not row.has_content
+        rows.append(row)
+    project = click_project(tmp_path, monkeypatch, rows, **run)
+    project.pasted = pasted_program()
+    return project
+
+
+def test_the_csv_round_trip_check_passes_when_the_import_removes_the_rows_of_the_program(
+    tmp_path, monkeypatch
+):
+    project = program_click_project(tmp_path, monkeypatch)
+    assert "failed" not in run_check(cs.check_sync, project)
+    details = run_check(cs.check_csv_round_trip, project)
+    assert "failed" not in details, details["failed"]
+    # ClickNick's file holds no row of the program, because none has content
+    assert details["addresses"] == {
+        "file": ["DS100"],
+        "mdb": ["DS100"],
+        "program": sorted(cs.PROGRAM_ADDRESSES),
+    }
+
+
+def test_the_csv_round_trip_check_fails_when_sc_mdb_keeps_a_row_of_the_program(
+    tmp_path, monkeypatch
+):
+    def keeps_x001(rows: dict[int, AddressRow]) -> dict[int, AddressRow]:
+        row = AddressRow(memory_type="X", address=1, used=True)
+        return {**rows, row.addr_key: row}
+
+    project = program_click_project(tmp_path, monkeypatch, misread=keeps_x001)
+    assert "failed" not in run_check(cs.check_sync, project)
+    details = run_check(cs.check_csv_round_trip, project)
+    assert details["failed"] == (
+        "After the import, SC_.mdb lacks [] from ClickNick's CSV and holds ['X001'] that the file "
+        "lacks."
+    )
+
+
+# The check_program check
+
+
+class FakeCheckSession:
+    """Stands in for ``ConnectionSession`` in ``check_program``."""
+
+    def __init__(self) -> None:
+        self.analysis = self
+        self.validated = 0
+
+    def run_validation(self) -> object:
+        self.validated += 1
+        return object()
+
+
+# The start of the report that Check Program gave on the project with rungs in a live run of
+# make smoke on 2026-11-21
+CONFLICT_REPORT = (
+    "Check Program: 1 error, 1 warning\n15 checks ran. 17 were not run.\n\n"
+    "error[COIL_CONFLICTING_OUTPUT] Conflicting Output\n"
+    "  Y002 is set by multiple instructions in one scan.\n"
+)
+CLEAN_REPORT = "Check Program: the 15 selected checks passed. 17 checks were not run."
+
+
+def check_program_with(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    app: str,
+    cli: str,
+    *,
+    pasted: bool = True,
+) -> dict[str, Any]:
+    """Run ``check_program``, with *app* as Check Program's report and *cli* as the CLI's text."""
+    from clicknick.live import dispatch
+    from clicknick.services import program_check
+
+    monkeypatch.setattr(program_check, "format_validation_report", lambda report: app)
+    monkeypatch.setattr(dispatch, "dispatch", lambda context, command: cli)
+    new = cr.NewProject(cs.PROGRAM_CPU, tmp_path / "program.ckp", 4242, 0x1234, tmp_path)
+    project = cs.Project(FakeRun(), new, tmp_path, cs.Scheduler())  # pyright: ignore[reportArgumentType]
+    project._session = FakeCheckSession()  # pyright: ignore[reportAttributeAccessIssue]
+    if pasted:
+        project.pasted = pasted_program()
+    return run_check(cs.check_program, project)
+
+
+def test_the_program_check_passes_when_both_ways_report_the_conflict_on_y002(tmp_path, monkeypatch):
+    cli = f"{CONFLICT_REPORT}\nOK: checked"
+    details = check_program_with(tmp_path, monkeypatch, CONFLICT_REPORT, cli)
+    assert "failed" not in details, details["failed"]
+    assert details["text"] == "Both report: Check Program: 1 error, 1 warning"
+    assert (details["app"], details["cli"]) == (CONFLICT_REPORT, cli)
+
+
+def test_the_program_check_does_not_ask_for_the_conflict_in_a_project_with_no_rungs(
+    tmp_path, monkeypatch
+):
+    details = check_program_with(tmp_path, monkeypatch, CLEAN_REPORT, CLEAN_REPORT, pasted=False)
+    assert "failed" not in details, details["failed"]
+
+
+@pytest.mark.parametrize(
+    ("app", "cli", "way"),
+    [
+        pytest.param(CLEAN_REPORT, CLEAN_REPORT, "Check Program", id="no-finding"),
+        pytest.param(
+            CONFLICT_REPORT.replace("Y002", "Y003"),
+            CONFLICT_REPORT.replace("Y002", "Y003"),
+            "Check Program",
+            id="another-address",
+        ),
+        pytest.param(
+            CONFLICT_REPORT.replace("COIL_CONFLICTING_OUTPUT", "TAG_DEAD_WRITE"),
+            CONFLICT_REPORT.replace("COIL_CONFLICTING_OUTPUT", "TAG_DEAD_WRITE"),
+            "Check Program",
+            id="another-finding",
+        ),
+    ],
+)
+def test_the_program_check_fails_when_a_report_lacks_the_conflict_on_y002(
+    tmp_path, monkeypatch, app, cli, way
+):
+    details = check_program_with(tmp_path, monkeypatch, app, cli)
+    assert details["failed"] == (
+        f"{way} does not report COIL_CONFLICTING_OUTPUT on Y002, but two rungs of the program "
+        "drive Y002 with an Out coil."
+    )
+
+
+# The rung_apply check, when ClickNick cannot read CLICK's copy
+
+
+def test_the_rung_apply_check_fails_when_clicknick_cannot_read_clicks_copy_after_the_save(
+    tmp_path, monkeypatch
+):
+    from clicknick.ladder.program import unreadable_copy
+    from clicknick.services import rung_diff
+
+    project = rung_project(tmp_path, monkeypatch)
+    compare = rung_diff.compare_bundle
+
+    def compare_unreadable_after_the_save(programs, click_dir):
+        comparison = compare(programs, click_dir)
+        if project.run.pasted is None:
+            return comparison
+        # No opcodes, so no rung to paste or to delete. ClickNick cannot read the program
+        unreadable = rung_diff.ProgramChange(
+            legacy=(unreadable_copy("main.csv", "main", ValueError("bad row")),)
+        )
+        assert unreadable.unreadable and unreadable.differs
+        assert (unreadable.changed, unreadable.removed) == ((), ())
+        return dataclasses.replace(comparison, changes={cs.MAIN_CSV: unreadable})
+
+    monkeypatch.setattr(rung_diff, "compare_bundle", compare_unreadable_after_the_save)
+    details = run_check(cs.check_rung_apply, project)
+    assert details["failed"] == (
+        "After CLICK's save and the build, ClickNick cannot read CLICK's copy of the main "
+        "program, so Review Changes would paste it whole again."
+    )
