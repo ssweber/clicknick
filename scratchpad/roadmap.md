@@ -267,6 +267,13 @@ can automate. Items marked (runner) the runner can answer. When a check is walke
   ClickNick does not list a window whose title names `X.CKP`, and a connected window that shows `X.CKP` after a
   Save As is treated as if CLICK had unloaded the project. Matching without case needs more than the regex,
   because `project_name` and two other places strip only a lowercase `.ckp`.
+- Q16 (Sam): in Program > Edit Rung Comments, type `a → b`, then `中` through an IME, then `😀`, each in a rung
+  of its own. Save the project, close it and open it again. Does the editor show →, 中 and 😀, or `?`? The
+  runner's WM_CHAR test gave `?` for each. No one has typed them by hand. To keep the result, keep the saved
+  project. If the RTF is wanted, the runner opens that project and reads each rung's RTF from the clipboard.
+  A pasted RTF escape already survives: CLICK kept a pasted → through an edit, a save and a reopen. So the
+  answer decides only whether laddercodec must also read the form that CLICK writes for typed text, such as
+  中 as GBK bytes in a SimSun font.
 - CLICK's **Export Nicknames** was seen to leave out a nickname that ClickNick wrote, before 0.26.0. If it
   happens again, note the CLICK version, and whether the project was saved or reopened before the export.
 

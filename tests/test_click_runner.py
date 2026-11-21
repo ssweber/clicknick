@@ -7791,7 +7791,7 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_twenty_seven_commands():
+def test_the_allowlist_is_the_twenty_eight_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         0xE122: "Copy",
@@ -7807,6 +7807,7 @@ def test_the_allowlist_is_the_twenty_seven_commands():
         32851: "Read Data from PLC",
         32834: "Address Picker",
         32827: "System Configuration",
+        32844: "Edit Rung Comments",
         50001: "Contact(NO)...",
         50004: "Compare...",
         50010: "Out...",

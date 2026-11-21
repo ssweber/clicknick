@@ -86,6 +86,12 @@ SEND_DIALOG = 50061
 # This is MFC's ID_EDIT_COPY. Edit > Copy puts what is selected in the ladder on the clipboard, and
 # nothing else.
 EDIT_COPY = 0xE122
+# This is Program > Edit Rung Comments. It opens "Edit Rung Comment" (TfrmEditComment) for the
+# rung at the ladder's cursor. The form's text box is a TRichEdit, an ANSI window. Windows converts
+# WM_SETTEXT and WM_CHAR for it through cp1252, so a character outside cp1252 arrives as "?". Of
+# the messages tried (WM_CHAR, WM_SETTEXT, EM_SETTEXTEX), only EM_SETTEXTEX in code page 1200 sets
+# such a character.
+EDIT_RUNG_COMMENTS = 32844
 
 ALLOWED_COMMANDS = {
     PASTE: "Paste",
@@ -115,6 +121,7 @@ ALLOWED_COMMANDS = {
     DRUM_DIALOG: "Drum...",
     SEND_DIALOG: "Send...",
     EDIT_COPY: "Copy",
+    EDIT_RUNG_COMMENTS: "Edit Rung Comments",
 }
 
 # The class of the IP address control (Send's Server IP Address). It has four Edits as children,
