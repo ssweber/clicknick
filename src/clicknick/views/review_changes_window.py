@@ -1947,6 +1947,11 @@ class ReviewChangesWindow(tk.Toplevel):
         self._status_var.set(msg)
         self._update_action_btn()
 
+    def _new_subroutine_lookup_failed(self, exc: Exception) -> None:
+        self._finish_add_subroutine(
+            f"Could not look for CLICK's {_NEW_SUB_TITLE} window: {exc}. Try again"
+        )
+
     def _fill_new_subroutine(self, dialog: int, sub_name: str) -> None:
         if WIN32.set_control_text(dialog, _NEW_SUB_NAME_CONTROL, sub_name):
             msg = (
@@ -1963,7 +1968,11 @@ class ReviewChangesWindow(tk.Toplevel):
     def _wait_for_new_subroutine(self, pid: str, sub_name: str, remaining_ms: int) -> None:
         if not self.winfo_exists():
             return
-        dialog = WIN32.find_process_window(pid, _NEW_SUB_TITLE)
+        try:
+            dialog = WIN32.find_process_window(pid, _NEW_SUB_TITLE)
+        except Exception as exc:
+            self._new_subroutine_lookup_failed(exc)
+            return
         if dialog:
             self._fill_new_subroutine(dialog, sub_name)
         elif remaining_ms <= 0:
@@ -2002,7 +2011,11 @@ class ReviewChangesWindow(tk.Toplevel):
         sub_name = Path(self._items[idx][0]).stem
         self._adding_subroutine = True
         self._update_action_btn()
-        dialog = WIN32.find_process_window(pid, _NEW_SUB_TITLE)
+        try:
+            dialog = WIN32.find_process_window(pid, _NEW_SUB_TITLE)
+        except Exception as exc:
+            self._new_subroutine_lookup_failed(exc)
+            return
         if dialog:  # The dialog is already open, so only fill it in
             WIN32.activate(dialog)
             self._fill_new_subroutine(dialog, sub_name)

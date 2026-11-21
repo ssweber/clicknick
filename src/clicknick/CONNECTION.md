@@ -89,6 +89,11 @@ wait for each other (`utils/dialog_queue.py`).
 - While a CLICK window is connected, its session's watch (`_monitor_task`) checks every 100 ms whether the window
   closed or shows another project. The watch shows autocomplete popups while `monitoring` is on and data is
   loaded. The new project's session starts watching even when following the project fails part way.
+- The watch counts the window as closed only when `check_window_exists` finds no visible window of CLICK's
+  process. If the window lookup raises, `check_window_exists` prints the error and returns True. The watch,
+  `refresh_click_instances` and the CSV load then keep the session and the data, and the watch checks again
+  100 ms later. pywin32's EnumWindows raises if a callback returns False while the thread's last error is set.
+  So every window lookup in `utils/win32_utils.py` returns True from its callback and lists every window.
 - When the session opens, it pairs the durable workspace for the project's PLC name (`pair_workspace`). The
   Workspace setup window and its unapplied choice (`pending_workspace`) belong to the session. They close with
   it, when CLICK's window closes or shows another project. `ConnectionController.close_session` returns True when

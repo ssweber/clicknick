@@ -14,9 +14,10 @@ from clicknick.app import ClickNickApp
 from clicknick.connection_controller import ConnectionController
 from clicknick.connection_session import ClickConnection, ConnectionSession
 from clicknick.data_session import DataSession
-from clicknick.detection.window_detector import ClickInstance
+from clicknick.detection.window_detector import ClickInstance, ClickWindowDetector
 from clicknick.services.workspace_mirror import ProjectWorkspaceConfig
 from clicknick.utils.dialog_queue import DialogQueue
+from clicknick.utils.win32_utils import WIN32
 from clicknick.workspace_controller import WorkspaceController
 
 
@@ -718,6 +719,25 @@ def test_stopped_monitoring_still_notices_click_closing(monkeypatch):
     assert editor.closed
     assert app._click is None
     assert app.root.pending(100) == 0
+
+
+def test_the_watch_keeps_the_data_when_one_window_check_fails(monkeypatch):
+    app, _prompts = _app(monkeypatch)
+    editor = _open(app, FakeStore(is_database=True, unsaved=True))
+    session = app._session
+
+    def win_exist(**_kwargs):
+        raise OSError("EnumWindows failed")
+
+    monkeypatch.setattr(WIN32, "win_exist", win_exist)
+    app.detector.check_window_exists = ClickWindowDetector({}, None).check_window_exists
+
+    app._connection._watch_connection()  # The watch's first tick runs at once
+
+    session.close.assert_not_called()
+    assert not editor.closed
+    assert app._session is session
+    assert app.root.pending(100) == 1
 
 
 def test_stopped_monitoring_still_notices_a_project_change(monkeypatch):
