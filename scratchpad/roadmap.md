@@ -169,12 +169,17 @@ checked this on 2026-11-20. The planner placed pyrung's support for the marker i
 0.18.0. These steps wait on that release:
 
 - Drop the empty stand-in rung (`_replace_unreadable`, `is_stand_in`, and the refusals in `prepare_rungs_load`
-  and `_empty_refusal`). Then `write_csv` writes the marker.
+  and `_placeholder_refusal`). Then `write_csv` writes the marker.
 - The Simulator runs up to the marker instead of refusing to run. `_workspace_problem` stops refusing "a rung
   ClickNick cannot read". Show a notice that is hard to miss.
 - Check Program lists the marker.
 - When the stand-in goes, check again that Review Changes' whole-program paste (`ProgramChange.merged` when
   CLICK's copy is unreadable) refuses a marker, and that the legacy-encoding record still names the rung.
+- Follow-up branch, which needs no pyrung release: make Review Changes refuse before the first step when
+  CLICK's copy is readable, so that CLICK is never left half pasted. Today the earlier steps paste, and then
+  `prepare_rungs_load` refuses the step that holds a marker, a comment that starts with `UNDECODED comment:`,
+  or a rung that needs CLICK v4 (`NeedsClickV4Error`). The new refusal counts only the rungs that the copy
+  would really take, and leaves out skipped differences. The planner schedules it.
 
 What a move to laddercodec's `read_bundle` and `write_bundle` would change (out of scope for
 `bob/laddercodec-next`):

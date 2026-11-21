@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from laddercodec import Coil, Rung, write_csv
+from laddercodec import Coil, Rung, Undecoded, write_csv
 from pyclickplc.addresses import get_addr_key
 
 from clicknick.connection_session import SavedProgram
@@ -2151,6 +2151,87 @@ def test_a_program_differing_only_by_its_stand_in_is_red_and_refused(monkeypatch
     assert window._click_label("main.csv") == "1 rung changed, unreadable"
     assert "Rung 2 of Main Program is empty in this folder." in _status(window)
     assert _red(window) == {MAIN}
+
+
+# laddercodec's marker for the rung at index 1, which CLICK numbers 2
+_MARKER = Rung(
+    [["-"] * 31],
+    [Undecoded("bad bytes after DS1", rung=1, row=0)],
+    "UNDECODED: rung 1, row 0: bad bytes after DS1",
+)
+
+
+# What the refusal adds when the folder holds a marker
+_REPLACE_MARKER = (
+    " In this folder, replace each marker with the logic of the rung that it stands for,"
+    " or delete the marker."
+)
+
+
+@pytest.mark.parametrize(
+    ("folder_rung", "what", "then"),
+    [
+        (empty_rung(STAND_IN_COMMENT), "is empty", ""),
+        # The stand-in that 0.25.0 wrote
+        (
+            empty_rung(
+                "ClickNick cannot read this rung from CLICK. This empty rung stands in for it."
+            ),
+            "is empty",
+            "",
+        ),
+        (_MARKER, "is an UNDECODED marker", _REPLACE_MARKER),
+    ],
+    ids=["stand-in", "0.25-stand-in", "marker"],
+)
+def test_a_folder_rung_for_an_unreadable_rung_is_refused_before_the_copy(
+    monkeypatch, copies, folder_rung: Rung, what: str, then: str
+) -> None:
+    """Refuse the whole paste before ``prepare_rungs_load`` sees the folder's rung."""
+    click = [RUNGS[0], empty_rung(STAND_IN_COMMENT), *RUNGS[2:]]
+    window = _stand_in_window(monkeypatch, click, [RUNGS[0], folder_rung, *RUNGS[2:]], 2)
+    refusal = (
+        f"Rung 2 of Main Program {what} in this folder. CLICK's rung 2 cannot be read. "
+        f"Paste that rung from your own copy of the program first.{then}"
+    )
+
+    assert _status(window).endswith(refusal)
+
+    window._on_action()
+
+    assert copies == []
+    assert _status(window) == f"Could not copy main.csv: {refusal}"
+
+
+@pytest.mark.parametrize(
+    ("proposed", "named"),
+    [
+        (
+            [RUNGS[0], empty_rung(""), _MARKER, _MARKER, RUNGS[3]],
+            "Rung 2 of Main Program is empty in this folder. "
+            "Rungs 3 to 4 of Main Program are UNDECODED markers in this folder.",
+        ),
+        (
+            [RUNGS[0], _MARKER, empty_rung(""), RUNGS[3]],
+            "Rung 2 of Main Program is an UNDECODED marker in this folder. "
+            "Rung 3 of Main Program is empty in this folder.",
+        ),
+    ],
+    ids=["empty-first", "marker-first"],
+)
+def test_empty_rungs_and_markers_in_one_folder_are_named_in_rung_order(
+    monkeypatch, copies, proposed: list[Rung], named: str
+) -> None:
+    click = [RUNGS[0], empty_rung(STAND_IN_COMMENT), *RUNGS[2:]]
+    window = _stand_in_window(monkeypatch, click, proposed, 2)
+
+    window._on_action()
+
+    assert copies == []
+    assert _status(window) == (
+        f"Could not copy main.csv: {named} CLICK's rung 2 cannot be read. "
+        f"Paste those rungs from your own copy of the program first.{_REPLACE_MARKER}"
+    )
 
 
 def test_differences_lock_while_a_step_is_half_done(monkeypatch, copies) -> None:

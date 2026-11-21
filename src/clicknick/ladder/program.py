@@ -639,6 +639,13 @@ def is_empty_rung(rung: Rung) -> bool:
     )
 
 
+def is_marker(rung: Rung) -> bool:
+    """Return True if *rung* holds the UNDECODED marker that laddercodec writes for a rung that
+    it cannot decode.
+    """
+    return any(isinstance(af, Undecoded) for af in rung.instructions)
+
+
 def _stand_in(rung: Rung, problems: Sequence[tuple[str, str]]) -> Rung:
     """Return an empty rung that says which rung it replaces, so the rung numbers below it stay."""
     names = [name for name, _detail in problems if name]
@@ -648,7 +655,7 @@ def _stand_in(rung: Rung, problems: Sequence[tuple[str, str]]) -> Rung:
         why = " ".join(detail for _name, detail in problems)
     lines = [STAND_IN_COMMENT, why]
     comment = rung.comment or ""
-    if any(isinstance(af, Undecoded) for af in rung.instructions):
+    if is_marker(rung):
         # laddercodec's first line repeats the reason, with its rung number counted from 0
         comment = comment.split("\n", 1)[1] if "\n" in comment else ""
     if comment:
