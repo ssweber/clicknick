@@ -19,40 +19,18 @@ How to use it:
 
 ## Order
 
-1. The next release, 0.26.0. The steps are below.
+1. End-to-end smoke tests against the runner's CLICK (CLICK). Sam asked for this as the first work after
+   0.26.0. It starts with a runner command `new --cpu MODEL` that makes a project through CLICK's new-project
+   wizard, offline. Then one command, `make smoke`, works on seven fresh projects that CLICK makes:
+   one for each of five CPUs, one with no CPU and one with rungs. For each project it builds the
+   workspace, starts the simulation and runs Check Program. It also runs Sync, ClickNick's Export to CSV
+   followed by CLICK's import of that file, and the `rung apply` round trip. `make smoke` stays out of
+   `make test` and CI. The plan is in `../clicknick-wt/buildbot/jobs/e2e-smoke/FINDINGS.md`.
 2. The CLICK runner's waiting jobs (CLICK). Sam ruled on 2026-11-17 that they come ahead of recording.
 3. Recording, ClickNick side (item 10; waits on pyrung's recording core and console commands for every
    change).
 4. Small follow-ups (nothing), whenever a branch touches their file.
 5. The release after 0.26.0. Sam has not ranked it yet.
-
-## The next release, 0.26.0
-
-The ClickNick session runs these steps. Its build notes for them, with the sibling commits that each branch
-was tested against, are in `../clicknick-wt/buildbot/jobs/next-pins/`.
-
-1. Done in #156. `main` pins laddercodec 0.5.0, pyclickplc 0.11.1 and pyrung 0.18.0. The rest of item 9 waits
-   on pyrung's release after 0.18.0.
-2. Done. CLICK 4.00 writes Address.csv in UTF-8 with a BOM, so `read_mdb_csv` reads it correctly. The runner
-   imported a cp1252 nickname CSV that holds `Café` and `50°C`, then saved the project. The import wrote no
-   Address.csv. The save wrote one that starts with `EF BB BF` and holds `é` as `C3 A9` and `°` as `C2 B0`, with
-   CRLF line ends. No one has checked CLICK 3.43 or 2.x. Item 4 lists that check as a runner job. The run
-   is in `../clicknick-wt/buildbot/jobs/release-0.26.0/runs/v400/`.
-3. Done in #157. It read the CHANGELOG from v0.25.0 against what had merged, and wrote the summary.
-4. Done in #158, #159 and #160. Sam held the release for these Simulator fixes after his smoke test hit a
-   CLICK PLUS project that would not build.
-   - #158: when pyclickplc cannot read the hardware in Project.ini, the workspace builds without analog inputs.
-     The main window and `clicknick-cli check` report the read error, and the Simulator's hardware panel shows
-     it. The No CPU card says that the Simulator still runs the program.
-   - #159: `main` pins pyclickplc 0.11.2, which reads C2-FILL. CLICK 4.00 saves an empty CLICK PLUS option
-     slot as C2-FILL.
-   - #160: a bench link or a cut now waits until a rung names each of its addresses: its input and, for a
-     bench link, the address that drives it. It shows no error. A saved link waits the same way. A write keeps
-     a link or a force on an address that no rung names any more. The Simulator keeps a saved switch position
-     on an input that no module has.
-5. The branch `docs/finish-v0.26.0` moves the entries of #158, #159 and #160 into the v0.26.0 section of the
-   CHANGELOG.
-6. Sam's smoke test of the release candidate, then his tag. ClickNick goes last of the four repos.
 
 ## The release after 0.26.0
 
@@ -79,10 +57,6 @@ for this in next release". Each item says what it needs, as above.
   place, not only in the wrong order.
 - Stacked message boxes (nothing). When a build finishes, ClickNick can show several message boxes, one on
   top of another. This happened before 0.26.0 too.
-- End-to-end smoke tests against the runner's CLICK (CLICK). For each CPU, a script would make a project in
-  the runner's CLICK and run the build, the Simulator, Check Program, Sync and `rung apply` on it. The first
-  step adds a `new --cpu MODEL` command to the runner. It would make the project through CLICK's new-project
-  wizard, offline. The findings are in `../clicknick-wt/buildbot/jobs/e2e-smoke/FINDINGS.md`.
 
 ## 1. Housekeeping (nothing)
 
