@@ -39,9 +39,6 @@ for this in next release". Each item says what it needs, as above.
   `cannot link Y001: no rung uses Y001, so the program has no tag for it`. That text does not hold "unknown
   tag", which `_unknown_tag` in `simulation_session.py` looks for. At the next pyrung pin, check that backstop
   against both texts.
-- pyrung's fallback `tags` module (nothing). When a launch has no TagMap, pyrung uses any top-level `tags`
-  module in `sys.modules`. Check whether a Write, or a change of project, can pick up an earlier project's
-  `tags` in the one process that runs the Simulator.
 - An unknown module (waits on pyclickplc). pyclickplc would read a module that it does not know as unknown,
   instead of raising `ValueError`. This is item 3 of pyclickplc's roadmap.
 - Stacked message boxes (nothing). When a build finishes, ClickNick can show several message boxes, one on

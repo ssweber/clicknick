@@ -2991,6 +2991,141 @@ def test_pyrung_starts_from_unclear_plc_data_with_the_skipped_text_at_power_on(
     assert "pyrung skipped" not in harness.messages()
 
 
+# ----------------------------------------------------------------------
+# pyrung's fallback to a top-level tags module
+# ----------------------------------------------------------------------
+
+#: A top-level ``tags`` module, as a hand-written pyrung project has one. Its TagMap puts
+#: OldName on X001.
+_OLD_TAGS_MODULE = """from pyrung import Bool
+from pyrung.click import ClickBlocks, TagMap
+
+blocks = ClickBlocks()
+old_name = Bool("OldName")
+mapping = TagMap({old_name: blocks.x[1]}, include_system=False)
+"""
+
+_OLD_TAGS_PROGRAM = """import warnings
+warnings.simplefilter("ignore")
+from pyrung import Bool, PLC, Program, out, rung
+from tags import old_name
+with Program(strict=False) as prog:
+    with rung(old_name):
+        out(Bool("Lamp"))
+runner = PLC(prog, dt=0.010)
+"""
+
+#: A program with no TagMap. If no module from the program's folder defines a TagMap named
+#: ``mapping``, pyrung 0.18.0 uses the ``mapping`` of ``sys.modules["tags"]``, wherever that
+#: module came from.
+_NO_TAGMAP_PROGRAM = """import warnings
+warnings.simplefilter("ignore")
+from pyrung import Bool, PLC, Program, out, rung
+with Program(strict=False) as prog:
+    with rung(Bool("Start")):
+        out(Bool("Lamp"))
+runner = PLC(prog, dt=0.010)
+"""
+
+
+def _on_pyrung_at(home: Path, project: Path, pyrung_dap, files: dict[str, str]) -> Harness:
+    """Return a harness that runs *project* on pyrung's DAP server once a test opens it.
+
+    *files* maps each file name in *project* to its text. The harness keeps its settings in
+    *home*.
+    """
+    home.mkdir()
+    project.mkdir()
+    harness = Harness(home, _ready_analysis(project))
+    for name, text in files.items():
+        (project / name).write_text(text, encoding="utf-8")
+
+    def factory(**callbacks):
+        dap = pyrung_dap(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    return harness
+
+
+def _assert_x001_unmapped(dap) -> None:
+    """Assert that pyrung refuses a force on X001, because no TagMap maps it."""
+    with pytest.raises(DapRequestError, match=r"X001 is not mapped to a tag"):
+        dap.force("X001", True)
+    assert dap.list_forces() == {}
+
+
+def test_a_restart_on_another_project_starts_a_process_without_its_tags(tmp_path, pyrung_dap):
+    """Project A imports a top-level ``tags`` module. Project B has no TagMap.
+
+    The workspace moves from A to B, and the user restarts the simulation. The restart ends A's
+    process and starts B in a process of its own, so A's ``tags`` module is not loaded there.
+    pyrung finds no TagMap for B and refuses a force on X001.
+    """
+    harness = _on_pyrung_at(
+        tmp_path / "home",
+        tmp_path / "a",
+        pyrung_dap,
+        {"tags.py": _OLD_TAGS_MODULE, "run.py": _OLD_TAGS_PROGRAM},
+    )
+    harness.open()
+    assert harness.sim.is_ready, harness.messages()
+    first = harness.dap
+    first.force("X001", True)
+    assert first.list_forces() == {"OldName": True}, "A's TagMap puts OldName on X001"
+    first.unforce("X001")
+    process = first._proc
+
+    project_b = tmp_path / "b"
+    project_b.mkdir()
+    (project_b / "run.py").write_text(_NO_TAGMAP_PROGRAM, encoding="utf-8")
+    harness.analysis._result = replace(harness.analysis._result, project_dir=project_b)
+    harness.sim.restart()
+    harness.scheduler.run_ready()
+
+    assert process.poll() is not None, "the restart ends A's process"
+    assert harness.sim.is_ready, harness.messages()
+    second = harness.dap
+    assert second is not first, "B runs on a DapService of its own"
+    second.frame()
+    assert second.program_tags == {"Start", "Lamp"}
+    _assert_x001_unmapped(second)
+
+
+def test_a_write_drops_the_tags_module_that_the_old_program_imported(tmp_path, pyrung_dap):
+    """The program stops importing its top-level ``tags`` module, and the user writes it.
+
+    The file ``tags.py`` stays beside ``run.py``. Before the reload, pyrung removes every module
+    whose file is in the program's folder from ``sys.modules``. So the new program finds no
+    TagMap, and pyrung refuses a force on X001.
+    """
+    project = tmp_path / "project"
+    harness = _on_pyrung_at(
+        tmp_path / "home",
+        project,
+        pyrung_dap,
+        {"tags.py": _OLD_TAGS_MODULE, "run.py": _OLD_TAGS_PROGRAM},
+    )
+    harness.open()
+    assert harness.sim.is_ready, harness.messages()
+    dap = harness.dap
+    dap.force("X001", True)
+    assert dap.list_forces() == {"OldName": True}, "the old program's TagMap puts OldName on X001"
+    dap.unforce("X001")
+
+    (project / "run.py").write_text(_NO_TAGMAP_PROGRAM, encoding="utf-8")
+    _rebuild(harness)
+    harness.sim.write_program()
+    harness.scheduler.run_ready()
+
+    assert harness.messages("error") == ""
+    assert harness.dap is dap, "the write reloads in the same process"
+    dap.frame()
+    assert dap.program_tags == {"Start", "Lamp"}
+    _assert_x001_unmapped(dap)
+
+
 def test_run_time_edit_keeps_every_value_and_the_force(on_pyrung):
     dap = on_pyrung.dap
     _rebuild(on_pyrung)
