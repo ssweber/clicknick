@@ -547,26 +547,49 @@ def test_placeholder_subtitle_fits_a_card(simulator, ready):
     assert win._small.measure("Used I/O with no module") <= win._card_w - 20
 
 
-def test_cpu_placeholder_follows_the_housing_and_a_full_rack_of_them_fits(simulator, ready):
+def test_c0_cpu_placeholders_follow_built_in_io_as_one_housing(simulator, ready):
     from clicknick.services.sim_hardware import build_panel_layout
-    from clicknick.views.simulator_window import CARD_GAP, CPU_CARD_W, HOUSING_GAP, MARGIN
+    from clicknick.views.simulator_window import CPU_CARD_W, HOUSING_GAP, MARGIN
 
     modules = [
-        _unassigned_module("cpu", 0, "C2-03CPU-2", inputs=("X001", "X002")),
-        _unassigned_module("slot", 0, "C2-08ND3", inputs=("X003",)),
+        _unassigned_module("cpu", 0, "C0-02DD1-D", inputs=("X001", "X002", "X003", "X004")),
+    ]
+    ready.sim._layout_reader = lambda _path, _used: build_panel_layout(modules, {"X005", "X021"})
+    win = simulator(ready)
+
+    assert {"Built-in I/O", "CPU - unassigned", "Option slot 1 - unassigned"} <= _texts(win)
+    built_in_x = MARGIN + CPU_CARD_W + HOUSING_GAP
+    cpu_extra_x = built_in_x + win._card_w + HOUSING_GAP
+    assert win._inputs["X001"]["x"] == built_in_x
+    assert win._inputs["X005"]["x"] == cpu_extra_x
+    assert win._inputs["X021"]["x"] == cpu_extra_x + win._card_w + HOUSING_GAP
+
+
+def test_slot_0_placeholder_follows_its_slot_and_a_full_rack_of_them_fits(simulator, ready):
+    from clicknick.services.sim_hardware import build_panel_layout
+    from clicknick.views.simulator_window import CPU_CARD_W, HOUSING_GAP, MARGIN
+
+    # A CLICK PLUS CPU has no built-in points, so X005 belongs to option slot 0.
+    modules = [
+        _unassigned_module("cpu", 0, "C2-03CPU-2"),
+        _unassigned_module("slot", 0, "C2-08ND3", inputs=("X001", "X002", "X003")),
     ]
     used = {"X005", "X021"} | {f"X{n}01" for n in range(1, 9)} | {f"Y{n}01" for n in range(1, 9)}
     ready.sim._layout_reader = lambda _path, _used: build_panel_layout(modules, used)
     win = simulator(ready)
 
-    assert {"CPU - unassigned", "Option slot 1 - unassigned", "Expansion 8 - unassigned"} <= _texts(
-        win
-    )
-    cpu_io_x = MARGIN + CPU_CARD_W + HOUSING_GAP
-    slot0_x = cpu_io_x + win._card_w + HOUSING_GAP
-    slot1_x = slot0_x + win._card_w + HOUSING_GAP
-    assert win._inputs["X021"]["x"] == slot1_x
-    assert win._inputs["X005"]["x"] == slot1_x + win._card_w + CARD_GAP  # after the housing
+    texts = _texts(win)
+    assert {
+        "Option slot 0 - unassigned",
+        "Option slot 1 - unassigned",
+        "Expansion 8 - unassigned",
+    } <= texts
+    assert "CPU - unassigned" not in texts
+    slot0_x = MARGIN + CPU_CARD_W + HOUSING_GAP
+    slot0_extra_x = slot0_x + win._card_w + HOUSING_GAP
+    assert win._inputs["X001"]["x"] == slot0_x
+    assert win._inputs["X005"]["x"] == slot0_extra_x
+    assert win._inputs["X021"]["x"] == slot0_extra_x + win._card_w + HOUSING_GAP
     assert all(a in win._inputs for a in used if a.startswith("X"))
     assert all(a in win._outputs for a in used if a.startswith("Y"))
     assert sum(win._drawn_rows) == len(win._drawn_pieces)

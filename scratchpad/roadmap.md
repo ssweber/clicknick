@@ -44,10 +44,6 @@ for this in next release". Each item says what it needs, as above.
   `tags` in the one process that runs the Simulator.
 - An unknown module (waits on pyclickplc). pyclickplc would read a module that it does not know as unknown,
   instead of raising `ValueError`. This is item 3 of pyclickplc's roadmap.
-- The CPU's placeholder card (nothing). On a CLICK PLUS, the Simulator puts the placeholder card for X001-X020
-  after the option slots (`_position` and `_rank` in `services/sim_hardware.py`). pyclickplc puts X001-X016 in
-  option slot 0 on a CLICK PLUS, but `_position` puts them on the CPU. So the placeholder is in the wrong
-  place, not only in the wrong order.
 - Stacked message boxes (nothing). When a build finishes, ClickNick can show several message boxes, one on
   top of another. This happened before 0.26.0 too.
 

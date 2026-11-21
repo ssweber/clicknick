@@ -167,30 +167,36 @@ def _card(module_io: ModuleIOLike) -> Card:
     )
 
 
-def _position(address: str) -> tuple[Location, int]:
-    """Return where an X/Y address sits.
+def _slot_0_holds_first_points(cards: Sequence[Card]) -> bool:
+    """Return True if option slot 0, not the CPU, owns X001-X016 and Y001-Y016.
 
-    The CPU holds 1-20, option slot 1 holds 21-99, and expansion n holds n01-n99.
+    That is the case when *cards* has a CPU card with no discrete inputs or outputs.
+    pyclickplc's ``read_io_layout`` numbers the CPU's built-in points and the points in
+    option slot 0 from 001. In pyclickplc's catalog, only the CLICK PLUS CPUs have no
+    built-in points. If *cards* has no CPU card, return False. A project with no CPU
+    then shows these addresses on a CPU placeholder.
+    """
+    cpu = next((card for card in cards if card.location == "cpu"), None)
+    return cpu is not None and not (cpu.of_kind("input") or cpu.of_kind("output"))
+
+
+def _position(address: str, slot_0: bool) -> tuple[Location, int]:
+    """Return the card position that pyclickplc's ``read_io_layout`` gives an X/Y address.
+
+    Expansion n holds n01-n99 and option slot 1 holds 21-99. Addresses 1-20 go to option
+    slot 0 if *slot_0* is True, and to the CPU otherwise.
     """
     index = parse_address(address)[1]
     if index >= 100:
         return "expansion", index // 100
-    return ("cpu", 0) if index <= 20 else ("slot", 1)
+    if index > 20:
+        return "slot", 1
+    return ("slot", 0) if slot_0 else ("cpu", 0)
 
 
-def _rank(location: Location, position: int, installed: bool = True) -> tuple[int, int]:
-    """Return the sort key for rack order.
-
-    A placeholder for the CPU's addresses goes after the option slots, so that it does
-    not split the CPU housing.
-    """
-    if location == "cpu" and not installed:
-        return (1, 100)
+def _rank(location: Location, position: int) -> tuple[int, int]:
+    """Return the sort key for rack order: the CPU, the option slots, then the expansions."""
     return ({"cpu": 0, "slot": 1, "expansion": 2}[location], position)
-
-
-def _where(card: Card) -> tuple[Location, int, bool]:
-    return card.location, card.position, card.installed
 
 
 def _placeholder(location: Location, position: int, addresses: Sequence[str]) -> Card:
@@ -208,22 +214,24 @@ def build_panel_layout(modules: Iterable[ModuleIOLike], used_io: Iterable[str] =
     A placeholder card goes at each position that has used I/O which no card provides.
     A position with both X and Y left over gets one placeholder (an assumed combo
     module). Addresses past the points of a real module at their position go on a
-    placeholder right after that module.
+    placeholder right after that module. On a CLICK PLUS, X001-X016 and Y001-Y016 go
+    on option slot 0, the same as in pyclickplc's ``read_io_layout``.
     """
     cards = [_card(module_io) for module_io in modules]
     provided = {t.address for card in cards for t in card.terminals if t.address is not None}
     missing = sorted((a for a in set(used_io) if a not in provided), key=address_sort_key)
+    slot_0 = _slot_0_holds_first_points(cards)
     by_position: dict[tuple[Location, int], list[str]] = {}
     for address in missing:
         if address[:1] in ("X", "Y"):
-            by_position.setdefault(_position(address), []).append(address)
+            by_position.setdefault(_position(address, slot_0), []).append(address)
     for (location, position), addresses in sorted(
-        by_position.items(), key=lambda item: _rank(*item[0], installed=False)
+        by_position.items(), key=lambda item: _rank(*item[0])
     ):
         placeholder = _placeholder(location, position, addresses)
-        rank = _rank(location, position, installed=False)
+        rank = _rank(location, position)
         at = len(cards)
-        while at > 0 and _rank(*_where(cards[at - 1])) > rank:
+        while at > 0 and _rank(cards[at - 1].location, cards[at - 1].position) > rank:
             at -= 1
         cards.insert(at, placeholder)
     return PanelLayout(cards=tuple(cards))

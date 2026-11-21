@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -181,6 +183,106 @@ def test_a_read_error_that_is_not_a_value_error_does_not_say_the_simulator_runs(
 
     assert "locked" in text
     assert "still runs" not in text
+
+
+RECORDED_LAYOUTS = Path(__file__).resolve().parents[1] / "devtools" / "click_smoke_layouts.json"
+
+
+def _recorded_cards(model):
+    """Return the installed cards that CLICK 4.00 was observed to give a new project of *model*."""
+    layouts = json.loads(RECORDED_LAYOUTS.read_text(encoding="utf-8"))
+    return [(c["location"], c["position"], c["model"]) for c in layouts[model]["cards"]]
+
+
+def _plus_layout(tmp_path, cpu_id, slots, used_io):
+    """Read a Project.ini with the CPU *cpu_id* and the module IDs *slots* in option slots 0 and 1."""
+    lines = ["[SystemConfig]", f"Item1={cpu_id}"]
+    lines += [f"Item{10 + position}={module_id}" for position, module_id in enumerate(slots)]
+    ini = tmp_path / "Project.ini"
+    ini.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return read_panel_layout(ini, used_io=used_io)
+
+
+def _installed(layout):
+    return [(c.location, c.position, c.model) for c in layout.cards if c.installed]
+
+
+def test_a_click_plus_puts_x001_to_x016_on_option_slot_0(tmp_path):
+    # 198 is C2-03CPU. CLICK 4.00 fills an empty option slot with C2-FILL, module 8192.
+    layout = _plus_layout(tmp_path, 198, [8192], used_io={"X001", "Y016"})
+
+    assert _installed(layout) == _recorded_cards("C2-03CPU")
+    assert [(c.key, c.installed) for c in layout.cards] == [
+        ("cpu", True),
+        ("slot0", True),
+        ("slot0", False),
+    ]
+    (placeholder,) = _placeholders(layout)
+    assert placeholder.title == "Option slot 0 - unassigned"
+    assert _addresses(placeholder, "input") == ["X001"]
+    assert _addresses(placeholder, "output") == ["Y016"]
+
+
+def test_a_click_plus_with_two_slots_puts_each_placeholder_after_its_slot(tmp_path):
+    # 201 is C2-03CPU-2, with option slots 0 and 1.
+    layout = _plus_layout(tmp_path, 201, [8192, 8192], used_io={"X001", "X021"})
+
+    assert _installed(layout) == _recorded_cards("C2-03CPU-2")
+    assert [(c.key, c.installed) for c in layout.cards] == [
+        ("cpu", True),
+        ("slot0", True),
+        ("slot0", False),
+        ("slot1", True),
+        ("slot1", False),
+    ]
+    slot0, slot1 = _placeholders(layout)
+    assert _addresses(slot0, "input") == ["X001"]
+    assert _addresses(slot1, "input") == ["X021"]
+
+
+def test_io_beyond_the_points_of_a_click_plus_slot_module_goes_after_that_module(tmp_path):
+    # 8193 is C2-14D1, with 8 inputs and 6 outputs.
+    layout = _plus_layout(tmp_path, 198, [8193], used_io={"X003", "X012", "Y007"})
+
+    assert [(c.key, c.installed) for c in layout.cards] == [
+        ("cpu", True),
+        ("slot0", True),
+        ("slot0", False),
+    ]
+    (placeholder,) = _placeholders(layout)
+    assert _addresses(placeholder, "input") == ["X012"]
+    assert _addresses(placeholder, "output") == ["Y007"]
+
+
+def test_a_click_plus_with_no_module_listed_in_slot_0_still_names_slot_0(tmp_path):
+    layout = _plus_layout(tmp_path, 198, [], used_io={"X001"})
+
+    assert [(c.key, c.installed) for c in layout.cards] == [("cpu", True), ("slot0", False)]
+
+
+def test_a_c0_cpu_keeps_its_extra_io_on_a_placeholder_right_after_it():
+    layout = build_panel_layout([CPU, EXPANSION], used_io={"X005", "X021", "X201"})
+
+    assert [(c.key, c.installed) for c in layout.cards] == [
+        ("cpu", True),
+        ("cpu", False),
+        ("slot1", False),
+        ("expansion1", True),
+        ("expansion2", False),
+    ]
+    cpu_extra = _placeholders(layout)[0]
+    assert cpu_extra.title == "CPU - unassigned"
+    assert _addresses(cpu_extra, "input") == ["X005"]
+
+
+def test_with_no_cpu_the_placeholders_follow_address_order():
+    layout = build_panel_layout([], used_io={"X001", "X021", "X101"})
+
+    assert [(c.key, c.installed) for c in layout.cards] == [
+        ("cpu", False),
+        ("slot1", False),
+        ("expansion1", False),
+    ]
 
 
 def test_an_empty_option_slot_shows_as_a_card_with_no_terminals(tmp_path):
