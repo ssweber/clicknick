@@ -302,6 +302,15 @@ and runs these checks:
   unassigned I/O.
 - `simulation`: the simulation starts and scans in RUN. In `rungs`, the simulation must read the
   program's X and Y addresses over Modbus, and switching X001 on must turn Y001 on.
+- `panel`: only in `rungs`, after `simulation`. The smoke opens ClickNick's Simulator window on
+  the simulation, and presses its panel with the `Driver` of `devtools/sim_driver.py`. The
+  window shows on your desktop while the check runs. The smoke switches the CPU to STOP and
+  back to RUN, and Y001 must then be off. It turns X001 on, and Y001 must light. It turns X001
+  off, and Y001 must stay lit, because the program latches it. It double-clicks Y001, and the
+  panel must show Y001 forced off, with its padlock and `Forces (1)`. A click on the padlock
+  must release the force. If this check fails, the checks after it still run. With pyrung
+  0.18.0, the check fails at STOP, because the switch shows STEP. The failure text says that
+  the fault is in pyrung.
 - `check_program`: Check Program and `clicknick-cli check` both run and report the same. In
   `rungs`, both report an error and a warning, because two Out coils drive Y002. Both must
   report the error, `COIL_CONFLICTING_OUTPUT` on Y002. The check keeps the reports and does not
@@ -329,8 +338,8 @@ and runs these checks:
 `sync` and `csv_round_trip` write SC_.mdb, so they run after the checks that read the project
 as CLICK made it. They add about 13 s to each project. `result.json` holds the bytes of the
 comment in SC_.mdb and in CLICK's export. `rung_apply` saves the project in CLICK, so it runs
-last. It adds about 6 s to each project. `paste` adds about 5 s to `rungs`. Each project takes
-about 30 s, and the whole smoke takes about 3.5 minutes.
+last. It adds about 6 s to each project. `paste` adds about 5 s to `rungs`, and `panel` about
+8 s. Each project takes about 30 s, and the whole smoke takes about 3.5 minutes.
 
 The smoke writes its results into `--out` (by default `tmp\smoke\<date and time>`). Each
 project gets a folder of its own. It holds the runner's `--out` folder, `runner\`, and a

@@ -38,6 +38,14 @@ each project:
   simulation must read each X and Y address of the program over Modbus. ``PROGRAM_OUTPUT``
   must be off. After the check turns ``PROGRAM_INPUT`` on, the program must turn
   ``PROGRAM_OUTPUT`` on;
+- ``panel``: only in ``rungs``, after ``simulation``. The check opens ClickNick's Simulator
+  window on the simulation, and ``sim_driver.Driver`` presses its panel with synthetic Tk
+  events, as record_simulator_gif.py does. The window shows on the desktop while the check
+  runs. The check switches the CPU to STOP and back to RUN, and turns ``PROGRAM_INPUT`` on and
+  off. It forces ``PROGRAM_OUTPUT`` off with a double-click, and releases the force with a
+  click on its padlock. After each step, the panel's LEDs, switch, padlock and Forces button
+  must show what the program does. ``panel_scene`` lists the steps. If the check fails, the
+  checks after it still run;
 - ``check_program``: Check Program runs both ways, as ``analysis.run_validation()`` and as
   ``clicknick-cli check`` through ``dispatch()``, and both report the same findings. In
   ``rungs``, both must report ``PROGRAM_FINDING`` on ``PROGRAM_FINDING_ADDRESS``;
@@ -192,13 +200,17 @@ from typing import TYPE_CHECKING, Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import click_runner as cr  # noqa: E402
+from sim_driver import Driver, Scene  # noqa: E402
 
 if TYPE_CHECKING:
+    import tkinter as tk
+
     from clicknick.connection_session import ConnectionSession
     from clicknick.data.address_store import AddressStore
     from clicknick.data.data_source import DataSource
     from clicknick.ladder.program import PrepareResult
     from clicknick.simulation_session import SimulationSession
+    from clicknick.views.simulator_window import SimulatorWindow
 
 # The name of the project that holds a program. The runner makes a new project for PROGRAM_CPU,
 # and the paste check pastes PROGRAM_CSV into its main program before the other checks
@@ -246,6 +258,19 @@ PROGRAM_OUTPUT = "Y001"
 # this finding on that address
 PROGRAM_FINDING = "COIL_CONFLICTING_OUTPUT"
 PROGRAM_FINDING_ADDRESS = "Y002"
+# How long the panel check waits for the simulation and the Simulator's panel to show each step,
+# in seconds
+PANEL_WAIT = 15.0
+# How long the panel check lets Modbus read the values again after the scans that it waits for,
+# in seconds. The simulation reads them every 0.1 s
+PANEL_SETTLE = 0.5
+# The panel check fails with this text when the switch shows STEP after the click on STOP
+PYRUNG_STOP_FAULT = (
+    "On the Simulator's panel, the switch shows STEP after the click on STOP. pyrung 0.18.0 has a "
+    "fault that shows this way: after it enters STOP, it sends the state of its last scan in RUN "
+    "once more, and ClickNick shows RUN with the scans paused as STEP. The fault is not in "
+    "ClickNick."
+)
 # The projects that the smoke makes, in order. Each is a CPU in cr.CPU_MODELS, cr.NO_CPU for a
 # project with no CPU, or PROGRAM_PROJECT
 PROJECTS = (
@@ -596,13 +621,17 @@ def project_checks(checks: Sequence[CheckSpec], *, program: bool) -> tuple[Check
     """Return the specs of *checks* that run on a project, in order.
 
     With *program* True, the project holds a program, and the specs for "program" and "all"
-    run. Each of the other specs then also needs every "program" spec. If the paste fails,
-    CLICK's program is not the program that those checks expect.
+    run. The "program" specs at the start of *checks* put the program into CLICK, as the paste
+    does. Each "all" spec then also needs every one of them. If the paste fails, CLICK's program
+    is not the program that those checks expect. A "program" spec later in *checks* needs only
+    the checks that it names.
     With *program* False, the specs for "empty" and "all" run.
     """
     if not program:
         return tuple(spec for spec in checks if spec.projects in ("all", "empty"))
-    first = tuple(spec.name for spec in checks if spec.projects == "program")
+    first = tuple(
+        spec.name for spec in itertools.takewhile(lambda spec: spec.projects == "program", checks)
+    )
     return tuple(
         spec if spec.projects == "program" else replace(spec, needs=(*first, *spec.needs))
         for spec in checks
@@ -861,6 +890,303 @@ def drive_program(
         f"Modbus read the program's {len(io)} X and Y addresses. {PROGRAM_INPUT} on turned "
         f"{PROGRAM_OUTPUT} on."
     )
+
+
+class StillPointer:
+    """A ``sim_driver.Pointer`` that draws nothing, because the panel check records no gif.
+
+    Its bounds start at the screen's top left, so ``Driver`` works in screen coordinates.
+    """
+
+    def __init__(self) -> None:
+        self.bounds = (0, 0, 0, 0)
+        self.pointer = (0, 0)
+
+    def show_click(self, seconds: float = 0.0) -> None:
+        pass
+
+
+def panel_shows(win: SimulatorWindow, address: str) -> dict[str, bool]:
+    """Return what the Simulator's panel *win* shows for the X or Y terminal *address*.
+
+    ``lit`` is True while the terminal's LED is lit, and ``padlock`` while its padlock shows.
+    For an X terminal, ``switch`` is True while its switch shows on.
+    """
+    from clicknick.views import sim_palette
+
+    canvas = win._canvas  # noqa: SLF001
+    shown: dict[str, bool] = {}
+    if address in win._inputs:  # noqa: SLF001
+        info = win._inputs[address]  # noqa: SLF001
+        shown["switch"] = canvas.itemcget(info["track"], "fill") == sim_palette.SWITCH_ON
+    else:
+        info = win._outputs[address]  # noqa: SLF001
+    shown["lit"] = canvas.itemcget(info["led"], "fill") == sim_palette.LED_ON
+    # The padlock is an arc and a rectangle. Both show or hide together
+    shown["padlock"] = canvas.itemcget(info["badge"][1], "state") == "normal"
+    return shown
+
+
+def run_led_lit(win: SimulatorWindow) -> bool:
+    """Return True while the RUN LED on the CPU card of the panel *win* is lit."""
+    from clicknick.views import sim_palette
+
+    led = win._cpu_leds["RUN"]  # noqa: SLF001
+    return win._canvas.itemcget(led, "fill") == sim_palette.LED_ON  # noqa: SLF001
+
+
+def panel_scene(driver: Driver, details: dict[str, Any], timeout: float) -> Scene:
+    """Press the Simulator's panel as a user does, and check what the panel shows after each step.
+
+    The simulation must be in RUN when the scene starts. In the first rung of ``PROGRAM_CSV``,
+    ``PROGRAM_INPUT`` latches ``PROGRAM_OUTPUT``. The scene presses no switch that resets it.
+    The steps:
+
+    1. Switch the CPU to STOP. If ``PROGRAM_INPUT``'s switch is on, turn it off.
+    2. Switch the CPU to RUN. The check expects the switch to RUN to clear ``PROGRAM_OUTPUT``,
+       so ``PROGRAM_OUTPUT`` must be off.
+    3. Turn ``PROGRAM_INPUT`` on. ``PROGRAM_OUTPUT`` must light.
+    4. Turn ``PROGRAM_INPUT`` off. ``PROGRAM_OUTPUT`` must stay lit.
+    5. Double-click ``PROGRAM_OUTPUT``. The panel forces it off, so it must go dark and show its
+       padlock, and the toolbar must count one force.
+    6. Click the padlock. The force must be released and the padlock gone.
+
+    ``details["steps"]`` receives what the panel showed after each step. If a wait passes
+    *timeout* seconds, ``details["steps"]`` also receives what the panel showed then.
+
+    Raises:
+        CheckFailed: A wait passed *timeout* seconds, ``PROGRAM_OUTPUT`` is on after the switch
+            to RUN, or ``PROGRAM_OUTPUT`` does not stay lit after ``PROGRAM_INPUT`` turns off.
+            If the switch shows STEP after the click on STOP, the text is
+            ``PYRUNG_STOP_FAULT``.
+    """
+    sim, win = driver.sim, driver.win
+    steps: list[dict[str, Any]] = details.setdefault("steps", [])
+
+    def record(step: str) -> None:
+        steps.append(
+            {
+                "step": step,
+                "switch_position": sim.switch_position,
+                "scan": sim.scan_id,
+                "run_led": run_led_lit(win),
+                "values": {
+                    address: sim.values.get(address) for address in (PROGRAM_INPUT, PROGRAM_OUTPUT)
+                },
+                "forces": sim.forces,
+                "forces_button": win._forces_btn.cget("text"),  # noqa: SLF001
+                PROGRAM_INPUT: panel_shows(win, PROGRAM_INPUT),
+                PROGRAM_OUTPUT: panel_shows(win, PROGRAM_OUTPUT),
+            }
+        )
+
+    def until(condition: Callable[[], bool], what: str) -> Scene:
+        """Wait for *condition*. If the wait times out, record what the panel shows, and fail."""
+        try:
+            yield from driver.wait_until(condition, what, timeout)
+        except TimeoutError as exc:
+            record(f"timed out waiting for {what}")
+            raise CheckFailed(f"On the Simulator's panel, the check {exc}.") from exc
+
+    def scans(count: int) -> Scene:
+        """Wait for *count* scans, then for Modbus to read the values again."""
+        first = sim.scan_id or 0
+        yield from until(lambda: (sim.scan_id or 0) >= first + count, f"{count} scans in RUN")
+        yield PANEL_SETTLE
+
+    def click(point: tuple[int, int]) -> Scene:
+        yield from driver.click(point)
+        driver.leave_canvas()
+
+    def double_click(point: tuple[int, int]) -> Scene:
+        yield from driver.double_click(point)
+        driver.leave_canvas()
+
+    yield from click(driver.mode_point("stop"))
+    try:
+        yield from until(
+            lambda: sim.switch_position == "stop" and not run_led_lit(win),
+            "STOP, with the RUN LED off",
+        )
+    except CheckFailed as exc:
+        # STEP is mode run without scanning
+        if sim.switch_position == "step":
+            raise CheckFailed(PYRUNG_STOP_FAULT) from exc
+        raise
+    record("stop")
+    if sim.switch_on(PROGRAM_INPUT):
+        yield from click(driver.switch_point(PROGRAM_INPUT))
+        yield from until(
+            lambda: not panel_shows(win, PROGRAM_INPUT)["switch"],
+            f"{PROGRAM_INPUT}'s switch to show off",
+        )
+        record(f"{PROGRAM_INPUT} off in STOP")
+
+    yield from click(driver.mode_point("run"))
+    yield from until(
+        lambda: sim.switch_position == "run" and run_led_lit(win), "RUN, with the RUN LED lit"
+    )
+    yield from scans(RUN_SCANS)
+    record("run")
+    if sim.values.get(PROGRAM_OUTPUT) or panel_shows(win, PROGRAM_OUTPUT)["lit"]:
+        raise CheckFailed(
+            f"{PROGRAM_OUTPUT} is on after STOP and RUN with {PROGRAM_INPUT} off, so the check "
+            f"cannot show that {PROGRAM_INPUT} turns it on."
+        )
+
+    yield from click(driver.switch_point(PROGRAM_INPUT))
+    yield from until(
+        lambda: panel_shows(win, PROGRAM_INPUT) == {"switch": True, "lit": True, "padlock": False},
+        f"{PROGRAM_INPUT}'s switch and LED to show on",
+    )
+    yield from until(
+        lambda: panel_shows(win, PROGRAM_OUTPUT)["lit"],
+        f"{PROGRAM_OUTPUT}'s LED to light after {PROGRAM_INPUT} turned on",
+    )
+    record(f"{PROGRAM_INPUT} on")
+
+    yield from click(driver.switch_point(PROGRAM_INPUT))
+    yield from until(
+        lambda: not any(panel_shows(win, PROGRAM_INPUT).values()),
+        f"{PROGRAM_INPUT}'s switch and LED to show off",
+    )
+    yield from scans(RUN_SCANS)
+    record(f"{PROGRAM_INPUT} off")
+    if not (sim.values.get(PROGRAM_OUTPUT) and panel_shows(win, PROGRAM_OUTPUT)["lit"]):
+        raise CheckFailed(
+            f"The program latches {PROGRAM_OUTPUT}, but it went off after {PROGRAM_INPUT} "
+            "turned off."
+        )
+
+    yield from double_click(driver.output_point(PROGRAM_OUTPUT))
+    yield from until(
+        lambda: (
+            sim.forces == {PROGRAM_OUTPUT: False}
+            and sim.values.get(PROGRAM_OUTPUT) is False
+            and panel_shows(win, PROGRAM_OUTPUT) == {"lit": False, "padlock": True}
+            and win._forces_btn.cget("text") == "Forces (1)"  # noqa: SLF001
+        ),
+        f"the double-click to force {PROGRAM_OUTPUT} off, with its LED dark, its padlock "
+        "showing and the toolbar's Forces (1)",
+    )
+    record(f"{PROGRAM_OUTPUT} forced")
+
+    # Tk gives a generated event the time 0. A second double-click on the same spot would count
+    # both of its presses as a double-click. That would release the force and force the output
+    # again.
+    yield from click(driver.padlock_point(PROGRAM_OUTPUT))
+    yield from until(
+        lambda: (
+            not sim.forces
+            and not panel_shows(win, PROGRAM_OUTPUT)["padlock"]
+            and win._forces_btn.cget("text") == "Forces"  # noqa: SLF001
+        ),
+        f"the click on the padlock to release {PROGRAM_OUTPUT}'s force and hide the padlock",
+    )
+    record(f"{PROGRAM_OUTPUT} released")
+
+
+def play(scene: Scene, pump: Callable[[], None], *, realtime: bool = True) -> None:
+    """Run *scene* to its end, and call *pump* while it runs.
+
+    After each step, the function calls *pump* until the delay that the step yielded has
+    passed. With *realtime* False, it calls *pump* once and goes on at once.
+    """
+    for delay in scene:
+        end = time.monotonic() + (delay if realtime else 0.0)
+        pump()
+        while time.monotonic() < end:
+            time.sleep(0.01)
+            pump()
+
+
+def press_panel(
+    project: Project,
+    root: tk.Misc,
+    details: dict[str, Any],
+    *,
+    timeout: float = PANEL_WAIT,
+    realtime: bool = True,
+) -> str:
+    """Open the Simulator on *root* for the project's simulation, and run ``panel_scene`` on it.
+
+    The window is ClickNick's own ``SimulatorWindow``. ``sim_driver.Driver`` presses it with
+    synthetic Tk events, as record_simulator_gif.py does. While the scene runs, the function
+    runs ClickNick's scheduled callbacks and Tk's events. At the end, it releases any force
+    that the scene left in place and closes the window. Return the text for a pass.
+
+    Raises:
+        CheckFailed: The scene failed, or one of its waits timed out. Or the scene passed, and
+            the release of the forces, the close of the window or the callbacks after them
+            raised.
+    """
+    from clicknick.views.simulator_window import SimulatorWindow
+
+    simulation = project.simulation()
+    win = SimulatorWindow(
+        root,
+        simulation=simulation,
+        get_store=lambda: project.store,
+        get_analysis=lambda: project.session.analysis,
+        open_dataview=lambda: None,
+        title_suffix="make smoke",
+    )
+
+    def pump() -> None:
+        project.scheduler.run_due()
+        root.update()
+
+    def release_forces() -> None:
+        # release_all_forces only queues the release for the simulation's worker. The pump after
+        # it does not wait for the release. No later check reads the forces.
+        if simulation.forces:
+            simulation.release_all_forces()
+
+    cleanup = (
+        ("release the forces", release_forces),
+        ("close the Simulator window", win._on_close),  # noqa: SLF001
+        ("run the callbacks after the close", pump),
+    )
+    failed: list[str] = []
+    try:
+        pump()
+        driver = Driver(win, simulation, StillPointer())
+        play(panel_scene(driver, details, timeout), pump, realtime=realtime)
+    finally:
+        # Each step runs even if the one before it raised
+        for name, step in cleanup:
+            try:
+                step()
+            except Exception as exc:
+                traceback.print_exc()
+                failed.append(f"{name} ({type(exc).__name__}: {exc})")
+    if failed:
+        raise CheckFailed(
+            "The steps on the Simulator's panel passed, but the check could not "
+            f"{', '.join(failed)}."
+        )
+    return (
+        f"On the Simulator's panel, STOP and RUN moved the CPU's switch. {PROGRAM_INPUT}'s switch "
+        f"turned {PROGRAM_OUTPUT} on, and {PROGRAM_OUTPUT} stayed on after {PROGRAM_INPUT} turned "
+        f"off. A double-click forced {PROGRAM_OUTPUT} off and showed its padlock, and a click on "
+        "the padlock released the force."
+    )
+
+
+def check_panel(project: Project, details: dict[str, Any]) -> str:
+    """Press switches on the Simulator's panel, and check what the simulation and the panel show.
+
+    ``press_panel`` says how, and ``panel_scene`` says what the check presses. The check runs
+    after the simulation check, which leaves the simulation in RUN.
+    """
+    import tkinter as tk
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        return press_panel(project, root, details)
+    finally:
+        root.destroy()
 
 
 def check_program(project: Project, details: dict[str, Any]) -> str:
@@ -1455,6 +1781,9 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec("build", check_build, needs=("load",)),
     CheckSpec("layout", check_layout),
     CheckSpec("simulation", check_simulation, needs=("build",)),
+    # The panel check needs the simulation in RUN, as the simulation check leaves it. It presses
+    # the program's I/O, so it runs only in the project that holds the program
+    CheckSpec("panel", check_panel, needs=("simulation",), projects="program"),
     CheckSpec("check_program", check_program, needs=("build",)),
     # Sync and CLICK's import write SC_.mdb. The checks above must see the project as CLICK
     # made it, so these two run after them
