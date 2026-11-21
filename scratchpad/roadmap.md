@@ -19,18 +19,11 @@ How to use it:
 
 ## Order
 
-1. End-to-end smoke tests against the runner's CLICK (CLICK). Sam asked for this as the first work after
-   0.26.0. It starts with a runner command `new --cpu MODEL` that makes a project through CLICK's new-project
-   wizard, offline. Then one command, `make smoke`, works on seven fresh projects that CLICK makes:
-   one for each of five CPUs, one with no CPU and one with rungs. For each project it builds the
-   workspace, starts the simulation and runs Check Program. It also runs Sync, ClickNick's Export to CSV
-   followed by CLICK's import of that file, and the `rung apply` round trip. `make smoke` stays out of
-   `make test` and CI. The plan is in `../clicknick-wt/buildbot/jobs/e2e-smoke/FINDINGS.md`.
-2. The CLICK runner's waiting jobs (CLICK). Sam ruled on 2026-11-17 that they come ahead of recording.
-3. Recording, ClickNick side (item 10; waits on pyrung's recording core and console commands for every
+1. The CLICK runner's waiting jobs (CLICK). Sam ruled on 2026-11-17 that they come ahead of recording.
+2. Recording, ClickNick side (item 10; waits on pyrung's recording core and console commands for every
    change).
-4. Small follow-ups (nothing), whenever a branch touches their file.
-5. The release after 0.26.0. Sam has not ranked it yet.
+3. Small follow-ups (nothing), whenever a branch touches their file.
+4. The release after 0.26.0. Sam has not ranked it yet.
 
 ## The release after 0.26.0
 
@@ -77,9 +70,6 @@ Jobs waiting, from the plan's item 4 and the other sessions:
   merges with the runner's CLICK 3.x support. `read_mdb_csv` reads Address.csv only as UTF-8 with a BOM
   (`utf-8-sig`). If an older CLICK writes it in cp1252, the read raises `UnicodeDecodeError` for a file with a
   non-ASCII nickname or comment.
-- The dialog grids, in Sam's order of 2026-11-17: Fill mode, then the Timer, Counter, Shift, For and Drum
-  dialogs, then what is left of the full Math, Copy and Out grids, and the Address Picker's Pickup Mode lists
-  for the other fields. A Pickup Mode case takes about 4 s.
 - What CLICK writes on File > New, and when its title changes (part of Q2). New Project (32771) is not on the
   allowlist yet.
 - pyclickplc's: what CLICK shows and exports for a nickname with a character that cp1252 does not have.
@@ -90,11 +80,12 @@ Jobs waiting, from the plan's item 4 and the other sessions:
   third steps need two things that `paste` cannot do yet: copy a pasted rung back to the clipboard, and
   reopen a pasted instruction's dialog, press OK with no edit and copy the rung back.
 - pyrung's: the Y gaps in slots 2 to 8, FC15 across an X gap, and reads past XD8 and YD8.
-- The plan's small checks for a value typed into a dialog: leading zeros and spaces around an address, and a
-  bare space as a Text initial value. The runner answered both for a CSV import, and answered the edge spaces
-  of a typed nickname and comment.
-- Left from earlier jobs: the rule behind the digits that CLICK prints for a DF near 1e30, Cancel in the
-  Address Picker, and a tab at either end of a comment typed in CLICK.
+- Left from earlier jobs: the rule behind the digits that CLICK prints for a DF near 1e30.
+- Left from the Address Picker job (`../clicknick-wt/buildbot/jobs/picker-typed/RESULTS.md`, "Not tried"):
+  - a real Tab key press, or a Ctrl+V paste, into a comment. The job sent its keys as window messages.
+  - CLICK's own export of a Text initial value of a bare space, and that file's import back into CLICK.
+  - Cancel after an edit that a box answers.
+  - A tab, VT or FF typed as a Text initial value.
 - Low priority: after `try` picks a list item a second time, it does not check every list and option again
   (laddy's Send case 10). CLICK has not been seen to change one at that point.
 
