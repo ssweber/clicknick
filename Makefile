@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := default
 
-.PHONY: default install lint test test-backend docs-serve docs-build docs-check upgrade build trust-report action-icons clean
+.PHONY: default install lint test test-backend smoke docs-serve docs-build docs-check upgrade build trust-report action-icons clean
 
 DOCS_ADDR ?= localhost:8000
 
@@ -32,6 +32,12 @@ test:
 # Cross-backend oracle: Access ODBC vs the Jet worker on the same MDB. Not run in CI.
 test-backend:
 	uv run pytest --quiet --tb=short -m backend tests/test_backend_oracle.py
+
+# Check ClickNick against new projects that the CLICK runner makes (devtools/click_smoke.py).
+# It starts CLICK on this desktop, so it is not run in CI. SMOKE_ARGS passes options,
+# such as SMOKE_ARGS="--cpu C2-03CPU".
+smoke:
+	uv run python devtools/click_smoke.py $(SMOKE_ARGS)
 
 docs-serve:
 	uv run --group docs zensical serve --dev-addr $(DOCS_ADDR)
