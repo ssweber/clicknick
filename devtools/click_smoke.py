@@ -38,7 +38,16 @@ Then the smoke runs the checks in ``CHECKS`` in order:
   into the same CLICK (``import_one``). The import picks Delete Existing, so CLICK first
   empties its address table. The import must change SC_.mdb, and SC_.mdb must then hold a
   row for each address in the file and no other row. CLICK's export after the import must show
-  ``Smoke_Init`` with ``50°C``.
+  ``Smoke_Init`` with ``50°C``;
+- ``rung_apply``: the check adds a rung to the workspace's main.py: a contact on X001 that
+  drives an Out coil on C1. ``rung apply`` through ``dispatch()`` must propose that rung for
+  CLICK's empty main program. The check copies the proposal as Review Changes' Copy does.
+  Copy adds the rung's addresses to SC_.mdb, and SC_.mdb must then hold a row for each
+  address that laddercodec finds in the copied bytes. The runner pastes the rungs at rung 1
+  (``paste_payload``) and saves the project (``save_as``). The check waits until ScrWatcher
+  has counted the save and the build after the save has finished. Then laddercodec decodes
+  CLICK's saved Scr*.tmp. Its main program must start with the rung. Review Changes must have nothing left to paste, and
+  ``rung apply`` must answer "(no changes)".
 
 ``sync`` and ``csv_round_trip`` write SC_.mdb, so they run after the checks that read the
 project as CLICK made it. They run on every project. In a live run on 2026-11-20 they took
@@ -47,6 +56,11 @@ checks Sync and CLICK's import against the SC_.mdb of each CPU's project. The im
 the same CLICK, because a second project would need a second runner run and a second CLICK.
 CLICK empties its table before the import. So the ``Smoke_Init`` row in CLICK's export after
 the import comes from ClickNick's file.
+
+``rung_apply`` saves the project in CLICK, so it runs last. It also runs on every project. In
+a live run on 2026-11-21 it took about 6 s for each project, so the whole smoke took about 35 s
+longer. In return, the smoke pastes into and saves the project of each CPU, and the project
+with no CPU.
 
 A check passes or fails, and it says why. A check that needs another check runs only when that
 one passed. To add a check, add a ``CheckSpec`` to ``CHECKS``. Its function receives the
@@ -73,10 +87,13 @@ Each project gets a folder ``DIR/<model>/``, or ``DIR/none/``:
 
 - ``runner/``: the runner's ``--out`` folder, with its result.json and run.log. Its
   ``mdb/`` holds the copy of SC_.mdb that the runner made after the import in ``csv_round_trip``;
-- ``mdb/``: the copies of SC_.mdb that ``sync`` read, before and after each Sync;
+- ``mdb/``: the copies of SC_.mdb that ``sync`` read, before and after each Sync, and the
+  copy that ``rung_apply`` read before the paste;
 - ``sync/`` and ``csv_import/``: CLICK's nickname export after the Sync and after the import,
   as ``click/nicknames.csv`` and its copy ``export.csv``;
 - ``csv/clicknick.csv``: the file that ``csv_round_trip`` wrote with Export to CSV;
+- ``rung_apply/``: the project that ``rung_apply`` saved in CLICK, as ``rung_apply.ckp``, and
+  its Scr*.tmp files and Project.ini, in ``click/``;
 - ``result.json``: the smoke's result for the project. The smoke writes it again after each
   check.
 
@@ -141,6 +158,7 @@ import sys
 import threading
 import time
 import traceback
+import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -155,6 +173,7 @@ if TYPE_CHECKING:
     from clicknick.connection_session import ConnectionSession
     from clicknick.data.address_store import AddressStore
     from clicknick.data.data_source import DataSource
+    from clicknick.ladder.program import PrepareResult
     from clicknick.simulation_session import SimulationSession
 
 # The projects that the smoke makes, in order. Each is a CPU in cr.CPU_MODELS, or cr.NO_CPU for
@@ -184,6 +203,24 @@ REFUSED_COMMENT = "50→60"
 SYNCED_COMMENT = "50°C"
 # How long the smoke runs ClickNick's callbacks after each call to the runner, in seconds
 AFTER_RUNNER = 1.0
+# The program that pyrung writes into main.py for a project with no rungs
+EMPTY_PROGRAM = "with Program() as logic:\n    pass\n"
+# The rung that the rung_apply check puts in place of that program's "pass": a contact on X001
+# that drives an Out coil on C1. The tags.py that pyrung generates always binds `blocks`. It
+# binds the short names `x` and `c` only when it declares a tag. In a new project, only the
+# CPUs with analog inputs (DF1 and DF2) were observed to declare one. So the rung makes its
+# own `ClickBlocks()`
+RUNG_IMPORTS = (
+    "from pyrung import out\nfrom pyrung.click import ClickBlocks\n\nclick = ClickBlocks()\n"
+)
+RUNG_SOURCE = "    with rung(click.x[1]):\n        out(click.c[1])\n"
+# The rung as laddercodec's CSV writes it: the contact in column A, a wire to column AE, and
+# the coil in AF
+RUNG_ROW = ["R", "X001", *["-"] * 30, "out(C1)"]
+# The addresses that the rung's clipboard data holds, as laddercodec's addresses() finds them
+RUNG_ADDRESSES = ("X001", "C1")
+# The main program's name in a ladder CSV bundle
+MAIN_CSV = "main.csv"
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
@@ -340,12 +377,16 @@ class Project:
         scheduler: Scheduler,
         *,
         timeout: float = DEFAULT_TIMEOUT,
+        save_timeout: float | None = None,
     ) -> None:
         self.run = run
         self.new = new
         self.folder = folder
         self.scheduler = scheduler
         self.timeout = timeout
+        # How long a check waits for ScrWatcher to count a save in CLICK and for the build
+        # after it. It is *timeout* unless the caller gives its own
+        self.save_timeout = timeout if save_timeout is None else save_timeout
         self.store: AddressStore | None = None
         self._session: ConnectionSession | None = None
 
@@ -380,6 +421,22 @@ class Project:
         folder.mkdir(exist_ok=True)
         copy = Path(shutil.copy2(self.new.temp / "SC_.mdb", folder / f"{label}.mdb"))
         return copy, self.run.read_rows(copy)
+
+    def prepare_paste(self, rungs: Sequence[Any]) -> PrepareResult:
+        """Encode *rungs* for CLICK's clipboard, the same way Review Changes' Copy does.
+
+        Like Copy, it adds to CLICK's SC_.mdb each address of the rungs that SC_.mdb lacks
+        (``prepare_rungs_load``).
+        """
+        from clicknick.ladder.clipboard import is_click_v4
+        from clicknick.ladder.program import prepare_rungs_load
+        from clicknick.utils.mdb_shared import find_click_database
+
+        hwnd = self.session.click.hwnd
+        mdb = find_click_database(click_hwnd=hwnd)
+        return prepare_rungs_load(
+            list(rungs), click_v4=is_click_v4(hwnd), mdb_path=Path(mdb) if mdb else None
+        )
 
     def in_click[T](self, call: Callable[[], T]) -> T:
         """Call *call*, which asks the runner to act in CLICK, and return what it returns.
@@ -870,6 +927,216 @@ def check_csv_round_trip(project: Project, details: dict[str, Any]) -> str:
     )
 
 
+def rung_rows(rungs: Sequence[Any]) -> list[list[str]]:
+    """Return *rungs* as the rows of laddercodec's CSV, one row per rung row."""
+    from laddercodec import csv_rows
+
+    return csv_rows(list(rungs))
+
+
+def is_smoke_rung(rung: Any) -> bool:
+    """Return whether *rung* is the rung that ``RUNG_SOURCE`` writes, and nothing else."""
+    return rung_rows([rung]) == [RUNG_ROW]
+
+
+def add_smoke_rung(source: str) -> str:
+    """Return the workspace's main.py *source* with ``RUNG_SOURCE`` as the program's one rung.
+
+    Raises:
+        CheckFailed: *source* does not hold the empty program that pyrung generates for a
+            project with no rungs.
+    """
+    if source.count(EMPTY_PROGRAM) != 1:
+        raise CheckFailed(
+            "The workspace's main.py does not hold the empty program "
+            f"{EMPTY_PROGRAM!r} once, so the check cannot add its rung there."
+        )
+    program = EMPTY_PROGRAM.replace("    pass\n", RUNG_SOURCE)
+    return source.replace(EMPTY_PROGRAM, f"{RUNG_IMPORTS}\n{program}")
+
+
+def saved_main_program(click_dir: Path) -> tuple[list[Any], list[str]]:
+    """Decode the main program from the Scr*.tmp files in *click_dir* with laddercodec.
+
+    Return the main program's rungs and the text of each warning that laddercodec issued.
+
+    Raises:
+        CheckFailed: No Scr*.tmp file holds the main program.
+    """
+    from laddercodec import decode_program
+
+    from clicknick.utils.click_temp import scr_files
+
+    rungs: list[Any] | None = None
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for path in scr_files(click_dir):
+            program = decode_program(path.read_bytes())
+            if program.prog_idx == 1:
+                rungs = list(program.rungs)
+    if rungs is None:
+        raise CheckFailed(f"No Scr*.tmp file in {click_dir} holds the main program.")
+    return rungs, [f"{warning.category.__name__}: {warning.message}" for warning in caught]
+
+
+def check_rung_apply(project: Project, details: dict[str, Any]) -> str:
+    """Add a rung to the workspace's main.py, and take it into CLICK as Review Changes does.
+
+    The check adds ``RUNG_SOURCE`` to main.py and runs ``rung apply`` through ``dispatch()``,
+    as ``clicknick-cli rung apply`` does. ``rung apply`` writes the proposal into
+    ``csv_output/``. The check reads it and compares it with CLICK's program, as Review
+    Changes does. CLICK's main program must hold no rungs, because the runner can paste only
+    at rung 1. Then the check copies the proposed main program as Review Changes' Copy does
+    (``Project.prepare_paste``). Copy adds the rungs' addresses to SC_.mdb. Each address that
+    laddercodec's ``addresses`` finds in the copied bytes must then have a row in SC_.mdb,
+    because CLICK drops a pasted operand whose address SC_.mdb lacks.
+
+    The runner pastes at rung 1 and saves the project as ``rung_apply/rung_apply.ckp``. The
+    check waits until ScrWatcher has counted that save and the build after it has finished.
+    Then these must hold:
+
+    - The first rung of the main program, decoded from the saved Scr*.tmp with laddercodec,
+      is the contact on X001 and the Out coil on C1.
+    - The proposal that the check read before the paste no longer differs from CLICK's main
+      program. Review Changes then has nothing left to paste for it.
+    - ``rung apply`` again answers "(no changes)".
+    """
+    from laddercodec import addresses
+
+    from clicknick.live.dispatch import DispatchContext, dispatch
+    from clicknick.services.analysis_service import AnalysisStatus
+    from clicknick.services.rung_diff import compare_bundle, load_bundle
+
+    session = project.session
+    analysis = session.analysis
+    assert analysis is not None and analysis.project_dir is not None
+    project_dir = analysis.project_dir
+    main = project_dir / "src" / "plc" / "main.py"
+    edited = add_smoke_rung(main.read_text(encoding="utf-8"))
+    main.write_text(edited, encoding="utf-8", newline="\n")
+    details["main_py"] = edited
+
+    context = DispatchContext(store=project.store, analysis=analysis, get_session=lambda: session)
+    applied = project.scheduler.background(
+        "rung apply", lambda: dispatch(context, "rung apply"), project.timeout
+    )
+    details["rung_apply"] = applied
+    programs = load_bundle(project_dir / "csv_output")
+    change = compare_bundle(programs, project_dir / "csv").changes.get(MAIN_CSV)
+    if change is None or not change.differs:
+        raise CheckFailed(
+            f"rung apply proposes no change to the main program. It answered: {applied}"
+        )
+    details["click_main"] = rung_rows(change.before)
+    details["proposal"] = rung_rows(change.after)
+    if change.before:
+        raise CheckFailed(
+            f"CLICK's main program holds {len(change.before)} rung(s). The runner can paste "
+            "only at rung 1, so the check needs a main program with no rungs."
+        )
+    if not is_smoke_rung(change.after[0]):
+        raise CheckFailed(
+            "The first rung that rung apply proposes is not the contact on X001 and the Out "
+            "coil on C1 that the check added to main.py."
+        )
+
+    prepared = project.prepare_paste(change.after)
+    needed = addresses(prepared.payload)
+    details["copy"] = {
+        "rungs": prepared.rung_count,
+        "clicknick_addresses": prepared.addresses,
+        "laddercodec_addresses": needed,
+        "inserted": prepared.addresses_inserted,
+        "mdb_error": prepared.mdb_error,
+    }
+    if prepared.mdb_error:
+        raise CheckFailed(
+            f"Copy could not add the rungs' addresses to SC_.mdb: {prepared.mdb_error}"
+        )
+    if sorted(needed) != sorted(RUNG_ADDRESSES):
+        found = ", ".join(needed) or "no address"
+        raise CheckFailed(
+            f"laddercodec finds {found} in the copied rungs, not {' and '.join(RUNG_ADDRESSES)}."
+        )
+    _copy, table = project.read_database("before_paste")
+    missing = [address for address in needed if address not in table]
+    if missing:
+        raise CheckFailed(
+            f"SC_.mdb has no row for {', '.join(missing)} after Copy. CLICK would drop those "
+            "operands from the paste."
+        )
+
+    folder = project.folder / "rung_apply"
+    folder.mkdir()
+    saves = session.saved_program().save_count
+    details["generation_before"] = analysis.generation
+
+    def paste_and_save() -> str:
+        run, temp = project.run, project.new.temp
+        how = run.paste_payload(
+            prepared.payload,
+            prepared.rung_count,
+            before="before_rung_apply",
+            after="rung_apply_pasted",
+        )
+        run.save_as(folder / "rung_apply.ckp", temp, prefix="rung_apply_")
+        run.copy_temp(temp, folder / "click")
+        return how
+
+    details["paste"] = project.in_click(paste_and_save)
+    saved = project.scheduler.wait(
+        "ScrWatcher to count CLICK's save and the build after it to finish",
+        lambda: (
+            program
+            if (program := session.saved_program()).save_count > saves and not program.building
+            else None
+        ),
+        project.save_timeout,
+    )
+    details["generation_after"] = analysis.generation
+    details["saves"] = saved.save_count - saves
+    if analysis.status is not AnalysisStatus.READY or saved.csv_dir is None:
+        raise CheckFailed(f"The build after CLICK's save failed: {analysis.error or saved.note}")
+
+    rungs, found = saved_main_program(folder / "click")
+    details["click_saved"] = rung_rows(rungs)
+    details["decode_warnings"] = found
+    if not rungs or not is_smoke_rung(rungs[0]):
+        raise CheckFailed(
+            "CLICK's save does not hold the contact on X001 and the Out coil on C1 at rung 1."
+        )
+    after = compare_bundle(programs, saved.csv_dir).changes.get(MAIN_CSV)
+    if after is None:
+        raise CheckFailed(
+            "After CLICK's save and the build, Review Changes finds no main program to compare."
+        )
+    if after.differs:
+        work = []
+        if after.changed:
+            numbers = ", ".join(map(str, after.changed))
+            work.append(f"rung(s) {numbers} of the proposal to paste")
+        if after.removed:
+            numbers = ", ".join(map(str, after.removed))
+            work.append(f"CLICK's rung(s) {numbers} to delete")
+        if not work:
+            work.append("CLICK's rungs that it cannot read to paste again")
+        raise CheckFailed(
+            f"After CLICK's save and the build, Review Changes still has {' and '.join(work)} "
+            "in the main program."
+        )
+    again = project.scheduler.background(
+        "rung apply after the save", lambda: dispatch(context, "rung apply"), project.timeout
+    )
+    details["rung_apply_after_save"] = again
+    if "(no changes)" not in again.splitlines():
+        raise CheckFailed(f"After CLICK's save, rung apply still proposes changes: {again}")
+    return (
+        f"rung apply proposed {len(change.after)} rung(s) for main. SC_.mdb held "
+        f"{', '.join(needed)} before the paste. CLICK saved the rung at rung 1, and after the "
+        "build Review Changes has nothing left to paste."
+    )
+
+
 CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec("load", check_load),
     CheckSpec("build", check_build, needs=("load",)),
@@ -877,9 +1144,14 @@ CHECKS: tuple[CheckSpec, ...] = (
     CheckSpec("simulation", check_simulation, needs=("build",)),
     CheckSpec("check_program", check_program, needs=("build",)),
     # Sync and CLICK's import write SC_.mdb. The checks above must see the project as CLICK
-    # made it, so these two run last
+    # made it, so these two run after them
     CheckSpec("sync", check_sync, needs=("load",)),
+    # After the import, SC_.mdb must hold a row for each address in ClickNick's CSV and no
+    # other row. With a rung in the program, SC_.mdb can hold rows for the rung's addresses
+    # that the file lacks. So this check runs before rung_apply adds the rung
     CheckSpec("csv_round_trip", check_csv_round_trip, needs=("sync",)),
+    # rung_apply pastes a rung and saves the project in CLICK, so it runs last
+    CheckSpec("rung_apply", check_rung_apply, needs=("build",)),
 )
 
 
