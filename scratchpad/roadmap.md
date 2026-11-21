@@ -63,24 +63,16 @@ Jobs waiting, from the plan's item 4 and the other sessions:
   merges with the runner's CLICK 3.x support. `read_mdb_csv` reads Address.csv only as UTF-8 with a BOM
   (`utf-8-sig`). If an older CLICK writes it in cp1252, the read raises `UnicodeDecodeError` for a file with a
   non-ASCII nickname or comment.
-- What CLICK writes on File > New, and when its title changes (part of Q2). New Project (32771) is not on the
-  allowlist yet.
-- pyclickplc's: what CLICK shows and exports for a nickname with a character that cp1252 does not have.
-- laddercodec's: Fill with text or a bare number, a character above U+FFFF into TXT, a pointer on both sides,
-  the Real edge and digits in Math, and PLC runs B and C. Runs B and C need distinct live X inputs, from an
-  input override or from Sam.
-- laddercodec's plain Copy across text (DF21 to TXT101, DF429 to TXT851, TXT851 to DS4174). Its second and
-  third steps need two things that `paste` cannot do yet: copy a pasted rung back to the clipboard, and
-  reopen a pasted instruction's dialog, press OK with no edit and copy the rung back.
-- pyrung's: the Y gaps in slots 2 to 8, FC15 across an X gap, and reads past XD8 and YD8.
-- Left from earlier jobs: the rule behind the digits that CLICK prints for a DF near 1e30.
-- Left from the Address Picker job (`../clicknick-wt/buildbot/jobs/picker-typed/RESULTS.md`, "Not tried"):
-  - a real Tab key press, or a Ctrl+V paste, into a comment. The job sent its keys as window messages.
-  - CLICK's own export of a Text initial value of a bare space, and that file's import back into CLICK.
-  - Cancel after an edit that a box answers.
-  - A tab, VT or FF typed as a Text initial value.
-- Low priority: after `try` picks a list item a second time, it does not check every list and option again
-  (laddy's Send case 10). CLICK has not been seen to change one at that point.
+
+Needs Sam or the PLC:
+- laddercodec's PLC runs B and C. They need distinct live X inputs, from an input override or from Sam.
+- laddercodec's question: which X point is the 17th element of a Send or Receive that starts at X001. Only a
+  running PLC shows which X point it reads.
+- pyrung's Y gaps in slots 2 to 8, and `fc15_y_gap` in slot 1. Both drive outputs. Each run needs Sam's go,
+  with outputs allowed.
+- The rule behind the digits that CLICK prints for a DF near 1e30. It needs data writes to the PLC.
+- A real Tab key press or a Ctrl+V paste into a comment in the Address Picker. The runner sends only window
+  messages.
 
 Autocomplete follow-up (nothing): Copy's destinations use `ANY` in `detection/window_mapping.py`. That offers
 banks that CLICK's Address Picker greys there: X, T, CT, SC and XD for a single Copy's destination, and YD too
@@ -132,6 +124,19 @@ Do each when a branch next touches its file.
 - Stale text: the docstring at `tests/test_analysis_service.py:126` says that pyrung refuses the row (pyclickplc's
   `read_csv` does). The `EXPORT_SAVE` comment in `devtools/click_runner.py` names a live run and its job. A
   docstring line near `devtools/click_runner.py:2398` is 137 columns.
+- The watch and File > New (`../clicknick-wt/buildbot/jobs/runner-batch2/RESULTS.md`, J1). In both live
+  runs CLICK named the project that File > New made `NewProject1.ckp`. If the connected project is an unsaved
+  `NewProject1.ckp`, the title would then read the same before and after File > New. No run has tried this. The
+  watch follows a project change only when the title names another file (`parse_click_filename`). So, from the
+  code, it would miss that CLICK replaced SC_.mdb. Try it with ClickNick connected, then fix the watch.
+- cp1252's five undefined bytes, 0x81, 0x8D, 0x8F, 0x90 and 0x9D
+  (`../clicknick-wt/buildbot/jobs/runner-batch2/RESULTS.md`, J2). CLICK stores U+0081 and exports it as the
+  byte 0x81. ClickNick and pyclickplc refuse it, and Python's cp1252 cannot read such an export. The planner
+  decides, with pyclickplc's session, whether ClickNick and pyclickplc follow Windows' table for these five
+  bytes.
+- A bare space in CLICK's own export (`../clicknick-wt/buildbot/jobs/runner-batch2/RESULTS.md`, J3.1). CLICK
+  writes a Text initial value of a bare space unquoted, and its own import of that file stores NULL. Check that
+  pyclickplc reads that line.
 - These parts of `app.py` are candidates for a later split: the Tools and Repairs menu actions, launching
   Review Changes and Compare with, `_export_pyrung_project`, and the unused `_check_odbc_drivers_and_warn`.
 
@@ -237,10 +242,7 @@ can automate. Items marked (runner) the runner can answer. When a check is walke
 - Q13 (Sam, not the runner: changing the code page needs a reboot): on a Windows whose ANSI code page is not
   1252, what does CLICK hold and export for `ł` or `Ж`? ClickNick flags both, because it keeps cp1252 until this
   is answered. Sam saw CLICK turn one emoji into `??`, which fits a conversion through the system code page.
-  Python's cp1252 also has no U+0081, U+008D, U+008F, U+0090 or U+009D. Windows maps these five, and
-  ClickNick flags them.
-- Q2 (runner): what does CLICK write on File > New, and when does its title change? This bears on how soon
-  ClickNick checks kept edits against the new project's database. File > Open and Save As have run.
+  The five bytes that Python's cp1252 lacks are a small follow-up ("cp1252's five undefined bytes").
 - Q6: after you delete all rungs, empty rungs are on screen. Is one of them selected for Ctrl+V, or must the
   step's wording say to click the first empty rung? Sam (2026-11-16): "there are always empty rungs". Not to be
   automated.

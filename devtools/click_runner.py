@@ -296,7 +296,9 @@ after the check, with the run and a ``NewProject``: the model, the project file,
 its main window and its temp folder. The model is None for ``none``. The call may import a
 nickname CSV with ``Run.import_one`` and export the nicknames with ``Run.export``. It must pass
 ``export`` a folder of its own, because ``DIR/click/`` exists already. It may also paste rungs
-with ``Run.paste_payload`` and save the project under another name with ``Run.save_as``. After
+with ``Run.paste_payload`` and save the project under another name with ``Run.save_as``. It
+may make a second project for the same CPU by File > New Project with ``Run.file_new``. CLICK
+keeps the main window and its temp folder, and the new project is not saved. After
 the call, the run terminates CLICK instead of closing it. If the call changed the project,
 closing could show a save prompt. CLICK's temp folder then stays. If a Scr*.tmp is in CLICK's
 temp folder before the save (``scr_before_save``) and the save does not rewrite it, the run
@@ -401,7 +403,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import KW_ONLY, asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, NamedTuple
 
 from click_desktop import (
@@ -419,6 +421,7 @@ from click_desktop import (
     IMPORT_NICKNAME,
     IP_ADDRESS_CLASS,
     MATH_DIALOG,
+    NEW_PROJECT,
     OPEN_PROJECT,
     OUT_DIALOG,
     PASTE,
@@ -689,6 +692,20 @@ NEW_CPU = Expect("new_cpu", "TfrmCPU", "Select a CPU Module", "startup")
 USER_ACCOUNTS = Expect("user_accounts", "TfrmUserAccountsSetupDlg", "User Account Setup", "startup")
 # The class of the buttons on User Account Setup (TNT Unicode controls for Delphi)
 TNT_BUTTON = "TTntButton.UnicodeClass"
+# File > New Project (NEW_PROJECT) while a project is open, as two live runs on 2026-11-21
+# showed it. If the project has changes that were not saved, CLICK first asks "Save changes to
+# <path>?" in a box that the main window owns, with the buttons Yes, No and Cancel. It asked
+# nothing for a project saved since its last change. CLICK then deletes the project's files
+# from its temp folder and titles the main window bare. It shows Startup, owned by the main
+# window, and from there the same wizard as when CLICK starts. Once the CPU is picked, CLICK
+# writes Project.ini and a new SC_.mdb in the same temp folder, and titles the main window
+# "NewProject1.ckp". It wrote SC_.mdb again 1.6 s and 1.7 s after its first write, after the
+# title had settled. The runner takes the project as made once SC_.mdb has been unchanged for
+# NEW_SETTLE seconds. That value rests on those two runs, on one machine
+SAVE_CHANGES = Expect("save_changes", "#32770", "CLICK Programming Software", MAIN)
+_SAVE_CHANGES_TEXT = re.compile(r"^Save changes to (.+)\?$")
+_SAVE_CHANGES_BUTTONS = [("&Yes", 6), ("&No", 7), ("Cancel", 2)]
+NEW_SETTLE = 3.0
 # The CPUs that the list in "Select a CPU Module" shows, in its order, as CLICK 4.00 lists them.
 # Each is a model name in pyclickplc's module catalog. The catalog also has five CPUs that the
 # list leaves out: C0-00DA-D, C0-00AA-D, C0-01DA-D, C0-01AA-D and C0-02DA-D
@@ -1586,6 +1603,28 @@ def cpu_type_ok(controls: list[Control]) -> Control | None:
     return ok
 
 
+def save_changes_no(controls: list[Control], project: str | None) -> Control | None:
+    """Return the No button of CLICK's question whether to save *project*, or None.
+
+    *controls* are those of a ``SAVE_CHANGES`` window. A live run on 2026-11-21 dumped the
+    box. It had one Static that read "Save changes to <path>?", an empty Static for the icon,
+    and the buttons &Yes (id 6), &No (id 7) and Cancel (id 2). The function returns None if
+    the window has a control of any other class or any other button, if No is hidden or
+    disabled, or if the path's file name is not *project*, compared without case.
+    """
+    if project is None or any(c.cls not in ("Static", "Button") for c in controls):
+        return None
+    texts = [c.text for c in controls if c.cls == "Static" and c.text]
+    buttons = [(c.text, c.id) for c in controls if c.cls == "Button"]
+    match = _SAVE_CHANGES_TEXT.match(texts[0]) if len(texts) == 1 else None
+    if match is None or buttons != _SAVE_CHANGES_BUTTONS:
+        return None
+    if PureWindowsPath(match.group(1)).name.casefold() != project.casefold():
+        return None
+    no = next(c for c in controls if c.cls == "Button" and c.id == 7)
+    return no if no.visible and no.enabled else None
+
+
 def _child(
     controls: list[Control], *, cls: str, id: int, text: str | None = None
 ) -> Control | None:
@@ -2473,13 +2512,16 @@ class Run:
                 )
                 self.record("guide_closed")
 
-    def operations(self) -> tuple[Window, list[Control]]:
+    def operations(self, *, unloading: bool = False) -> tuple[Window, list[Control]]:
         """Wait for Startup, and return it with its three textless buttons, from left to right.
 
         The buttons are Start a new project, Open an existing project and Connect to PLC.
-        Raise Aborted if Startup has another number of textless buttons.
+        Raise Aborted if Startup has another number of textless buttons. *unloading* is passed
+        to each wait (``Run.wait``).
         """
-        startup = self.wait("Startup", [STARTUP], lambda f: f.get(STARTUP.name))
+        startup = self.wait(
+            "Startup", [STARTUP], lambda f: f.get(STARTUP.name), unloading=unloading
+        )
         group = self.wait(
             "the 'Select an Operation' group",
             [STARTUP],
@@ -2491,6 +2533,7 @@ class Run:
                 ),
                 None,
             ),
+            unloading=unloading,
         )
         buttons = [
             c
@@ -2803,20 +2846,7 @@ class Run:
                 startup = self.cancel_cpu(form)
                 shown = None
             else:
-                self.pick_cpu(form, model)
-                self.record("cpu_picked")
-                ok = _require(
-                    _labelled(self.controls(form), "TButton", "OK"), "Select a CPU Module's OK"
-                )
-                self.press(form, ok)
-                # The main window is disabled until Startup closes, and Startup stays open
-                # while User Account Setup shows. So the main window alone means that it did
-                # not show
-                shown = self.wait(
-                    "User Account Setup or the main window alone",
-                    wizard,
-                    lambda f: f.get(USER_ACCOUNTS.name) or self.only_main(f),
-                )
+                shown = self.choose_cpu(form, model)
         if model is None:
             with self.step("close_startup"):
                 self.log("close Startup")
@@ -2824,13 +2854,7 @@ class Run:
                 self.wait("the main window alone after Startup closed", [STARTUP], self.only_main)
         if isinstance(shown, Window):
             with self.step("user_accounts"):
-                accounts = shown
-                self.record("user_accounts")
-                cancel = _require(
-                    _labelled(self.controls(accounts), TNT_BUTTON, "Cancel"),
-                    "User Account Setup's Cancel",
-                )
-                self.press(accounts, cancel)
+                self.cancel_user_accounts(shown)
                 self.result["user_accounts"] = "cancelled"
         with self.step("new_project"):
             # With no CPU, close_startup has already waited for the main window alone
@@ -2875,7 +2899,41 @@ class Run:
         self.record("cpu_cancelled")
         return startup
 
-    def pick_cpu(self, form: Window, model: str) -> None:
+    def choose_cpu(
+        self, form: Window, model: str, *, label: str = "", unloading: bool = False
+    ) -> Window | bool:
+        """Pick *model* in Select a CPU Module, press its OK, and wait for what CLICK shows next.
+
+        Return User Account Setup if CLICK shows it, or True once the main window is alone.
+        The ``--record`` dump after the pick is labelled *label* followed by ``cpu_picked``.
+        *unloading* is passed to each wait (``Run.wait``).
+        """
+        self.pick_cpu(form, model, unloading=unloading)
+        self.record(f"{label}cpu_picked")
+        ok = _require(_labelled(self.controls(form), "TButton", "OK"), "Select a CPU Module's OK")
+        self.press(form, ok)
+        # The main window is disabled until Startup closes, and Startup stays open while User
+        # Account Setup shows. So the main window alone means that it did not show
+        return self.wait(
+            "User Account Setup or the main window alone",
+            [STARTUP, NEW_CPU, USER_ACCOUNTS],
+            lambda f: f.get(USER_ACCOUNTS.name) or self.only_main(f),
+            unloading=unloading,
+        )
+
+    def cancel_user_accounts(self, accounts: Window, *, label: str = "") -> None:
+        """Press Cancel in User Account Setup. The project's admin account then has no password.
+
+        The ``--record`` dump is labelled *label* followed by ``user_accounts``.
+        """
+        self.record(f"{label}user_accounts")
+        cancel = _require(
+            _labelled(self.controls(accounts), TNT_BUTTON, "Cancel"),
+            "User Account Setup's Cancel",
+        )
+        self.press(accounts, cancel)
+
+    def pick_cpu(self, form: Window, model: str, *, unloading: bool = False) -> None:
         """Select *model* in the form's list of CPUs: Home, then Down once for each row above it.
 
         The keys are sent to the list only. The run stops if the list does not show *model*,
@@ -2903,7 +2961,9 @@ class Run:
             read = self.desktop.list_box(box.hwnd)
             return read is not None and read[1] == row and read[0][row] == model
 
-        self.wait(f"the list of CPUs to select {model}", [STARTUP, NEW_CPU], picked)
+        self.wait(
+            f"the list of CPUs to select {model}", [STARTUP, NEW_CPU], picked, unloading=unloading
+        )
 
     def check_new_project(self, model: str | None) -> None:
         """Read the CPU and modules from ``DIR/click/Project.ini`` into the result's ``project``.
@@ -2937,6 +2997,155 @@ class Run:
             )
         named = "no CPU" if saved is None else f"the CPU {saved}"
         raise Aborted(f"the saved Project.ini names {named}, not {model}")
+
+    def file_new(self) -> dict[str, Any]:
+        """Make a project for ``--cpu`` by File > New Project, while CLICK has a project open.
+
+        An ``on_new_project`` hook can call this. The runner posts File > New Project. If CLICK
+        asks whether to save the open project, the runner presses No only if the box passes
+        ``save_changes_no``. The box must name the open project's file and have the buttons
+        Yes, No and Cancel. Any other box stops the run, and so does a second box after No.
+        Then the runner presses Start a new project on Startup, picks ``--cpu`` and presses OK
+        (``choose_cpu``). If User Account Setup shows, the runner presses its Cancel. The step
+        ends once the main window is alone, its title names a project, and SC_.mdb has been
+        unchanged for ``NEW_SETTLE`` seconds.
+
+        Return the step's entry. The runner also stores it in the result under ``file_new``.
+        The entry has these keys:
+
+        - ``title_before`` and ``title_after``: the main window's title before the command
+          and at the end;
+        - ``save_changes``: the text of CLICK's question, or None if CLICK did not ask;
+        - ``user_accounts``: ``cancelled`` if User Account Setup showed, otherwise None;
+        - ``main``: the main window's hwnd. A second main window stops the run;
+        - ``temp``: CLICK's temp folder for that window (``click_temp_dir``);
+        - ``temp_created_before`` and ``temp_created_after``: the folder's creation time in
+          nanoseconds (``st_birthtime_ns``). A difference shows that CLICK made the folder
+          again;
+        - ``files_after``: the names in the temp folder at the end, files and folders.
+
+        The project is not saved. A new project has no Scr*.tmp until it is saved.
+        """
+        assert self.main is not None and self.pid is not None
+        model = self.s.cpu
+        if model not in CPU_MODELS:
+            raise Aborted(f"File > New Project needs a CPU that the wizard lists, not {model!r}")
+        temp = self.desktop.temp_dir(self.main)
+        entry: dict[str, Any] = {
+            "title_before": None,
+            "save_changes": None,
+            "user_accounts": None,
+            "title_after": None,
+            "main": self.main,
+            "temp": temp,
+            "temp_created_before": temp.stat().st_birthtime_ns,
+            "temp_created_after": None,
+            "files_after": None,
+        }
+        self.result["file_new"] = entry
+        with self.step("file_new"):
+            self.wait("the main window alone", [], self.only_main)
+            entry["title_before"] = self.main_title()
+            self.command(NEW_PROJECT)
+            shown = self.wait(
+                "Startup or CLICK's question whether to save",
+                [SAVE_CHANGES, STARTUP],
+                lambda f: f.get(SAVE_CHANGES.name) or f.get(STARTUP.name),
+                unloading=True,
+            )
+            if shown.cls == SAVE_CHANGES.cls:
+                self.answer_save_changes(shown, entry)
+                answered = shown.hwnd
+
+                def startup_alone(found: dict[str, Window]) -> bool:
+                    box = found.get(SAVE_CHANGES.name)
+                    if box is not None and box.hwnd != answered:
+                        raise Aborted(
+                            "a second box after No in CLICK's question whether to save: "
+                            f"{_describe(box)}"
+                        )
+                    return STARTUP.name in found and box is None
+
+                self.wait(
+                    "Startup after the question whether to save",
+                    [SAVE_CHANGES, STARTUP],
+                    startup_alone,
+                    unloading=True,
+                )
+            startup, buttons = self.operations(unloading=True)
+            self.record("file_new_startup")
+            self.press(startup, buttons[0])  # Start a new project
+            form = self.wait(
+                "Select a CPU Module",
+                [STARTUP, NEW_CPU],
+                lambda f: (
+                    f[NEW_CPU.name] if NEW_CPU.name in f and f[NEW_CPU.name].enabled else None
+                ),
+                unloading=True,
+            )
+            self.record("file_new_cpu_form")
+            shown = self.choose_cpu(form, model, label="file_new_", unloading=True)
+            if isinstance(shown, Window):
+                self.cancel_user_accounts(shown, label="file_new_")
+                entry["user_accounts"] = "cancelled"
+            mdb = temp / "SC_.mdb"
+            held: list[Any] = [None, 0.0]
+
+            def made(found: dict[str, Window]) -> bool:
+                main = found.get(MAIN)
+                if main is None or _project_file(main.title) is None or not self.only_main(found):
+                    held[0] = None
+                    return False
+                state, now = _file_state(mdb), time.monotonic()
+                if state is None or state != held[0]:
+                    held[:] = [state, now]
+                    return False
+                return now - held[1] >= NEW_SETTLE
+
+            self.wait(
+                "the new project's SC_.mdb to settle",
+                [STARTUP, NEW_CPU, USER_ACCOUNTS],
+                made,
+                unloading=True,
+                timeout=self.s.paste_timeout,
+            )
+            self.status_bar("file_new")
+            self.record("file_new_made")
+            entry.update(
+                title_after=self.main_title(),
+                temp_created_after=temp.stat().st_birthtime_ns,
+                files_after=sorted(p.name for p in temp.iterdir()),
+            )
+            # Forget the old project's Scr*.tmp files. The project that File > New Project made
+            # has none until it is saved.
+            self._scr_before = _scr_state(temp)
+            self.log(f"File > New Project: {entry}")
+        return entry
+
+    def answer_save_changes(self, box: Window, entry: dict[str, Any]) -> None:
+        """Press No in CLICK's question whether to save the open project.
+
+        The box must pass ``save_changes_no`` for the project that ``title_before`` names.
+        Otherwise the run stops, and the runner presses nothing.
+        """
+        self.record("file_new_save_changes")
+        controls = self.controls(box)
+        project = _project_file(entry["title_before"] or "")
+        no = save_changes_no(controls, project)
+        if no is None:
+            texts = [c.text for c in controls if c.text]
+            raise Aborted(
+                "CLICK asked something the runner does not answer after File > New Project "
+                f"with {project!r} open: {texts!r}"
+            )
+        entry["save_changes"] = next(c.text for c in controls if c.cls == "Static" and c.text)
+        self.press(box, no)
+
+    def main_title(self) -> str | None:
+        """Return the main window's title, or None if CLICK shows no main window."""
+        assert self.pid is not None
+        main = classify(self.desktop.windows(self.pid), [], main=self.main)[0].get(MAIN)
+        return main.title if main is not None else None
 
     def paste(self) -> None:
         assert self.main is not None and self.paste_csv is not None

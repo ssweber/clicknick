@@ -311,6 +311,16 @@ class FakeClick(cd.Desktop):
     Live runs on 2026-11-20 showed both. The Project.ini then has no [Sec21], or names
     *saved_cpu* if given. With *cancel_first* "form" or "startup", the Cancel makes that change
     first: it removes the form, or it enables Startup. It makes the other change 3 polls later.
+
+    File > New Project asks "Save changes to <path>?" (Yes 6, No 7, Cancel 2) unless the
+    project was saved, as live runs on 2026-11-21 showed. *new_box* gives that box another
+    text, other buttons as (text, id, enabled), and controls of other classes. With
+    *new_second_box*, No shows a second box before the project unloads. No, or no box,
+    empties the temp folder, titles the main window bare and shows Startup. The CPU's OK
+    closes Startup and writes Project.ini. ``NEW_MDB_POLLS`` polls later the fake writes
+    SC_.mdb (event ``new_mdb``). *new_title_polls* polls after that it titles the main window
+    "NewProject1.ckp" (event ``new_title``). *new_writes* is how many times it writes SC_.mdb
+    again, each ``NEW_WRITE_POLLS`` polls after the last (event ``new_mdb_again``).
     """
 
     def __init__(
@@ -383,6 +393,10 @@ class FakeClick(cd.Desktop):
         user_accounts: bool | None = None,
         accounts_cancel: bool = True,
         cancel_first: str | None = None,
+        new_box: tuple[str, tuple[tuple[str, int, bool], ...], tuple[str, ...]] | None = None,
+        new_second_box: bool = False,
+        new_title_polls: int = 5,
+        new_writes: int = 0,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -500,6 +514,11 @@ class FakeClick(cd.Desktop):
         self.user_accounts = user_accounts
         self.accounts_cancel = accounts_cancel
         self.cancel_first = cancel_first
+        self.new_box = new_box
+        self.new_second_box = new_second_box
+        self.new_title_polls = new_title_polls
+        self.new_writes = new_writes
+        self.new_mdb_writes: list[int] = []  # The tick of each write of SC_.mdb after File > New
         self.cpu: str | None = None  # The CPU of the project that the wizard made
 
     @property
@@ -746,12 +765,72 @@ class FakeClick(cd.Desktop):
             control.id = control.hwnd
 
     def _made_project(self, startup: FakeWindow, model: str) -> None:
-        """Close Startup and make the project for *model*, as CLICK writes its [Sec21]."""
+        """Close Startup and make the project for *model*, as CLICK writes its [Sec21].
+
+        After File > New Project, the fake then writes SC_.mdb, names the project in the
+        title, and writes SC_.mdb *new_writes* more times, each some polls after the last.
+        """
         assert self.main is not None
+        main = self.main
         self._drop(startup)
         self.cpu = model
         self._write_sec21(self.saved_cpu or model)
-        self.main.enabled = True
+        if cr._project_file(main.title) is None:
+            mdb = self.temp_dir(main.hwnd) / "SC_.mdb"
+
+            def write(count: int) -> None:
+                mdb.write_bytes(b"new mdb" + b"!" * count)
+                if count:
+                    self.new_mdb_writes.append(self.tick)
+                if count < self.new_writes:
+                    self._later("new_mdb_again", lambda: write(count + 1), NEW_WRITE_POLLS)
+
+            def title() -> None:
+                main.title = (
+                    "CLICK Programming Software (Version4.00) - NewProject1.ckp - [Main Program]"
+                )
+
+            self._later("new_mdb", lambda: write(0), NEW_MDB_POLLS)
+            self._later("new_title", title, NEW_MDB_POLLS + self.new_title_polls)
+        main.enabled = True
+
+    def _file_new(self) -> None:
+        """Ask whether to save unless the project was saved, then unload it and show Startup."""
+        assert self.main is not None
+        main = self.main
+
+        def unload() -> None:
+            main.title = "CLICK Programming Software (Version4.00)"
+            main.enabled = False
+            for path in self.temp_dir(main.hwnd).iterdir():
+                path.unlink()
+            self._show_startup()
+
+        if self.saved and self.new_box is None:
+            unload()
+            return
+        main.enabled = False
+        text, buttons, others = self.new_box or (SAVE_CHANGES_TEXT, SAVE_CHANGES_BUTTONS, ())
+        box = self._window("#32770", "CLICK Programming Software", main.hwnd)
+        for name, id, enabled in buttons:
+
+            def press(name: str = name) -> None:
+                self._drop(box)
+                if name != "&No":
+                    main.enabled = True
+                elif self.new_second_box:
+                    second = self._window("#32770", "CLICK Programming Software", main.hwnd)
+                    self._control(second, "Static", "Could not close the project.", 65535)
+                    self._control(second, "Button", "OK", 2)
+                else:
+                    self._later("file_new_no", unload)
+
+            button = self._control(box, "Button", name, id, on_press=press)
+            button.enabled = enabled
+        self._control(box, "Static", "", 20)
+        self._control(box, "Static", text, 65535)
+        for cls in others:
+            self._control(box, cls, "", 1000)
 
     def _write_sec21(self, saved: str) -> None:
         """Write a Project.ini whose [Sec21] names the CPU *saved*, as CLICK writes it."""
@@ -1741,6 +1820,8 @@ class FakeClick(cd.Desktop):
             self._later("picker", self._show_picker)
         elif command_id == cd.SYSTEM_CONFIGURATION:
             self._later("system_config", self._show_system_config)
+        elif command_id == cd.NEW_PROJECT:
+            self._later("file_new", self._file_new)
         elif command_id == cd.DELETE:
 
             def delete() -> None:
@@ -2151,6 +2232,15 @@ def judge_like_click(title: str, mode: str | None, values: dict[str, str]) -> ob
 
 # An import written late writes SC_.mdb this many polls after the main window is alone again
 LATE_WRITE_POLLS = 3
+# File > New Project: the polls from Startup closing to the fake's first write of SC_.mdb
+NEW_MDB_POLLS = 5
+# At the tests' poll of 0.001 s, 150 polls last 0.15 s. That is longer than IMPORT_SETTLE (0.1 s
+# in the tests) and shorter than NEW_SETTLE (0.3 s in the tests). CLICK's gaps between writes in
+# the live runs fell between the two real values in the same way.
+NEW_WRITE_POLLS = 150
+# CLICK's question whether to save, as the fake shows it after File > New Project
+SAVE_CHANGES_TEXT = "Save changes to C:\\projects\\C0-02DD1-D.ckp?"
+SAVE_CHANGES_BUTTONS = (("&Yes", 6, True), ("&No", 7, True), ("Cancel", 2, True))
 
 
 def import_like_click(data: bytes) -> tuple[dict[str, dict], str | None]:
@@ -2295,6 +2385,7 @@ def fast_poll(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(cr, "POLL_INTERVAL", 0.001)
     monkeypatch.setattr(cr, "PLC_SETTLE", 0.02)
     monkeypatch.setattr(cr, "IMPORT_SETTLE", 0.1)
+    monkeypatch.setattr(cr, "NEW_SETTLE", 0.3)
     monkeypatch.setattr(cr, "FILL_SETTLE", 0.02)
     monkeypatch.setattr(cr, "OPTION_WAIT", 0.2)
     monkeypatch.setattr(cr, "CPU_TYPE_WAIT", 0.5)
@@ -7399,12 +7490,13 @@ def test_commands_outside_the_allowlist_are_refused(
         target.command(1, command_id)
 
 
-def test_the_allowlist_is_the_twenty_six_commands():
+def test_the_allowlist_is_the_twenty_seven_commands():
     assert cd.ALLOWED_COMMANDS == {
         0xE125: "Paste",
         0xE122: "Copy",
         32777: "Delete",
         32846: "Syntax Check",
+        32771: "New Project",
         32772: "Open Project",
         32898: "Save Project",
         32899: "Save Project As",
@@ -7523,3 +7615,178 @@ def test_wm_command_is_posted_in_one_place():
     assert desktop.count("._post_command(") == 1  # in Desktop.command
     for name in ("0x0111", "_post", "ctypes", "win32", "Message"):
         assert name not in runner, name
+
+
+# ---------------------------------------------------------------------------
+# File > New Project from an open project (Run.file_new, called by on_new_project)
+# ---------------------------------------------------------------------------
+
+
+def run_file_new(fake: FakeClick, tmp_path: Path, exe: Path, model: str, *, unsaved: bool = False):
+    """Make a project for *model* by ``new``, then call ``file_new`` from the hook."""
+    entries: list[dict] = []
+
+    def on_new_project(run: cr.Run, project: cr.NewProject) -> None:
+        if unsaved:
+            fake.saved = False
+        entries.append(run.file_new())
+
+    code, result = run_command(
+        fake, tmp_path, exe, "new", "--cpu", model, on_new_project=on_new_project
+    )
+    return code, result, entries
+
+
+def test_file_new_makes_a_new_project_in_the_same_window_and_temp_folder(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result, entries = run_file_new(fake, tmp_path, exe, "C0-02DD1-D")
+    assert code == cr.EXIT_OK, result["reason"]
+    [entry] = entries
+    # The project was saved, so CLICK asked nothing. Startup's left button started the wizard
+    assert entry["save_changes"] is None
+    assert fake.commands == ["Save Project As", "New Project"]
+    assert fake.pressed == ["TButton@747", "OK", "&Save", "TButton@747", "OK"]
+    assert entry["title_before"].endswith(" - C0-02DD1-D.ckp - [Main Program]")
+    assert entry["title_after"].endswith(" - NewProject1.ckp - [Main Program]")
+    assert entry["main"] == fake.main.hwnd
+    assert Path(entry["temp"]) == fake.temp_dir(fake.main.hwnd)
+    assert entry["temp_created_before"] == entry["temp_created_after"] is not None
+    # CLICK deleted the saved project's Scr1.tmp. A new project has none until it is saved
+    assert entry["files_after"] == ["Project.ini", "SC_.mdb"]
+    assert entry["user_accounts"] is None
+    assert result["file_new"]["title_after"] == entry["title_after"]
+    assert list(result["timings"])[-3:] == ["file_new", "on_new_project", "close"]
+
+
+def test_file_new_answers_no_when_click_asks_whether_to_save(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result, entries = run_file_new(fake, tmp_path, exe, "C0-02DD1-D", unsaved=True)
+    assert code == cr.EXIT_OK, result["reason"]
+    assert entries[0]["save_changes"] == SAVE_CHANGES_TEXT
+    assert fake.pressed[-3:] == ["&No", "TButton@747", "OK"]
+    assert "&Yes" not in fake.pressed and "Cancel" not in fake.pressed
+
+
+def test_file_new_answers_no_for_the_open_project_whatever_the_case(tmp_path, setup):
+    _, exe = setup
+    text = "Save changes to D:\\Work\\c0-02dd1-d.CKP?"
+    fake = FakeClick(tmp_path, new_box=(text, SAVE_CHANGES_BUTTONS, ()))
+    code, result, entries = run_file_new(fake, tmp_path, exe, "C0-02DD1-D")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert entries[0]["save_changes"] == text
+    assert "&No" in fake.pressed
+
+
+@pytest.mark.parametrize(
+    "box",
+    [
+        # Another file than the open project
+        ("Save changes to C:\\other\\x.cdv?", SAVE_CHANGES_BUTTONS, ()),
+        ("Save changes to C:\\projects\\C0-02DD1-D.ckp.bak?", SAVE_CHANGES_BUTTONS, ()),
+        # Another question
+        ("Discard the project?", SAVE_CHANGES_BUTTONS, ()),
+        # Other buttons, or No with another id, disabled, or with a control of another class
+        (SAVE_CHANGES_TEXT, (("&Yes", 6, True), ("&No", 7, True)), ()),
+        (SAVE_CHANGES_TEXT, (("&Yes", 6, True), ("&No", 8, True), ("Cancel", 2, True)), ()),
+        (SAVE_CHANGES_TEXT, (("&Yes", 6, True), ("&No", 7, False), ("Cancel", 2, True)), ()),
+        (SAVE_CHANGES_TEXT, SAVE_CHANGES_BUTTONS, ("Edit",)),
+    ],
+)
+def test_file_new_stops_at_a_question_that_it_does_not_answer(tmp_path, setup, box):
+    _, exe = setup
+    fake = FakeClick(tmp_path, new_box=box)
+    code, result, _ = run_file_new(fake, tmp_path, exe, "C0-02DD1-D")
+    assert_aborted(fake, tmp_path / "out", code, result, "CLICK asked something")
+    assert "with 'C0-02DD1-D.ckp' open" in result["reason"]
+    assert result["step"] == "file_new"
+    # Nothing was pressed in the box
+    assert fake.pressed == ["TButton@747", "OK", "&Save"]
+
+
+def test_file_new_stops_at_a_second_box_after_no(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, new_second_box=True)
+    code, result, _ = run_file_new(fake, tmp_path, exe, "C0-02DD1-D", unsaved=True)
+    assert_aborted(fake, tmp_path / "out", code, result, "a second box after No")
+    # The run stopped at the box, not at the timeout
+    assert "'CLICK Programming Software'" in result["reason"]
+    assert "timed out" not in result["reason"]
+    assert fake.pressed[-1] == "&No"
+
+
+def test_file_new_cancels_user_account_setup(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result, entries = run_file_new(fake, tmp_path, exe, "C2-03CPU")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert entries[0]["user_accounts"] == "cancelled"
+    assert fake.pressed[-3:] == ["TButton@747", "OK", "Cancel"]
+
+
+def test_file_new_waits_until_sc_mdb_stops_changing(tmp_path, setup):
+    # CLICK wrote SC_.mdb again more than a second after the title named the new project
+    _, exe = setup
+    fake = FakeClick(tmp_path, new_writes=3)
+    code, result, entries = run_file_new(fake, tmp_path, exe, "C0-02DD1-D")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert len(fake.new_mdb_writes) == 3
+    temp = Path(entries[0]["temp"])
+    assert (temp / "SC_.mdb").read_bytes() == b"new mdb!!!"
+    assert "file_new" in result["status_bar"]
+
+
+def test_file_new_waits_for_the_title_to_name_the_project(tmp_path, setup):
+    # The title stays bare for longer than NEW_SETTLE after SC_.mdb is written
+    _, exe = setup
+    fake = FakeClick(tmp_path, new_title_polls=600)
+    code, result, entries = run_file_new(fake, tmp_path, exe, "C0-02DD1-D")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert entries[0]["title_after"].endswith(" - NewProject1.ckp - [Main Program]")
+
+
+def test_file_new_stops_when_sc_mdb_never_appears(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, stall="new_mdb")
+    code, result, _ = run_file_new(fake, tmp_path, exe, "C0-02DD1-D")
+    assert_aborted(fake, tmp_path / "out", code, result, "waiting for the new project's SC_.mdb")
+    assert "new_title" in fake.events
+    assert result["file_new"]["title_after"] is None
+
+
+@pytest.mark.parametrize(
+    ("event", "waiting_for"),
+    [
+        # The second CPU OK: while the runner waits for User Account Setup
+        ("cpu_ok", "User Account Setup or the main window alone"),
+        # While SC_.mdb settles
+        ("new_title", "the new project's SC_.mdb to settle"),
+    ],
+)
+def test_file_new_stops_at_an_unexpected_window(tmp_path, setup, event, waiting_for):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    surprise = {"armed": False}
+
+    def arm(run: cr.Run, project: cr.NewProject) -> None:
+        # Only after the first project is made, so the surprise comes in File > New Project
+        fake.surprise = event
+        surprise["armed"] = True
+        run.file_new()
+
+    code, result = run_command(
+        fake, tmp_path, exe, "new", "--cpu", "C0-02DD1-D", on_new_project=arm
+    )
+    assert surprise["armed"]
+    assert_aborted(fake, tmp_path / "out", code, result, f"while waiting for {waiting_for}")
+    assert "'Set a Project Password'" in result["reason"]
+    assert result["step"] == "file_new"
+
+
+def test_file_new_refuses_a_project_with_no_cpu(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result, _ = run_file_new(fake, tmp_path, exe, "none")
+    assert_aborted(fake, tmp_path / "out", code, result, "needs a CPU that the wizard lists")
+    assert "New Project" not in fake.commands

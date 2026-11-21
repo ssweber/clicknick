@@ -28,6 +28,9 @@ from pathlib import Path
 # CLICK v4's command ids, from CLICK.exe's string table
 PASTE = 0xE125  # MFC's ID_EDIT_PASTE
 DELETE = 32777  # Edit > Delete deletes the instruction under the ladder's cursor
+# File > New Project. The string table calls it "New Project". It closes the open project and
+# starts CLICK's new-project wizard.
+NEW_PROJECT = 32771
 SYNTAX_CHECK = 32846
 OPEN_PROJECT = 32772  # File > Open Project. The string table calls it "Open Project".
 SAVE_PROJECT = 32898
@@ -88,6 +91,7 @@ ALLOWED_COMMANDS = {
     PASTE: "Paste",
     DELETE: "Delete",
     SYNTAX_CHECK: "Syntax Check",
+    NEW_PROJECT: "New Project",
     OPEN_PROJECT: "Open Project",
     SAVE_PROJECT: "Save Project",
     SAVE_PROJECT_AS: "Save Project As",
