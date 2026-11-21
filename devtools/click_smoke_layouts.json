@@ -1,0 +1,162 @@
+{
+  "C0-00DD1-D": {
+    "has_cpu": true,
+    "cards": [
+      {
+        "title": "CPU",
+        "location": "cpu",
+        "position": 0,
+        "model": "C0-00DD1-D",
+        "installed": true,
+        "terminals": [
+          ["input", 1, "X001"],
+          ["input", 2, "X002"],
+          ["input", 3, "X003"],
+          ["input", 4, "X004"],
+          ["input", 5, "X005"],
+          ["input", 6, "X006"],
+          ["input", 7, "X007"],
+          ["input", 8, "X008"],
+          ["output", 1, "Y001"],
+          ["output", 2, "Y002"],
+          ["output", 3, "Y003"],
+          ["output", 4, "Y004"],
+          ["output", 5, "Y005"],
+          ["output", 6, "Y006"]
+        ]
+      }
+    ]
+  },
+  "C0-02DD1-D": {
+    "has_cpu": true,
+    "cards": [
+      {
+        "title": "CPU",
+        "location": "cpu",
+        "position": 0,
+        "model": "C0-02DD1-D",
+        "installed": true,
+        "terminals": [
+          ["input", 1, "X001"],
+          ["input", 2, "X002"],
+          ["input", 3, "X003"],
+          ["input", 4, "X004"],
+          ["output", 1, "Y001"],
+          ["output", 2, "Y002"],
+          ["output", 3, "Y003"],
+          ["output", 4, "Y004"],
+          ["analog_in", 1, "DF1"],
+          ["analog_in", 2, "DF2"],
+          ["analog_out", 1, "DF3"],
+          ["analog_out", 2, "DF4"]
+        ]
+      }
+    ]
+  },
+  "C0-11DD1E-D": {
+    "has_cpu": true,
+    "cards": [
+      {
+        "title": "CPU",
+        "location": "cpu",
+        "position": 0,
+        "model": "C0-11DD1E-D",
+        "installed": true,
+        "terminals": [
+          ["input", 1, "X001"],
+          ["input", 2, "X002"],
+          ["input", 3, "X003"],
+          ["input", 4, "X004"],
+          ["input", 5, "X005"],
+          ["input", 6, "X006"],
+          ["input", 7, "X007"],
+          ["input", 8, "X008"],
+          ["output", 1, "Y001"],
+          ["output", 2, "Y002"],
+          ["output", 3, "Y003"],
+          ["output", 4, "Y004"],
+          ["output", 5, "Y005"],
+          ["output", 6, "Y006"]
+        ]
+      }
+    ]
+  },
+  "C0-12DD1E-2-D": {
+    "has_cpu": true,
+    "cards": [
+      {
+        "title": "CPU",
+        "location": "cpu",
+        "position": 0,
+        "model": "C0-12DD1E-2-D",
+        "installed": true,
+        "terminals": [
+          ["input", 1, "X001"],
+          ["input", 2, "X002"],
+          ["input", 3, "X003"],
+          ["input", 4, "X004"],
+          ["output", 1, "Y001"],
+          ["output", 2, "Y002"],
+          ["output", 3, "Y003"],
+          ["output", 4, "Y004"],
+          ["analog_in", 1, "DF1"],
+          ["analog_in", 2, "DF2"],
+          ["analog_in", 3, "DF3"],
+          ["analog_in", 4, "DF4"],
+          ["analog_out", 1, "DF5"],
+          ["analog_out", 2, "DF6"]
+        ]
+      }
+    ]
+  },
+  "C2-03CPU": {
+    "has_cpu": true,
+    "cards": [
+      {
+        "title": "CPU",
+        "location": "cpu",
+        "position": 0,
+        "model": "C2-03CPU",
+        "installed": true,
+        "terminals": []
+      },
+      {
+        "title": "Option slot 0",
+        "location": "slot",
+        "position": 0,
+        "model": "C2-FILL",
+        "installed": true,
+        "terminals": []
+      }
+    ]
+  },
+  "C2-03CPU-2": {
+    "has_cpu": true,
+    "cards": [
+      {
+        "title": "CPU",
+        "location": "cpu",
+        "position": 0,
+        "model": "C2-03CPU-2",
+        "installed": true,
+        "terminals": []
+      },
+      {
+        "title": "Option slot 0",
+        "location": "slot",
+        "position": 0,
+        "model": "C2-FILL",
+        "installed": true,
+        "terminals": []
+      },
+      {
+        "title": "Option slot 1",
+        "location": "slot",
+        "position": 1,
+        "model": "C2-FILL",
+        "installed": true,
+        "terminals": []
+      }
+    ]
+  }
+}

@@ -262,3 +262,48 @@ The runner follows these rules:
 
 The file's docstring has the options, the rules and the result's fields. `tests/test_click_runner.py`
 runs the runner against a fake CLICK. No test starts CLICK.
+
+## Smoke test against CLICK
+
+Run `make smoke` before a release. It checks ClickNick against new projects that the runner's
+CLICK makes:
+
+```bat
+set UV_NO_SYNC=1
+make smoke
+make smoke SMOKE_ARGS="--cpu C2-03CPU --out runs\smoke"
+```
+
+`devtools/click_smoke.py` runs the runner's `new` mode once for each CPU: C0-00DD1-D, C0-02DD1-D,
+C0-11DD1E-D, C0-12DD1E-2-D and C2-03CPU. `--cpu` picks other CPUs. While CLICK has the new
+project open, ClickNick connects to it with no window and runs these checks:
+
+- `load`: ClickNick reads the project's SC_.mdb.
+- `build`: the workspace builds with no warning.
+- `layout`: the Simulator's cards are the ones that `read_panel_layout` reads in the project's
+  Project.ini. For the CPUs in `devtools/click_smoke_layouts.json`, they must also be the cards
+  recorded there.
+- `simulation`: the simulation starts and scans in RUN.
+- `check_program`: Check Program and `clicknick-cli check` both run and report the same.
+
+The smoke writes its results into `--out` (by default `tmp\smoke\<date and time>`). Each CPU
+gets a folder of its own. It holds the runner's `--out` folder, `runner\`, and a `result.json`
+with each check's status (pass or fail), text and time. `summary.json` lists every project, and
+the smoke prints the same summary. The exit code is 0 when every project passed, 1 when any
+project failed and 2 when the smoke refused to start or stopped early. A project fails when a
+check fails, when the runner does not end `ok`, when a scheduled callback raises, or when port
+502 is still in use after ClickNick closes. If a thread that a check started still runs after
+ClickNick closes, the project fails and the smoke stops.
+
+The smoke never connects to a PLC. It keeps away from your own ClickNick:
+
+- It points `LOCALAPPDATA` at a folder in `--out`. ClickNick saves its settings and the
+  simulator settings there. CLICK and the simulation also run with that `LOCALAPPDATA`.
+- Each build writes a temporary workspace into the runner's CLICK's temp folder. Your settings,
+  workspaces and simulator settings stay as they are.
+- The simulation needs port 502. If another program has the port, such as your own ClickNick
+  Simulator, the smoke refuses to start and names the port. Turn your Simulator off first.
+- The runner refuses to start while any CLICK runs, so close CLICK first.
+
+`make smoke` is not part of `make test` or CI. `tests/test_click_smoke.py` tests the smoke with a
+fake runner.
