@@ -158,5 +158,9 @@
         "terminals": []
       }
     ]
+  },
+  "none": {
+    "has_cpu": false,
+    "cards": []
   }
 }

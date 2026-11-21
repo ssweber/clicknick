@@ -305,6 +305,12 @@ class FakeClick(cd.Desktop):
     that CPU in [Sec21], or the CPU *saved_cpu* if given. With *lists_follow_keys* off, Down
     does not move the list's selection. With *user_accounts* True or False, User Account Setup
     shows for every CPU or for none. With *accounts_cancel* off, it has no Cancel.
+
+    Cancel in Select a CPU Module enables Startup again, and the main window stays disabled.
+    WM_CLOSE to Startup then closes it and enables the main window, on a project with no CPU.
+    Live runs on 2026-11-20 showed both. The Project.ini then has no [Sec21], or names
+    *saved_cpu* if given. With *cancel_first* "form" or "startup", the Cancel makes that change
+    first: it removes the form, or it enables Startup. It makes the other change 3 polls later.
     """
 
     def __init__(
@@ -376,6 +382,7 @@ class FakeClick(cd.Desktop):
         saved_cpu: str | None = None,
         user_accounts: bool | None = None,
         accounts_cancel: bool = True,
+        cancel_first: str | None = None,
     ) -> None:
         self.temp_root = tmp_path / "temp"
         self.temp_root.mkdir()
@@ -492,6 +499,7 @@ class FakeClick(cd.Desktop):
         self.saved_cpu = saved_cpu
         self.user_accounts = user_accounts
         self.accounts_cancel = accounts_cancel
+        self.cancel_first = cancel_first
         self.cpu: str | None = None  # The CPU of the project that the wizard made
 
     @property
@@ -675,9 +683,37 @@ class FakeClick(cd.Desktop):
             else:
                 self._made_project(startup, model)
 
+        def cancel() -> None:
+            startup.on_close = lambda: self._later("startup_close", lambda: close(startup))
+
+            def drop() -> None:
+                self._drop(form)
+
+            def enable() -> None:
+                startup.enabled = True
+
+            if self.cancel_first is None:
+                drop()
+                enable()
+            elif self.cancel_first == "form":
+                drop()
+                self._later("startup_enabled", enable, 3)
+            else:
+                enable()
+                self._later("form_dropped", drop, 3)
+
+        def close(startup: FakeWindow) -> None:
+            assert self.main is not None
+            self._drop(startup)
+            if self.saved_cpu is not None:
+                self._write_sec21(self.saved_cpu)
+            self.main.enabled = True
+
         cpus.on_key = key
         self._control(form, "TButton", "OK", 0, on_press=lambda: self._later("cpu_ok", ok))
-        self._control(form, "TButton", "Cancel", 0)
+        self._control(
+            form, "TButton", "Cancel", 0, on_press=lambda: self._later("cpu_cancel", cancel)
+        )
         self._control(form, "TButton", "Help", 0)
         for control in form.controls:
             control.id = control.hwnd  # A Delphi control's id is its hwnd
@@ -714,7 +750,12 @@ class FakeClick(cd.Desktop):
         assert self.main is not None
         self._drop(startup)
         self.cpu = model
-        saved = self.saved_cpu or model
+        self._write_sec21(self.saved_cpu or model)
+        self.main.enabled = True
+
+    def _write_sec21(self, saved: str) -> None:
+        """Write a Project.ini whose [Sec21] names the CPU *saved*, as CLICK writes it."""
+        assert self.main is not None
         # Key3_1 is the CPU. Key3_10 and Key3_11 are the option slots, and CLICK fills each
         # slot that a CLICK PLUS CPU has with C2-FILL (8192)
         modules = [0] * 12
@@ -728,7 +769,6 @@ class FakeClick(cd.Desktop):
         lines += ["[Sec24]", f"Key1={CPU_IDS[saved]}"]
         ini = "".join(f"{line}\r\n" for line in lines)
         (self.temp_dir(self.main.hwnd) / "Project.ini").write_bytes(ini.encode("ascii"))
-        self.main.enabled = True
 
     def _show_connect(self, startup: FakeWindow) -> None:
         startup.enabled = False
@@ -6895,7 +6935,7 @@ def test_new_picks_the_cpu_by_name_and_saves_the_project(tmp_path, setup, model,
     assert_temp_left_to_click(fake, out, still_there=False)
 
 
-@pytest.mark.parametrize("model", ["C9-99CPU", "c2-03cpu", "C0-00DA-D"])
+@pytest.mark.parametrize("model", ["C9-99CPU", "c2-03cpu", "C0-00DA-D", "None"])
 def test_new_refuses_a_cpu_that_the_wizard_does_not_list_before_click_starts(
     tmp_path, setup, model
 ):
@@ -6908,6 +6948,7 @@ def test_new_refuses_a_cpu_that_the_wizard_does_not_list_before_click_starts(
         f"--cpu {model!r} is not a CPU that CLICK's new-project wizard lists. "
         "Use one of C0-00DD1-D, C0-00DD2-D,"
     )
+    assert result["reason"].endswith("C2-03CPU-2, or none for a project with no CPU.")
     assert fake.pid is None
 
 
@@ -7071,6 +7112,144 @@ def test_new_stops_when_on_new_project_raises(tmp_path, setup):
     )
     assert_aborted(fake, tmp_path / "out", code, result, "the smoke found a fault")
     assert result["step"] == "on_new_project"
+
+
+# ---------------------------------------------------------------------------
+# new --cpu none: a project with no CPU
+# ---------------------------------------------------------------------------
+
+
+def test_new_none_cancels_the_cpu_closes_startup_and_saves_a_project_with_no_cpu(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "none")
+    assert code == cr.EXIT_OK, result["reason"]
+    out = tmp_path / "out"
+    # The runner pressed Start a new project and then Cancel in Select a CPU Module. It closed
+    # Startup with WM_CLOSE, sent no key to the list and no command but Save As, and never
+    # connected
+    assert fake.pressed == ["TButton@747", "Cancel", "&Save"]
+    wizard = ("cpu", "cpu_ok", "cpu_cancel", "startup_close")
+    assert [e for e in fake.events if e in wizard] == ["cpu", "cpu_cancel", "startup_close"]
+    assert fake.keys == []
+    assert fake.commands == ["Save Project As"]
+    assert not fake.connected and not fake.went_offline
+    assert result["cpu"] is None
+    assert result["cpu_list"] is None
+    assert result["user_accounts"] is None
+    assert result["project"] == {"cpu": None, "slots": {}, "expansions": {}, "sec21": None}
+    assert result["status_bar"]["new_project"][10] == "No select CPU"
+    assert Path(result["files"]["ckp"]) == out / "none.ckp"
+    assert sorted(p.name for p in (out / "click").iterdir()) == ["Project.ini", "Scr1.tmp"]
+    assert list(result["timings"]) == [
+        "refuse",
+        "launch",
+        "startup",
+        "cpu",
+        "close_startup",
+        "new_project",
+        "save",
+        "copy",
+        "check",
+        "close",
+    ]
+    assert fake.exited_cleanly and not fake.terminated
+    assert_temp_left_to_click(fake, out, still_there=False)
+
+
+@pytest.mark.parametrize(
+    ("event", "step"), [("cpu_cancel", "cpu"), ("startup_close", "close_startup")]
+)
+def test_new_none_stops_at_an_unexpected_window(tmp_path, setup, event, step):
+    _, exe = setup
+    fake = FakeClick(tmp_path, surprise=event)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "none")
+    assert_aborted(fake, tmp_path / "out", code, result, "unexpected window")
+    assert "'Set a Project Password'" in result["reason"]
+    assert result["step"] == step
+    assert fake.commands == []
+    assert "Connect" not in fake.pressed
+
+
+@pytest.mark.parametrize("first", ["form", "startup"])
+def test_new_none_closes_startup_only_once_the_form_is_gone_and_startup_is_enabled(
+    tmp_path, setup, first
+):
+    # After the Cancel, the form goes and Startup is enabled on different polls
+    _, exe = setup
+    fake = FakeClick(tmp_path, cancel_first=first)
+    seen: list[tuple[bool, bool]] = []
+    close = fake.close
+
+    def close_and_note(hwnd: int) -> None:
+        window = fake.wins[hwnd]
+        if window.cls == "TfrmStartup":
+            form_open = any(w.cls == "TfrmCPU" for w in fake.wins.values())
+            seen.append((form_open, window.enabled))
+        close(hwnd)
+
+    fake.close = close_and_note
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "none")
+    assert code == cr.EXIT_OK, result["reason"]
+    assert seen == [(False, True)]
+    later = "startup_enabled" if first == "form" else "form_dropped"
+    assert fake.events.index(later) < fake.events.index("startup_close")
+
+
+def test_new_none_stops_when_the_saved_project_names_a_cpu(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path, saved_cpu="C2-03CPU")
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "none")
+    assert_aborted(
+        fake,
+        tmp_path / "out",
+        code,
+        result,
+        "the saved Project.ini names the CPU C2-03CPU. A project for --cpu none must name no CPU.",
+    )
+    assert result["step"] == "check"
+    assert result["cpu"] is None
+    assert result["project"]["cpu"] == "C2-03CPU"
+
+
+def test_new_stops_when_the_saved_project_names_no_cpu(tmp_path, setup, monkeypatch):
+    # CLICK wrote no [Sec21] for the CPU that the runner picked
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    monkeypatch.setattr(fake, "_write_sec21", lambda saved: None)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C0-02DD1-D")
+    assert_aborted(
+        fake, tmp_path / "out", code, result, "the saved Project.ini names no CPU, not C0-02DD1-D"
+    )
+    assert result["step"] == "check"
+
+
+def test_new_none_records_each_window_and_calls_on_new_project_with_no_model(tmp_path, setup):
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    seen: list[cr.NewProject] = []
+
+    def on_new_project(run: cr.Run, project: cr.NewProject) -> None:
+        seen.append(project)
+
+    code, result = run_command(
+        fake, tmp_path, exe, "new", "--cpu", "none", "--record", on_new_project=on_new_project
+    )
+    assert code == cr.EXIT_OK, result["reason"]
+    out = tmp_path / "out"
+    assert fake.main is not None
+    assert seen == [
+        cr.NewProject(
+            model=None,
+            ckp=(out / "none.ckp").resolve(),
+            pid=4242,
+            main=fake.main.hwnd,
+            temp=fake.temp_dir(fake.main.hwnd),
+        )
+    ]
+    labels = {p.name.split("-")[1] for p in (out / "record").glob("*.json")}
+    assert {"cpu_form", "cpu_cancelled", "new_project"} <= labels
+    assert "cpu_picked" not in labels
 
 
 def test_ini_section_keeps_the_sections_lines_as_clicks_file_holds_them():

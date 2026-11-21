@@ -90,7 +90,11 @@ class FakeRunner:
             run = FakeRun()
             self.runs.append(run)
             new = cr.NewProject(
-                model, settings.out / f"{model}.ckp", 4242, 0x1234, settings.out / "temp"
+                None if model == cr.NO_CPU else model,
+                settings.out / f"{model}.ckp",
+                4242,
+                0x1234,
+                settings.out / "temp",
             )
             try:
                 on_new_project(run, new)  # pyright: ignore[reportArgumentType]
@@ -256,6 +260,8 @@ def test_every_project_passes_when_every_check_passes(tmp_path, port, capsys):
     assert list(first) == ["status", "text", "seconds", "details"]
     assert (first["status"], first["text"]) == ("pass", "First passed.")
     assert first["details"] == {"model": "C2-03CPU"}
+    # The project with no CPU reaches the checks with no model
+    assert read(out / "none" / "result.json")["checks"]["first"]["details"] == {"model": None}
     assert isinstance(first["seconds"], float)
     assert result["callback_errors"] == []
     assert result["teardown"]["port_free"] is True
@@ -551,11 +557,12 @@ def test_the_scheduler_background_pumps_while_the_call_waits_for_a_callback():
 # ---------------------------------------------------------------------------
 
 
-def test_every_project_is_a_cpu_that_the_wizard_lists():
-    assert set(cs.PROJECTS) <= set(cr.CPU_MODELS)
+def test_every_project_is_a_cpu_that_the_wizard_lists_or_no_cpu():
+    assert set(cs.PROJECTS) <= {*cr.CPU_MODELS, cr.NO_CPU}
+    assert cs.PROJECTS[-1] == cr.NO_CPU
 
 
-def test_the_recorded_layouts_name_cpus_that_the_wizard_lists():
+def test_the_recorded_layouts_name_cpus_that_the_wizard_lists_or_no_cpu():
     layouts = cs.recorded_layouts()
     assert set(layouts) == {
         "C0-00DD1-D",
@@ -564,14 +571,97 @@ def test_the_recorded_layouts_name_cpus_that_the_wizard_lists():
         "C0-12DD1E-2-D",
         "C2-03CPU",
         "C2-03CPU-2",
+        "none",
     }
-    # Every CPU that the smoke makes a project for has recorded cards
+    # Every project that the smoke makes has recorded cards
     assert set(cs.PROJECTS) <= set(layouts)
+    # With no CPU, the layout has no card, and the Simulator shows its No CPU card
+    assert layouts.pop(cr.NO_CPU) == {"has_cpu": False, "cards": []}
     for model, layout in layouts.items():
         assert model in cr.CPU_MODELS
         assert layout["has_cpu"] is True
         assert layout["cards"][0]["location"] == "cpu"
         assert layout["cards"][0]["model"] == model
+
+
+# ---------------------------------------------------------------------------
+# The layout check
+# ---------------------------------------------------------------------------
+
+
+class FakeLayoutSimulation:
+    """Stands in for ``SimulationSession`` in ``check_layout``. It holds a layout or an error."""
+
+    def __init__(self, layout: Any, error: str | None = None) -> None:
+        self.layout = layout
+        self.layout_error = error
+
+    def refresh_layout(self, *, force: bool = False) -> None:
+        pass
+
+
+class FakeLayoutSession:
+    """Stands in for ``ConnectionSession`` in ``check_layout``."""
+
+    def __init__(self, simulation: FakeLayoutSimulation, project_ini: Path) -> None:
+        self.simulation = simulation
+        self.project_ini = project_ini
+
+    def ensure_simulation(self, scheduler: cs.Scheduler) -> FakeLayoutSimulation:
+        return self.simulation
+
+
+# Lines from the Project.ini that CLICK 4.00 saved for a project with no CPU, in a live run on
+# 2026-11-20. Like that file, it has no [Sec21]
+NO_CPU_INI = b"[Sec56]\r\nKey11=0\r\nKey10=587\r\n[Sec52]\r\nKey11_1=1\r\nKey2=0\r\nKey1=1\r\n"
+
+
+def check_layout_with(
+    tmp_path: Path, model: str | None, layout: Any, error: str | None = None
+) -> dict[str, Any]:
+    ini = tmp_path / "Project.ini"
+    ini.write_bytes(NO_CPU_INI)
+    new = cr.NewProject(model, tmp_path / "none.ckp", 4242, 0x1234, tmp_path / "temp")
+    project = cs.Project(FakeRun(), new, tmp_path, cs.Scheduler())  # pyright: ignore[reportArgumentType]
+    session = FakeLayoutSession(FakeLayoutSimulation(layout, error), ini)
+    project._session = session  # pyright: ignore[reportAttributeAccessIssue]
+    details: dict[str, Any] = {}
+    try:
+        details["text"] = cs.check_layout(project, details)
+    except cs.CheckFailed as exc:
+        details["failed"] = str(exc)
+    return details
+
+
+def test_the_layout_check_passes_for_a_project_with_no_cpu(tmp_path):
+    from clicknick.services.sim_hardware import read_panel_layout
+
+    (tmp_path / "read.ini").write_bytes(NO_CPU_INI)
+    layout = read_panel_layout(tmp_path / "read.ini")
+    details = check_layout_with(tmp_path, None, layout)
+    assert "failed" not in details
+    assert details["text"] == "No CPU, 0 card(s), as read_panel_layout reads them and as recorded."
+    assert (details["layout_error"], details["has_cpu"], details["cards"]) == (None, False, [])
+    assert details["recorded"] is True
+
+
+def test_the_layout_check_fails_when_a_project_with_no_cpu_shows_a_cpu(tmp_path, monkeypatch):
+    from clicknick.services import sim_hardware
+
+    layout = sim_hardware.PanelLayout((sim_hardware.Card("cpu", 0, "C2-03CPU", ()),))
+    monkeypatch.setattr(sim_hardware, "read_panel_layout", lambda path: layout)
+    details = check_layout_with(tmp_path, None, layout)
+    assert details["failed"] == (
+        "The project has no CPU, but the layout has the CPU card ['C2-03CPU']. The Simulator "
+        "would not show its No CPU card."
+    )
+
+
+def test_the_layout_check_fails_when_a_project_with_no_cpu_has_a_layout_error(tmp_path):
+    details = check_layout_with(tmp_path, None, None, "Project.ini is malformed.")
+    assert details["failed"] == (
+        "The simulation could not read the hardware: Project.ini is malformed."
+    )
 
 
 # ---------------------------------------------------------------------------
