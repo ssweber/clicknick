@@ -9,7 +9,7 @@
     uv run python devtools/click_runner.py reopen --out DIR [--ini-add LINES] [--record]
     uv run python devtools/click_runner.py read-data --out DIR [--record]
     uv run python devtools/click_runner.py picker --out DIR [--key KEY ...] [--ok] [--record]
-    uv run python devtools/click_runner.py new --cpu MODEL --out DIR [--record]
+    uv run python devtools/click_runner.py new --cpu MODEL|none --out DIR [--record]
 
 The runner starts its own CLICK. In every mode but ``new``, it connects to the one PLC on the
 LAN, so the new project takes that PLC's hardware. It answers "Don't read" to the question
@@ -246,28 +246,36 @@ picker. The runner reads the copies through Access ODBC once CLICK has ended. ``
 and ``picker`` dump CLICK's windows into ``DIR/record/`` only with ``--record``.
 
 ``new`` makes a project for the CPU ``--cpu`` through CLICK's new-project wizard. It never
-connects. ``--cpu`` must be one of ``CPU_MODELS``, the CPUs that the wizard lists. Otherwise
-the runner refuses the run before CLICK starts. The runner presses Start a new project on
-Startup. In Select a CPU Module, it sends Home and then Down keys to the list of CPUs, waits
-until the list selects the model, and presses OK. For some CPUs, CLICK then shows User Account
-Setup. If it shows, the runner presses its Cancel, and the project's admin account has no
-password. Once the main window is alone, the runner saves the project as ``DIR/<model>.ckp``
-and copies CLICK's Scr*.tmp files and Project.ini into ``DIR/click/``. pyclickplc's
-``read_modules`` then reads the CPU and modules from that Project.ini. The run stops if that
-Project.ini names a CPU other than ``--cpu``. result.json holds these fields:
+connects. ``--cpu`` must be one of ``CPU_MODELS``, the CPUs that the wizard lists, or ``none``.
+Otherwise the runner refuses the run before CLICK starts. The runner presses Start a new
+project on Startup. In Select a CPU Module, it sends Home and then Down keys to the list of
+CPUs, waits until the list selects the model, and presses OK. For some CPUs, CLICK then shows
+User Account Setup. If it shows, the runner presses its Cancel, and the project's admin account
+has no password. Once the main window is alone, the runner saves the project as
+``DIR/<model>.ckp`` and copies CLICK's Scr*.tmp files and Project.ini into ``DIR/click/``.
+pyclickplc's ``read_modules`` then reads the CPU and modules from that Project.ini. The run
+stops if that Project.ini names a CPU other than ``--cpu``.
 
-- ``cpu_list``: the CPUs that the list showed, in its order;
+``new --cpu none`` makes a project with no CPU. In Select a CPU Module, the runner presses
+Cancel. CLICK then shows Startup again, with the main window still disabled behind it. The
+runner closes Startup with WM_CLOSE. The main window is then alone, on the project that CLICK
+opened as it started. The runner saves that project as ``DIR/none.ckp``, as for a CPU. The
+run stops if the saved Project.ini names a CPU. result.json holds these fields:
+
+- ``cpu``: the model given to ``--cpu``, or null for ``none``;
+- ``cpu_list``: the CPUs that the list showed, in its order, or null for ``none``;
 - ``user_accounts``: ``cancelled`` if User Account Setup showed, otherwise null;
 - ``project``: the CPU, the option slots and the expansion modules that Project.ini names,
-  and its ``[Sec21]`` section as CLICK wrote it.
+  and its ``[Sec21]`` section as CLICK wrote it. ``sec21`` is null when the file has no [Sec21].
 
 Then the runner closes CLICK, and CLICK removes its temp folder. A script can pass
 ``on_new_project`` to ``Run`` to act on the project while CLICK has it open. ``new`` calls it
 after the check, with the run and a ``NewProject``: the model, the project file, CLICK's pid,
-its main window and its temp folder. The run then terminates CLICK instead of closing it. If
-the call changed the project, closing could show a save prompt. CLICK's temp folder then
-stays. If a Scr*.tmp is in CLICK's temp folder before the save (``scr_before_save``) and the
-save does not rewrite it, the run stops, as it does in ``paste``.
+its main window and its temp folder. The model is None for ``none``. The run then terminates
+CLICK instead of closing it. If the call changed the project, closing could show a save
+prompt. CLICK's temp folder then stays. If a Scr*.tmp is in CLICK's temp folder before the
+save (``scr_before_save``) and the save does not rewrite it, the run stops, as it does in
+``paste``.
 
 Before every Syntax Check (``paste``'s too), the runner empties Output. A result that
 reads the same as the one before is then still seen. CLICK ignores a Syntax Check posted
@@ -698,6 +706,12 @@ CPU_MODELS = (
     "C2-02CPU-2",
     "C2-03CPU-2",
 )
+# The value of ``new --cpu`` for a project with no CPU. Live runs on 2026-11-20 found that
+# Cancel in Select a CPU Module shows Startup again, with the main window still disabled, on the
+# project that CLICK opened as it started. The status bar reads "No select CPU". After a
+# WM_CLOSE to Startup, the main window is alone and enabled. Its Save As writes a Project.ini
+# with no [Sec21]
+NO_CPU = "none"
 # The instruction dialog ``try`` has open, and the error box it may own after OK
 DIALOG = "dialog"
 ANSWER_BOX = "answer_box"
@@ -1676,7 +1690,7 @@ class Settings:
     ini_add: str | None = None  # reopen: lines added to the end of the project's Project.ini
     keys: tuple[str, ...] = ()  # picker: keys sent to the Address Picker's grid or editor
     ok: bool = False  # picker: close the Address Picker by OK (else by WM_CLOSE)
-    cpu: str | None = None  # new: the CPU model to pick (CPU_MODELS)
+    cpu: str | None = None  # new: the CPU model to pick (CPU_MODELS), or NO_CPU
     exe: Path = DEFAULT_EXE
     password: str = DEFAULT_PASSWORD
     user_type: str = DEFAULT_USER_TYPE
@@ -1883,7 +1897,7 @@ def _read_stored(scr: Path) -> dict[str, Any]:
 class NewProject:
     """The project that ``new`` saved, in the CLICK that has it open."""
 
-    model: str  # The CPU picked
+    model: str | None  # The CPU picked, or None for a project with no CPU
     ckp: Path  # The project file that CLICK saved
     pid: int  # CLICK's process
     main: int  # CLICK's main window
@@ -2017,7 +2031,8 @@ class Run:
         if settings.command == "picker":
             self.result.update(mdb_copies={}, keys=[])
         if settings.command == "new":
-            self.result.update(cpu=settings.cpu, cpu_list=None, user_accounts=None, project=None)
+            cpu = None if settings.cpu == NO_CPU else settings.cpu
+            self.result.update(cpu=cpu, cpu_list=None, user_accounts=None, project=None)
 
     # -- logging, timing, dumps ---------------------------------------------
 
@@ -2347,10 +2362,10 @@ class Run:
         if self.s.command == "export-nicknames" and self.s.csv is not None:
             if not self.s.csv.is_file():
                 raise Refused(f"no CSV at {self.s.csv} to import before the export")
-        if self.s.command == "new" and self.s.cpu not in CPU_MODELS:
+        if self.s.command == "new" and self.s.cpu not in (*CPU_MODELS, NO_CPU):
             raise Refused(
                 f"--cpu {self.s.cpu!r} is not a CPU that CLICK's new-project wizard lists. "
-                f"Use one of {', '.join(CPU_MODELS)}."
+                f"Use one of {', '.join(CPU_MODELS)}, or {NO_CPU} for a project with no CPU."
             )
         if self.s.ini_add is not None and not self.s.ini_add.isascii():
             raise Refused(f"--ini-add is not ASCII: {self.s.ini_add!r}")
@@ -2733,13 +2748,15 @@ class Run:
 
         CLICK stays offline. The runner picks the CPU in Select a CPU Module (``pick_cpu``) and
         presses OK. If User Account Setup shows, the runner presses its Cancel. The project's
-        admin account then has no password, which is how CLICK makes it. Once the main window
-        is alone, the runner saves the project as ``DIR/<model>.ckp`` and copies CLICK's files
-        into ``DIR/click/``. Then it reads the CPU and modules from that Project.ini
+        admin account then has no password, which is how CLICK makes it. For ``NO_CPU``, the
+        runner presses Cancel in Select a CPU Module instead (``cancel_cpu``), and then closes
+        Startup with WM_CLOSE. Once the main window is alone, the runner saves the project as
+        ``DIR/<model>.ckp``, or ``DIR/none.ckp`` for ``NO_CPU``, and copies CLICK's files into
+        ``DIR/click/``. Then it reads the CPU and modules from that Project.ini
         (``check_new_project``).
         """
         assert self.s.cpu is not None and self.pid is not None
-        model = self.s.cpu
+        model = None if self.s.cpu == NO_CPU else self.s.cpu
         wizard = [STARTUP, NEW_CPU, USER_ACCOUNTS]
         with self.step("startup"):
             startup, buttons = self.operations()
@@ -2753,19 +2770,29 @@ class Run:
                 ),
             )
             self.record("cpu_form")
-            self.pick_cpu(form, model)
-            self.record("cpu_picked")
-            ok = _require(
-                _labelled(self.controls(form), "TButton", "OK"), "Select a CPU Module's OK"
-            )
-            self.press(form, ok)
-            # The main window is disabled until Startup closes, and Startup stays open while
-            # User Account Setup shows. So the main window alone means that it did not show
-            shown = self.wait(
-                "User Account Setup or the main window alone",
-                wizard,
-                lambda f: f.get(USER_ACCOUNTS.name) or self.only_main(f),
-            )
+            if model is None:
+                startup = self.cancel_cpu(form)
+                shown = None
+            else:
+                self.pick_cpu(form, model)
+                self.record("cpu_picked")
+                ok = _require(
+                    _labelled(self.controls(form), "TButton", "OK"), "Select a CPU Module's OK"
+                )
+                self.press(form, ok)
+                # The main window is disabled until Startup closes, and Startup stays open
+                # while User Account Setup shows. So the main window alone means that it did
+                # not show
+                shown = self.wait(
+                    "User Account Setup or the main window alone",
+                    wizard,
+                    lambda f: f.get(USER_ACCOUNTS.name) or self.only_main(f),
+                )
+        if model is None:
+            with self.step("close_startup"):
+                self.log("close Startup")
+                self.desktop.close(startup.hwnd)
+                self.wait("the main window alone after Startup closed", [STARTUP], self.only_main)
         if isinstance(shown, Window):
             with self.step("user_accounts"):
                 accounts = shown
@@ -2777,7 +2804,9 @@ class Run:
                 self.press(accounts, cancel)
                 self.result["user_accounts"] = "cancelled"
         with self.step("new_project"):
-            self.wait("the main window with the new project", wizard, self.only_main)
+            # With no CPU, close_startup has already waited for the main window alone
+            expected = [] if model is None else wizard
+            self.wait("the main window with the new project", expected, self.only_main)
             self.status_bar("new_project")
             self.record("new_project")
             # The temp folder is named after the main window's hwnd, and a terminated CLICK
@@ -2794,6 +2823,28 @@ class Run:
             self.check_new_project(model)
         assert self.main is not None
         return NewProject(model, ckp, self.pid, self.main, self.desktop.temp_dir(self.main))
+
+    def cancel_cpu(self, form: Window) -> Window:
+        """Press Cancel in Select a CPU Module, and return Startup once it is enabled again.
+
+        After the Cancel, CLICK shows Startup again, and the main window stays disabled behind
+        it.
+        """
+        cancel = _require(
+            _labelled(self.controls(form), "TButton", "Cancel"), "Select a CPU Module's Cancel"
+        )
+        self.press(form, cancel)
+        startup = self.wait(
+            "Startup after Select a CPU Module's Cancel",
+            [STARTUP, NEW_CPU],
+            lambda f: (
+                f[STARTUP.name]
+                if NEW_CPU.name not in f and STARTUP.name in f and f[STARTUP.name].enabled
+                else None
+            ),
+        )
+        self.record("cpu_cancelled")
+        return startup
 
     def pick_cpu(self, form: Window, model: str) -> None:
         """Select *model* in the form's list of CPUs: Home, then Down once for each row above it.
@@ -2825,12 +2876,13 @@ class Run:
 
         self.wait(f"the list of CPUs to select {model}", [STARTUP, NEW_CPU], picked)
 
-    def check_new_project(self, model: str) -> None:
+    def check_new_project(self, model: str | None) -> None:
         """Read the CPU and modules from ``DIR/click/Project.ini`` into the result's ``project``.
 
         pyclickplc's ``read_modules`` reads them. ``project`` also keeps the file's [Sec21]
         lines, where CLICK writes the CPU and the modules. The run stops if the file names
-        another CPU than *model*, or if pyclickplc cannot read it.
+        another CPU than *model*, or if pyclickplc cannot read it. With *model* None, the run
+        stops if the file names any CPU.
         """
         from pyclickplc import read_modules
 
@@ -2847,8 +2899,15 @@ class Run:
             "sec21": _ini_section(ini.read_bytes(), "Sec21"),
         }
         self.log(f"Project.ini: {self.result['project']}")
-        if saved != model:
-            raise Aborted(f"the saved Project.ini names the CPU {saved}, not {model}")
+        if saved == model:
+            return
+        if model is None:
+            raise Aborted(
+                f"the saved Project.ini names the CPU {saved}. A project for --cpu {NO_CPU} "
+                "must name no CPU."
+            )
+        named = "no CPU" if saved is None else f"the CPU {saved}"
+        raise Aborted(f"the saved Project.ini names {named}, not {model}")
 
     def paste(self) -> None:
         assert self.main is not None and self.paste_csv is not None
@@ -5024,7 +5083,7 @@ class Run:
     def save(self) -> Path:
         """Save the project as ``DIR/<name>.ckp`` and copy CLICK's files into ``DIR/click/``.
 
-        The name is the CSV's stem in ``paste`` and the CPU's model in ``new``. Job scripts
+        The name is the CSV's stem in ``paste``, and ``--cpu`` in ``new``. Job scripts
         override this method to act after the save, so it takes no arguments.
         """
         name = self.s.cpu if self.s.command == "new" else self.s.csv and self.s.csv.stem
@@ -5702,8 +5761,9 @@ def _parser() -> argparse.ArgumentParser:
     news.add_argument(
         "--cpu",
         required=True,
-        metavar="MODEL",
-        help=f"the CPU, by the model name that CLICK lists: {', '.join(CPU_MODELS)}",
+        metavar="MODEL|none",
+        help=f"the CPU, by the model name that CLICK lists: {', '.join(CPU_MODELS)}. "
+        f"{NO_CPU} makes a project with no CPU",
     )
     news.add_argument("--record", action="store_true", help="also dump every window at each step")
     return parser

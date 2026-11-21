@@ -210,6 +210,7 @@ uv run python devtools/click_runner.py record --out runs\dialogs
 uv run python devtools/click_runner.py try cases.json --out runs\cases --wire --keep
 uv run python devtools/click_runner.py export-nicknames --out runs\export --import nicknames.csv
 uv run python devtools/click_runner.py new --cpu C2-03CPU --out runs\plus
+uv run python devtools/click_runner.py new --cpu none --out runs\nocpu
 ```
 
 `paste --add-end` adds an unconditional `end()` rung after the CSV's rungs before it pastes them,
@@ -240,6 +241,10 @@ password. The runner saves the project as `<model>.ckp` in the `--out` folder. `
 the CPU and the modules that the saved Project.ini names. It also holds that file's `[Sec21]`
 section. A script that needs CLICK open on that project passes `on_new_project` to `Run` (see the
 file's docstring). The runner then terminates CLICK, so CLICK's temp folder stays.
+
+`new --cpu none` makes a project with no CPU. The runner presses Cancel where the wizard asks for
+the CPU. CLICK then shows Startup again, and the runner closes it. The runner saves the project as
+`none.ckp` and stops if its Project.ini names a CPU. `cpu` in `result.json` is null.
 
 `result.json` in the `--out` folder (also printed on stdout) says how the run went, and `run.log`
 logs each step. If a paste's rungs are not in the saved main program, the run ends `aborted`.
@@ -275,25 +280,27 @@ make smoke SMOKE_ARGS="--cpu C2-03CPU --out runs\smoke"
 ```
 
 `devtools/click_smoke.py` runs the runner's `new` mode once for each CPU: C0-00DD1-D, C0-02DD1-D,
-C0-11DD1E-D, C0-12DD1E-2-D and C2-03CPU. `--cpu` picks other CPUs. While CLICK has the new
-project open, ClickNick connects to it with no window and runs these checks:
+C0-11DD1E-D, C0-12DD1E-2-D and C2-03CPU. Then it runs `new` once more, for a project with no CPU
+(`--cpu none`). `--cpu` picks other CPUs, or `none`. While CLICK has the new project open,
+ClickNick connects to it with no window and runs these checks:
 
 - `load`: ClickNick reads the project's SC_.mdb.
 - `build`: the workspace builds with no warning.
 - `layout`: the Simulator's cards are the ones that `read_panel_layout` reads in the project's
-  Project.ini. For the CPUs in `devtools/click_smoke_layouts.json`, they must also be the cards
-  recorded there.
+  Project.ini. For a project with no CPU, the layout must have no CPU card. The Simulator then
+  shows its No CPU card. For the projects in `devtools/click_smoke_layouts.json`, the cards must
+  also be the cards recorded there.
 - `simulation`: the simulation starts and scans in RUN.
 - `check_program`: Check Program and `clicknick-cli check` both run and report the same.
 
-The smoke writes its results into `--out` (by default `tmp\smoke\<date and time>`). Each CPU
-gets a folder of its own. It holds the runner's `--out` folder, `runner\`, and a `result.json`
-with each check's status (pass or fail), text and time. `summary.json` lists every project, and
-the smoke prints the same summary. The exit code is 0 when every project passed, 1 when any
-project failed and 2 when the smoke refused to start or stopped early. A project fails when a
-check fails, when the runner does not end `ok`, when a scheduled callback raises, or when port
-502 is still in use after ClickNick closes. If a thread that a check started still runs after
-ClickNick closes, the project fails and the smoke stops.
+The smoke writes its results into `--out` (by default `tmp\smoke\<date and time>`). Each
+project gets a folder of its own. It holds the runner's `--out` folder, `runner\`, and a
+`result.json` with each check's status (pass or fail), text and time. `summary.json` lists every
+project, and the smoke prints the same summary. The exit code is 0 when every project passed, 1
+when any project failed and 2 when the smoke refused to start or stopped early. A project fails
+when a check fails, when the runner does not end `ok`, when a scheduled callback raises, or when
+port 502 is still in use after ClickNick closes. If a thread that a check started still runs
+after ClickNick closes, the project fails and the smoke stops.
 
 The smoke never connects to a PLC. It keeps away from your own ClickNick:
 

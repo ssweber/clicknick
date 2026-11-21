@@ -1,11 +1,12 @@
 """Check ClickNick against new projects that the CLICK runner makes, one CPU at a time.
 
-    uv run python devtools/click_smoke.py [--out DIR] [--cpu MODEL ...] [--timeout S]
+    uv run python devtools/click_smoke.py [--out DIR] [--cpu MODEL|none ...] [--timeout S]
 
 For each CPU, the smoke runs the runner's ``new`` mode (click_runner.py). CLICK makes a project
-for that CPU through its new-project wizard and saves it. CLICK never connects to a PLC. While
-CLICK still has the project open, the runner calls ``on_new_project``. There ClickNick connects to
-that CLICK with no window, the way the app does after you pick the window:
+for that CPU through its new-project wizard and saves it. For ``none``, the runner cancels the
+wizard's choice of CPU, and CLICK saves a project with no CPU. CLICK never connects to a PLC.
+While CLICK still has the project open, the runner calls ``on_new_project``. There ClickNick
+connects to that CLICK with no window, the way the app does after you pick the window:
 
 - ``ClickConnection(pid, hwnd, filename)`` and a ``ConnectionSession``;
 - an ``AddressStore`` that reads the project's SC_.mdb (``MdbDataSource``);
@@ -17,8 +18,10 @@ Then the smoke runs the checks in ``CHECKS`` in order:
 - ``load``: the store reads SC_.mdb;
 - ``build``: the workspace builds, with no warning, into CLICK's temp folder;
 - ``layout``: ``SimulationSession.layout`` has no error, and its cards are what
-  ``read_panel_layout`` reads in the project's Project.ini. For a CPU in
-  ``click_smoke_layouts.json``, they must also be the cards recorded there;
+  ``read_panel_layout`` reads in the project's Project.ini. Its CPU card must be the project's
+  CPU. For ``none``, the layout must have no CPU card. The Simulator then shows its No CPU card.
+  For a project in ``click_smoke_layouts.json``, the cards must also be the cards recorded
+  there;
 - ``simulation``: the simulation reaches READY, and it scans in RUN;
 - ``check_program``: Check Program runs both ways, as ``analysis.run_validation()`` and as
   ``clicknick-cli check`` through ``dispatch()``, and both report the same findings.
@@ -39,7 +42,7 @@ ClickNick runs in the runner's process. A check can then call the runner's metho
 while ClickNick's build and simulation threads keep running. ``Scheduler`` stands in for the Tk
 root. Whenever the smoke waits, ``Scheduler`` runs the callbacks that ClickNick scheduled.
 
-Each project gets a folder ``DIR/<model>/``:
+Each project gets a folder ``DIR/<model>/``, or ``DIR/none/``:
 
 - ``runner/``: the runner's ``--out`` folder, with its result.json and run.log;
 - ``result.json``: the smoke's result for the project. The smoke writes it again after each
@@ -116,14 +119,13 @@ if TYPE_CHECKING:
     from clicknick.data.address_store import AddressStore
     from clicknick.simulation_session import SimulationSession
 
-# The CPUs that the smoke makes a project for, in order. Each must be in cr.CPU_MODELS. The
-# runner's new mode makes a project only for a CPU that the wizard lists. So this list has no
-# project without a CPU.
-PROJECTS = ("C0-00DD1-D", "C0-02DD1-D", "C0-11DD1E-D", "C0-12DD1E-2-D", "C2-03CPU")
+# The projects that the smoke makes, in order. Each is a CPU in cr.CPU_MODELS, or cr.NO_CPU for
+# a project with no CPU
+PROJECTS = ("C0-00DD1-D", "C0-02DD1-D", "C0-11DD1E-D", "C0-12DD1E-2-D", "C2-03CPU", cr.NO_CPU)
 # The port that the simulation's Modbus server listens on, with ClickNick's default settings
 MODBUS_PORT = 502
 # The cards that read_panel_layout read in the Project.ini that CLICK 4.00 wrote for each CPU,
-# in live runs on 2026-11-20
+# and for no CPU (cr.NO_CPU), in live runs on 2026-11-20
 LAYOUTS_FILE = Path(__file__).resolve().parent / "click_smoke_layouts.json"
 # How long a check waits for the build, the simulation's start and Check Program, in seconds
 DEFAULT_TIMEOUT = 180.0
@@ -424,7 +426,7 @@ def _cards(layout: Any) -> list[dict[str, Any]]:
 
 
 def recorded_layouts() -> dict[str, dict[str, Any]]:
-    """Return the layouts that click_smoke_layouts.json records, by CPU model."""
+    """Return the layouts that click_smoke_layouts.json records, by CPU model or cr.NO_CPU."""
     return json.loads(LAYOUTS_FILE.read_text(encoding="utf-8"))
 
 
@@ -432,7 +434,8 @@ def check_layout(project: Project, details: dict[str, Any]) -> str:
     """Compare the simulation's panel layout with what ``read_panel_layout`` reads.
 
     The program of a new project uses no I/O, so ``read_panel_layout`` reads the Project.ini
-    with no used I/O.
+    with no used I/O. In a project with no CPU, the layout must have no CPU card. The Simulator
+    then shows its No CPU card in its place.
     """
     from clicknick.services.sim_hardware import read_panel_layout
 
@@ -451,19 +454,26 @@ def check_layout(project: Project, details: dict[str, Any]) -> str:
     if cards != expected:
         details["read_panel_layout"] = expected
         raise CheckFailed("The simulation's cards differ from what read_panel_layout reads.")
+    model = project.new.model
     cpu = [card["model"] for card in cards if card["location"] == "cpu"]
-    if cpu != [project.new.model]:
-        raise CheckFailed(f"The layout's CPU card is {cpu}, not {project.new.model}.")
-    recorded = recorded_layouts().get(project.new.model)
+    if model is None and layout.has_cpu:
+        raise CheckFailed(
+            f"The project has no CPU, but the layout has the CPU card {cpu}. The Simulator "
+            "would not show its No CPU card."
+        )
+    if model is not None and cpu != [model]:
+        raise CheckFailed(f"The layout's CPU card is {cpu}, not {model}.")
+    recorded = recorded_layouts().get(model or cr.NO_CPU)
+    counted = f"{len(cards)} card(s)" if model is not None else f"No CPU, {len(cards)} card(s)"
     if recorded is None:
         details["recorded"] = None
-        return f"{len(cards)} card(s), as read_panel_layout reads them. No layout is recorded."
+        return f"{counted}, as read_panel_layout reads them. No layout is recorded."
     details["recorded"] = True
-    if cards != recorded["cards"]:
+    if layout.has_cpu != recorded["has_cpu"] or cards != recorded["cards"]:
         raise CheckFailed(
             f"The simulation's cards differ from the cards recorded in {LAYOUTS_FILE.name}."
         )
-    return f"{len(cards)} card(s), as read_panel_layout reads them and as recorded."
+    return f"{counted}, as read_panel_layout reads them and as recorded."
 
 
 def check_simulation(project: Project, details: dict[str, Any]) -> str:
@@ -722,9 +732,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cpu",
         action="append",
-        choices=cr.CPU_MODELS,
-        metavar="MODEL",
-        help=f"make a project for this CPU only. Repeat it for more CPUs (default: {', '.join(PROJECTS)})",
+        choices=(*cr.CPU_MODELS, cr.NO_CPU),
+        metavar="MODEL|none",
+        help=f"make a project for this CPU only, or {cr.NO_CPU} for a project with no CPU. "
+        f"Repeat it for more projects (default: {', '.join(PROJECTS)})",
     )
     parser.add_argument(
         "--timeout",
