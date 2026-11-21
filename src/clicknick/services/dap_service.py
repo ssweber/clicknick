@@ -544,6 +544,12 @@ class DapService:
         if self._proc is not None:
             self.terminate()
 
+        # pyrung resolves the path of run.py. It looks for the TagMap first among modules whose
+        # file is under that resolved folder, and at a write it loads again only those modules.
+        # The modules load from PYTHONPATH and the working folder. If those reached the folder
+        # through a junction or a subst drive, no module's file would be under the resolved
+        # folder.
+        project_dir = project_dir.resolve()
         run_py = project_dir / "run.py"
         if not run_py.is_file():
             raise FileNotFoundError(f"No run.py found in {project_dir}")

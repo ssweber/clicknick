@@ -1,8 +1,10 @@
-"""Check how DapService fails to launch and to answer requests without a pyrung subprocess."""
+"""Check DapService: how it fails without a pyrung subprocess, and how it launches pyrung."""
 
 from __future__ import annotations
 
 import io
+import uuid
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -144,3 +146,74 @@ def test_the_program_tags_follow_the_frames_and_a_reload_clears_them():
     _frame(dap, {"Start": "bool"})
     dap._handle_response({"request_seq": 2, "command": "pyrungReload", "success": False})
     assert dap.program_tags == {"Start"}, "a refused reload keeps the old program"
+
+
+# ----------------------------------------------------------------------
+# A workspace behind a junction, on pyrung's own DAP server
+# ----------------------------------------------------------------------
+
+_PLC_TAGS = """from pyrung import Bool
+from pyrung.click import ClickBlocks, TagMap
+
+blocks = ClickBlocks()
+start = Bool("Start")
+mapping = TagMap({start: blocks.x[1]}, include_system=False)
+"""
+
+_PLC_MAIN = """from pyrung import Bool, Program, out, rung
+from .tags import mapping, start
+with Program(strict=False) as logic:
+    with rung(start):
+        out(Bool("Lamp"))
+"""
+
+_RUN = """from pyrung import PLC
+from plc.main import logic
+runner = PLC(logic)
+"""
+
+
+def _junction(link: Path, target: Path) -> None:
+    """Make *link* a junction to the folder *target*, or skip the test."""
+    try:
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    except (ImportError, AttributeError, OSError) as exc:
+        pytest.skip(f"cannot make a junction here: {exc}")
+
+
+def test_a_workspace_behind_a_junction_keeps_its_tagmap_and_a_write_loads_the_new_program(
+    tmp_path,
+):
+    """The workspace path goes through a junction, as a temp folder behind one does.
+
+    pyrung resolves the path of ``run.py``. It looks for the TagMap, and for the modules to load
+    again at a write, only among modules whose file is under that resolved folder. So the
+    folder, ``PYTHONPATH`` and ``run.py`` that ClickNick gives pyrung must be resolved too.
+    """
+    real = tmp_path / "real"
+    plc = real / "src" / "plc"
+    plc.mkdir(parents=True)
+    (plc / "__init__.py").write_text("", encoding="utf-8")
+    (plc / "tags.py").write_text(_PLC_TAGS, encoding="utf-8")
+    (plc / "main.py").write_text(_PLC_MAIN, encoding="utf-8")
+    (real / "run.py").write_text(_RUN, encoding="utf-8")
+    link = tmp_path / "link"
+    _junction(link, real)
+
+    dap = DapService()
+    try:
+        dap.launch(link, session_name=f"clicknick-test-{uuid.uuid4().hex}", start_mode="stop")
+        dap.force("X001", True)
+        assert dap.list_forces() == {"Start": True}, "the TagMap in plc.tags puts Start on X001"
+        dap.unforce("X001")
+
+        (plc / "main.py").write_text(
+            _PLC_MAIN.replace("rung(start)", 'rung(Bool("Other"))'), encoding="utf-8"
+        )
+        dap.planned_reload({"forces": {}, "links": {}, "declared": {}})
+        dap.list_forces()  # pyrung sends the frame after the reload before it answers this
+        assert dap.program_tags == {"Other", "Lamp"}, "the write loads the new plc.main"
+    finally:
+        dap.terminate()
