@@ -122,11 +122,6 @@ Do each when a branch next touches its file.
 - Stale text: the docstring at `tests/test_analysis_service.py:126` says that pyrung refuses the row (pyclickplc's
   `read_csv` does). The `EXPORT_SAVE` comment in `devtools/click_runner.py` names a live run and its job. A
   docstring line near `devtools/click_runner.py:2398` is 137 columns.
-- The watch and File > New (`../clicknick-wt/buildbot/jobs/runner-batch2/RESULTS.md`, J1). In both live
-  runs CLICK named the project that File > New made `NewProject1.ckp`. If the connected project is an unsaved
-  `NewProject1.ckp`, the title would then read the same before and after File > New. No run has tried this. The
-  watch follows a project change only when the title names another file (`parse_click_filename`). So, from the
-  code, it would miss that CLICK replaced SC_.mdb. Try it with ClickNick connected, then fix the watch.
 - cp1252's five undefined bytes, 0x81, 0x8D, 0x8F, 0x90 and 0x9D
   (`../clicknick-wt/buildbot/jobs/runner-batch2/RESULTS.md`, J2). CLICK stores U+0081 and exports it as the
   byte 0x81. ClickNick and pyclickplc refuse it, and Python's cp1252 cannot read such an export. The planner
@@ -260,6 +255,13 @@ can automate. Items marked (runner) the runner can answer. When a check is walke
   earlier paste. laddercodec 0.5.0 reads it as `10.2.3.4`, so Review Changes no longer lists that rung, and
   CLICK keeps the padded bytes. Does a Send with such a pasted address connect to 10.2.3.4 on the PLC? If it
   does not, laddercodec needs a legacy-encoding finding for the padded address.
+- Q15 (the runner for 4.00, Sam for 2.60-3.x): the connection watch treats a non-empty title of CLICK's main
+  window with no `- name.ckp` as CLICK unloading the project. The next project that the title names is then a
+  project change, even with the same file name. Nobody has checked this against the titles of CLICK 2.60-3.x, an
+  online CLICK, or a project saved in capitals as `X.CKP`. `parse_click_filename` matches only a lowercase `.ckp`.
+  ClickNick does not list a window whose title names `X.CKP`, and a connected window that shows `X.CKP` after a
+  Save As is treated as if CLICK had unloaded the project. Matching without case needs more than the regex,
+  because `project_name` and two other places strip only a lowercase `.ckp`.
 - CLICK's **Export Nicknames** was seen to leave out a nickname that ClickNick wrote, before 0.26.0. If it
   happens again, note the CLICK version, and whether the project was saved or reopened before the export.
 

@@ -113,10 +113,21 @@ wait for each other (`utils/dialog_queue.py`).
 
 ### Another project in the same window
 
+The watch sees another project when the title names another file. It also sees one when the title names a
+project after a title that named none, even if the file name is the same (`project_unloaded`). CLICK's title
+names no project while File > New or File > Open replaces the project. File > New in an unsaved
+`NewProject1.ckp` makes another `NewProject1.ckp`. In CLICK 4.00, the title was seen to name no project for
+about 0.2 s during File > Open. During File > New, it names none until you finish the Startup dialog. The watch
+reads the title every 100 ms. If the Tk thread is busy, it can miss a title that names no project for so short a
+time. A File > Open of a project with the same file name then goes unnoticed.
+
 When the window shows another project, CSV data stays loaded. A Save As keeps the window's `CLICK (hwnd)`
-folder, database and DataView folder, and so does opening another project. ClickNick cannot tell the two apart.
+folder, database and DataView folder, and so does opening another project. From the file name alone, ClickNick
+cannot tell the two apart.
 So it asks whether to keep the unsaved address and Dataview edits on database data for the new project
-(`_keeps_edits_for`). Text in a cell that will not commit counts as an edit.
+(`_keeps_edits_for`). Text in a cell that will not commit counts as an edit. The question tells you to choose
+Yes after a Save As. It leaves that advice out when the title named no project first, because Save As never
+shows such a title.
 
 - If you keep them, the data and its windows stay open, the store's file monitor reads the new database, and
   Sync and the Dataview Save write there.
