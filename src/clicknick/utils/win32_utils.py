@@ -62,7 +62,13 @@ class INPUT(ctypes.Structure):
 
 
 class Win32API:
-    """Windows API wrapper for window and control operations."""
+    """Windows API wrapper for window and control operations.
+
+    pywin32's EnumWindows raises ``pywintypes.error`` if a callback returns False while the
+    thread's last error is not zero. Error 126 was observed this way right after an ODBC read
+    of SC_.mdb. So every callback here returns True, and a lookup returns the first window that
+    matches.
+    """
 
     # --- Private Helper Methods ---
 
@@ -71,10 +77,10 @@ class Win32API:
         result = [None]
 
         def enum_callback(hwnd, _):
-            _, window_pid = win32process.GetWindowThreadProcessId(hwnd)
-            if window_pid == pid and win32gui.IsWindowVisible(hwnd):
-                result[0] = hwnd
-                return False  # Stop enumeration
+            if result[0] is None:
+                _, window_pid = win32process.GetWindowThreadProcessId(hwnd)
+                if window_pid == pid and win32gui.IsWindowVisible(hwnd):
+                    result[0] = hwnd
             return True
 
         win32gui.EnumWindows(enum_callback, None)
@@ -148,11 +154,10 @@ class Win32API:
         result = [None]
 
         def enum_callback(hwnd, _):
-            if win32gui.IsWindowVisible(hwnd):
+            if result[0] is None and win32gui.IsWindowVisible(hwnd):
                 window_title = win32gui.GetWindowText(hwnd)
                 if title in window_title:
                     result[0] = hwnd
-                    return False
             return True
 
         win32gui.EnumWindows(enum_callback, None)
@@ -163,17 +168,17 @@ class Win32API:
         result = [None]
 
         def enum_callback(hwnd, _):
-            if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd) == title:
+            if (
+                result[0] is None
+                and win32gui.IsWindowVisible(hwnd)
+                and win32gui.GetWindowText(hwnd) == title
+            ):
                 _, window_pid = win32process.GetWindowThreadProcessId(hwnd)
                 if window_pid == int(pid):
                     result[0] = hwnd
-                    return False
             return True
 
-        try:
-            win32gui.EnumWindows(enum_callback, None)
-        except Exception:
-            pass  # EnumWindows raises when the callback stops it early
+        win32gui.EnumWindows(enum_callback, None)
         return result[0]
 
     def activate(
@@ -286,12 +291,12 @@ class Win32API:
         found = [False]
 
         def enum_callback(hwnd, _):
+            if found[0]:
+                return True
             try:
                 if win32gui.GetClassName(hwnd) == class_name:
                     count[0] += 1
-                    if hwnd == control_hwnd:
-                        found[0] = True
-                        return False  # Stop enumeration
+                    found[0] = hwnd == control_hwnd
             except Exception:
                 pass
             return True

@@ -463,6 +463,24 @@ def test_new_subroutine_gives_up_when_the_dialog_never_opens(adding) -> None:
     assert window._adding_subroutine is False
 
 
+@pytest.mark.parametrize(
+    "lookups",
+    [[OSError("EnumWindows failed")], [None, OSError("EnumWindows failed")]],
+    ids=["first-lookup", "poll"],
+)
+def test_new_subroutine_ends_when_the_window_lookup_fails(adding, lookups) -> None:
+    window, win32 = adding
+    win32.find_process_window.side_effect = lookups
+
+    window._on_add_subroutine()
+
+    win32.set_control_text.assert_not_called()
+    assert "Could not look for CLICK's New Subroutine Program window" in _status(window)
+    assert "EnumWindows failed" in _status(window)
+    assert window._adding_subroutine is False
+    assert _add_sub_state(window) == "normal"
+
+
 def test_first_time_tips_show_once(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     showinfo = Mock()

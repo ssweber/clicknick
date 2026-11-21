@@ -40,22 +40,18 @@ class ClickWindowDetector:
         self.window_mapping = window_mapping
 
     def check_window_exists(self, window_pid: str) -> bool:
-        """
-        Check if a window with the given PID still exists.
+        """Return False if process *window_pid* has no visible window, or if *window_pid* is empty.
 
-        Args:
-            window_pid: The PID of the window to check
-
-        Returns:
-            bool: True if the window exists, False otherwise
+        If the check raises, print the error and return True. A caller then keeps the
+        connection and its data. The watch checks again 100 ms later.
         """
+        if not window_pid:
+            return False
         try:
-            if not window_pid:
-                return False
             return WIN32.win_exist(pid=window_pid)
         except Exception as e:
-            print(f"Error checking window existence: {e}")
-            return False
+            print(f"Could not check whether the CLICK window is open: {e}")
+            return True
 
     def detect_child_window(self, click_pid: str) -> ChildWindowInfo | None:
         """
