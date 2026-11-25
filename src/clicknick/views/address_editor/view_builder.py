@@ -33,11 +33,8 @@ UNIFIED_TYPE_ORDER = [
     "TXT",
 ]
 
-# Types that show combined/interleaved data
-COMBINED_TYPES = {
-    "T/TD": ["T", "TD"],
-    "CT/CTD": ["CT", "CTD"],
-}
+# Types that show combined/interleaved data: {"T/TD": ["T", "TD"], "CT/CTD": ["CT", "CTD"]}
+COMBINED_TYPES = {f"{base}/{data}": [base, data] for data, base in PAIRED_RETENTIVE_TYPES.items()}
 
 
 @dataclass

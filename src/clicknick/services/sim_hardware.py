@@ -1,10 +1,11 @@
 """Describe the simulator's hardware panel: the user's CLICK modules and their I/O terminals.
 
 This module holds data only. ``read_panel_layout`` reads CLICK's Project.ini through
-pyclickplc's ``read_io_layout``. ``build_panel_layout`` turns that module list (or any
-objects of the same shape) into cards of terminals. It also finds the X/Y addresses that
-the program uses and no installed module provides. It adds each one as a placeholder card
-at the position its address belongs to.
+pyclickplc's ``read_io_layout``, and reads pyclickplc's ``read_modules`` for the modules that
+pyclickplc does not know. ``build_panel_layout`` turns that module list (or any objects of
+the same shape) into cards of terminals. It also finds the X/Y addresses that the program
+uses and no installed module provides. It adds each one as a placeholder card at the
+position its address belongs to.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from pyclickplc import UnknownModule
 from pyclickplc.addresses import format_address_display, parse_addr_key, parse_address
 
 TerminalKind = Literal["input", "output", "analog_in", "analog_out"]
@@ -74,12 +76,7 @@ class Card:
 
     @property
     def title(self) -> str:
-        if self.location == "cpu":
-            name = "CPU"
-        elif self.location == "slot":
-            name = f"Option slot {self.position}"
-        else:
-            name = f"Expansion {self.position}"
+        name = position_name(self.location, self.position)
         return name if self.installed else f"{name} - unassigned"
 
     def of_kind(self, kind: TerminalKind) -> tuple[Terminal, ...]:
@@ -92,10 +89,12 @@ class PanelLayout:
 
     ``cards`` holds the installed modules. It also holds a placeholder, in the physical
     place, for the used X/Y addresses that no module provides. A placeholder still gets
-    a switch or LED so that the program can be driven.
+    a switch or LED so that the program can be driven. ``unknown`` lists the modules in
+    Project.ini that pyclickplc does not know. None of them has a card.
     """
 
     cards: tuple[Card, ...] = ()
+    unknown: tuple[UnknownModule, ...] = ()
 
     @property
     def has_cpu(self) -> bool:
@@ -121,6 +120,32 @@ class PanelLayout:
         """Return every address whose value the panel shows."""
         kinds: tuple[TerminalKind, ...] = ("input", "output", "analog_in", "analog_out")
         return tuple(dict.fromkeys(a for kind in kinds for a in self.addresses(kind)))
+
+
+def position_name(location: str, position: int) -> str:
+    """Return the name of a module's position, such as ``"Option slot 1"`` or ``"Expansion 2"``."""
+    if location == "cpu":
+        return "CPU"
+    if location == "slot":
+        return f"Option slot {position}"
+    return f"Expansion {position}"
+
+
+def unknown_modules_text(unknown: Sequence[UnknownModule]) -> str:
+    """Return the sentence that names each module in *unknown* by its position and ID.
+
+    If the CPU is one of them, add a sentence that says why ClickNick reads no option slot.
+    """
+    names = [
+        f"{position_name(module.location, module.position)} (module ID {module.module_id})"
+        for module in unknown
+    ]
+    listed = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+    noun = "a module" if len(names) == 1 else "modules"
+    text = f"CLICK's Project.ini lists {noun} that ClickNick does not know: {listed}."
+    if any(module.location == "cpu" for module in unknown):
+        text += " ClickNick reads no option slot, because the CPU sets how many there are."
+    return text
 
 
 def address_sort_key(address: str) -> tuple[str, int]:
@@ -208,7 +233,11 @@ def _placeholder(location: Location, position: int, addresses: Sequence[str]) ->
     return Card(location, position, "", tuple(terminals), installed=False)
 
 
-def build_panel_layout(modules: Iterable[ModuleIOLike], used_io: Iterable[str] = ()) -> PanelLayout:
+def build_panel_layout(
+    modules: Iterable[ModuleIOLike],
+    used_io: Iterable[str] = (),
+    unknown: Iterable[UnknownModule] = (),
+) -> PanelLayout:
     """Return cards for *modules*, in the order given, plus placeholder cards.
 
     A placeholder card goes at each position that has used I/O which no card provides.
@@ -234,14 +263,28 @@ def build_panel_layout(modules: Iterable[ModuleIOLike], used_io: Iterable[str] =
         while at > 0 and _rank(cards[at - 1].location, cards[at - 1].position) > rank:
             at -= 1
         cards.insert(at, placeholder)
-    return PanelLayout(cards=tuple(cards))
+    return PanelLayout(cards=tuple(cards), unknown=tuple(unknown))
+
+
+def unknown_layout_text(layout: PanelLayout) -> str | None:
+    """Return the text that the Simulator shows for the modules that ClickNick does not know.
+
+    Return None if *layout* lists no such module.
+    """
+    if not layout.unknown:
+        return None
+    return (
+        f"{unknown_modules_text(layout.unknown)} The Simulator still runs the program. The "
+        "hardware panel shows the modules that ClickNick knows, and the X and Y addresses that "
+        "the program uses."
+    )
 
 
 def layout_error_text(error: Exception) -> str:
     """Return the text that the hardware panel shows when reading Project.ini failed.
 
-    A ``ValueError`` is a module that pyclickplc has no entry for, or a malformed file. The
-    build still runs then. Any other error, such as ``OSError``, fails the build.
+    A ``ValueError`` is a malformed file. The build still runs then. Any other error, such as
+    ``OSError``, fails the build.
     """
     shown = "This panel shows only the X and Y addresses that the program uses."
     if isinstance(error, ValueError):
@@ -257,6 +300,7 @@ def read_panel_layout(project_ini: Path, used_io: Iterable[str] = ()) -> PanelLa
 
     Raise OSError if the file cannot be read and ValueError if it is malformed.
     """
-    from pyclickplc import read_io_layout
+    from pyclickplc import read_io_layout, read_modules
 
-    return build_panel_layout(read_io_layout(project_ini), used_io)
+    modules = read_io_layout(project_ini)
+    return build_panel_layout(modules, used_io, read_modules(project_ini).unknown)

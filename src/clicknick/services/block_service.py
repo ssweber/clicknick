@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from pyclickplc.banks import PAIRED_RETENTIVE_TYPES
 from pyclickplc.blocks import (
     compute_all_block_ranges,
     format_block_tag,
@@ -95,13 +96,13 @@ def _transform_block_name_for_pair(name: str, source_type: str, target_type: str
             base_name = dotted_match.group("base")
             suffix = dotted_match.group("suffix")
 
-    base_types = {"T", "CT"}
-    data_types = {"TD", "CTD"}
+    # PAIRED_RETENTIVE_TYPES maps each data type (TD, CTD) to its base type (T, CT).
+    base_types = set(PAIRED_RETENTIVE_TYPES.values())
 
     source_is_base = source_type in base_types
     target_is_base = target_type in base_types
-    source_is_data = source_type in data_types
-    target_is_data = target_type in data_types
+    source_is_data = source_type in PAIRED_RETENTIVE_TYPES
+    target_is_data = target_type in PAIRED_RETENTIVE_TYPES
 
     if source_is_base and target_is_data:
         # T -> TD or CT -> CTD: add _D suffix if not already present

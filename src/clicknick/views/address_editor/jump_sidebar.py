@@ -7,6 +7,8 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
+from .view_builder import COMBINED_TYPES
+
 
 class JumpButton(ttk.Frame):
     """A button for scrolling to a memory type section, with optional submenu for address jumps."""
@@ -218,11 +220,6 @@ SIDEBAR_TYPES = [
     "SD",
     "TXT",
 ]
-# Types that show combined/interleaved data
-COMBINED_TYPES = {
-    "T/TD": ["T", "TD"],  # Timer section shows T and TD interleaved
-    "CT/CTD": ["CT", "CTD"],  # Counter section shows CT and CTD interleaved
-}
 # Display text for buttons (stacked for combined types)
 DISPLAY_TEXT = {
     "T/TD": "T\nTD",  # Stacked vertically

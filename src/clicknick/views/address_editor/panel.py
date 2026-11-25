@@ -579,7 +579,9 @@ class AddressPanel(ttk.Frame):
             f"INT2: {DATA_TYPE_HINTS[DataType.INT2]}",
             f"FLOAT: {DATA_TYPE_HINTS[DataType.FLOAT]}",
             f"HEX: {DATA_TYPE_HINTS[DataType.HEX]}",
-            f"TXT: {DATA_TYPE_HINTS[DataType.TXT]}",
+            # pyclickplc's TXT hint names cp1252 and the Data View's New Value. This column
+            # holds only the initial value.
+            "TXT: One character, such as 'A' or 'é'",
         ]
         self.sheet.note(
             self.sheet.span(num2alpha(self.COL_INIT_VALUE), header=True, table=False),

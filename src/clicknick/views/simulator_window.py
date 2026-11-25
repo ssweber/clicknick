@@ -588,6 +588,11 @@ class SimulatorWindow(tk.Toplevel):
         # The banner has no Dismiss button. It stays while the program runs.
         if sim.stop_notice:
             messages.append((sim.stop_notice, []))
+        # Only a module that ClickNick does not know sets layout_error beside a CPU card. That
+        # panel has no Hardware card for the text, so the banner shows it.
+        layout = sim.layout
+        if sim.layout_error and layout is not None and layout.has_cpu:
+            messages.append((sim.layout_error, []))
         info = sim.modbus_info
         if sim.is_ready and info.get("error"):
             messages.append(

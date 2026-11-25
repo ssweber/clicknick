@@ -160,20 +160,43 @@ def test_reads_a_real_project_ini(tmp_path):
     assert _addresses(_placeholders(layout)[0], "input") == ["X501"]
 
 
-def test_a_module_that_pyclickplc_rejects_is_named_in_the_panel_text(tmp_path):
-    from clicknick.services.sim_hardware import layout_error_text, read_panel_layout
+def test_an_unknown_module_is_named_in_the_panel_text(tmp_path):
+    from clicknick.services.sim_hardware import unknown_layout_text
 
     ini = tmp_path / "Project.ini"
-    # -1 is not a CLICK module ID, so every pyclickplc release rejects it.
+    # -1 is not a CLICK module ID, so pyclickplc's catalog never has it.
     ini.write_text("[SystemConfig]\nItem1=196\nItem10=-1\n", encoding="utf-8")
-    with pytest.raises(ValueError) as raised:
-        read_panel_layout(ini)
-    text = layout_error_text(raised.value)
+    layout = read_panel_layout(ini)
+    text = unknown_layout_text(layout)
 
-    assert "-1" in text
+    assert text is not None
+    assert "Option slot 0 (module ID -1)" in text
     assert "still runs the program" in text
-    assert "only the X and Y addresses" in text
+    assert "The hardware panel shows the modules that ClickNick knows" in text
     assert "No CPU" not in text
+    assert "option slot, because" not in text
+    assert layout.has_cpu
+    assert [card.key for card in layout.cards] == ["cpu"]
+
+
+def test_an_unknown_cpu_says_that_clicknick_reads_no_option_slot():
+    from pyclickplc import UnknownModule
+
+    from clicknick.services.sim_hardware import unknown_layout_text
+
+    unknown = (UnknownModule("cpu", 0, 999), UnknownModule("expansion", 2, -1))
+    text = unknown_layout_text(build_panel_layout([EXPANSION], unknown=unknown))
+
+    assert text is not None
+    assert "lists modules that ClickNick does not know: CPU (module ID 999) and " in text
+    assert "Expansion 2 (module ID -1)." in text
+    assert "ClickNick reads no option slot, because the CPU sets how many there are." in text
+
+
+def test_a_layout_with_only_known_modules_has_no_unknown_text():
+    from clicknick.services.sim_hardware import unknown_layout_text
+
+    assert unknown_layout_text(build_panel_layout([CPU, EXPANSION])) is None
 
 
 def test_a_read_error_that_is_not_a_value_error_does_not_say_the_simulator_runs():

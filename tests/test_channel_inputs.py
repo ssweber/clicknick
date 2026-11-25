@@ -88,14 +88,19 @@ def _write_empty_program(monkeypatch):
     )
 
 
-# -1 is not a CLICK module ID, so every pyclickplc release rejects it. A real ID that
-# pyclickplc has not catalogued yet would stop being rejected once pyclickplc adds it.
+# -1 is not a CLICK module ID, so pyclickplc's catalog never has it. A real ID that
+# pyclickplc has not catalogued yet would become known once pyclickplc adds it.
 @pytest.mark.parametrize(
-    "text",
-    ["[SystemConfig]\nItem1=196\nItem10=-1\n", "not ini"],
+    ("text", "warned"),
+    [
+        ("[SystemConfig]\nItem1=196\nItem10=-1\n", "does not know: Option slot 0 (module ID -1)"),
+        ("not ini", "could not read the hardware configuration"),
+    ],
     ids=["unknown module", "malformed"],
 )
-def test_a_project_ini_that_pyclickplc_rejects_does_not_stop_the_build(tmp_path, monkeypatch, text):
+def test_a_project_ini_that_pyclickplc_cannot_fully_read_does_not_stop_the_build(
+    tmp_path, monkeypatch, text, warned
+):
     _write_empty_program(monkeypatch)
     (tmp_path / "Project.ini").write_text(text, encoding="utf-8")
     warnings: list[str] = []
@@ -107,8 +112,42 @@ def test_a_project_ini_that_pyclickplc_rejects_does_not_stop_the_build(tmp_path,
     assert not dataview.details()["DF1"].external
     assert read_analog_inputs(project / "csv") == frozenset()
     assert len(warnings) == 1
-    assert "could not read the hardware configuration" in warnings[0]
+    assert warned in warnings[0]
     assert "analog input" in warnings[0]
+
+
+def test_an_unknown_expansion_keeps_the_analog_inputs_of_the_known_cpu(tmp_path, monkeypatch):
+    # 241 is the C0-02DD1-D, which has analog inputs. -1 is not a CLICK module ID.
+    _write_empty_program(monkeypatch)
+    (tmp_path / "Project.ini").write_text(
+        "[SystemConfig]\nItem1=241\nItem2=-1\n[CPUBuild]\nAD1=DF1,10,0\n", encoding="utf-8"
+    )
+    warnings: list[str] = []
+
+    dataview, _program, project, _tag_maps = _build_graph(
+        tmp_path, None, tmp_path / "workspace", on_warning=warnings.append
+    )
+
+    assert dataview.details()["DF1"].external
+    assert read_analog_inputs(project / "csv") == frozenset({"DF1"})
+    assert len(warnings) == 1
+    assert "does not know: Expansion 1 (module ID -1)." in warnings[0]
+    assert "goes on with the analog inputs of the other modules" in warnings[0]
+
+
+def test_an_unknown_cpu_warns_that_only_the_expansion_modules_are_read(tmp_path, monkeypatch):
+    # 999 is not a CLICK module ID, so pyclickplc reads no option slot.
+    _write_empty_program(monkeypatch)
+    (tmp_path / "Project.ini").write_text("[SystemConfig]\nItem1=999\n", encoding="utf-8")
+    warnings: list[str] = []
+
+    _build_graph(tmp_path, None, tmp_path / "workspace", on_warning=warnings.append)
+
+    assert len(warnings) == 1
+    assert "does not know: CPU (module ID 999)." in warnings[0]
+    assert "reads the analog inputs of only the expansion modules that it knows" in warnings[0]
+    assert "the CPU, its option slots and the modules" in warnings[0]
+    assert "the other modules" not in warnings[0]
 
 
 def test_an_unreadable_project_ini_file_still_stops_the_build(tmp_path, monkeypatch):
@@ -134,7 +173,7 @@ def test_the_analysis_service_keeps_the_build_warning(tmp_path, monkeypatch):
 
     assert service.build(tmp_path, None, tmp_path / "workspace")
 
-    assert "Unsupported module ID -1" in service.build_warning
+    assert "Option slot 0 (module ID -1)" in service.build_warning
 
 
 def test_an_empty_option_slot_does_not_hide_the_analog_inputs_of_the_next_slot(tmp_path):

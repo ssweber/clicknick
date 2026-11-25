@@ -145,7 +145,7 @@ class AddressRow:
         The secondary types (TD, CTD) get alternating background color for visual
         distinction. This property abstracts that logic from the view layer.
         """
-        return self.memory_type in ("TD", "CTD")
+        return self.memory_type in PAIRED_RETENTIVE_TYPES
 
     @property
     def can_edit_initial_value(self) -> bool:
