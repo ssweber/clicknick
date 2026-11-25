@@ -9,7 +9,21 @@ from typing import TYPE_CHECKING
 from .project_workspace import NO_WINDOW, headless_python, project_environment
 
 if TYPE_CHECKING:
-    from pyrung.validation import ValidationReport
+    from collections.abc import Iterable
+
+    from pyrung import Program
+    from pyrung.validation import CheckConfig, ValidationReport
+
+    from .analysis_service import UndecodedRung
+
+
+def check_stop_notes(rungs: Iterable[UndecodedRung]) -> list[str]:
+    """Return a line for each rung in *rungs*. The line says that the checks stop at that rung."""
+    return [
+        f"ClickNick could not read {rung}. In {rung.program}, the checks cover only the rungs "
+        "before it. To include the rest, paste that rung again in CLICK and save."
+        for rung in rungs
+    ]
 
 
 def format_validation_report(report: ValidationReport) -> str:
@@ -112,7 +126,19 @@ def _worker() -> None:
     from pyrung.validation import CheckConfig, load_check_config
 
     config = load_check_config(Path.cwd() / "pyproject.toml") or CheckConfig()
-    print(format_validation_report(logic.check(select=set(config.resolve()))))
+    print(project_check_text(logic, config))
+
+
+def project_check_text(logic: Program, config: CheckConfig) -> str:
+    """Check *logic* with the checks that *config* selects, and return the report as text.
+
+    The text starts with a ``NOTE:`` line for each rung that pyrung's ``undecoded()`` marker
+    stands in for. The checks stop at that rung.
+    """
+    from .analysis_service import undecoded_rungs_in
+
+    notes = "".join(f"NOTE: {note}\n" for note in check_stop_notes(undecoded_rungs_in(logic)))
+    return notes + format_validation_report(logic.check(select=set(config.resolve())))
 
 
 if __name__ == "__main__":

@@ -205,6 +205,58 @@ def test_analysis_filters_use_the_current_analysis(tk_root, store) -> None:
         frame.destroy()
 
 
+_STOPPED = (
+    "ClickNick could not read rung 3 of Main Program. This filter covers only the rungs before "
+    "it. To include the rest, paste that rung again in CLICK and save."
+)
+
+
+@pytest.mark.parametrize(
+    ("typed", "shown"),
+    [
+        ("input:", _STOPPED),
+        ("isolated: pump", _STOPPED),
+        ("upstream:Pump", _STOPPED),
+        ("downstream:Pump", _STOPPED),
+        ("tree:Pump", ""),
+        ("Pump", ""),
+    ],
+)
+def test_a_filter_that_reads_the_program_says_where_it_stops(panel, typed, shown):
+    from clicknick.services.analysis_service import UndecodedRung
+
+    analysis = Mock(
+        is_available=True,
+        undecoded_rungs=(UndecodedRung("Main Program", 3),),
+        **{
+            "get_role_keys.return_value": {1},
+            "known_tag_names.return_value": frozenset({"Pump"}),
+            "get_upstream_keys.return_value": {1},
+            "get_downstream_keys.return_value": {1},
+        },
+    )
+    panel._get_analysis = lambda: analysis
+
+    panel.filter_var.set(typed)
+
+    assert panel.program_notice.cget("text") == shown
+    assert panel.program_notice.winfo_manager() == ("pack" if shown else "")
+    # The notice goes when the filter no longer reads the program
+    panel.filter_var.set("")
+    assert panel.program_notice.cget("text") == ""
+    assert panel.program_notice.winfo_manager() == ""
+
+
+def test_a_filter_on_a_program_that_clicknick_read_whole_shows_no_notice(panel) -> None:
+    analysis = Mock(is_available=True, undecoded_rungs=(), **{"get_role_keys.return_value": {1}})
+    panel._get_analysis = lambda: analysis
+
+    panel.filter_var.set("input:")
+
+    assert panel.program_notice.cget("text") == ""
+    assert panel.program_notice.winfo_manager() == ""
+
+
 @pytest.mark.parametrize("edge", [" {}", "{} ", "\t{}", "{}\t"])
 @pytest.mark.parametrize(
     ("col", "field", "stored"),

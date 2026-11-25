@@ -43,6 +43,14 @@ and the nicknames from its database, and generates the workspace again.
   file), the build goes on with no analog inputs. It stores a warning in `AnalysisResult.warning`
   (`AnalysisService.build_warning`). `ConnectionSession.build_warning_to_report` hands it to the main window
   once, and `clicknick-cli check` prints it as a `NOTE:` line. `OSError` still fails the build.
+- pyrung leaves every rung after an `undecoded()` marker out of the Program, in the same main program or
+  subroutine. The build stores the CLICK rungs that the markers stand in for
+  (`AnalysisService.undecoded_rungs`) and pyrung's `undecoded_notice()` (`undecoded_notice`) beside the
+  warning, not in it. The Paste Again box already tells the user about these rungs once. Check Program and the
+  Address Editor's filters that read the program name them with every result, because every such result stops
+  at them. `AnalysisService.run_validation()` returns the findings together with the rungs from the same
+  result. If a build finishes during the check, the rungs still describe the program that was checked.
+  `clicknick-cli check` checks `src/plc/main.py`, so it reads the markers from that file.
 
 ## Backups of src/plc
 

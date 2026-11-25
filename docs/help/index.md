@@ -13,6 +13,8 @@ The product tour explains why the tools are useful. This page is the starting po
 
 Click **Check Program**. It reports findings with the rung source, a severity, and a fix hint where there is one. It reads the saved ladder files, not unsaved edits, so save in CLICK first. To choose which checks run, see [Check preferences](#check-preferences).
 
+If ClickNick cannot read a rung outside a For loop, the checks cover only the rungs before it in that program. The report names that rung at the top. `clicknick-cli check` names it in a `NOTE:` line.
+
 ## Simulator
 
 Run the saved program without the PLC, and keep it current as you edit.

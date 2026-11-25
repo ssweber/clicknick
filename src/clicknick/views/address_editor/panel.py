@@ -15,7 +15,7 @@ from tksheet import num2alpha
 
 from ...models.address_row import AddressRow
 from ...models.validation import trim_entry
-from ...services.analysis_service import AnalysisService
+from ...services.analysis_service import AnalysisService, filter_stop_notice
 from ...services.annotation_service import AnnotationService
 from ...services.physical_response import FeedbackType
 from ...utils.filters import parse_analysis_prefix, text_matches_filter
@@ -187,6 +187,27 @@ class AddressPanel(ttk.Frame):
 
         return None
 
+    def _program_notice(self, prefix: str) -> str:
+        """Return the notice for the results of *prefix*, or "" if they need none.
+
+        The filters that read the built program stop at each rung that ClickNick could not
+        read. ``tree:`` reads only the nicknames.
+        """
+        if prefix == "tree":
+            return ""
+        svc = self._get_analysis()
+        if svc is None or not svc.is_available:
+            return ""
+        return filter_stop_notice(svc.undecoded_rungs)
+
+    def _show_program_notice(self, text: str) -> None:
+        """Show *text* above the table, or hide the notice if *text* is empty."""
+        self.program_notice.config(text=text)
+        if text:
+            self.program_notice.pack(fill=tk.X, padx=5, pady=(2, 0), before=self.sheet)
+        else:
+            self.program_notice.pack_forget()
+
     def _apply_filters(self) -> None:
         """Apply current filter settings using tksheet's display_rows().
 
@@ -202,8 +223,11 @@ class AddressPanel(ttk.Frame):
         prefix_name, prefix_arg, remaining = parse_analysis_prefix(raw_filter)
 
         analysis_keys: set[int] | None = None
+        notice = ""
         if prefix_name is not None:
             analysis_keys = self._resolve_analysis_prefix(prefix_name, prefix_arg)
+            notice = self._program_notice(prefix_name)
+        self._show_program_notice(notice)
 
         anchor_start = remaining.startswith("^")
         anchor_end = remaining.endswith("$")
@@ -628,6 +652,9 @@ class AddressPanel(ttk.Frame):
             variable=self.hide_init_ret_var,
             command=self._toggle_init_ret_columns,
         ).pack(side=tk.LEFT, padx=(5, 0))
+
+        # Packed above the table only while a filter that reads the program needs it
+        self.program_notice = ttk.Label(self, foreground="#CC6600", wraplength=760)
 
         # Table (tksheet) - Address is shown in row index for row selection
         self.sheet = AddressEditorSheet(

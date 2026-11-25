@@ -84,6 +84,8 @@ USED_NAMES = {
         "parse_tag_meta",
         "pyrung_to_ladder",
         "undecoded",
+        "undecoded_notice",
+        "undecoded_rungs",
         "upgrade_comment",
     ),
     "pyrung.validation": (

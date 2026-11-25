@@ -1616,6 +1616,71 @@ def test_workspace_commands_name_the_state_of_the_build(monkeypatch, action, bui
     assert shown == [(kind, title, f"{title} needs the workspace.\n\n{reason}")]
 
 
+def test_check_program_says_where_the_checks_stop(monkeypatch):
+    """Check Program names each rung that the built program holds as pyrung's undecoded()."""
+    from pyrung import Bool, Program, out, rung
+    from pyrung.click import undecoded
+
+    from clicknick.services.analysis_service import (
+        AnalysisResult,
+        AnalysisService,
+        undecoded_rungs_in,
+    )
+
+    with Program(strict=False) as program:
+        with rung(Bool("Permit")):
+            out(Bool("Enable"))
+        with rung():
+            undecoded("bad record", rung=1, stop="end")
+    app, _prompts = _app(monkeypatch)
+    app._session.analysis = AnalysisService()
+    app._session.analysis._result = AnalysisResult(
+        dataview=program.dataview(), program=program, undecoded=undecoded_rungs_in(program)
+    )
+
+    data = app._run_program_checks()
+
+    assert data.stop_notes == (
+        "ClickNick could not read rung 2 of Main Program. In Main Program, the checks cover only "
+        "the rungs before it. To include the rest, paste that rung again in CLICK and save.",
+    )
+
+
+def test_check_program_names_the_rungs_of_the_program_that_it_checked(monkeypatch):
+    """A build that finishes during the check does not change the rungs that the report names."""
+    from pyrung import Program
+
+    from clicknick.services.analysis_service import (
+        AnalysisResult,
+        AnalysisService,
+        UndecodedRung,
+    )
+
+    program = Program(strict=False)
+    app, _prompts = _app(monkeypatch)
+    analysis = AnalysisService()
+    app._session.analysis = analysis
+    later = AnalysisResult(
+        dataview=program.dataview(), program=program, undecoded=(UndecodedRung("Fill", 9),)
+    )
+
+    class _Program:
+        def check(self, select):
+            analysis._result = later
+            return program.check(select=set())
+
+    analysis._result = AnalysisResult(
+        dataview=program.dataview(),
+        program=_Program(),
+        undecoded=(UndecodedRung("Main Program", 2),),
+    )
+
+    data = app._run_program_checks()
+
+    assert len(data.stop_notes) == 1
+    assert data.stop_notes[0].startswith("ClickNick could not read rung 2 of Main Program.")
+
+
 @pytest.mark.parametrize(
     ("error", "reason"),
     [

@@ -154,3 +154,59 @@ def test_dispatch_check_names_the_checks_it_removed_from_the_selection(tmp_path,
     assert first.startswith("NOTE: pyrung has no check named OLD_RULE, so ClickNick removed it ")
     assert first.split("\n")[1].startswith("ran")
     assert dispatch(ctx, "check").startswith("ran")
+
+
+# src/plc/main.py as ladder_to_pyrung writes it for a main program whose CLICK rung 2 laddercodec
+# could not decode
+_MAIN_WITH_A_MARKER = """from pyrung import Bool, Program, out, rung
+from pyrung.click import undecoded
+
+with Program(strict=False) as logic:
+    with rung(Bool("Permit")):
+        out(Bool("Enable"))
+    with rung():
+        undecoded("bad record", rung=1, stop="end")
+    with rung(Bool("Enable")):
+        out(Bool("Late"))
+"""
+
+
+def test_check_stop_notes_name_the_program_and_clicks_rung() -> None:
+    from clicknick.services.analysis_service import UndecodedRung
+    from clicknick.services.program_check import check_stop_notes
+
+    assert check_stop_notes([UndecodedRung("Main Program", 2), UndecodedRung("Fill", 4)]) == [
+        "ClickNick could not read rung 2 of Main Program. In Main Program, the checks cover only "
+        "the rungs before it. To include the rest, paste that rung again in CLICK and save.",
+        "ClickNick could not read rung 4 of Fill. In Fill, the checks cover only the rungs before "
+        "it. To include the rest, paste that rung again in CLICK and save.",
+    ]
+
+
+def test_the_cli_check_notes_each_rung_where_the_checks_stop(tmp_path, monkeypatch, capsys):
+    """clicknick-cli check reads src/plc/main.py, so its notes come from that file."""
+    import sys
+
+    from clicknick.services import program_check
+
+    main_file = tmp_path / "src" / "plc" / "main.py"
+    main_file.parent.mkdir(parents=True)
+    (main_file.parent / "__init__.py").write_text("", encoding="utf-8")
+    main_file.write_text(_MAIN_WITH_A_MARKER, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path / "src"))
+    for name in ("plc", "plc.main"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    try:
+        program_check._worker()
+    finally:
+        # Leave no plc package from tmp_path for a later import of plc.main to find
+        for name in ("plc", "plc.main"):
+            sys.modules.pop(name, None)
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == (
+        "NOTE: ClickNick could not read rung 2 of Main Program. In Main Program, the checks cover "
+        "only the rungs before it. To include the rest, paste that rung again in CLICK and save."
+    )
+    assert lines[1].startswith("Check Program: ")
