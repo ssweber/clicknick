@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from laddercodec import Coil, EncodeError, Rung, encode, write_csv
 
 from clicknick.app import ClickNickApp
 from clicknick.connection_session import ClickConnection, ConnectionSession
@@ -123,3 +124,29 @@ def test_load_ladder_csv_copies_for_the_connected_window(dialogs, monkeypatch) -
     app._update_status.assert_called_once_with(
         "Copied 2 rungs from main.csv to clipboard", "connected"
     )
+
+
+def test_load_ladder_csv_names_the_file_and_the_rung_that_cannot_be_copied(
+    dialogs, monkeypatch, tmp_path: Path
+) -> None:
+    """A comment outside ASCII can pass CLICK's 1400-byte limit, and encode() refuses it."""
+    long = Rung([["-"] * 31], [Coil("Y002")], "é" * 400)
+    folder_csv = tmp_path / "Pumps.csv"
+    write_csv(folder_csv, [Rung([["-"] * 31], [Coil("Y001")], None), long])
+    dialogs.askopenfilename.return_value = str(folder_csv)
+    copy = MagicMock()
+    monkeypatch.setattr("clicknick.ladder.clipboard.is_click_v4", lambda _hwnd: True)
+    monkeypatch.setattr("clicknick.ladder.clipboard.copy_to_clipboard", copy)
+    app = _app(ClickConnection("1", 0x2B, "Main.ckp"))
+    app._live_mdb_path = MagicMock(return_value=None)
+    with pytest.raises(EncodeError) as alone:
+        encode(long)
+
+    app._load_ladder_csv()
+
+    (call,) = dialogs.showerror.call_args_list
+    assert (
+        call.args[1]
+        == f"Could not copy Pumps.csv: Rung 2 cannot be copied into CLICK. {alone.value}"
+    )
+    copy.assert_not_called()

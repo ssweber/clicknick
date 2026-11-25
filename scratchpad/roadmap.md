@@ -274,6 +274,11 @@ can automate. Items marked (runner) the runner can answer. When a check is walke
   A pasted RTF escape already survives: CLICK kept a pasted → through an edit, a save and a reopen. So the
   answer decides only whether laddercodec must also read the form that CLICK writes for typed text, such as
   中 as GBK bytes in a SimSun font.
+- Q17 (the runner or Sam): nobody has checked whether CLICK's comment editor writes an accented Western letter
+  such as `é` in a charset-0 font or as a `\u` escape. laddercodec reads both forms in full. It reads only part
+  of a comment that holds `é` as a byte in a font of a charset other than 0 or 134. The 0.26.1 CHANGELOG tells
+  you to replace a comment that laddercodec reads only in part with ASCII text. If CLICK writes `é` in one of the
+  two forms that laddercodec reads, that advice can allow accented Western text too.
 - CLICK's **Export Nicknames** was seen to leave out a nickname that ClickNick wrote, before 0.26.0. If it
   happens again, note the CLICK version, and whether the project was saved or reopened before the export.
 

@@ -41,9 +41,9 @@ classifiers = [
 # `make upgrade`, bump these to the new uv.lock versions; the trust report checks
 # that they match.
 dependencies = [
-    "laddercodec==0.5.0",
-    "pyclickplc==0.11.2",
-    "pyrung==0.18.0",
+    "laddercodec==0.5.1",
+    "pyclickplc==0.11.3",
+    "pyrung==0.18.1",
     "pywin32==311",
     "pyodbc==5.3.0",
     "tksheet==7.6.0",

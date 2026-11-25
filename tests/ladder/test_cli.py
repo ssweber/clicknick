@@ -11,11 +11,16 @@ from laddercodec import (
     Coil,
     CompareContact,
     Contact,
+    EncodeError,
     Program,
     Rung,
     Tee,
     Timer,
     Undecoded,
+    decode,
+    encode,
+    read_csv,
+    replace,
     write_csv,
 )
 
@@ -39,11 +44,12 @@ from clicknick.ladder.program import (
     _extract_operand_candidates,
     _slugify,
     check_click_version,
+    decode_to_csv,
     describe_csv,
-    encode_csv,
     extract_addresses_from_bin,
     extract_addresses_from_csv,
     extract_addresses_from_rungs,
+    prepare_csv_load,
     prepare_rungs_load,
     program_save,
 )
@@ -219,7 +225,7 @@ def test_no_rungs_are_refused_with_a_value_error(tmp_path: Path) -> None:
 
     assert describe_csv(empty) == "0 rungs"
     with pytest.raises(ValueError, match="no rungs"):
-        encode_csv(empty)
+        prepare_csv_load(empty, click_v4=True)
     with pytest.raises(ValueError, match="no rungs"):
         prepare_rungs_load([], click_v4=True)
 
@@ -242,6 +248,73 @@ def test_load_of_a_csv_without_rungs_says_so(
         main()
 
     assert "Error:" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Rung comments outside ASCII
+# ---------------------------------------------------------------------------
+
+_ACCENTED = "Café → 中 😀\nTemperature ±5 °C"
+
+
+def test_an_accented_comment_survives_a_paste_and_a_copy(tmp_path: Path) -> None:
+    """The comment reaches CLICK as written, and a copy from CLICK reads it back.
+
+    laddercodec 0.5.0 turned é into e and 中 into ?, and dropped text from the decode.
+    """
+    folder_csv = tmp_path / "main.csv"
+    write_csv(folder_csv, [_rung(Coil("Y001")), replace(_rung(Coil("Y002")), comment=_ACCENTED)])
+
+    payload = prepare_csv_load(folder_csv, click_v4=True).payload
+    copied_csv = tmp_path / "copied.csv"
+    decode_to_csv(payload, copied_csv)
+
+    assert [rung.comment for rung in decode(payload)] == [None, _ACCENTED]
+    assert [rung.comment for rung in read_csv(copied_csv)] == [None, _ACCENTED]
+
+
+def test_a_comment_too_long_for_click_names_its_rung(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each character outside ASCII counts as several bytes of CLICK's 1400-byte limit.
+
+    laddercodec names a rung of a multi-rung copy by its index from 0. ClickNick names the
+    rung as CLICK numbers it, and passes on laddercodec's advice.
+    """
+    provisioned: list[str] = []
+    monkeypatch.setattr(
+        "clicknick.ladder.program.ensure_addresses_exist",
+        lambda _db, addresses: provisioned.extend(addresses) or {"inserted_count": 0},
+    )
+    long = replace(_rung(Coil("Y002")), comment="é" * 400)
+    with pytest.raises(EncodeError) as alone:
+        encode(long)
+
+    with pytest.raises(ValueError) as refused:
+        prepare_rungs_load(
+            [_rung(Coil("Y001")), long], click_v4=True, mdb_path=Path("SC_.mdb"), first_rung=5
+        )
+
+    assert str(refused.value) == f"Rung 6 cannot be copied into CLICK. {alone.value}"
+    assert provisioned == []
+
+
+def test_a_refusal_of_the_whole_copy_passes_on_laddercodecs_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When ``encode()`` accepts each rung alone, laddercodec's error reaches the caller."""
+    whole = EncodeError("the copy is too long")
+
+    def refuse_the_copy(rungs, **_kwargs) -> bytes:
+        if isinstance(rungs, list):
+            raise whole
+        return b"rung"
+
+    monkeypatch.setattr("clicknick.ladder.program.encode", refuse_the_copy)
+
+    with pytest.raises(EncodeError) as refused:
+        prepare_rungs_load([_rung(Coil("Y001")), _rung(Coil("Y002"))], click_v4=True)
+
+    assert refused.value is whole
+    assert refused.value.__cause__ is None
 
 
 # ---------------------------------------------------------------------------

@@ -308,9 +308,7 @@ and runs these checks:
   back to RUN, and Y001 must then be off. It turns X001 on, and Y001 must light. It turns X001
   off, and Y001 must stay lit, because the program latches it. It double-clicks Y001, and the
   panel must show Y001 forced off, with its padlock and `Forces (1)`. A click on the padlock
-  must release the force. If this check fails, the checks after it still run. With pyrung
-  0.18.0, the check fails at STOP, because the switch shows STEP. The failure text says that
-  the fault is in pyrung.
+  must release the force. If this check fails, the checks after it still run.
 - `check_program`: Check Program and `clicknick-cli check` both run and report the same. In
   `rungs`, both report an error and a warning, because two Out coils drive Y002. Both must
   report the error, `COIL_CONFLICTING_OUTPUT` on Y002. The check keeps the reports and does not

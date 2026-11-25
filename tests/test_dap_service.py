@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import time
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -173,6 +174,17 @@ runner = PLC(logic)
 """
 
 
+def _workspace(folder: Path) -> Path:
+    """Write the workspace of ``_PLC_MAIN`` into *folder*, and return *folder*."""
+    plc = folder / "src" / "plc"
+    plc.mkdir(parents=True)
+    (plc / "__init__.py").write_text("", encoding="utf-8")
+    (plc / "tags.py").write_text(_PLC_TAGS, encoding="utf-8")
+    (plc / "main.py").write_text(_PLC_MAIN, encoding="utf-8")
+    (folder / "run.py").write_text(_RUN, encoding="utf-8")
+    return folder
+
+
 def _junction(link: Path, target: Path) -> None:
     """Make *link* a junction to the folder *target*, or skip the test."""
     try:
@@ -192,13 +204,8 @@ def test_a_workspace_behind_a_junction_keeps_its_tagmap_and_a_write_loads_the_ne
     again at a write, only among modules whose file is under that resolved folder. So the
     folder, ``PYTHONPATH`` and ``run.py`` that ClickNick gives pyrung must be resolved too.
     """
-    real = tmp_path / "real"
+    real = _workspace(tmp_path / "real")
     plc = real / "src" / "plc"
-    plc.mkdir(parents=True)
-    (plc / "__init__.py").write_text("", encoding="utf-8")
-    (plc / "tags.py").write_text(_PLC_TAGS, encoding="utf-8")
-    (plc / "main.py").write_text(_PLC_MAIN, encoding="utf-8")
-    (real / "run.py").write_text(_RUN, encoding="utf-8")
     link = tmp_path / "link"
     _junction(link, real)
 
@@ -215,5 +222,32 @@ def test_a_workspace_behind_a_junction_keeps_its_tagmap_and_a_write_loads_the_ne
         dap.planned_reload({"forces": {}, "links": {}, "declared": {}})
         dap.list_forces()  # pyrung sends the frame after the reload before it answers this
         assert dap.program_tags == {"Other", "Lamp"}, "the write loads the new plc.main"
+    finally:
+        dap.terminate()
+
+
+def test_a_stop_while_the_program_runs_leaves_the_mode_stop(tmp_path):
+    """pyrung 0.18.0 sent its last frame from the running scan after the frame for STOP.
+
+    ClickNick reads the mode from the last frame, so the CPU switch could show STEP after STOP.
+    """
+    dap = DapService()
+    try:
+        dap.launch(
+            _workspace(tmp_path),
+            session_name=f"clicknick-test-{uuid.uuid4().hex}",
+            start_mode="stop",
+        )
+        dap.set_mode("run")
+        dap.continue_()
+        deadline = time.monotonic() + 10
+        while not dap.running and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert dap.running, "the program never reported that it runs"
+
+        dap.set_mode("stop")
+        dap.list_forces()  # pyrung answers this after every frame that it sent before
+
+        assert (dap.mode, dap.running) == ("stop", False)
     finally:
         dap.terminate()

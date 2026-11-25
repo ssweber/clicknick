@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from laddercodec import Coil, Rung, Undecoded, write_csv
+from laddercodec import Coil, Rung, Undecoded, marker_rung, write_csv
 from pyclickplc.addresses import get_addr_key
 
 from clicknick.connection_session import SavedProgram
@@ -2172,11 +2172,7 @@ def test_a_program_differing_only_by_its_stand_in_is_red_and_refused(monkeypatch
 
 
 # laddercodec's marker for the rung at index 1, which CLICK numbers 2
-_MARKER = Rung(
-    [["-"] * 31],
-    [Undecoded("bad bytes after DS1", rung=1, row=0)],
-    "UNDECODED: rung 1, row 0: bad bytes after DS1",
-)
+_MARKER = marker_rung(Undecoded("bad bytes after DS1", rung=1, row=0))
 
 
 # What the refusal adds when the folder holds a marker
