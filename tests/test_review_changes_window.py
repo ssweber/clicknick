@@ -2177,8 +2177,7 @@ _MARKER = marker_rung(Undecoded("bad bytes after DS1", rung=1, row=0))
 
 # What the refusal adds when the folder holds a marker
 _REPLACE_MARKER = (
-    " In this folder, replace each marker with the logic of the rung that it stands for,"
-    " or delete the marker."
+    " In this folder, replace each marker with the logic of the rung that it stands for."
 )
 
 
@@ -2246,6 +2245,43 @@ def test_empty_rungs_and_markers_in_one_folder_are_named_in_rung_order(
         f"Could not copy main.csv: {named} CLICK's rung 2 cannot be read. "
         f"Paste those rungs from your own copy of the program first.{_REPLACE_MARKER}"
     )
+
+
+@pytest.mark.parametrize(
+    "proposed",
+    [
+        [RUNGS[0], *RUNGS[2:]],
+        # The marker's comment moved to the next rung when the user deleted undecoded()
+        [RUNGS[0], dataclasses.replace(RUNGS[2], comment=_MARKER.comment), RUNGS[3]],
+    ],
+    ids=["rung-and-comment", "call-only"],
+)
+def test_a_folder_without_clicks_unreadable_rung_is_refused_before_the_copy(
+    monkeypatch, copies, proposed: list[Rung]
+) -> None:
+    """A whole paste of the folder's program would delete CLICK's rung 2."""
+    window = _stand_in_window(monkeypatch, [RUNGS[0], _MARKER, *RUNGS[2:]], proposed, 2)
+    refusal = (
+        "ClickNick cannot read CLICK's rung 2 of Main Program, and this folder leaves it out. "
+        "Copying the program whole would delete that rung in CLICK. Write the rung's logic "
+        "where the rung was. Or paste the rung again in CLICK and save. To delete it, "
+        "delete it in CLICK and save first."
+    )
+
+    assert _status(window).endswith(refusal)
+
+    window._on_action()
+
+    assert copies == []
+    assert _status(window) == f"Could not copy main.csv: {refusal}"
+
+
+def test_a_folder_with_the_unreadable_rungs_logic_is_copied(monkeypatch, copies) -> None:
+    window = _stand_in_window(monkeypatch, [RUNGS[0], _MARKER, *RUNGS[2:]], list(RUNGS), 2)
+
+    window._on_action()
+
+    assert copies == [(RUNGS, 1)]
 
 
 def test_differences_lock_while_a_step_is_half_done(monkeypatch, copies) -> None:

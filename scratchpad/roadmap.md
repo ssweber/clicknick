@@ -168,8 +168,7 @@ The branch `bob/laddercodec-next` did this much:
 - `program_save` writes each subroutine with `stop="return"`.
 
 The branch `feat/marker-findings` needs pyrung 0.18.1, which ClickNick pins. On it, `program_save` writes laddercodec's marker in place of a rung that it cannot read. It still
-records the finding with the rung's number, so the Simulator still refuses to run. The planner ruled the For
-loop cases on 2026-11-21:
+records the finding with the rung's number. The planner ruled the For loop cases on 2026-11-21:
 
 - A rung inside a For loop gets the empty stand-in. pyrung refuses a marker inside a loop, so one such rung
   would fail the whole workspace build.
@@ -178,7 +177,7 @@ loop cases on 2026-11-21:
   `program_save` reads the loops from the rungs that it writes, as pyrung does.
 - An unreadable `for()` outside a loop gets a marker. At 79fc8a6, pyrung's main refused the `next()` below
   it, whatever `program_save` wrote, and its message named the marker's rung as the one that may have held
-  the `for()`. The paragraph below says what pyrung's main does now.
+  the `for()`. The paragraph below says what pyrung 0.18.1 does.
 
 pyrung took the `lone_next` change in #124 (0d59e21). 0.18.1 is the first release that holds it. When pyrung's import finds a `next()` with no `for()` above it, and a marker stands above that
 `next()`, it writes the `next()` as an empty placeholder rung, `with rung(): pass`. It adds `lone_next=[...]`
@@ -207,25 +206,37 @@ No branch changes these two cases yet:
 pyrung's roadmap plans a marker that stops the scan only when a scan reaches it. pyrung could then accept the
 marker inside a loop, and the stand-in could go.
 
-pyrung 0.18.0 and its main at 34746bc cannot run the marker. Its `ladder_to_pyrung` raises `ValueError`,
-because the AF column holds `undecoded`, which pyrung does not know. The builder of `bob/laddercodec-next`
-checked this on 2026-11-20. The planner placed pyrung's support for the marker in pyrung's release after
-0.18.0. These steps wait on that release:
+pyrung 0.18.1 reads the marker. Its `ladder_to_pyrung` writes an `undecoded(...)` call in place of the rung.
+The Program ends at that call. pyrung 0.18.0 raised `ValueError` there, because it did not know `undecoded`
+in the AF column. These steps are left:
 
 - Drop the empty stand-in rung that a For loop still needs (`_replace_unreadable`, `is_stand_in`, and the
   refusals in `prepare_rungs_load` and `_placeholder_refusal`). `feat/marker-findings` already writes the marker
   outside a loop.
-- The Simulator runs up to the marker instead of refusing to run. `_workspace_problem` stops refusing "a rung
-  ClickNick cannot read". Show a notice that is hard to miss.
 - Check Program lists the marker.
 - When the stand-in goes, check again that Review Changes' whole-program paste (`ProgramChange.merged` when
   CLICK's copy is unreadable) refuses a marker, and that the legacy-encoding record still names the rung.
   `feat/marker-findings` has tests for both on the marker.
+- Review Changes refuses a whole copy that leaves out a CLICK rung that ClickNick cannot read
+  (`ProgramChange.dropped_unreadable`, `feat/marker-simulator`). It cannot tell the rung's logic from another
+  rung, so two gaps stay. It misses a dropped rung when the user adds another rung in its place: CLICK
+  `[R1, M, R3]` against the folder `[R1, NEW, R3]` is a 1:1 replace, and `[R1, R3', R4new]` is a 2:2 one. It
+  refuses wrongly when the user writes the logic in place and deletes a rung next to it: `[R1, M, R3, R4]`
+  against `[R1, L, R4]` is a 2:1 replace, and the text says that the folder leaves the rung out. Deleting R3
+  in CLICK first works around it. A whole-copy finding (`rung=None`) beside a marker makes every rung unequal,
+  so the program is one difference, and a rung added anywhere hides a deleted call. This case is rare.
 - Follow-up branch, which needs no pyrung release: make Review Changes refuse before the first step when
   CLICK's copy is readable, so that CLICK is never left half pasted. Today the earlier steps paste, and then
   `prepare_rungs_load` refuses the step that holds a marker, a comment that starts with `UNDECODED comment:`,
   or a rung that needs CLICK v4 (`NeedsClickV4Error`). The new refusal counts only the rungs that the copy
   would really take, and leaves out skipped differences. The planner schedules it.
+- Follow-up, which needs no pyrung release: a Simulator write after a CLICK save waits about 0.8 s for the
+  read of `src/plc` (`read_program_stops`). The worker's Python start and its import of pyrung take most of
+  that time. pyrung's reload alone takes about 0.035 s. The builder of `feat/marker-simulator` measured both
+  on 2026-11-25. A write skips the read only while `src/plc` has not changed since the last read, and the
+  build of a CLICK save writes `src/plc` again. The fix to try: take a snapshot of `src/plc` right after the
+  analysis build writes it. While `src/plc` still matches that snapshot, take the stops from that build
+  (`AnalysisService.undecoded_rungs`) and do not read. The coordinator asked for this bullet on 2026-11-25.
 
 What a move to laddercodec's `read_bundle` and `write_bundle` would change (out of scope for
 `bob/laddercodec-next`):

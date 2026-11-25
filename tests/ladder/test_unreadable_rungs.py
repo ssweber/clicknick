@@ -50,6 +50,7 @@ from clicknick.ladder.program import (
     prepare_rungs_load,
     program_save,
     read_legacy_encodings,
+    stand_in_findings,
 )
 
 DETAIL = "ClickNick cannot read this Compare."
@@ -408,10 +409,15 @@ def test_an_undecoded_marker_in_a_csv_is_never_copied(tmp_path: Path) -> None:
         "Rungs 2, 4 are UNDECODED markers. CLICK cannot hold a marker.\n"
         "  rung 2: laddercodec cannot read this rung: bad bytes.\n"
         "  rung 4: laddercodec cannot read this rung: no end.\n"
-        "Put the rung's logic in place of its marker, or remove the marker."
+        "Write each rung's logic in place of its marker. Or paste the rungs again in CLICK "
+        "and save."
     )
-    with pytest.raises(UnreadableRungError, match=r"^Rung 6 is an UNDECODED marker\. "):
+    with pytest.raises(UnreadableRungError) as refused:
         prepare_rungs_load(rungs[1:2], click_v4=True, first_rung=6)
+    assert str(refused.value).startswith("Rung 6 is an UNDECODED marker. ")
+    assert str(refused.value).endswith(
+        "Write the rung's logic in place of its marker. Or paste the rung again in CLICK and save."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -772,6 +778,27 @@ def test_a_project_with_a_marker_and_a_stand_in_in_a_loop(tmp_path: Path, monkey
     code = _build(out)
     assert STAND_IN_COMMENT in code
     assert f'undecoded("{DETAIL}", rung=4, stop="end")' in code
+
+
+def test_stand_in_findings_leave_out_the_rung_held_as_a_marker(tmp_path: Path, monkeypatch) -> None:
+    rungs = [_rung("C1"), _for(), _rung("C3", _REFUSED), _next(), _rung("C5", _REFUSED)]
+    out, _found = _save_one_program(tmp_path, monkeypatch, rungs)
+
+    assert [item.rung for item in stand_in_findings(out)] == [3]
+
+
+def test_stand_in_findings_count_a_rung_that_the_csv_does_not_show(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Refuse as before if the CSV is gone, or if it holds fewer rungs than the finding says."""
+    out, found = _save_one_program(tmp_path, monkeypatch, [_rung("C1"), _rung("C2", _REFUSED)])
+    assert stand_in_findings(out) == []
+
+    write_csv(out / "main.csv", [_rung("C1")])
+    assert stand_in_findings(out) == found
+
+    (out / "main.csv").unlink()
+    assert stand_in_findings(out) == found
 
 
 @pytest.mark.parametrize(

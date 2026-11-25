@@ -69,6 +69,7 @@ USED_NAMES = {
     ),
     "pyrung.click": (
         "ClickBlocks",
+        "LadderExportError",
         "MIGRATIONS",
         "OldCommentFormError",
         "SkippedAddressesWarning",

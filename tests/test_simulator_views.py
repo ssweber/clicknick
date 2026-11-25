@@ -223,6 +223,24 @@ def test_a_restart_from_unclear_plc_data_shows_one_banner(simulator, ready, tmp_
     assert _banners_with(win, "TXT13-TXT20") == 1
 
 
+def test_a_program_with_a_marker_shows_its_stop_notice_until_the_simulation_ends(simulator, ready):
+    from test_simulation_session import COMPARE_STOP, _stop_at
+
+    win = simulator(ready, turn_on=False)
+    _stop_at(ready, COMPARE_STOP)
+    ready.sim.turn_on()
+    ready.scheduler.run_ready()
+
+    assert _banners_with(win, "ClickNick could not read rung 4 of Conf_Compare.") == 1
+    # The notice holds for as long as the program runs, so it has no Dismiss button
+    assert [labels for text, labels in win._banner_key if "rung 4" in text] == [()]
+
+    ready.sim.turn_off()
+    ready.scheduler.run_ready()
+
+    assert _banners_with(win, "rung 4 of Conf_Compare") == 0
+
+
 def test_a_simulation_that_dies_shows_one_banner(simulator, ready):
     win = simulator(ready)
     ready.dap.callbacks["on_state"](SimpleNamespace(value="error"), None)
