@@ -2761,7 +2761,7 @@ class FakeCheckSession:
 
     def run_validation(self) -> object:
         self.validated += 1
-        return object()
+        return SimpleNamespace(report=object())
 
 
 # The start of the report that Check Program gave on the project with rungs in a live run of

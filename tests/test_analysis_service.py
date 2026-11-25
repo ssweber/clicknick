@@ -22,11 +22,14 @@ from clicknick.services.analysis_service import (
     AnalysisResult,
     AnalysisService,
     AnalysisStatus,
+    UndecodedRung,
     _build_tag_addr_key_map,
     _clean_generated,
     _publish_generated_project,
     _regenerate_persisted_project,
     _write_nicknames_csv,
+    filter_stop_notice,
+    undecoded_rungs_in,
 )
 from clicknick.services.project_workspace import (
     backup_plc_source,
@@ -348,6 +351,135 @@ class TestAnalysisServiceCallSiteCones:
         assert svc.get_role_keys("input") == {1, 3}
         assert svc.get_role_keys("output") == {4}
         assert svc.known_tag_names() == frozenset({"Permit", "Enable", "Level", "Valve"})
+
+
+# pyrung source as ladder_to_pyrung writes it for a main program and a subroutine that each hold
+# laddercodec's marker. The marker stands in for CLICK's rung 3 of main and rung 2 of Fill Tank.
+_MARKER_PROGRAM = """from pyrung import Bool, Program, call, out, rung, subroutine
+from pyrung.click import undecoded
+
+with Program(strict=False) as logic:
+    with rung(Bool("Permit")):
+        out(Bool("Enable"))
+    with rung(Bool("Enable")):
+        call("Fill Tank")
+    with rung():
+        undecoded("bad record", rung=2, stop="end")
+    with rung(Bool("Enable")):
+        out(Bool("Late"))
+    with subroutine("Fill Tank"):
+        with rung(Bool("Level")):
+            out(Bool("Valve"))
+        with rung():
+            undecoded("bad compare", rung=1, stop="return")
+        with rung(Bool("Valve")):
+            out(Bool("Drain"))
+"""
+
+
+def _run_source(source: str) -> Program:
+    namespace: dict[str, object] = {}
+    exec(compile(source, "<program>", "exec"), namespace)  # noqa: S102
+    program = namespace["logic"]
+    assert isinstance(program, Program)
+    return program
+
+
+class TestUndecodedRungs:
+    """The views and Check Program stop at each rung that pyrung's undecoded() stands in for."""
+
+    def test_each_marker_names_clicks_program_and_rung(self):
+        program = _run_source(_MARKER_PROGRAM)
+
+        assert undecoded_rungs_in(program) == (
+            UndecodedRung("Main Program", 3),
+            UndecodedRung("Fill Tank", 2),
+        )
+        # pyrung leaves out the rungs after each marker, so the views stop there
+        assert "Late" not in program.dataview().tags
+        assert "Drain" not in program.dataview().tags
+
+    def test_a_program_with_no_marker_has_none(self):
+        assert undecoded_rungs_in(_run_source(_SUBROUTINE_PROGRAM)) == ()
+
+    def test_the_filter_notice_names_each_rung(self):
+        main, sub, other = (
+            UndecodedRung("Main Program", 3),
+            UndecodedRung("Fill Tank", 2),
+            UndecodedRung("Mix", 7),
+        )
+
+        assert filter_stop_notice(()) == ""
+        assert filter_stop_notice((main,)) == (
+            "ClickNick could not read rung 3 of Main Program. "
+            "This filter covers only the rungs before it. "
+            "To include the rest, paste that rung again in CLICK and save."
+        )
+        assert filter_stop_notice((main, sub)) == (
+            "ClickNick could not read rung 3 of Main Program and rung 2 of Fill Tank. "
+            "This filter covers only the rungs before each one. "
+            "To include the rest, paste those rungs again in CLICK and save."
+        )
+        assert filter_stop_notice((main, sub, other)).startswith(
+            "ClickNick could not read rung 3 of Main Program, rung 2 of Fill Tank and rung 7 of "
+            "Mix. "
+        )
+
+    def test_a_check_takes_its_rungs_from_the_result_that_it_checked(self):
+        """A build that finishes during the check does not change which rungs the check reports."""
+        program = _run_source(_MARKER_PROGRAM)
+        checked = (UndecodedRung("Main Program", 2),)
+        later = AnalysisResult(
+            dataview=program.dataview(), program=program, undecoded=(UndecodedRung("Fill", 9),)
+        )
+        svc = AnalysisService()
+
+        class _Program:
+            def check(self, select):
+                svc._result = later
+                return "the report"
+
+        svc._result = AnalysisResult(
+            dataview=program.dataview(), program=_Program(), undecoded=checked
+        )
+
+        run = svc.run_validation()
+
+        assert run is not None
+        assert run.report == "the report"
+        assert run.undecoded == checked
+
+    def test_the_build_keeps_the_markers_and_pyrungs_notice(self, monkeypatch, tmp_path):
+        program = _run_source(_MARKER_PROGRAM)
+        programs = iter([program, _run_source(_SUBROUTINE_PROGRAM)])
+        monkeypatch.setattr(
+            "clicknick.services.analysis_service._build_graph",
+            lambda *_a, **_k: ((p := next(programs)).dataview(), p, tmp_path, ({}, {})),
+        )
+        svc = AnalysisService()
+        assert svc.undecoded_rungs == ()
+        assert svc.undecoded_notice == ""
+
+        assert svc.build(tmp_path, None)
+
+        assert svc.undecoded_rungs == (
+            UndecodedRung("Main Program", 3),
+            UndecodedRung("Fill Tank", 2),
+        )
+        assert svc.undecoded_notice.splitlines() == [
+            "laddercodec could not decode CLICK rung 3 of the main program: bad record. "
+            "undecoded() stands in for that rung at main rung 3 in pyrung. Each scan ends at "
+            "this rung, so no rung after it in main runs.",
+            "laddercodec could not decode CLICK rung 2 of its subroutine: bad compare. "
+            "undecoded() stands in for that rung at subroutine 'Fill Tank' rung 2 in pyrung. "
+            "The subroutine returns at this rung, so no rung after it runs.",
+        ]
+
+        # CLICK saved the program again with every rung readable
+        assert svc.build(tmp_path, None)
+
+        assert svc.undecoded_rungs == ()
+        assert svc.undecoded_notice == ""
 
 
 class TestAnalysisServiceLifecycle:
@@ -1277,6 +1409,8 @@ def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, 
     assert "from pyrung.click import undecoded\n" in main
     assert 'undecoded("ClickNick cannot read this Compare.", rung=1, stop="end")' in main
     assert "out(C3)" in main
+    # The marker names the rung that the finding names
+    assert svc.undecoded_rungs == (UndecodedRung("Main Program", 2),)
 
 
 @pytest.mark.parametrize(

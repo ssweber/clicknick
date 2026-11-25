@@ -60,6 +60,8 @@ class AnalysisReportData:
     grouped_findings: dict[str, list[FindingDisplay]] = field(default_factory=dict)
     project_name: str = ""
     checked_rules: frozenset[str] | None = None
+    #: A line for each rung that ClickNick could not read. The checks stop at each one.
+    stop_notes: tuple[str, ...] = ()
 
 
 def _checks(count: int) -> str:
@@ -267,6 +269,13 @@ class AnalysisReportWindow:
         )
         text.tag_configure("pass", foreground=_PASS_COLOR, lmargin1=16, lmargin2=30)
         text.tag_configure("pass_muted", foreground=_MUTED, lmargin1=16, lmargin2=30)
+        text.tag_configure(
+            "stop_note",
+            foreground=_SEVERITY_STYLE["warning"][0],
+            lmargin1=0,
+            lmargin2=22,
+            spacing3=6,
+        )
         text.tag_configure("focused_header", background="#E8EEF7")
         text.bind("<Up>", lambda _e: self._move_section(-1))
         text.bind("<Down>", lambda _e: self._move_section(1))
@@ -412,6 +421,9 @@ class AnalysisReportWindow:
         for header, body, _expanded in self._sections.values():
             self._text.tag_delete(header, body)
         self._sections.clear()
+        glyph = _SEVERITY_STYLE["warning"][1]
+        for note in data.stop_notes:
+            self._text.insert(tk.END, f"{glyph}  {note}\n", "stop_note")
         self._render(self._text, failing, passing, self._grouped)
         if self._not_run:
             self._text.insert(tk.END, "\n")

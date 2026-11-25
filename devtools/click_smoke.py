@@ -1194,10 +1194,10 @@ def check_program(project: Project, details: dict[str, Any]) -> str:
     analysis = session.analysis
     assert analysis is not None
     timeout = project.timeout
-    report = project.scheduler.background("Check Program", analysis.run_validation, timeout)
-    if report is None:
+    run = project.scheduler.background("Check Program", analysis.run_validation, timeout)
+    if run is None:
         raise CheckFailed("analysis.run_validation() returned None, so the analysis has no result.")
-    app_text = format_validation_report(report)
+    app_text = format_validation_report(run.report)
     details["app"] = app_text
     context = DispatchContext(store=project.store, analysis=analysis, get_session=lambda: session)
     cli_text = project.scheduler.background(

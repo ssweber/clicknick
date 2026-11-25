@@ -99,6 +99,11 @@ steps, and Sync racing a CLICK save.
 
 Do each when a branch next touches its file.
 
+- A notice about an unreadable rung in a subroutine uses pyrung's name for the subroutine. When main does not
+  call the subroutine by name, pyrung falls back to the CSV file name, which can differ from CLICK's name
+  after `_slugify` or a " (2)" suffix. Carry `prog.name` with the marker to fix it.
+- The Address Editor sets its filter notice only in `_apply_filters`. When a build finishes, it recomputes
+  neither the notice nor the rows, so a notice can name a rung that the new build no longer has.
 - `tests/test_live_server.py` (`_session_in`, the "folder gone" case) sets the private `AnalysisService._status`
   and `_project_dir`. Use a stand-in such as `_UnbuiltAnalysis` in `tests/test_live_rung_apply.py`.
 - The Simulator has no way to clear the PLC data file once you pick one.

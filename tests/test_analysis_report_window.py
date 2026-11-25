@@ -181,3 +181,19 @@ def test_report_separates_passed_and_not_run_and_copies_both(report_window):
     assert "No checks selected" in window._summary_line
     assert "passed" not in window._summary_line
     assert "__passed__" not in window._sections
+
+
+def test_the_report_says_where_the_checks_stop_and_copies_it(report_window):
+    note = (
+        "ClickNick could not read rung 2 of Main Program. In Main Program, the checks cover only "
+        "the rungs before it. To include the rest, paste that rung again in CLICK and save."
+    )
+    window = report_window(AnalysisReportData(project_name="Mixer", stop_notes=(note,)))
+
+    # The note comes first, above the sections
+    assert window._text.get("1.0", "1.end").endswith(note)
+    window._copy_report()
+    assert note in window.window.clipboard_get()
+    # A run with no rung that ClickNick could not read shows no note
+    window._show_data(_data())
+    assert note not in window._text.get("1.0", "end")

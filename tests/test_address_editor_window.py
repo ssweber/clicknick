@@ -318,10 +318,12 @@ def test_double_clicking_a_nickname_with_children_shows_it_and_them_only(store) 
         _save_selection=Mock(),
         _restore_selection=Mock(),
         _get_analysis=lambda: None,
+        _show_program_notice=Mock(),
         **vars_,
     )
     panel._apply_filters = lambda: AddressPanel._apply_filters(panel)
     panel._resolve_analysis_prefix = lambda p, a: AddressPanel._resolve_analysis_prefix(panel, p, a)
+    panel._program_notice = lambda p: AddressPanel._program_notice(panel, p)
     window = _window(store, panel)
 
     window._on_outline_select(
@@ -330,6 +332,8 @@ def test_double_clicking_a_nickname_with_children_shows_it_and_them_only(store) 
 
     assert vars_["text"] == "tree:Tank_Pump1"
     assert [rows[i].nickname for i in shown[-1]] == ["Tank_Pump1", "Tank_Pump1_Run"]
+    # tree: reads only the nicknames, so it shows no notice about the program
+    panel._show_program_notice.assert_called_with("")
 
 
 class _Menu:

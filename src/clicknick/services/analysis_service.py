@@ -14,7 +14,7 @@ import shutil
 import tempfile
 import threading
 import traceback
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -63,6 +63,68 @@ class AnalysisStatus(enum.Enum):
     FAILED = "failed"
 
 
+@dataclass(frozen=True)
+class UndecodedRung:
+    """A CLICK rung that pyrung's ``undecoded()`` marker stands in for in the built program.
+
+    pyrung leaves every rung after the marker out of the program, in the same main program or
+    subroutine. So each view of the program stops at this rung.
+    """
+
+    #: CLICK's name for the program: "Main Program", or the subroutine's name
+    program: str
+    #: CLICK's number for the rung, from 1
+    rung: int
+
+    def __str__(self) -> str:
+        return f"rung {self.rung} of {self.program}"
+
+
+def undecoded_rungs_in(program: Program) -> tuple[UndecodedRung, ...]:
+    """Return the CLICK rungs that pyrung's ``undecoded()`` markers in *program* stand in for."""
+    from pyrung.click import undecoded_rungs
+
+    return tuple(
+        UndecodedRung("Main Program" if subroutine is None else subroutine, marker.rung + 1)
+        for subroutine, _index, marker in undecoded_rungs(program)
+    )
+
+
+def _listed(items: Sequence[object]) -> str:
+    """Return *items* as text: "A", "A and B", or "A, B and C"."""
+    names = [str(item) for item in items]
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def filter_stop_notice(rungs: Sequence[UndecodedRung]) -> str:
+    """Return the notice for a filter that reads the program, or "" if *rungs* is empty.
+
+    The Address Editor shows it beside the results of ``input:``, ``upstream:`` and the other
+    filters that read the built program.
+    """
+    if not rungs:
+        return ""
+    each, paste = ("it", "that rung") if len(rungs) == 1 else ("each one", "those rungs")
+    return (
+        f"ClickNick could not read {_listed(rungs)}. "
+        f"This filter covers only the rungs before {each}. "
+        f"To include the rest, paste {paste} again in CLICK and save."
+    )
+
+
+@dataclass(frozen=True)
+class ValidationRun:
+    """The findings of one Check Program run, with the rungs that stop the checks.
+
+    Both come from the same analysis result, so the rungs always describe the program that
+    *report* checked.
+    """
+
+    report: ValidationReport
+    #: The CLICK rungs that pyrung's undecoded() markers stand in for in the checked program
+    undecoded: tuple[UndecodedRung, ...]
+
+
 @dataclass
 class AnalysisResult:
     """Cached analysis output."""
@@ -75,6 +137,10 @@ class AnalysisResult:
     project_dir: Path | None = None
     #: A message for the user about what the build could not read, or None.
     warning: str | None = None
+    #: The CLICK rungs that pyrung's undecoded() markers stand in for in the program
+    undecoded: tuple[UndecodedRung, ...] = ()
+    #: pyrung's undecoded_notice() for the program: a line for each marker, or ""
+    undecoded_notice: str = ""
 
 
 def _read_nickname_rows(db_path: Path) -> dict[int, AddressRow]:
@@ -562,6 +628,26 @@ class AnalysisService:
         return result.warning if result is not None else None
 
     @property
+    def undecoded_rungs(self) -> tuple[UndecodedRung, ...]:
+        """The CLICK rungs that pyrung's ``undecoded()`` markers stand in for in the latest built program.
+
+        The roles, ``known_tag_names()``, the cones and ``run_validation()`` stop at each of
+        these rungs. The tuple is empty when nothing is built.
+        """
+        result = self._result
+        return result.undecoded if result is not None else ()
+
+    @property
+    def undecoded_notice(self) -> str:
+        """pyrung's ``undecoded_notice()`` for the latest built program, or "".
+
+        It has a line for each marker. The line says which rung the marker stands in for, why,
+        and what the marker does to the scan.
+        """
+        result = self._result
+        return result.undecoded_notice if result is not None else ""
+
+    @property
     def needs_comment_upgrade(self) -> bool:
         """Return True if the build failed on a comment in an old annotation form."""
         return self._needs_comment_upgrade
@@ -795,6 +881,10 @@ class AnalysisService:
                 on_project_generated=_project_generated,
                 on_warning=warnings.append,
             )
+            from pyrung.click import undecoded_notice
+
+            undecoded = undecoded_rungs_in(program)
+            notice = undecoded_notice(program)
         except Exception as exc:
             with self._lock:
                 if self._epoch == epoch and serves >= self._builds_asked:
@@ -822,6 +912,8 @@ class AnalysisService:
                 addr_key_to_tag=key_to_tag,
                 project_dir=project_dir,
                 warning="\n".join(warnings) or None,
+                undecoded=undecoded,
+                undecoded_notice=notice,
             )
             if serves >= self._builds_asked:
                 if self._failed_request is not None:
@@ -905,8 +997,10 @@ class AnalysisService:
         tag_to_addr_key = self._result.tag_to_addr_key
         return {tag_to_addr_key[name] for name in tag_names if name in tag_to_addr_key}
 
-    def run_validation(self) -> ValidationReport | None:
-        if self._result is None:
+    def run_validation(self) -> ValidationRun | None:
+        """Check the latest built program and return the findings, or None if nothing is built."""
+        result = self._result
+        if result is None:
             return None
         from pyrung.validation import CheckConfig, load_check_config
 
@@ -918,4 +1012,5 @@ class AnalysisService:
             config = (
                 load_check_config(self.project_dir / "pyproject.toml") if self.project_dir else None
             ) or CheckConfig()
-        return self._result.program.check(select=set(config.resolve()))
+        report = result.program.check(select=set(config.resolve()))
+        return ValidationRun(report, result.undecoded)

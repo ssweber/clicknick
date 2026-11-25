@@ -834,7 +834,7 @@ class ClickNickApp:
             return
 
         try:
-            report = analysis.run_validation()
+            run = analysis.run_validation()
         except Exception as exc:
             messagebox.showerror(
                 "Check Program",
@@ -845,14 +845,17 @@ class ClickNickApp:
         self._report_dropped_checks()
 
         # clicknick-cli groups the findings the same way, with pyrung's grouped().
+        report = run.report if run is not None else None
         grouped = report.grouped() if report is not None else {}
 
+        from .services.program_check import check_stop_notes
         from .views.analysis_report_window import AnalysisReportData
 
         return AnalysisReportData(
             grouped_findings=grouped,
             project_name=self._click.filename if self._click else "",
             checked_rules=report.checked_rules if report is not None else frozenset(),
+            stop_notes=tuple(check_stop_notes(run.undecoded if run is not None else ())),
         )
 
     def _choose_program_checks(self, parent, on_saved) -> None:
