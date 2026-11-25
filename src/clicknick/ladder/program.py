@@ -22,7 +22,9 @@ from laddercodec import (
     Contact,
     CsvWriteError,
     EncodeError,
+    ForLoop,
     InstructionToken,
+    Next,
     Rung,
     Tee,
     Timer,
@@ -35,6 +37,7 @@ from laddercodec import (
     decode_program,
     encode,
     find_v4_only,
+    marker_rung,
     read_csv,
     replace,
     write_csv,
@@ -77,8 +80,9 @@ _ROWS_INDEX_RE = re.compile(r"^rungs\[[0-9]+\]:? *")
 # Written beside a CSV bundle when CLICK holds rungs in a form an older laddercodec wrote
 LEGACY_ENCODINGS_FILE = "legacy_encodings.json"
 # First line of the comment on the empty rung that program_save writes for a rung that it
-# cannot copy as it is. prepare_rungs_load refuses to copy such a rung, so pasting it cannot
-# replace the real one.
+# cannot copy as it is, when the rung is inside a For loop or holds a next(). Earlier releases
+# of ClickNick wrote it for every such rung, so a folder that they saved can hold it anywhere.
+# prepare_rungs_load refuses to copy such a rung, so pasting it cannot replace the real one.
 STAND_IN_COMMENT = (
     "ClickNick cannot copy this rung from CLICK as it is. This empty rung stands in for it."
 )
@@ -125,8 +129,9 @@ class LegacyEncoding:
     token: str
     # What CLICK runs instead, e.g. "it is stored as 16-bit and CLICK runs it as 4464."
     detail: str
-    # With a rung number, the bundle holds an empty rung in its place (STAND_IN_COMMENT).
-    # With none, laddercodec cannot read the program's CSV back, so it is pasted whole.
+    # With a rung number, the bundle holds laddercodec's UNDECODED marker in its place. Inside
+    # a For loop, it holds an empty rung (STAND_IN_COMMENT). With no rung number, laddercodec
+    # cannot read the program's CSV back, so it is pasted whole.
     unreadable: bool = False
 
 
@@ -652,10 +657,39 @@ def _stand_in(rung: Rung, problems: Sequence[tuple[str, str]]) -> Rung:
     return empty_rung("\n".join(lines))
 
 
+def _marker(
+    rung: Rung, index: int, problems: Sequence[tuple[str, str]], *, stop: UndecodedStop
+) -> Rung:
+    """Return laddercodec's UNDECODED marker rung in place of *rung*.
+
+    *index* counts the rung from 0 in its program, as laddercodec does. If the decoder already
+    made *rung* a marker, return *rung* as it is. Otherwise the marker's reason is the details
+    of *problems*. The marker rung's comment is laddercodec's headline, then the rung's own
+    comment.
+    """
+    if is_marker(rung):
+        return rung
+    error = " ".join(" ".join(detail for _name, detail in problems).split())
+    return marker_rung(Undecoded(error, index, stop=stop), rung.comment)
+
+
+def _opens_loop(rung: Rung) -> bool:
+    return any(isinstance(af, ForLoop) for af in rung.instructions)
+
+
+def _closes_loop(rung: Rung) -> bool:
+    return any(isinstance(af, Next) for af in rung.instructions)
+
+
 def _replace_unreadable(
     file: str, prog: Program, notes: Sequence[Note], *, stop: UndecodedStop
 ) -> tuple[list[Rung], list[LegacyEncoding]]:
-    """Return the program's rungs, with a stand-in for each rung that the CSV cannot hold.
+    """Return *prog*'s rungs, with a marker or a stand-in for each rung that the CSV cannot hold.
+
+    A rung that the CSV cannot hold gets an empty stand-in (``_stand_in``) if it is inside a
+    For loop, or if it holds a ``next()``. Any other such rung gets a marker (``_marker``).
+    pyrung reads the loops from the rungs that this returns. So a ``for()`` or a ``next()``
+    opens or closes a loop here only if this returns its rung unchanged.
 
     Also return a finding for each reason. A reason comes from a note about the rung
     (``Rule.RUNG``), or from ``_rung_problems``. A note about the whole program
@@ -678,14 +712,34 @@ def _replace_unreadable(
         elif note.reported or note.rule is Rule.COMMENT:
             found.append(_whole_program(file, prog.name, note.detail))
     rungs: list[Rung] = []
+    # How many of pyrung's For loops are open at this rung
+    depth = 0
     for index, rung in enumerate(prog.rungs):
         if index in comments:
             rung = replace(rung, comment=None)
         problems = list(dict.fromkeys([*noted.get(index, []), *_rung_problems(rung, stop=stop)]))
         if not problems:
             rungs.append(rung)
+            if _opens_loop(rung):
+                depth += 1
+            elif _closes_loop(rung):
+                depth = max(depth - 1, 0)
             continue
-        rungs.append(_stand_in(rung, problems))
+        if depth or _closes_loop(rung):
+            # pyrung refuses a marker inside a For loop, so one such rung would fail the whole
+            # workspace build. pyrung's roadmap plans a marker that stops the scan only when a
+            # scan reaches it. pyrung could then accept the marker inside a loop.
+            # The stand-in for a next() closes no loop. So pyrung's loop goes on past it, and
+            # each later rung that the CSV cannot hold gets a stand-in until a next() that this
+            # writes closes the loop.
+            rungs.append(_stand_in(rung, problems))
+        else:
+            # A for() that the CSV cannot hold gets a marker here too. pyrung accepts a next()
+            # with no for() above it only when a marker stands above that next(). It reads
+            # that next() as a placeholder, and the Program ends at the marker. With a
+            # stand-in, pyrung would refuse that next() unless a marker stood above it
+            # earlier in the program.
+            rungs.append(_marker(rung, index, problems, stop=stop))
         found.extend(
             LegacyEncoding(file, prog.name, index + 1, name, "", detail, unreadable=True)
             for name, detail in problems
@@ -694,7 +748,11 @@ def _replace_unreadable(
 
 
 def is_stand_in(rung: Rung) -> bool:
-    """Return True if *rung* is the empty rung that program_save wrote for an unreadable rung."""
+    """Return True if *rung* is the empty rung that program_save wrote for an unreadable rung.
+
+    program_save writes one only inside a For loop, or in place of a ``next()``. Folders that
+    earlier releases of ClickNick saved hold one in place of every unreadable rung.
+    """
     first = (rung.comment or "").split("\n", 1)[0]
     return first in (STAND_IN_COMMENT, *_OLD_STAND_IN_COMMENTS) and is_empty_rung(rung)
 
@@ -747,8 +805,9 @@ def _write_program(
 ) -> list[LegacyEncoding]:
     """Write *rungs* to *path*, and return a finding if laddercodec warns or cannot read it back.
 
-    ``_replace_unreadable`` already wrote a stand-in for each rung that laddercodec warns
-    about. So a warning here is one that it did not see, and the whole program is reported.
+    ``_replace_unreadable`` already put a marker or a stand-in in place of each rung that
+    laddercodec warns about. So a warning here is one that it did not see, and the whole
+    program is reported.
     *found* holds the findings for the program so far. If one of them reports the whole
     program, a finding from the read-back would only say so again.
     """
@@ -776,7 +835,7 @@ def write_legacy_encodings(csv_dir: Path, found: Sequence[LegacyEncoding]) -> No
 
 
 def stand_in_fix(found: Sequence[LegacyEncoding], *, one: bool) -> str:
-    """Return the sentence that tells the user what to do about the stand-in rungs in *found*.
+    """Return the sentence that tells the user what to do about the unreadable rungs in *found*.
 
     Return an empty string if the detail of every finding says what to do. *one* is True
     if *found* is about one rung.
@@ -843,8 +902,10 @@ def program_save(
     Output defaults to *scr_folder* unless *output* is given. Rungs held in a
     legacy encoding are listed in LEGACY_ENCODINGS_FILE beside the CSVs, and a
     save that finds none removes that file. A rung laddercodec cannot read is
-    listed there too. Its CSV holds an empty rung in its place (STAND_IN_COMMENT),
-    so every other rung keeps CLICK's number. So is a CSV laddercodec cannot read back.
+    listed there too. Its CSV holds laddercodec's UNDECODED marker in its place, so
+    every other rung keeps CLICK's number. Inside a For loop, the CSV holds an empty
+    rung (STAND_IN_COMMENT) in place of the marker. A CSV that laddercodec cannot read
+    back is listed there too.
 
     Raises FileNotFoundError if no Scr*.tmp files found.
     Raises ValueError if no main program (prog_idx=1) found.

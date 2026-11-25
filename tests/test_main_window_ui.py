@@ -374,7 +374,8 @@ def test_a_rung_that_syntax_check_splits_is_not_told_to_be_pasted_again(monkeypa
     mixed = warn.call_args.args[1]
 
     assert alone.endswith(
-        f"  Main Program rung 2: {detail}\n\nThe workspace holds an empty rung in place of each."
+        f"  Main Program rung 2: {detail}\n\nThe workspace holds an UNDECODED marker in place of"
+        " each one. Inside a For loop, the workspace holds an empty rung instead."
     )
     assert "Paste" not in alone
     assert "Where a line does not say what to do, paste the rung again" in mixed

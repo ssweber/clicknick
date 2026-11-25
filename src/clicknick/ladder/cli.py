@@ -623,8 +623,9 @@ def main() -> None:
                     unreadable, one=len({(item.file, item.rung) for item in unreadable}) == 1
                 )
                 print(
-                    "\nClickNick cannot copy these rungs from CLICK as they are. Each CSV holds an"
-                    " empty rung in place of each of them." + (f" {fix}" if fix else "")
+                    "\nClickNick cannot copy these rungs from CLICK as they are. Each program's"
+                    " CSV holds an UNDECODED marker in place of each of these rungs. Inside a"
+                    " For loop, the CSV holds an empty rung instead." + (f" {fix}" if fix else "")
                 )
                 for item in unreadable:
                     print(f"  {describe_legacy_encoding(item)}")

@@ -213,8 +213,9 @@ class ProgramChange:
 
         These are the proposed rungs, except that CLICK keeps its own rungs where a difference
         is *skipped*. If ClickNick cannot read all of CLICK's copy of the program, this returns
-        the proposed rungs and ignores *skipped*. Skipping could keep an empty stand-in rung in
-        place of a rung that ClickNick cannot read.
+        the proposed rungs and ignores *skipped*. Skipping could keep the UNDECODED marker or
+        the empty stand-in rung that CLICK's copy holds in place of a rung that ClickNick
+        cannot read.
         """
         if self.unreadable:
             return self.after
