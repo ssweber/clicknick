@@ -1529,11 +1529,13 @@ class SimulationSession:
     def _unreadable_reason(csv_dir: Path) -> str | None:
         """Return why the program must not run, or None if it may.
 
-        The program must not run if ``program_save`` replaced a rung that ClickNick cannot read
-        with an empty stand-in rung. The simulation would run without that rung and look fine.
+        The program must not run if ``program_save`` replaced a rung that ClickNick cannot read.
+        The CSV holds laddercodec's UNDECODED marker in its place, and pyrung leaves out every
+        rung after the marker in that program. Inside a For loop, the CSV holds an empty
+        stand-in rung. Either way, the simulation would run without the rung and look fine.
         A finding with no rung number is not a reason. It means that laddercodec could not read
-        the program's CSV back. No stand-in rung was written, the CSV still holds every rung,
-        and pyrung parses that CSV itself.
+        the program's CSV back. No rung was replaced, the CSV still holds every rung, and
+        pyrung parses that CSV itself.
         """
         from .ladder.program import (
             describe_legacy_encoding,

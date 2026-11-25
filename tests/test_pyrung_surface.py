@@ -83,6 +83,7 @@ USED_NAMES = {
         "old_form_tokens",
         "parse_tag_meta",
         "pyrung_to_ladder",
+        "undecoded",
         "upgrade_comment",
     ),
     "pyrung.validation": (

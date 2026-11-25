@@ -1834,8 +1834,9 @@ class ClickNickApp:
 
         The message lists three kinds of finding:
 
-        - A rung that ClickNick cannot read. The workspace holds an empty rung in its place.
-          The user must paste the rung from their own copy of the program.
+        - A rung that ClickNick cannot read. The workspace holds laddercodec's UNDECODED
+          marker in its place. Inside a For loop, it holds an empty stand-in rung. The user
+          must paste the rung from their own copy of the program.
         - A program whose CSV laddercodec cannot read. The user must paste it from their own
           copy.
         - A rung that an older ClickNick pasted in an old encoding. It reads the same as the
@@ -1874,8 +1875,8 @@ class ClickNickApp:
             parts.append(
                 "ClickNick cannot copy these rungs from CLICK as they are:\n\n"
                 + _listed(unreadable)
-                + "\n\nThe workspace holds an empty rung in place of each."
-                + (f" {fix}" if fix else "")
+                + "\n\nThe workspace holds an UNDECODED marker in place of each one. Inside a"
+                " For loop, the workspace holds an empty rung instead." + (f" {fix}" if fix else "")
             )
         if copies:
             parts.append(

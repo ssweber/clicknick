@@ -12,10 +12,13 @@ from pathlib import Path
 
 import pytest
 from laddercodec import (
+    Call,
     Coil,
     CompareContact,
     Contact,
+    ForLoop,
     LegacyEncodingWarning,
+    Next,
     Program,
     RefusedFieldWarning,
     Rung,
@@ -41,6 +44,7 @@ from clicknick.ladder.program import (
     UnreadableRungError,
     decode_to_csv,
     describe_legacy_encoding,
+    is_marker,
     is_stand_in,
     prepare_bin_load,
     prepare_rungs_load,
@@ -62,9 +66,48 @@ def _rung(coil: str, first=None, comment: str | None = None) -> Rung:
     )
 
 
+def _call(name: str) -> Rung:
+    return Rung(conditions=[["-"] * 31], instructions=[Call(name)], comment=None)
+
+
+def _for(first=None) -> Rung:
+    conditions: list = ["-"] * 31
+    if first is not None:
+        conditions[0] = first
+    return Rung(conditions=[conditions], instructions=[ForLoop("3")], comment=None)
+
+
+def _next(first=None) -> Rung:
+    conditions: list = ["-"] * 31
+    if first is not None:
+        conditions[0] = first
+    return Rung(conditions=[conditions], instructions=[Next()], comment=None)
+
+
 # A rung condition that laddercodec could not decode. Its raw bytes name the instruction,
 # "Compare". `_instruction_name` in src/clicknick/ladder/program.py reads that name.
 _REFUSED = UnknownCondition(raw=b"Compare")
+
+
+def _build_program(csv_dir: Path):
+    """Convert *csv_dir* to pyrung source and run it, as the workspace build does.
+
+    Return the source and the Program that it builds. Raise what the conversion or the source
+    raises.
+    """
+    from pyrung import Program
+    from pyrung.click import ladder_to_pyrung
+
+    code = ladder_to_pyrung(csv_dir)
+    namespace: dict = {}
+    exec(compile(code, "<analysis>", "exec"), namespace)  # noqa: S102
+    assert isinstance(namespace["logic"], Program)
+    return code, namespace["logic"]
+
+
+def _build(csv_dir: Path) -> str:
+    """Build *csv_dir* as the workspace build does, and return the pyrung source."""
+    return _build_program(csv_dir)[0]
 
 
 @pytest.fixture
@@ -117,7 +160,7 @@ def test_save_writes_every_program_and_names_each_unreadable_rung(scr: Path) -> 
     assert len(read_csv(out / "main.csv")) == 1
 
 
-def test_each_unreadable_rung_becomes_an_empty_rung_so_the_rest_keep_their_numbers(
+def test_each_unreadable_rung_becomes_a_marker_so_the_rest_keep_their_numbers(
     scr: Path,
 ) -> None:
     out = scr / "csv"
@@ -126,18 +169,18 @@ def test_each_unreadable_rung_becomes_an_empty_rung_so_the_rest_keep_their_numbe
     rungs = read_csv(out / "subroutines" / "Conf_Compare.csv")
 
     assert len(rungs) == 4
-    assert [is_stand_in(rung) for rung in rungs] == [False, True, True, False]
+    # In a subroutine the marker returns to the caller. Its rung counts from 0, as in
+    # laddercodec, so pyrung names the CLICK rung from 1.
     assert [rung.instructions for rung in rungs] == [
         (Coil("C10"),),
-        ("",),
-        ("",),
+        (Undecoded(DETAIL, rung=1, stop="return"),),
+        (Undecoded(DETAIL, rung=2, stop="return"),),
         (Coil("C13"),),
     ]
-    # The rung's own comment stays below the note, so the user can tell which rung it was
-    assert rungs[1].comment == (
-        f"{STAND_IN_COMMENT}\nClickNick cannot read its Compare. Paste it again.\n\n"
-        "Case compare/hex_vs_int"
-    )
+    assert not any(is_stand_in(rung) for rung in rungs)
+    # The rung's own comment stays below laddercodec's headline, so the user can tell which
+    # rung it was
+    assert rungs[1].comment == f"UNDECODED: CLICK rung 2: {DETAIL}\nCase compare/hex_vs_int"
 
 
 def test_a_save_after_the_paste_removes_the_record(scr: Path, monkeypatch) -> None:
@@ -159,8 +202,6 @@ def test_a_save_after_the_paste_removes_the_record(scr: Path, monkeypatch) -> No
 def test_an_unreadable_rung_in_main_is_named_and_the_rest_converts_to_pyrung(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from pyrung.click import ladder_to_pyrung
-
     (tmp_path / "Scr1.tmp").write_bytes(b"Scr1.tmp")
     rungs = [_rung("C1"), _rung("C2", _REFUSED), _rung("C3")]
     monkeypatch.setattr(
@@ -175,10 +216,12 @@ def test_an_unreadable_rung_in_main_is_named_and_the_rest_converts_to_pyrung(
     assert describe_legacy_encoding(result.legacy_encodings[0]) == (
         f"Main Program rung 2, Compare: {DETAIL}"
     )
-    code = ladder_to_pyrung(out)
-    assert STAND_IN_COMMENT in code
+    code = _build(out)
+    assert "from pyrung.click import ClickBlocks, TagMap, undecoded\n" in code
+    assert f'undecoded("{DETAIL}", rung=1, stop="end")' in code
     assert "out(C2)" not in code
     assert "out(C3)" in code
+    assert STAND_IN_COMMENT not in code
 
 
 def test_cli_save_lists_the_rungs_to_paste_again(scr: Path, monkeypatch, capsys) -> None:
@@ -187,7 +230,11 @@ def test_cli_save_lists_the_rungs_to_paste_again(scr: Path, monkeypatch, capsys)
     main()
 
     out = capsys.readouterr().out
-    assert "ClickNick cannot copy these rungs from CLICK as they are" in out
+    assert (
+        "ClickNick cannot copy these rungs from CLICK as they are. Each program's CSV holds an"
+        " UNDECODED marker in place of each of these rungs. Inside a For loop, the CSV holds an"
+        " empty rung instead."
+    ) in out
     assert f"  Conf_Compare rung 2, Compare: {DETAIL}" in out
     assert "old encoding" not in out
 
@@ -260,7 +307,7 @@ def test_save_finds_an_unreadable_contact_with_a_wire_down(tmp_path: Path, monke
     result = program_save(scr, out, index=True)
 
     assert [(item.rung, item.instruction) for item in result.legacy_encodings] == [(2, "Compare")]
-    assert [is_stand_in(rung) for rung in read_csv(out / "main.csv")] == [False, True]
+    assert [is_marker(rung) for rung in read_csv(out / "main.csv")] == [False, True]
 
 
 def test_readable_clipboard_rung_is_written(tmp_path: Path) -> None:
@@ -276,16 +323,30 @@ def test_readable_clipboard_rung_is_written(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_a_stand_in_is_never_copied_over_the_rung_it_stands_for(scr: Path) -> None:
+def test_a_marker_from_a_save_is_never_copied_over_the_rung_it_stands_for(scr: Path) -> None:
     out = scr / "csv"
     program_save(scr, out, index=True)
     rungs = read_csv(out / "subroutines" / "Conf_Compare.csv")
 
-    with pytest.raises(UnreadableRungError, match=r"^Rungs 2, 3 are empty rungs"):
+    with pytest.raises(UnreadableRungError, match=r"^Rungs 2, 3 are UNDECODED markers\. "):
+        prepare_rungs_load(rungs, click_v4=True)
+    with pytest.raises(UnreadableRungError, match=r"^Rung 6 is an UNDECODED marker\. "):
+        prepare_rungs_load(rungs[1:2], click_v4=True, first_rung=6)
+    assert prepare_rungs_load(rungs[:1], click_v4=True).rung_count == 1
+
+
+def test_a_stand_in_in_a_loop_is_never_copied_over_the_rung_it_stands_for(
+    tmp_path: Path, monkeypatch
+) -> None:
+    out, _found = _save_one_program(
+        tmp_path, monkeypatch, [_for(), _rung("C2", _REFUSED), _next(), _rung("C4")]
+    )
+    rungs = read_csv(out / "main.csv")
+
+    with pytest.raises(UnreadableRungError, match=r"^Rung 2 is an empty rung"):
         prepare_rungs_load(rungs, click_v4=True)
     with pytest.raises(UnreadableRungError, match=r"^Rung 6 is an empty rung"):
         prepare_rungs_load(rungs[1:2], click_v4=True, first_rung=6)
-    assert prepare_rungs_load(rungs[:1], click_v4=True).rung_count == 1
 
 
 def test_a_stand_in_is_an_empty_rung_with_the_note_old_or_new() -> None:
@@ -310,7 +371,8 @@ def test_a_stand_in_survives_pyrung_and_back_and_is_still_refused(
     from pyrung.click import ladder_to_pyrung, pyrung_to_ladder
 
     (tmp_path / "Scr1.tmp").write_bytes(b"Scr1.tmp")
-    rungs = [_rung("C1"), _rung("C2", _REFUSED, comment="Mine"), _rung("C3")]
+    # Only a rung inside a For loop gets a stand-in
+    rungs = [_rung("C1"), _for(), _rung("C3", _REFUSED, comment="Mine"), _next(), _rung("C5")]
     monkeypatch.setattr(
         "clicknick.ladder.program.decode_program",
         lambda _data: Program("Main Program", 1, rungs),
@@ -327,8 +389,8 @@ def test_a_stand_in_survives_pyrung_and_back_and_is_still_refused(
     pyrung_to_ladder(namespace["logic"], namespace["mapping"], index=True).write(out)
     exported = read_csv(out / "main.csv")
 
-    assert [is_stand_in(rung) for rung in exported[:3]] == [False, True, False]
-    with pytest.raises(UnreadableRungError, match=r"^Rung 2 is an empty rung"):
+    assert [is_stand_in(rung) for rung in exported[:5]] == [False, False, True, False, False]
+    with pytest.raises(UnreadableRungError, match=r"^Rung 3 is an empty rung"):
         prepare_rungs_load(exported, click_v4=True)
 
 
@@ -360,13 +422,15 @@ def test_an_undecoded_marker_in_a_csv_is_never_copied(tmp_path: Path) -> None:
 _TWO_WAYS = CompareContact("==", '"A"=="B"', '"C"')
 
 
-def _marker_rung(error: str, rung: int, *, to_the_end: bool = False) -> Rung:
+def _marker_rung(error: str, rung: int, stop: str = "end", *, to_the_end: bool = False) -> Rung:
     """Return the rung that laddercodec's decoder returns for a rung that it cannot read.
 
     laddercodec's ``marker_rung`` writes the headline. The rung's own comment, "Mine",
-    follows it. If *to_the_end* is True, the marker stands for every rung after it too.
+    follows it. *stop* is what the marker acts as: "end" in the main program, "return" in a
+    subroutine. If *to_the_end* is True, the marker stands for every rung after it too.
     """
-    return marker_rung(Undecoded(error, rung=rung, to_the_end=to_the_end), "Mine")
+    marker = Undecoded(error, rung=rung, stop=stop, to_the_end=to_the_end)
+    return marker_rung(marker, "Mine")
 
 
 def _split_rung() -> Rung:
@@ -399,45 +463,56 @@ def _save_one_program(
     return out, result.legacy_encodings
 
 
+_TWO_WAYS_DETAIL = (
+    "laddercodec cannot write this rung to a CSV: no CSV cell reads back as this compare."
+)
+_SPLIT_DETAIL = (
+    "CLICK's Syntax Check splits this rung into 2 rungs. Run Syntax Check in CLICK, "
+    "then save the project."
+)
+
+
 @pytest.mark.parametrize(
-    ("bad", "detail"),
+    ("bad", "detail", "error"),
     [
-        (
-            _rung("C2", _TWO_WAYS),
-            "laddercodec cannot write this rung to a CSV: no CSV cell reads back as this compare.",
-        ),
+        (_rung("C2", _TWO_WAYS), _TWO_WAYS_DETAIL, _TWO_WAYS_DETAIL),
         (
             _marker_rung("a wire flag has no token", 1),
             "laddercodec cannot read this rung: a wire flag has no token.",
+            "a wire flag has no token",
         ),
-        (
-            _split_rung(),
-            "CLICK's Syntax Check splits this rung into 2 rungs. Run Syntax Check in CLICK, "
-            "then save the project.",
-        ),
+        (_split_rung(), _SPLIT_DETAIL, _SPLIT_DETAIL),
     ],
     ids=["compare-two-ways", "decoder-marker", "split"],
 )
-def test_save_puts_a_stand_in_for_a_rung_that_the_csv_cannot_hold(
-    tmp_path: Path, monkeypatch, recwarn, bad: Rung, detail: str
+def test_save_puts_a_marker_for_a_rung_that_the_csv_cannot_hold(
+    tmp_path: Path, monkeypatch, recwarn, bad: Rung, detail: str, error: str
 ) -> None:
     out, found = _save_one_program(tmp_path, monkeypatch, [_rung("C1"), bad, _rung("C3")])
 
     assert found == [LegacyEncoding("main.csv", "Main Program", 2, "", "", detail, unreadable=True)]
-    rungs = read_csv(out / "main.csv")
-    # The rungs keep CLICK's numbers, and nothing in the CSV is a marker
-    assert [is_stand_in(rung) for rung in rungs] == [False, True, False]
-    assert rungs[1].comment.split("\n")[:2] == [STAND_IN_COMMENT, detail]
+    # laddercodec reads the marker back with no warning. So the save adds no finding for the
+    # whole program. Review Changes reads CLICK's copy with the same call.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        rungs = read_csv(out / "main.csv")
+    # The rungs keep CLICK's numbers. The decoder's own marker keeps its reason.
+    assert [rung.instructions for rung in rungs] == [
+        (Coil("C1"),),
+        (Undecoded(error, rung=1),),
+        (Coil("C3"),),
+    ]
+    assert rungs[1].comment.split("\n")[0] == f"UNDECODED: CLICK rung 2: {error}"
     assert read_legacy_encodings(out) == tuple(found)
+    # ClickNick writes the marker itself, so write_csv has nothing to warn about
     assert not [w for w in recwarn if "undecoded" in str(w.message).lower()]
 
 
 def test_a_marker_for_the_rest_of_the_program_names_its_rung_from_1(
     tmp_path: Path, monkeypatch
 ) -> None:
-    out, found = _save_one_program(
-        tmp_path, monkeypatch, [_rung("C1"), _marker_rung("bad record", 1, to_the_end=True)]
-    )
+    marker = _marker_rung("bad record", 1, to_the_end=True)
+    out, found = _save_one_program(tmp_path, monkeypatch, [_rung("C1"), marker])
 
     [finding] = found
     assert finding.rung == 2
@@ -445,25 +520,258 @@ def test_a_marker_for_the_rest_of_the_program_names_its_rung_from_1(
         "laddercodec cannot read this rung, and it stopped reading the program there: bad "
         "record. The rungs after it are missing too."
     )
-    # The stand-in keeps the rung's own comment, without laddercodec's headline
-    assert read_csv(out / "main.csv")[1].comment.split("\n")[-1] == "Mine"
+    # The save writes the decoder's marker as it is: laddercodec's headline, with the rung's
+    # own comment below it
+    assert read_csv(out / "main.csv")[1].comment == marker.comment
 
 
 def test_the_workspace_builds_from_a_save_with_a_rung_the_csv_cannot_hold(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from pyrung.click import ladder_to_pyrung
-
     out, _found = _save_one_program(
         tmp_path,
         monkeypatch,
         [_rung("C1"), _rung("C2", _TWO_WAYS), _marker_rung("bad record", 2, to_the_end=True)],
     )
 
-    code = ladder_to_pyrung(out)
+    code = _build(out)
 
     assert "out(C1)" in code
-    assert "undecoded" not in code.lower()
+    assert f'undecoded("{_TWO_WAYS_DETAIL}", rung=1, stop="end")' in code
+
+
+def test_a_marker_in_a_subroutine_returns(tmp_path: Path, monkeypatch) -> None:
+    """In a subroutine, the marker that ClickNick writes and the decoder's own both return."""
+
+    (tmp_path / "Scr1.tmp").write_bytes(b"Scr1.tmp")
+    (tmp_path / "Scr2.tmp").write_bytes(b"Scr2.tmp")
+    programs = {
+        b"Scr1.tmp": Program("Main Program", 1, [_rung("C1"), _call("Fill")]),
+        b"Scr2.tmp": Program(
+            "Fill",
+            2,
+            [
+                _rung("C10"),
+                _rung("C11", _REFUSED),
+                _marker_rung("bad record", 2, stop="return"),
+                _rung("C13"),
+            ],
+        ),
+    }
+    monkeypatch.setattr("clicknick.ladder.program.decode_program", programs.__getitem__)
+    out = tmp_path / "csv"
+
+    result = program_save(tmp_path, out, index=True)
+
+    assert [(item.file, item.rung) for item in result.legacy_encodings] == [
+        ("subroutines/Fill.csv", 2),
+        ("subroutines/Fill.csv", 3),
+    ]
+    assert [rung.instructions for rung in read_csv(out / "subroutines" / "Fill.csv")] == [
+        (Coil("C10"),),
+        (Undecoded(DETAIL, rung=1, stop="return"),),
+        (Undecoded("bad record", rung=2, stop="return"),),
+        (Coil("C13"),),
+    ]
+    code = _build(out)
+    assert f'undecoded("{DETAIL}", rung=1, stop="return")' in code
+
+
+# ---------------------------------------------------------------------------
+# For loops
+#
+# pyrung refuses a marker inside a For loop. It refuses a next() with no for() above it, unless
+# a marker stands above that next(). The save writes an empty stand-in inside a loop and for an
+# unreadable next(). It writes a marker for an unreadable for() outside a loop. The tests that
+# build the workspace pin what pyrung does with each case, so that a change in pyrung fails
+# here.
+# ---------------------------------------------------------------------------
+
+# pyrung's message for a next() with no for() and no marker above it
+_ADD_THE_FOR = (
+    r"this next\(\) has no for\(\) above it\. Either the program has no for\(\) rung, or "
+    r"laddercodec could not read the rung that held it\. Add the for\(\) rung in CLICK, or "
+    r"remove the next\(\), then read the program again\."
+)
+
+
+def _kinds(rungs: list[Rung]) -> str:
+    """Return a letter for each rung: M for a marker, S for a stand-in, - for any other rung."""
+    return "".join("M" if is_marker(rung) else "S" if is_stand_in(rung) else "-" for rung in rungs)
+
+
+def test_an_unreadable_rung_in_a_for_loop_gets_a_stand_in_and_the_workspace_builds(
+    tmp_path: Path, monkeypatch
+) -> None:
+    rungs = [_for(), _rung("C2"), _rung("C3", _REFUSED), _next(), _rung("C5")]
+    out, found = _save_one_program(tmp_path, monkeypatch, rungs)
+
+    # The finding still names the rung, as it does for a marker
+    assert found == [LegacyEncoding("main.csv", "Main Program", 3, "Compare", "", DETAIL, True)]
+    assert read_legacy_encodings(out) == tuple(found)
+    assert _kinds(read_csv(out / "main.csv")) == "--S--"
+    code = _build(out)
+    assert "with forloop(3):" in code
+    assert STAND_IN_COMMENT in code
+    assert "out(C5)" in code
+    assert "undecoded" not in code
+
+
+def test_an_unreadable_for_gets_a_marker_and_the_program_stops_there(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A next() below the marker builds, and the Program ends at the marker.
+
+    pyrung reads the next() as a placeholder and names its rung in the marker's ``lone_next``.
+    With a stand-in in place of the for(), pyrung would refuse the next(). pyrung 0.18.0 refuses
+    it too. Its source holds a ``next()`` with no ``for()`` above it, and running that source
+    raises ``TypeError``.
+    """
+
+    out, found = _save_one_program(
+        tmp_path, monkeypatch, [_for(_REFUSED), _rung("C2"), _next(), _rung("C4")]
+    )
+
+    assert found == [LegacyEncoding("main.csv", "Main Program", 1, "Compare", "", DETAIL, True)]
+    assert _kinds(read_csv(out / "main.csv")) == "M---"
+    code, logic = _build_program(out)
+    assert 'stop="end", lone_next=[2])' in code
+    assert "CLICK rung 3 is a next() with no for() above it." in code
+    assert len(logic.rungs) == 1
+
+
+def test_a_decoder_marker_before_a_next_gets_the_same_placeholder(
+    tmp_path: Path, monkeypatch
+) -> None:
+    out, _found = _save_one_program(
+        tmp_path,
+        monkeypatch,
+        [_marker_rung("bad record", 0), _rung("C2"), _next(), _rung("C4")],
+    )
+
+    code, logic = _build_program(out)
+    assert 'stop="end", lone_next=[2])' in code
+    assert len(logic.rungs) == 1
+
+
+def test_an_unreadable_next_gets_a_stand_in_and_the_workspace_builds(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """With no next(), pyrung runs the loop to the end of the program."""
+
+    out, found = _save_one_program(
+        tmp_path, monkeypatch, [_for(), _rung("C2"), _next(_REFUSED), _rung("C4")]
+    )
+
+    assert found == [LegacyEncoding("main.csv", "Main Program", 3, "Compare", "", DETAIL, True)]
+    assert _kinds(read_csv(out / "main.csv")) == "--S-"
+    code = _build(out)
+    assert "with forloop(3):" in code
+    assert STAND_IN_COMMENT in code
+    assert "out(C4)" in code
+
+
+@pytest.mark.parametrize(
+    ("rungs", "kinds", "refused"),
+    [
+        # The stand-in for the next() closes nothing, so the loop goes on in pyrung
+        pytest.param(
+            [_for(), _rung("C2"), _next(_REFUSED), _rung("C4", _REFUSED)],
+            "--SS",
+            None,
+            id="after-an-unreadable-next",
+        ),
+        pytest.param(
+            [_for(), _for(), _next(_REFUSED), _next(), _rung("C5", _REFUSED)],
+            "--S-S",
+            None,
+            id="nested-after-an-unreadable-next",
+        ),
+        pytest.param(
+            [_for(), _for(), _rung("C3", _REFUSED), _next(), _next(), _rung("C6", _REFUSED)],
+            "--S--M",
+            None,
+            id="nested",
+        ),
+        # The stand-in for the inner for() opens nothing, so the inner next() closes the
+        # outer loop in pyrung
+        pytest.param(
+            [_for(), _for(_REFUSED), _rung("C3"), _next(), _next(), _rung("C6", _REFUSED)],
+            "-S---M",
+            f"rung 5: {_ADD_THE_FOR}",
+            id="unreadable-for-in-a-loop",
+        ),
+        pytest.param(
+            [_rung("C1"), _next(), _rung("C3", _REFUSED)],
+            "--M",
+            f"rung 2: {_ADD_THE_FOR}",
+            id="unpaired-next",
+        ),
+        pytest.param(
+            [_rung("C1"), _next(_REFUSED), _rung("C3", _REFUSED)],
+            "-SM",
+            None,
+            id="unreadable-unpaired-next",
+        ),
+        pytest.param(
+            [_for(), _rung("C2"), _rung("C3", _REFUSED)],
+            "--S",
+            None,
+            id="unclosed-for",
+        ),
+        # The decoder's marker cannot say whether the rung held a for(), so pyrung accepts the
+        # next() below it
+        pytest.param(
+            [_marker_rung("bad record", 0), _rung("C2"), _next(), _rung("C4")],
+            "M---",
+            None,
+            id="decoder-marker-before-a-next",
+        ),
+        pytest.param(
+            [_for(), _marker_rung("bad record", 1), _next(), _rung("C4")],
+            "-S--",
+            None,
+            id="decoder-marker-in-a-loop",
+        ),
+    ],
+)
+def test_the_save_reads_loops_from_the_rungs_that_it_writes(
+    tmp_path: Path, monkeypatch, rungs: list[Rung], kinds: str, refused: str | None
+) -> None:
+    """A for() or a next() opens or closes a loop only if the save writes it unchanged.
+
+    pyrung reads the loops from the CSV that the save writes, so the save reads them the same
+    way.
+    """
+
+    out, _found = _save_one_program(tmp_path, monkeypatch, rungs)
+
+    assert _kinds(read_csv(out / "main.csv")) == kinds
+    if refused is None:
+        _build(out)
+    else:
+        with pytest.raises(ValueError, match=refused):
+            _build(out)
+
+
+def test_a_project_with_a_marker_and_a_stand_in_in_a_loop(tmp_path: Path, monkeypatch) -> None:
+    rungs = [
+        _rung("C1"),
+        _for(),
+        _rung("C3", _REFUSED),
+        _next(),
+        _rung("C5", _REFUSED),
+        _rung("C6"),
+    ]
+    out, found = _save_one_program(tmp_path, monkeypatch, rungs)
+
+    assert [(item.rung, item.detail) for item in found] == [(3, DETAIL), (5, DETAIL)]
+    saved = read_csv(out / "main.csv")
+    assert [is_stand_in(rung) for rung in saved] == [False, False, True, False, False, False]
+    assert [is_marker(rung) for rung in saved] == [False, False, False, False, True, False]
+    code = _build(out)
+    assert STAND_IN_COMMENT in code
+    assert f'undecoded("{DETAIL}", rung=4, stop="end")' in code
 
 
 @pytest.mark.parametrize(

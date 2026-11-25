@@ -1249,7 +1249,7 @@ def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, 
     """The build used to stop when write_csv refused a rung, and the workspace went stale."""
     from laddercodec import Coil, Program, Rung, UnknownCondition
 
-    from clicknick.ladder.program import STAND_IN_COMMENT, read_legacy_encodings
+    from clicknick.ladder.program import read_legacy_encodings
 
     def _rung(output: str, first: object = "-") -> Rung:
         conditions = [first, *["-"] * 30]
@@ -1274,7 +1274,8 @@ def test_build_with_a_rung_laddercodec_cannot_read_publishes_the_rest(tmp_path, 
         (2, True)
     ]
     main = (persist / "src" / "plc" / "main.py").read_text(encoding="utf-8")
-    assert STAND_IN_COMMENT in main
+    assert "from pyrung.click import undecoded\n" in main
+    assert 'undecoded("ClickNick cannot read this Compare.", rung=1, stop="end")' in main
     assert "out(C3)" in main
 
 

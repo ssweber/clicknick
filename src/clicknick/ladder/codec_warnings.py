@@ -49,7 +49,8 @@ class Rule(Enum):
     LEGACY = "legacy"
     # Nothing that the user needs to act on. It stays a warning.
     WARN = "warn"
-    # ClickNick cannot copy the rung as it is. A save writes a stand-in rung in its place.
+    # ClickNick cannot copy the rung as it is. A save writes an UNDECODED marker in its place.
+    # Inside a For loop, the save writes an empty stand-in rung.
     RUNG = "rung"
     # laddercodec cannot read the rung's comment, and its comment says so. A save keeps the
     # rung and leaves the comment out, as 0.25.0 did. Save Clipboard to CSV refuses.

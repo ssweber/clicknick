@@ -294,9 +294,49 @@ def test_a_program_with_a_rung_program_save_cannot_read_is_pasted_whole(
     assert main.changed == (2,)
     assert main.unreadable
     assert main.steps() == ()
+    # CLICK's copy holds laddercodec's marker. Review Changes reads it with no finding for the
+    # whole program. The record still names the rung.
+    assert [type(af).__name__ for af in main.before[1].instructions] == ["Undecoded"]
     assert [(item.rung, item.instruction, item.unreadable) for item in main.legacy] == [
         (2, "Compare", True)
     ]
+    # A skip cannot keep CLICK's marker in the paste
+    assert main.merged(set(main.differences)) == tuple(good)
+
+
+def test_a_whole_paste_of_a_folder_that_holds_a_marker_is_refused(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The folder is a copy of CLICK's save, so it holds the marker for the rung."""
+    from laddercodec import Program, UnknownCondition
+
+    from clicknick.ladder.program import UnreadableRungError, prepare_rungs_load, program_save
+
+    good = _rungs("Y001", "Y002", "Y003")
+    refused = Rung(
+        conditions=[[UnknownCondition(raw=b"Compare"), *["-"] * 30]],
+        instructions=good[1].instructions,
+        comment=None,
+    )
+    scr = tmp_path / "scr"
+    scr.mkdir()
+    (scr / "Scr1.tmp").write_bytes(b"")
+    monkeypatch.setattr(
+        "clicknick.ladder.program.decode_program",
+        lambda _data: Program("Main Program", 1, [good[0], refused, good[2]]),
+    )
+    current = tmp_path / "current"
+    program_save(scr, current, index=True)
+    proposed = tmp_path / "proposed"
+    program_save(scr, proposed, index=True)
+
+    main = _compare(proposed, current).changes["main.csv"]
+
+    assert main.unreadable
+    assert main.marker_rungs == (2,)
+    pasted = main.merged()
+    with pytest.raises(UnreadableRungError, match=r"^Rung 2 is an UNDECODED marker\. "):
+        prepare_rungs_load(list(pasted), click_v4=True)
 
 
 _HEADER = "marker," + ",".join(chr(65 + i) for i in range(26)) + ",AA,AB,AC,AD,AE,AF\n"

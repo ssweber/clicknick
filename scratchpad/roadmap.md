@@ -150,9 +150,10 @@ The branch `bob/laddercodec-next` did this much:
   0.25.0 (laddercodec v0.4.0 set the comment to None). Save Clipboard to CSV refuses it, and a paste refuses a
   comment that starts with `UNDECODED comment:`.
 - One lock guards each `recording()` block, because the build worker and the Tk thread both call laddercodec.
-- `program_save` writes ClickNick's empty stand-in rung, with an unreadable finding, in place of three kinds of
-  rung: a rung that decodes as a marker, a rung that `write_csv` would write as a marker, and a rung that
-  `write_csv` would split into more than one rung. The runner showed on CLICK 4.00 that a paste, and a save
+- `program_save` writes an unreadable finding, and a replacement rung, for three kinds of rung: a rung that
+  decodes as a marker, a rung that `write_csv` would write as a marker, and a rung that `write_csv` would split
+  into more than one rung. The replacement is laddercodec's marker, or ClickNick's empty stand-in inside a For
+  loop (see the branch `feat/marker-findings` below). The runner showed on CLICK 4.00 that a paste, and a save
   before Syntax Check, keep a NOP fed from the rail beside outputs on one rung. One function makes the check
   (`_rung_problems` in `ladder/program.py`).
 - Save Clipboard to CSV refuses the same three kinds of rung. `clicknick-rung load` copies a .bin file that
@@ -161,18 +162,60 @@ The branch `bob/laddercodec-next` did this much:
   (`prepare_rungs_load`).
 - `program_save` writes each subroutine with `stop="return"`.
 
+The branch `feat/marker-findings` needs pyrung 0.18.1, which ClickNick pins. On it, `program_save` writes laddercodec's marker in place of a rung that it cannot read. It still
+records the finding with the rung's number, so the Simulator still refuses to run. The planner ruled the For
+loop cases on 2026-11-21:
+
+- A rung inside a For loop gets the empty stand-in. pyrung refuses a marker inside a loop, so one such rung
+  would fail the whole workspace build.
+- An unreadable `next()` gets the stand-in too. The stand-in closes no loop. So pyrung's loop goes on past it,
+  and each later unreadable rung gets a stand-in until a `next()` that `program_save` writes closes the loop.
+  `program_save` reads the loops from the rungs that it writes, as pyrung does.
+- An unreadable `for()` outside a loop gets a marker. At 79fc8a6, pyrung's main refused the `next()` below
+  it, whatever `program_save` wrote, and its message named the marker's rung as the one that may have held
+  the `for()`. The paragraph below says what pyrung's main does now.
+
+pyrung took the `lone_next` change in #124 (0d59e21). 0.18.1 is the first release that holds it. When pyrung's import finds a `next()` with no `for()` above it, and a marker stands above that
+`next()`, it writes the `next()` as an empty placeholder rung, `with rung(): pass`. It adds `lone_next=[...]`
+to the marker's `undecoded(...)` call, with the `next()` rungs counted from 0. The Program ends at the marker,
+and the workspace builds. pyrung's message for the marker names the `next()` rung. pyrung still refuses a lone
+`next()` with no marker above it, and a marker inside a loop. So the marker for an unreadable `for()` builds.
+A stand-in there would be refused, unless an earlier marker stood above it.
+`test_an_unreadable_for_gets_a_marker_and_the_program_stops_there` pins the marker case. pyrung 0.18.0 fails
+the build with the stand-in that 0.26.0 writes. Its `ladder_to_pyrung` returns source with a `next()` and no
+`for()` above it, and running that source raises a `TypeError` that names no rung. The reviewer of
+`feat/marker-findings` checked this on 2026-11-21.
+
+No branch changes these two cases yet:
+
+- If the user writes the loop in place of `undecoded()` and does not delete pyrung's placeholder for a lone
+  `next()`, the exported folder holds an empty rung there. While CLICK's copy still holds the unreadable rung,
+  Review Changes refuses that program. Its message names the placeholder as an empty rung, as if it stood in
+  for CLICK's unreadable rung. After CLICK's copy reads cleanly, Review Changes would propose the placeholder
+  as an extra empty rung after the loop. No one has checked that second step.
+- A `for()` that ClickNick reads, a `for()` inside it that it cannot read, and the two `next()` rungs (saved
+  as `-S---M`: S is the stand-in and M the marker) stay refused. The stand-in opens no loop, so the second `next()` has no `for()` above it and no
+  marker above it. The case would build if ClickNick wrote a stand-in in place of the readable inner `next()`
+  that pairs with the unreadable `for()`. It can pair them only while the unreadable rung still shows its
+  `ForLoop`. The refusal also tells the user to "Add the for() rung in CLICK", which CLICK already has.
+
+pyrung's roadmap plans a marker that stops the scan only when a scan reaches it. pyrung could then accept the
+marker inside a loop, and the stand-in could go.
+
 pyrung 0.18.0 and its main at 34746bc cannot run the marker. Its `ladder_to_pyrung` raises `ValueError`,
 because the AF column holds `undecoded`, which pyrung does not know. The builder of `bob/laddercodec-next`
 checked this on 2026-11-20. The planner placed pyrung's support for the marker in pyrung's release after
 0.18.0. These steps wait on that release:
 
-- Drop the empty stand-in rung (`_replace_unreadable`, `is_stand_in`, and the refusals in `prepare_rungs_load`
-  and `_placeholder_refusal`). Then `write_csv` writes the marker.
+- Drop the empty stand-in rung that a For loop still needs (`_replace_unreadable`, `is_stand_in`, and the
+  refusals in `prepare_rungs_load` and `_placeholder_refusal`). `feat/marker-findings` already writes the marker
+  outside a loop.
 - The Simulator runs up to the marker instead of refusing to run. `_workspace_problem` stops refusing "a rung
   ClickNick cannot read". Show a notice that is hard to miss.
 - Check Program lists the marker.
 - When the stand-in goes, check again that Review Changes' whole-program paste (`ProgramChange.merged` when
   CLICK's copy is unreadable) refuses a marker, and that the legacy-encoding record still names the rung.
+  `feat/marker-findings` has tests for both on the marker.
 - Follow-up branch, which needs no pyrung release: make Review Changes refuse before the first step when
   CLICK's copy is readable, so that CLICK is never left half pasted. Today the earlier steps paste, and then
   `prepare_rungs_load` refuses the step that holds a marker, a comment that starts with `UNDECODED comment:`,
