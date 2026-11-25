@@ -103,6 +103,13 @@ class FakeDap:
     *frame_after_reload* is set, that frame arrives before the reload's caller sends anything
     more.
 
+    pyrung 0.18.0 refuses a link to an address that no rung names with ``unknown tag: X001``.
+    From pyrung PR #119 (after 0.18.0), pyrung says ``no rung uses X001, so the program has no
+    tag for it``. If the TagMap names the address ``Start``, the text is ``cannot link Start:
+    no rung uses Start (X001), so the program has no tag for it``. After "no rung uses", it
+    names the end that pyrung refused, which can be the enable. The fake writes this text if
+    *no_rung_uses* is set. The fake looks the name up in its program's names (``names``).
+
     Like pyrung, it refuses a whole patch or ``set_mode`` request when it cannot resolve one
     address in the patches (*unresolved*). It records the patches of every such request in
     *patch_attempts*, and records only the requests that it accepts in *calls*.
@@ -138,6 +145,7 @@ class FakeDap:
         self.bench: dict[str, dict] = {}
         self.bench_on = True
         self.refuse_links: dict[str, str] = {}
+        self.no_rung_uses = False
         self.unresolved: set[str] = set()  # addresses that the fake cannot resolve
         self.refuse_patches: str | None = (
             None  # refuse every request with patches, with this reason
@@ -291,8 +299,17 @@ class FakeDap:
         if feedback in self.refuse_links:
             raise RuntimeError(f"cannot link {feedback}: {self.refuse_links[feedback]}")
         for tag in (feedback, enable):
-            if self._tag(tag) not in self.knows:
-                raise RuntimeError(f"cannot link {feedback}: unknown tag: {self._tag(tag)}")
+            name = self._tag(tag)
+            if name in self.knows:
+                continue
+            address = normalize_address(tag)
+            if not self.no_rung_uses or address is None:
+                raise RuntimeError(f"cannot link {feedback}: unknown tag: {name}")
+            where = address if name == address else f"{name} ({address})"
+            raise RuntimeError(
+                f"cannot link {self._tag(feedback)}: no rung uses {where}, "
+                "so the program has no tag for it"
+            )
         self.bench[self._tag(feedback)] = {
             "enable": self._tag(enable), "enabled": True, "trigger": trigger,
             "response": dict(response),
@@ -442,6 +459,7 @@ class Harness:
             if self.next_launch_error is not None:
                 dap.launch_error = self.next_launch_error
             dap.launch_hook = self.launch_hook
+            dap.no_rung_uses = self.no_rung_uses
             self.daps.append(dap)
             return dap
 
@@ -456,6 +474,8 @@ class Harness:
 
         self.next_launch_error: Exception | None = None
         self.launch_hook = None
+        # If set, each FakeDap words a refused link as pyrung does from PR #119.
+        self.no_rung_uses = False
         self.saves = 0
         self.snapshot: dict = {}
         self.read_snapshot = lambda _path: dict(self.snapshot)
@@ -3898,11 +3918,18 @@ def test_the_console_runs_assert_and_run_until_on_pyrung(on_pyrung):
 WITHOUT_X003 = ("X001", "X002", "Y001", "DF1")
 
 
-@pytest.fixture()
-def without_x003(tmp_path):
+@pytest.fixture(params=[False, True], ids=["unknown-tag", "no-rung-uses"])
+def without_x003(tmp_path, request):
+    """Return a harness whose program names every point of :data:`CPU` except X003.
+
+    The fixture runs each test twice. pyrung refuses a link to X003 with ``unknown tag`` in
+    one run and with ``no rung uses`` in the other.
+    """
     project = tmp_path / "project"
     project.mkdir()
-    return Harness(tmp_path, _ready_analysis(project, used=WITHOUT_X003))
+    harness = Harness(tmp_path, _ready_analysis(project, used=WITHOUT_X003))
+    harness.no_rung_uses = request.param
+    return harness
 
 
 def _link_calls(dap: FakeDap) -> list[tuple]:
@@ -4167,6 +4194,28 @@ def test_a_write_keeps_a_link_waiting_from_the_new_tags_without_sending_it(witho
     assert not harness.sim.link_waits("X003")
 
 
+def test_a_write_keeps_a_link_waiting_when_pyrung_refuses_it_before_the_new_tags(without_x003):
+    harness = without_x003
+    harness.open()
+    _frame(harness)
+    harness.sim.link("X003", ON_DELAY_LINK)
+    harness.scheduler.run_ready()
+    assert harness.sim.link_waits("X003")
+
+    # No rung of the new program names X003. Its frame has not come, so the write sends the
+    # link, and pyrung refuses it.
+    _rebuild(harness)
+    mark = len(harness.dap.calls)
+    harness.sim.write_program()
+    harness.scheduler.run_ready()
+
+    assert ("link", "X003") in [c[:2] for c in harness.dap.calls[mark:]]
+    assert "Could not apply" not in (harness.sim.notice or "")
+    assert harness.messages("error") == ""
+    assert harness.sim.link_waits("X003")
+    assert harness.sim.bench_links == {"X003": ON_DELAY_LINK}
+
+
 def _x001_rows(harness: Harness) -> list[tuple]:
     return [
         (row.enable, row.source, row.waiting) for row in harness.sim.links if row.feedback == "X001"
@@ -4362,6 +4411,16 @@ def test_the_notice_says_what_a_cut_waits_for():
         ("Unknown tag 'DS10'.", ("DS1",), None),
         ("Unknown tag 'DS1' (address DS1 is not mapped to a tag)", ("DS10", "DS1"), "DS1"),
         ("unknown tag: ds1", ("DS1",), "DS1"),
+        (
+            "cannot link X001: no rung uses X001, so the program has no tag for it",
+            ("X001",),
+            "X001",
+        ),
+        (
+            "cannot link Start: no rung uses Start (X001), so the program has no tag for it",
+            ("Y001", "X001"),
+            "X001",
+        ),
         ("DS1 is read-only", ("DS1",), None),
     ],
 )
@@ -4369,6 +4428,23 @@ def test_a_refusal_names_an_address_only_as_a_whole_word(reason, addresses, foun
     from clicknick.simulation_session import _unresolved
 
     assert _unresolved(reason, addresses) == found
+
+
+@pytest.mark.parametrize(
+    ("reason", "unknown"),
+    [
+        ("unknown tag: X001", True),
+        ("cannot link X001: unknown tag: X001", True),
+        ("Unknown tag 'X002' (address X002 is not mapped to a tag)", True),
+        ("cannot link X001: no rung uses X001, so the program has no tag for it", True),
+        ("cannot link Start: no rung uses Start (X001), so the program has no tag for it", True),
+        ("X001 is written by the program at Main:R3", False),
+    ],
+)
+def test_pyrung_refuses_an_unknown_tag_in_either_wording(reason, unknown):
+    from clicknick.simulation_session import _unknown_tag
+
+    assert _unknown_tag(reason) is unknown
 
 
 # ----------------------------------------------------------------------
@@ -4535,6 +4611,54 @@ with Program(strict=False) as logic:
     with rung(x[2]):
         out(y[2])
 """
+
+
+_SPARE_TAGS_MODULE = """from pyrung import Bool
+from pyrung.click import ClickBlocks, TagMap
+
+blocks = ClickBlocks()
+start = Bool("Start")
+lamp = Bool("Lamp")
+spare = Bool("Spare")
+mapping = TagMap(
+    {start: blocks.x[1], lamp: blocks.y[1], spare: blocks.x[2]},
+    include_system=False,
+)
+"""
+
+_SPARE_PROGRAM = """import warnings
+warnings.simplefilter("ignore")
+from pyrung import PLC, Program, out, rung
+from tags import lamp, start
+with Program(strict=False) as prog:
+    with rung(start):
+        out(lamp)
+runner = PLC(prog, dt=0.010)
+"""
+
+
+def test_a_link_on_an_address_that_no_rung_uses_waits_on_pyrung_s_own_refusal(tmp_path, pyrung_dap):
+    """This test runs the hold against pyrung's own refusal text. The other tests use FakeDap's copy of it.
+
+    The TagMap names X002 ``Spare``, but no rung uses it. Before the first frame, ClickNick does
+    not know which addresses the rungs name, so it sends the link. pyrung refuses it, with
+    "unknown tag" on 0.18.0 and with "no rung uses" from PR #119. Both leave the link waiting.
+    """
+    harness = _on_pyrung_at(
+        tmp_path / "home",
+        tmp_path / "project",
+        pyrung_dap,
+        {"tags.py": _SPARE_TAGS_MODULE, "run.py": _SPARE_PROGRAM},
+    )
+    harness.open()
+    assert harness.sim.is_ready, harness.messages()
+
+    harness.sim.link("X002", ON_DELAY_LINK)
+    harness.scheduler.run_ready()
+
+    assert harness.sim.link_waits("X002")
+    assert harness.dap.bench_links() == {}
+    assert harness.messages("error") == ""
 
 
 def test_a_waiting_link_that_replaces_a_running_one_on_pyrung(tmp_path, pyrung_dap):
