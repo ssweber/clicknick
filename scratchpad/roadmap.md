@@ -35,10 +35,8 @@ for this in next release". Each item says what it needs, as above.
   `_restore_bench` and the patch retry in `simulation_session.py`. The same APIs bring three changes to the
   Simulator: a link on a slot that a range reaches, a dimmed point where no rung touches the address, and a
   placeholder CPU with live switches when no CPU is configured.
-- The refused-link text (waits on pyrung's next release). From pyrung #119, pyrung refuses a link with
-  `cannot link Y001: no rung uses Y001, so the program has no tag for it`. That text does not hold "unknown
-  tag", which `_unknown_tag` in `simulation_session.py` looks for. At the next pyrung pin, check that backstop
-  against both texts.
+- The refused-link text (waits on pyrung's next release). At the next pyrung pin, run
+  `tests/test_simulation_session.py` on the release.
 - An unknown module (waits on pyclickplc). pyclickplc would read a module that it does not know as unknown,
   instead of raising `ValueError`. This is item 3 of pyclickplc's roadmap.
 

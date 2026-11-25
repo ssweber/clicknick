@@ -333,9 +333,12 @@ def _unknown_tag(reason: str) -> bool:
     """Return True if pyrung refused a request because it does not know a tag in the request.
 
     pyrung words this in more than one way, such as ``unknown tag: X001`` and
-    ``Unknown tag 'X001' (address X001 is not mapped to a tag)``.
+    ``Unknown tag 'X001' (address X001 is not mapped to a tag)``. From pyrung PR #119
+    (after 0.18.0), pyrung refuses a link to an address that no rung uses with ``cannot link
+    X001: no rung uses X001, so the program has no tag for it``.
     """
-    return "unknown tag" in reason.lower()
+    reason = reason.lower()
+    return "unknown tag" in reason or "no rung uses" in reason
 
 
 def _unresolved(reason: str, addresses: Iterable[str]) -> str | None:

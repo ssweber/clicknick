@@ -70,9 +70,13 @@ refusals rely on that split.
 ## Bench links on an address that no rung names
 
 - pyrung knows the tags that a rung names (`_known_tags_by_name`). Its `link_problem` refuses a link whose
-  feedback or enable is any other tag, with `cannot link X001: unknown tag: X001`. A slot that a rung reaches
-  only through a range is not known. With pyrung 0.18.0, `pack_bits(X003..X010, DS1)`, in the form that
-  ClickNick generates, was observed to make pyrung know none of X003 to X010.
+  feedback or enable is any other tag, with `cannot link X001: unknown tag: X001`. From pyrung PR #119
+  (after 0.18.0), pyrung words the refusal differently when the project's TagMap or bank blocks give the
+  address a tag: `cannot link X001: no rung uses X001, so the program has no tag for it`. If the TagMap names
+  the address `Start`, the text is `cannot link Start: no rung uses Start (X001), so the program has no tag
+  for it`. After "no rung uses", the text names the end that pyrung refused, which can be the enable. A slot
+  that a rung reaches only through a range is not known. With pyrung 0.18.0, `pack_bits(X003..X010, DS1)`, in
+  the form that ClickNick generates, was observed to make pyrung know none of X003 to X010.
 - pyrung was observed to accept a force or a patch on such a slot. A patch on X005 moved DS1. It refuses a
   force or a patch on an address that no rung names or reaches and that the project's TagMap does not map,
   with `Unknown tag 'X002' (address X002 is not mapped to a tag)`. The Console's `why` answers for any
@@ -89,10 +93,10 @@ refusals rely on that split.
   it as `bench, waiting`, and the frame that adopts pyrung's links keeps it. No error is shown.
 - While ClickNick holds the named set, it decides from the set whether a link waits, and sends nothing for a
   link that waits. `link()` does this, and so does a write once the frame with the new tags has arrived.
-  While the set is `None`, the session sends the link. Whenever pyrung refuses a link with "unknown tag",
-  in either case, the link waits (`_held`). The match ignores case. A link leaves `_held` when pyrung lists
-  it as a bench link, when the user changes it, and when the simulation stops. If the user only disables
-  or enables a held link, the link stays in `_held`.
+  While the set is `None`, the session sends the link. Whenever pyrung refuses a link with "unknown tag" or
+  "no rung uses", the link waits (`_held`). The match ignores case. A link leaves `_held` when pyrung lists it
+  as a bench link, when the user changes it, and when the simulation stops. If the user only disables or
+  enables a held link, the link stays in `_held`.
 - A link that waits is not in the simulation, so the simulation runs the program's own wiring on its
   feedback. `_change_links` keeps the two in agreement. When a change in ClickNick makes a link wait, or
   drops a link that waited, it restores the program's wiring on that feedback (`_restore_bench`) if pyrung
