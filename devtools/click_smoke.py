@@ -197,6 +197,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from pyclickplc.nicknames import CSV_ENCODING
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import click_runner as cr  # noqa: E402
@@ -264,13 +266,6 @@ PANEL_WAIT = 15.0
 # How long the panel check lets Modbus read the values again after the scans that it waits for,
 # in seconds. The simulation reads them every 0.1 s
 PANEL_SETTLE = 0.5
-# The panel check fails with this text when the switch shows STEP after the click on STOP
-PYRUNG_STOP_FAULT = (
-    "On the Simulator's panel, the switch shows STEP after the click on STOP. pyrung 0.18.0 has a "
-    "fault that shows this way: after it enters STOP, it sends the state of its last scan in RUN "
-    "once more, and ClickNick shows RUN with the scans paused as STEP. The fault is not in "
-    "ClickNick."
-)
 # The projects that the smoke makes, in order. Each is a CPU in cr.CPU_MODELS, cr.NO_CPU for a
 # project with no CPU, or PROGRAM_PROJECT
 PROJECTS = (
@@ -957,8 +952,6 @@ def panel_scene(driver: Driver, details: dict[str, Any], timeout: float) -> Scen
     Raises:
         CheckFailed: A wait passed *timeout* seconds, ``PROGRAM_OUTPUT`` is on after the switch
             to RUN, or ``PROGRAM_OUTPUT`` does not stay lit after ``PROGRAM_INPUT`` turns off.
-            If the switch shows STEP after the click on STOP, the text is
-            ``PYRUNG_STOP_FAULT``.
     """
     sim, win = driver.sim, driver.win
     steps: list[dict[str, Any]] = details.setdefault("steps", [])
@@ -1003,16 +996,10 @@ def panel_scene(driver: Driver, details: dict[str, Any], timeout: float) -> Scen
         driver.leave_canvas()
 
     yield from click(driver.mode_point("stop"))
-    try:
-        yield from until(
-            lambda: sim.switch_position == "stop" and not run_led_lit(win),
-            "STOP, with the RUN LED off",
-        )
-    except CheckFailed as exc:
-        # STEP is mode run without scanning
-        if sim.switch_position == "step":
-            raise CheckFailed(PYRUNG_STOP_FAULT) from exc
-        raise
+    yield from until(
+        lambda: sim.switch_position == "stop" and not run_led_lit(win),
+        "STOP, with the RUN LED off",
+    )
     record("stop")
     if sim.switch_on(PROGRAM_INPUT):
         yield from click(driver.switch_point(PROGRAM_INPUT))
@@ -1264,16 +1251,20 @@ def exported_row(data: bytes, nickname: str) -> dict[str, Any]:
 
     A file that starts with the UTF-8 byte order mark is read as UTF-8, and any other file as
     cp1252. A file without the mark is not read as UTF-8 even when it decodes as UTF-8. If it
-    were, a cp1252 file that holds "50Â°C" would read as "50°C". The result holds the
-    encoding, the row's address, initial value and comment, and the bytes of the comment and
-    of its line, in hex.
+    were, a cp1252 file that holds "50Â°C" would read as "50°C". A cp1252 file is read with
+    pyclickplc's ``CSV_ENCODING``. That codec also reads the five bytes that Python's cp1252
+    lacks, such as 81, which CLICK 4.00 writes for U+0081. The result holds the encoding, the
+    row's address, initial value and comment, and the bytes of the comment and of its line, in
+    hex.
 
     Raises:
-        CheckFailed: The file does not decode in its encoding, or no row has *nickname*.
+        CheckFailed: A file with the mark does not decode as UTF-8, or no row has *nickname*.
     """
-    encoding = "utf-8-sig" if data.startswith(codecs.BOM_UTF8) else "cp1252"
+    bom = data.startswith(codecs.BOM_UTF8)
+    encoding = "utf-8-sig" if bom else "cp1252"
+    codec = "utf-8-sig" if bom else CSV_ENCODING
     try:
-        text = data.decode(encoding)
+        text = data.decode(codec)
     except UnicodeDecodeError as exc:
         raise CheckFailed(f"CLICK's export does not decode as {encoding}: {exc}") from exc
     found = next(
@@ -1287,7 +1278,7 @@ def exported_row(data: bytes, nickname: str) -> dict[str, Any]:
     if found is None:
         raise CheckFailed(f"CLICK's export has no row for {nickname}.")
     comment = found.get("Address Comment") or ""
-    plain = encoding.removesuffix("-sig")
+    plain = codec.removesuffix("-sig")
     line = next(line for line in data.splitlines() if nickname.encode(plain) in line)
     return {
         "encoding": encoding,
@@ -1462,7 +1453,7 @@ def check_csv_round_trip(project: Project, details: dict[str, Any]) -> str:
             "CLICK answered that it imported ClickNick's CSV, but SC_.mdb did not change."
         )
     in_file = {
-        row["Address"] for row in csv.DictReader(io.StringIO(data.decode("cp1252"), newline=""))
+        row["Address"] for row in csv.DictReader(io.StringIO(data.decode(CSV_ENCODING), newline=""))
     }
     stored = set(project.run.read_rows(Path(entry["mdb"])))
     details["addresses"] = {"file": sorted(in_file), "mdb": sorted(stored)}

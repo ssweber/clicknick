@@ -7,6 +7,7 @@ of ``make smoke`` is the real check.
 
 from __future__ import annotations
 
+import codecs
 import csv
 import dataclasses
 import io
@@ -1076,10 +1077,18 @@ def test_exported_row_reads_a_file_without_a_byte_order_mark_as_cp1252():
     assert found["comment_bytes"] == "35 30 c2 b0 43"
 
 
-def test_exported_row_fails_when_a_file_does_not_decode_as_cp1252():
-    data = f'{EXPORT_HEADER}\r\nDS100,INT,"Smoke_Init",0,Yes,"x"\r\n'.encode() + b"\x81"
-    with pytest.raises(cs.CheckFailed, match=r"^CLICK's export does not decode as cp1252: "):
-        cs.exported_row(data, "Smoke_Init")
+def test_exported_row_reads_a_byte_that_pythons_cp1252_lacks():
+    # CLICK 4.00 wrote U+0081 in a nickname to its export as the byte 81
+    data = f'{EXPORT_HEADER}\r\nDS100,INT,"Smoke_Init",0,Yes,"50x"\r\n'.encode()
+    found = cs.exported_row(data.replace(b"50x", b"50\x81"), "Smoke_Init")
+    assert (found["encoding"], found["comment"]) == ("cp1252", "50\x81")
+    assert found["comment_bytes"] == "35 30 81"
+
+
+def test_exported_row_fails_when_a_file_with_the_mark_does_not_decode_as_utf8():
+    data = f'{EXPORT_HEADER}\r\nDS100,INT,"Smoke_Init",0,Yes,"x"\r\n'.encode() + b"\xff"
+    with pytest.raises(cs.CheckFailed, match=r"^CLICK's export does not decode as utf-8-sig: "):
+        cs.exported_row(codecs.BOM_UTF8 + data, "Smoke_Init")
 
 
 def test_the_sync_check_fails_when_sync_does_not_refuse_the_comment(tmp_path, monkeypatch):
@@ -2285,7 +2294,7 @@ class PanelPlant:
     - with *clears* False, the switch from STOP to RUN does not clear Y001;
     - with *forces* False, a force on Y001 does not change its value.
 
-    With *stale_stop* True, the plant does what pyrung 0.18.0 does after STOP. It sends the
+    With *stale_stop* True, the plant does what pyrung 0.18.0 did after STOP. It sends the
     frame of STOP, then the frame of its last scan in RUN once more: mode run, not running.
     """
 
@@ -2462,16 +2471,13 @@ def test_the_panel_check_fails_when_x001_does_not_light_y001(tmp_path, tk_root, 
     assert timed_out["Y001"] == {"lit": False, "padlock": False}
 
 
-def test_the_panel_check_names_pyrung_when_the_switch_shows_step_after_stop(
+def test_the_panel_check_fails_when_the_switch_shows_step_after_stop(
     tmp_path, tk_root, panel_harness
 ):
     plant = PanelPlant(panel_harness, stale_stop=True)
     details, steps = press_panel_with(tmp_path, tk_root, panel_harness, plant)
     assert details["failed"] == (
-        "On the Simulator's panel, the switch shows STEP after the click on STOP. pyrung 0.18.0 "
-        "has a fault that shows this way: after it enters STOP, it sends the state of its last "
-        "scan in RUN once more, and ClickNick shows RUN with the scans paused as STEP. The fault "
-        "is not in ClickNick."
+        "On the Simulator's panel, the check timed out waiting for STOP, with the RUN LED off."
     )
     assert list(steps) == ["timed out waiting for STOP, with the RUN LED off"]
     assert steps["timed out waiting for STOP, with the RUN LED off"]["switch_position"] == "step"
@@ -2581,8 +2587,6 @@ def test_the_panel_check_fails_when_the_panel_draws_something_wrong(
     monkeypatch.setattr(SimulatorWindow, method, wrong)
     plant = PanelPlant(panel_harness, **flags)
     details, steps = press_panel_with(tmp_path, tk_root, panel_harness, plant)
-    # A timeout at STOP names pyrung only when the switch shows STEP. "The RUN LED stays lit"
-    # times out at STOP with the switch at STOP.
     assert (
         details.get("failed")
         == f"On the Simulator's panel, the check timed out waiting for {wait}."

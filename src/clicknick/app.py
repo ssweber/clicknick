@@ -1309,7 +1309,7 @@ class ClickNickApp:
         except (ValueError, RuntimeError) as exc:
             messagebox.showerror(
                 "Load Ladder CSV",
-                str(exc),
+                f"Could not copy {csv_path.name}: {exc}",
                 parent=self.root,
             )
             return

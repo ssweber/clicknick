@@ -61,12 +61,12 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "executing", specifier = "==2.2.1" },
-    { name = "laddercodec", specifier = "==0.5.0" },
-    { name = "pyclickplc", specifier = "==0.11.2" },
+    { name = "laddercodec", specifier = "==0.5.1" },
+    { name = "pyclickplc", specifier = "==0.11.3" },
     { name = "pymodbus", specifier = "==3.12.1" },
     { name = "pyodbc", specifier = "==5.3.0" },
     { name = "pyrsistent", specifier = "==0.20.0" },
-    { name = "pyrung", specifier = "==0.18.0" },
+    { name = "pyrung", specifier = "==0.18.1" },
     { name = "pywin32", specifier = "==311" },
     { name = "tksheet", specifier = "==7.6.0" },
     { name = "tomlkit", specifier = "==0.15.1" },
@@ -130,11 +130,11 @@ wheels = [
 
 [[package]]
 name = "laddercodec"
-version = "0.5.0"
+version = "0.5.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ee/89/e501a4dc2e7be08a1d393081a72c1101ae62dff51344611855df4823b835/laddercodec-0.5.0.tar.gz", hash = "sha256:56662e4176fa13c40fc89107b795abc2dd6dca6b23d3044b61d7ead72ebba6f3", size = 3189556, upload-time = "2026-11-20T15:20:25.506Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/03/5535fd0dd564a1d0ed49403ff498dfe09c7fe2d69e5f953216ab1cef4207/laddercodec-0.5.1.tar.gz", hash = "sha256:207a8fc0409b6ef97442420e08810e829d9a648a8f84204e7165901c9229a49d", size = 3209473, upload-time = "2026-11-25T18:22:07.12Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/69/9f8d48d9e29976363ab5b642b6ff5ad9157a23c12dfa2b55840121233b2c/laddercodec-0.5.0-py3-none-any.whl", hash = "sha256:22452a03e717cfde569d77afd4accd4d82430b0805bb94ea97da442735063c3d", size = 383767, upload-time = "2026-11-20T15:20:23.538Z" },
+    { url = "https://files.pythonhosted.org/packages/28/42/9dd1f4b158f9c3a192822f38cc3bdd66925a3ce8148c37ddebc27be09ff6/laddercodec-0.5.1-py3-none-any.whl", hash = "sha256:ab8bd7b272dfd85e368b77f099b0ef10dde38d4c2a00b1eedf93b530a31fc150", size = 388141, upload-time = "2026-11-25T18:22:04.718Z" },
 ]
 
 [[package]]
@@ -229,14 +229,14 @@ wheels = [
 
 [[package]]
 name = "pyclickplc"
-version = "0.11.2"
+version = "0.11.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pymodbus" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/06/af/8e022e92eea758f4e5b2d36ec87159cc2d772d4bdf023f9db51012b0cbe1/pyclickplc-0.11.2.tar.gz", hash = "sha256:d33f2d577aa1127103015eeb96382a560cd889b9e14f896b7d9b71272a3ca90b", size = 272411, upload-time = "2026-11-20T20:23:20.552Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/50/3e/c1819ea93b6d5194a678dbfa1d2ebf231b80b0d73fd121d99c6ad37029c4/pyclickplc-0.11.3.tar.gz", hash = "sha256:de654cd887bb1d38716d8a8527a4e7068c2007ac97d2aa3a287c08bd14565b89", size = 274021, upload-time = "2026-11-25T18:15:00.68Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/76/5e3e5af2a63369c04bfdc9bfc07f16e9cc42db286abcf1c77efeab3c0260/pyclickplc-0.11.2-py3-none-any.whl", hash = "sha256:1d844a048fbf17db5ccff390ab73cd58cb61c8842b620ef00e288c867d50bebf", size = 92846, upload-time = "2026-11-20T20:23:19.246Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/b8/2c06708fd9f9657b38c8edb531f609f1c062428d7c885963c5eb307c87c7/pyclickplc-0.11.3-py3-none-any.whl", hash = "sha256:dc7aa26335622a3d06f4154ac312dd7026213d32b3e9831b4bc361d20f6c5df7", size = 93778, upload-time = "2026-11-25T18:14:59.387Z" },
 ]
 
 [[package]]
@@ -316,7 +316,7 @@ wheels = [
 
 [[package]]
 name = "pyrung"
-version = "0.18.0"
+version = "0.18.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "executing" },
@@ -326,9 +326,9 @@ dependencies = [
     { name = "pyrsistent" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/79/a02681f746335cc99ad8c3cdff8c01d6a3a00d6d13b09d37ff507885945b/pyrung-0.18.0.tar.gz", hash = "sha256:f35e5c2fce0e2f0174ce5c0d4a5d5d58dafd6ab3c1b03700cd1ece9333bfbda8", size = 5479859, upload-time = "2026-11-20T18:09:21.895Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/20/f506aa3232dc039e138ccbf48e81dfacaa8dd79b8926b0cfd679a4428538/pyrung-0.18.1.tar.gz", hash = "sha256:1fdd04f1e3f33b5a750a95783416ada2e8d99cae73ebf10a53a00e039358ec3f", size = 5497886, upload-time = "2026-11-25T19:32:29.435Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/6a/dcfcd363a31b5153302715a4674a26e5d4347cc77a75475186a3d41cb6bd/pyrung-0.18.0-py3-none-any.whl", hash = "sha256:8c03408528e9adb034cf15b1f64017bb3d0c1dbc4a553890577c218fae4558f9", size = 2046963, upload-time = "2026-11-20T18:09:20.231Z" },
+    { url = "https://files.pythonhosted.org/packages/50/8d/6b0a3634cab0e5ac9c2ed3aed6dbc4d6710dcc06095c759163daee29ac3b/pyrung-0.18.1-py3-none-any.whl", hash = "sha256:58825b70d6092068fe9dd1178274a56b2305168e25eb5c8784d61dacf7ebb38a", size = 2055242, upload-time = "2026-11-25T19:32:27.867Z" },
 ]
 
 [[package]]

@@ -17,7 +17,6 @@ save. Warnings are passed on under the same lock, so that no other block records
 
 from __future__ import annotations
 
-import re
 import threading
 import warnings
 from collections.abc import Iterator
@@ -36,10 +35,6 @@ from laddercodec import (
 )
 
 _PACKAGE = Path(laddercodec.__file__).resolve().parent
-# How laddercodec ends the reason of a marker that stands for its rung and every rung after it
-_TO_THE_END_RE = re.compile(
-    r"; decoding stopped, so this marker stands for rung [0-9]+ to the end$"
-)
 # How laddercodec starts the warning for blank rows at the end of a rung that a CSV drops
 _LOST_BLANK_ROWS = "CSV round-trip lost "
 # Held across each recording() block, and while a warning is passed on
@@ -136,16 +131,15 @@ def pass_on(found: list[Warning]) -> None:
 def marker_detail(marker: Undecoded) -> str:
     """Say why laddercodec put an UNDECODED marker in place of a rung, with no rung number.
 
-    laddercodec counts rungs from 0, and ClickNick counts them from 1. So the text leaves
-    out laddercodec's number, and the caller names the rung.
+    The caller names the rung. If the marker also stands for every rung after it, the text
+    says that those rungs are missing too.
     """
     error = marker.error.rstrip(".")
-    stopped = _TO_THE_END_RE.search(error)
-    if stopped is None:
+    if not marker.to_the_end:
         return f"laddercodec cannot read this rung: {error}."
     return (
         f"laddercodec cannot read this rung, and it stopped reading the program there: "
-        f"{error[: stopped.start()]}. The rungs after it are missing too."
+        f"{error}. The rungs after it are missing too."
     )
 
 
@@ -166,7 +160,8 @@ def _note(warning: Warning, *, writing: bool) -> Note:
             detail = marker_detail(marker)
         return Note(warning, Rule.RUNG, marker.rung, detail)
     if isinstance(warning, UndecodedCommentWarning):
-        detail = f"laddercodec cannot read this rung's comment: {_first_line(warning.error)}."
+        what = "part of this rung's comment" if warning.partial else "this rung's comment"
+        detail = f"laddercodec cannot read {what}: {_first_line(warning.error)}."
         return Note(warning, Rule.COMMENT, warning.rung, detail)
     if isinstance(warning, RefusedFieldWarning):
         return Note(warning, Rule.PROGRAM, warning.rung, _first_line(warning.error))

@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -4768,33 +4769,39 @@ def test_wire_keep_names_what_laddercodec_cannot_write(tmp_path, setup, monkeypa
     assert "the clipboard decoded into" not in logged(tmp_path)
 
 
+def _what_laddercodec_writes(tmp_path: Path, data: bytes) -> tuple[laddercodec.Rung, str]:
+    """Return the one rung that laddercodec writes to a CSV for *data*, and its warning.
+
+    laddercodec decodes *data* and writes the rungs to a CSV, as the runner does. The
+    warning is written in the runner's form, with laddercodec's own text.
+    """
+    path = tmp_path / "laddercodec.csv"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        laddercodec.write_csv(path, laddercodec.decode(data))
+    [warning] = [w for w in caught if isinstance(w.message, laddercodec.UndecodedRungWarning)]
+    (rung,) = read_csv(path)
+    return rung, f"laddercodec UndecodedRungWarning, rungs from 0: {warning.message}"
+
+
 @pytest.mark.parametrize(
-    ("payload", "unreadable"),
+    ("payload", "named"),
     [
         # Named by ClickNick, then by laddercodec's warning as it writes the marker rung
-        (
-            unknown_contact_payload,
-            f"{UNKNOWN_CONTACT}; laddercodec UndecodedRungWarning, rungs from 0: rung 0, row 0"
-            " is not decoded, and an undecoded marker stands in for it: no CSV token holds"
-            " this unknown condition (96 bytes)",
-        ),
+        (unknown_contact_payload, [UNKNOWN_CONTACT]),
         # Cells that laddercodec cannot walk. Decoding puts the marker rung in and warns.
-        (
-            unwalkable_payload,
-            "laddercodec UndecodedRungWarning, rungs from 0: rung 0, row 0 is not decoded, and"
-            " an undecoded marker stands in for it: grid row 0 has no cell 0 at 0xa60; decoding"
-            " stopped, so this marker stands for rung 0 to the end",
-        ),
+        (unwalkable_payload, []),
     ],
 )
-def test_wire_keep_names_what_laddercodec_writes_a_marker_rung_for(
-    tmp_path, setup, payload, unreadable
-):
+def test_wire_keep_names_what_laddercodec_writes_a_marker_rung_for(tmp_path, setup, payload, named):
     _, exe = setup
+    marker, warned = _what_laddercodec_writes(tmp_path, payload())
+    unreadable = "; ".join([*named, warned])
     kept = keep_clip(tmp_path, exe, payload())
     assert kept["clip_error"] == unreadable
     (rung,) = read_csv(Path(kept["clip_csv"]))
-    assert rung.comment is not None and rung.comment.startswith("UNDECODED: rung 0, row 0: ")
+    assert rung.comment is not None and rung.comment.startswith("UNDECODED: ")
+    assert rung == marker
     assert f"case01: laddercodec cannot read all of the clipboard: {unreadable}" in logged(tmp_path)
 
 

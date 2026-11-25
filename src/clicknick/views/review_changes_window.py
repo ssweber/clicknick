@@ -264,8 +264,7 @@ def _placeholder_refusal(name: str, change: ProgramChange) -> str:
     whole paste of an empty rung would leave that rung empty in CLICK.
     ``prepare_rungs_load`` also refuses a marker, but only at the copy, and its text does
     not name the program. This function refuses before the copy.
-    The text numbers the folder's rungs from 1. laddercodec's comment on a marker numbers
-    them from 0.
+    The text numbers the folder's rungs from 1.
     """
     empty, markers = change.empty_rungs, change.marker_rungs
     if not change.unreadable or not (empty or markers):

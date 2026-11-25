@@ -26,7 +26,9 @@ from laddercodec import (
     UnknownCondition,
     UnknownInstruction,
     decode,
+    decode_program,
     encode,
+    marker_rung,
     read_csv,
     write_csv,
 )
@@ -356,13 +358,15 @@ def test_an_undecoded_marker_in_a_csv_is_never_copied(tmp_path: Path) -> None:
 
 # A compare whose cell laddercodec reads back two ways, so write_csv writes a marker for it
 _TWO_WAYS = CompareContact("==", '"A"=="B"', '"C"')
-_TO_THE_END = "bad record; decoding stopped, so this marker stands for rung 1 to the end"
 
 
-def _marker_rung(error: str, rung: int) -> Rung:
-    """Return the rung that laddercodec's decoder returns for a rung that it cannot read."""
-    headline = f"UNDECODED: rung {rung}: {error}"
-    return Rung([["-"] * 31], [Undecoded(error, rung=rung)], f"{headline}\nMine")
+def _marker_rung(error: str, rung: int, *, to_the_end: bool = False) -> Rung:
+    """Return the rung that laddercodec's decoder returns for a rung that it cannot read.
+
+    laddercodec's ``marker_rung`` writes the headline. The rung's own comment, "Mine",
+    follows it. If *to_the_end* is True, the marker stands for every rung after it too.
+    """
+    return marker_rung(Undecoded(error, rung=rung, to_the_end=to_the_end), "Mine")
 
 
 def _split_rung() -> Rung:
@@ -432,7 +436,7 @@ def test_a_marker_for_the_rest_of_the_program_names_its_rung_from_1(
     tmp_path: Path, monkeypatch
 ) -> None:
     out, found = _save_one_program(
-        tmp_path, monkeypatch, [_rung("C1"), _marker_rung(_TO_THE_END, 1)]
+        tmp_path, monkeypatch, [_rung("C1"), _marker_rung("bad record", 1, to_the_end=True)]
     )
 
     [finding] = found
@@ -451,7 +455,9 @@ def test_the_workspace_builds_from_a_save_with_a_rung_the_csv_cannot_hold(
     from pyrung.click import ladder_to_pyrung
 
     out, _found = _save_one_program(
-        tmp_path, monkeypatch, [_rung("C1"), _rung("C2", _TWO_WAYS), _marker_rung(_TO_THE_END, 2)]
+        tmp_path,
+        monkeypatch,
+        [_rung("C1"), _rung("C2", _TWO_WAYS), _marker_rung("bad record", 2, to_the_end=True)],
     )
 
     code = ladder_to_pyrung(out)
@@ -485,7 +491,7 @@ def test_clipboard_rung_that_the_csv_cannot_hold_writes_no_csv(
 
 
 def test_clipboard_marker_is_refused_before_the_csv_or_the_mdb(tmp_path: Path, monkeypatch):
-    marker = _marker_rung(_TO_THE_END, 1)
+    marker = _marker_rung("bad record", 1, to_the_end=True)
     monkeypatch.setattr("clicknick.ladder.program.decode", lambda _data: [_rung("C1"), marker])
     detail = (
         "laddercodec cannot read this rung, and it stopped reading the program there: bad "
@@ -616,6 +622,65 @@ def test_clipboard_comment_that_laddercodec_cannot_read_writes_no_csv(
     with pytest.raises(UnreadableRungError, match="copied rung 1: laddercodec cannot read this"):
         decode_to_csv(b"clip", path)
     assert not path.exists()
+
+
+_CAPTURES = Path(__file__).resolve().parents[1] / "fixtures" / "ladder_captures"
+
+
+def _partly_readable(name: str) -> bytes:
+    """Return laddercodec's capture *name*, with its comment's font made one it reads in part.
+
+    ``simsun.bin`` and ``simsun.scr`` come from laddercodec's ``tests/fixtures/rung_comments``.
+    CLICK 4.00 copied and saved one rung, a contact on X001 and ``out(Y001)``, with the comment
+    中 in font 0, SimSun, ``\\fcharset134``. The test changes that font to ``\\fcharset136``.
+    laddercodec reads no font of that charset, so it reads the comment in part.
+    """
+    data = (_CAPTURES / name).read_bytes()
+    assert data.count(b"\\fcharset134") == 1
+    return data.replace(b"\\fcharset134", b"\\fcharset136")
+
+
+def _comment_warning(decode_bytes) -> UndecodedCommentWarning:
+    """Run *decode_bytes*, and return the one warning about a comment that laddercodec issues."""
+    with warnings.catch_warnings(record=True) as found:
+        warnings.simplefilter("always")
+        decode_bytes()
+    [warning] = [item.message for item in found]
+    assert isinstance(warning, UndecodedCommentWarning)
+    assert warning.partial
+    return warning
+
+
+def test_save_clipboard_refuses_a_comment_that_laddercodec_reads_in_part(tmp_path: Path) -> None:
+    """The CSV would hold U+FFFD in place of the text, and a paste would write that to CLICK."""
+    data = _partly_readable("simsun.bin")
+    warning = _comment_warning(lambda: decode(data))
+    path = tmp_path / "copied.csv"
+
+    with pytest.raises(UnreadableRungError) as refused:
+        decode_to_csv(data, path)
+
+    reason = warning.error.splitlines()[0].rstrip(".")
+    assert str(refused.value) == (
+        "ClickNick cannot read these rungs, so it wrote no CSV:\n"
+        f"  copied rung 1: laddercodec cannot read part of this rung's comment: {reason}.\n"
+        "Fix them in CLICK and copy them again."
+    )
+    assert not path.exists()
+
+
+def test_a_comment_that_laddercodec_reads_in_part_is_left_out_of_the_save(tmp_path: Path) -> None:
+    data = _partly_readable("simsun.scr")
+    _comment_warning(lambda: decode_program(data))
+    (tmp_path / "Scr1.tmp").write_bytes(data)
+    out = tmp_path / "csv"
+
+    result = program_save(tmp_path, out, index=True)
+
+    assert result.legacy_encodings == []
+    [rung] = read_csv(out / "main.csv")
+    assert rung.comment is None
+    assert rung.instructions == (Coil("Y001"),)
 
 
 def test_a_bin_load_passes_on_warnings_other_than_a_marker(monkeypatch) -> None:

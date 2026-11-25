@@ -21,6 +21,7 @@ from laddercodec import (
     ConditionToken,
     Contact,
     CsvWriteError,
+    EncodeError,
     InstructionToken,
     Rung,
     Tee,
@@ -419,19 +420,6 @@ def describe_csv(csv_path: Path, *, best_effort: bool = False) -> str:
 # ---------------------------------------------------------------------------
 
 
-def encode_csv(csv_path: Path, *, best_effort: bool = False) -> bytes:
-    """Encode a CSV file and return the payload bytes.
-
-    Raise ValueError if the CSV holds no rungs, because there is nothing to paste.
-    """
-    rungs = read_csv(csv_path, strict=not best_effort)
-    if not rungs:
-        raise ValueError(f"{csv_path.name} holds no rungs")
-    if len(rungs) > 1:
-        return encode(rungs)
-    return encode(rungs[0])
-
-
 def _instruction_name(raw: bytes) -> str:
     """Return the name of the instruction that an ``UnknownCondition`` holds, e.g. "Compare".
 
@@ -518,7 +506,8 @@ def _clipboard_problems(rungs: list[Rung], notes: list[Note]) -> list[str]:
     """Return a line for each reason in *notes*, and for each marker rung in *rungs*.
 
     A comment that laddercodec cannot read is a reason too, because the CSV would hold
-    laddercodec's note in place of the comment.
+    laddercodec's note in place of the comment. So is a comment that laddercodec reads only
+    in part. The CSV would hold U+FFFD in place of the text that laddercodec cannot read.
     """
     lines = []
     for note in notes:
@@ -656,7 +645,7 @@ def _stand_in(rung: Rung, problems: Sequence[tuple[str, str]]) -> Rung:
     lines = [STAND_IN_COMMENT, why]
     comment = rung.comment or ""
     if is_marker(rung):
-        # laddercodec's first line repeats the reason, with its rung number counted from 0
+        # laddercodec's first line, the marker's headline, repeats the reason
         comment = comment.split("\n", 1)[1] if "\n" in comment else ""
     if comment:
         lines += ["", comment]
@@ -674,7 +663,8 @@ def _replace_unreadable(
     and Review Changes pastes that program whole.
 
     A rung whose comment laddercodec cannot read (``Rule.COMMENT``) keeps its logic, and
-    loses its comment, with no finding. 0.25.0 did the same.
+    loses its comment, with no finding. 0.25.0 did the same. A comment that laddercodec reads
+    only in part is left out too.
     """
     noted: dict[int, list[tuple[str, str]]] = {}
     comments: set[int] = set()
@@ -931,6 +921,24 @@ def program_save(
     )
 
 
+def _encode_refusal(rungs: list[Rung], *, first_rung: int) -> ValueError | None:
+    """Return the error to raise when laddercodec's ``encode()`` refuses *rungs*.
+
+    The error names the first rung that ``encode()`` refuses when it encodes that rung alone,
+    numbered from *first_rung*. laddercodec's own message names no rung, or names the rung's
+    index from 0. A comment outside ASCII can make ``encode()`` refuse a rung, because CLICK
+    stores each such character in 4 to 16 bytes of its 1400-byte limit. If ``encode()``
+    accepts each rung alone, return None.
+    """
+    for number, rung in enumerate(rungs, start=first_rung):
+        try:
+            with recording():
+                encode(rung)
+        except EncodeError as refused:
+            return ValueError(f"Rung {number} cannot be copied into CLICK. {refused}")
+    return None
+
+
 def prepare_rungs_load(
     rungs: list[Rung],
     *,
@@ -947,7 +955,8 @@ def prepare_rungs_load(
     UNDECODED marker rung, because CLICK cannot hold the marker. Raise it for a comment that
     starts with laddercodec's ``UNDECODED comment:`` line, because a paste would put that
     line in CLICK in place of the comment. Raise ValueError if there are no rungs, because
-    there is nothing to paste.
+    there is nothing to paste. Also raise ValueError if laddercodec cannot encode a rung,
+    such as one whose comment is too long. The message names the rung.
     """
     if not rungs:
         raise ValueError("there are no rungs to copy")
@@ -999,12 +1008,18 @@ def prepare_rungs_load(
             " that CLICK held there. Delete that line, or put back the comment."
         )
     check_click_version(rungs, click_v4=click_v4, first_rung=first_rung)
-    with recording() as found:
-        payload = (
-            encode(rungs, show_nicknames=show_nicknames)
-            if len(rungs) > 1
-            else encode(rungs[0], show_nicknames=show_nicknames)
-        )
+    try:
+        with recording() as found:
+            payload = (
+                encode(rungs, show_nicknames=show_nicknames)
+                if len(rungs) > 1
+                else encode(rungs[0], show_nicknames=show_nicknames)
+            )
+    except EncodeError as exc:
+        refusal = _encode_refusal(rungs, first_rung=first_rung)
+        if refusal is None:
+            raise
+        raise refusal from exc
     notes = [note for note in pass_on_legacy(sort_warnings(found)) if note.reported]
     if notes:
         lines = [

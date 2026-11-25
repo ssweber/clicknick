@@ -13,6 +13,7 @@ from pyclickplc.addresses import get_addr_key, parse_address
 from clicknick.data.address_store import AddressStore
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
+from clicknick.models.validation import cp1252_error
 
 CLICK_EXPORT = Path(__file__).parent / "NicknameExport.csv"
 # CLICK's export of Text initial values: a letter, a comma, a quote, a space and none.
@@ -281,6 +282,24 @@ class TestCsvModeStore:
         source.save_changes(list(rows.values()))
 
         assert [row.nickname for row in rows.values()] == ["Café"]
+        assert path.read_bytes() == before
+
+    def test_a_byte_that_pythons_cp1252_lacks_is_loaded_and_saved_again(self, tmp_path):
+        """CLICK 4.00 was observed to hold U+0081 in a nickname and to export it as 0x81.
+
+        Python's cp1252 codec has no character for that byte. pyclickplc 0.11.2 refused the
+        file, and ClickNick called the nickname one that CLICK cannot hold.
+        """
+        path = tmp_path / "names.csv"
+        path.write_bytes(f'{HEADER}\r\nC1,BIT,"Pump\x81A",0,No,""\r\n'.encode("latin-1"))
+        before = path.read_bytes()
+        source = CsvDataSource(str(path))
+
+        rows = source.load_all_addresses()
+        source.save_changes(list(rows.values()))
+
+        assert [row.nickname for row in rows.values()] == ["Pump\x81A"]
+        assert cp1252_error("Pump\x81A") == ""
         assert path.read_bytes() == before
 
     @pytest.mark.parametrize("field", ["nickname", "comment", "initial_value"])
