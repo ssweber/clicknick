@@ -3057,11 +3057,14 @@ class Run:
         """Read the CPU and modules from ``DIR/click/Project.ini`` into the result's ``project``.
 
         pyclickplc's ``read_modules`` reads them. ``project`` also keeps the file's [Sec21]
-        lines, where CLICK writes the CPU and the modules. The run stops if the file names
-        another CPU than *model*, or if pyclickplc cannot read it. With *model* None, the run
-        stops if the file names any CPU.
+        lines, where CLICK writes the CPU and the modules. The run stops if pyclickplc cannot
+        read the file, or if the file lists a module whose ID pyclickplc does not know. It also
+        stops if the file names another CPU than *model*. With *model* None, the run stops if
+        the file names any CPU.
         """
         from pyclickplc import read_modules
+
+        from clicknick.services.sim_hardware import position_name
 
         ini = self.s.out / "click" / "Project.ini"
         try:
@@ -3076,6 +3079,13 @@ class Run:
             "sec21": _ini_section(ini.read_bytes(), "Sec21"),
         }
         self.log(f"Project.ini: {self.result['project']}")
+        if modules.unknown:
+            # pyclickplc leaves such a module out of the CPU, the slots and the expansions.
+            listed = ", ".join(
+                f"{position_name(m.location, m.position)} (module ID {m.module_id})"
+                for m in modules.unknown
+            )
+            raise Aborted(f"{ini} lists modules that pyclickplc does not know: {listed}")
         if saved == model:
             return
         if model is None:

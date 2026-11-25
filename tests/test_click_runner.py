@@ -7716,6 +7716,40 @@ def test_new_stops_when_the_saved_project_names_no_cpu(tmp_path, setup, monkeypa
     assert result["step"] == "check"
 
 
+@pytest.mark.parametrize(
+    ("old", "new", "listed"),
+    [
+        ("Key3_10=8192", "Key3_10=-1", "Option slot 0 (module ID -1)"),
+        ("Key3_1=198", "Key3_1=999", "CPU (module ID 999)"),
+    ],
+    ids=["slot", "cpu"],
+)
+def test_new_stops_when_the_saved_project_lists_an_unknown_module(
+    tmp_path, setup, monkeypatch, old, new, listed
+):
+    # -1 and 999 are not CLICK module IDs, so pyclickplc's catalog never has them
+    _, exe = setup
+    fake = FakeClick(tmp_path)
+    write = fake._write_sec21
+
+    def write_unknown(saved: str) -> None:
+        write(saved)
+        assert fake.main is not None
+        ini = fake.temp_dir(fake.main.hwnd) / "Project.ini"
+        ini.write_bytes(ini.read_bytes().replace(old.encode(), new.encode()))
+
+    monkeypatch.setattr(fake, "_write_sec21", write_unknown)
+    code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C2-03CPU")
+    assert_aborted(
+        fake,
+        tmp_path / "out",
+        code,
+        result,
+        f"lists modules that pyclickplc does not know: {listed}",
+    )
+    assert result["step"] == "check"
+
+
 def test_new_none_records_each_window_and_calls_on_new_project_with_no_model(tmp_path, setup):
     _, exe = setup
     fake = FakeClick(tmp_path)

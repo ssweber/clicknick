@@ -54,6 +54,7 @@ from .services.sim_hardware import (
     build_panel_layout,
     io_addresses,
     layout_error_text,
+    unknown_layout_text,
 )
 from .services.sim_state import (
     BenchLink,
@@ -708,6 +709,10 @@ class SimulationSession:
 
         # Hardware
         self._layout: PanelLayout | None = None
+        # The text that the panel shows when ClickNick could not read all of Project.ini, or
+        # None. refresh_layout also sets it when Project.ini lists a module that ClickNick does
+        # not know. ClickNick does not know the analog inputs of that module, so
+        # _restore_when_known trims nothing while it is set.
         self._layout_error: str | None = None
         self._layout_key: tuple[float | None, tuple[int, Any] | None] | None = None
 
@@ -1175,8 +1180,10 @@ class SimulationSession:
         if path is None:
             return
         state = self._state
-        if self._layout is not None and self._layout.has_cpu:
-            state = replace(state, modules=self._layout.modules)
+        layout = self._layout
+        # The list of modules would leave out a module that ClickNick does not know.
+        if layout is not None and layout.has_cpu and not layout.unknown:
+            state = replace(state, modules=layout.modules)
         try:
             save_state(path, state)
         except OSError as exc:
@@ -3386,7 +3393,7 @@ class SimulationSession:
         else:
             try:
                 layout = self._layout_reader(path, used)
-                error = None
+                error = unknown_layout_text(layout)
             except Exception as exc:
                 layout = build_panel_layout((), used)
                 error = layout_error_text(exc)

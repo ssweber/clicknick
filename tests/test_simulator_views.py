@@ -394,6 +394,26 @@ def test_a_missing_project_ini_is_titled_as_a_hardware_problem(simulator, ready)
     assert any("Project.ini was not found" in t for t in texts)
 
 
+def test_an_unknown_module_beside_a_known_cpu_shows_the_cards_and_a_banner(simulator, ready):
+    from pyclickplc import UnknownModule
+
+    from clicknick.services.sim_hardware import build_panel_layout
+
+    cpu = SimpleNamespace(
+        location="cpu", position=0, module=SimpleNamespace(model="C2-03CPU"),
+        inputs=("X001",), outputs=(), analog_inputs=(), analog_outputs=(),
+    )  # fmt: skip
+    unknown = (UnknownModule("expansion", 2, -1),)
+    ready.sim._layout_reader = lambda _path, used: build_panel_layout([cpu], used, unknown)
+    win = simulator(ready)
+    texts = _canvas_texts(win)
+
+    assert "Built-in I/O" in texts
+    assert "Hardware" not in texts
+    assert _banners_with(win, "Expansion 2 (module ID -1)") == 1
+    assert ready.sim.layout_error is not None
+
+
 def test_dataview_force_column(tk_root):
     from pyclickplc.addresses import normalize_address
 

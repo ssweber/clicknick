@@ -4480,6 +4480,25 @@ def test_restore_trims_analog_values_before_the_first_build(ready, tmp_path):
     assert ready.sim.notice is not None and "DF5" in ready.sim.notice
 
 
+def test_an_unknown_module_keeps_the_saved_analog_values_and_modules(ready, tmp_path):
+    from pyclickplc import UnknownModule
+
+    unknown = (UnknownModule("expansion", 2, -1),)
+    ready.sim._layout_reader = lambda _path, used: build_panel_layout([CPU], used, unknown)
+    path = tmp_path / "app" / "Line1.toml"
+    save_state(path, SimulatorState(analog={"DF9": 1.0}, modules=("cpu:OLD",)))
+    ready.sim.set_state_location("Line1", None)
+    ready.open()
+
+    assert ready.sim.layout.has_cpu
+    assert ready.sim.layout_error is not None
+    assert "Expansion 2 (module ID -1)" in ready.sim.layout_error
+    assert ready.sim.analog_value("DF9") == 1.0
+    ready.sim.toggle_switch("X001")
+    ready.scheduler.fire(SAVE_DELAY_MS)
+    assert load_state(path).modules == ("cpu:OLD",)
+
+
 def test_a_link_that_pyrung_refuses_with_a_capital_unknown_tag_waits(ready):
     ready.open()  # no frame yet, so ClickNick does not know what the rungs name
     ready.dap.refuse_links["X002"] = "Unknown tag 'X002' (address X002 is not mapped to a tag)"

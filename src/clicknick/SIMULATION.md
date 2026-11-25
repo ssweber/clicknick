@@ -145,6 +145,10 @@ refusals rely on that split.
   module assigns a DF to an analog input, so it waits for a hardware configuration with a CPU that it could
   read. It does not wait for a build. Until then nothing is trimmed, and the saved `modules` stay in the file,
   because `_save_now` writes `modules` only with a CPU.
+- If Project.ini lists a module that ClickNick does not know, the session does not know that module's analog
+  inputs. Nothing is trimmed then, and `_save_now` does not write `modules`. The panel shows the modules that
+  ClickNick knows. `layout_error` names the unknown module, and the Simulator shows it as a banner when the
+  panel has a CPU card. Without a CPU card, the Hardware card shows it.
 - Nothing trims a switch, a force or a bench link. A switch on an X address that no module provides stays.
 
 ## Writing a changed program

@@ -23,6 +23,7 @@ from pyclickplc.addresses import get_addr_key, iter_address_slots
 from pyrung.click import OldCommentFormError, SystemNicknameRepair, SystemNicknameRepairRequired
 
 if TYPE_CHECKING:
+    from pyclickplc import UnknownModule
     from pyrung import DataView, Program
     from pyrung.validation import ValidationReport
 
@@ -243,19 +244,37 @@ def _channel_inputs(scr_folder: Path) -> frozenset[str]:
         return frozenset()
 
 
+def _unknown_modules(scr_folder: Path) -> tuple[UnknownModule, ...]:
+    """Return the modules in *scr_folder*'s Project.ini that pyclickplc does not know.
+
+    Return an empty tuple if there is no Project.ini.
+    """
+    from pyclickplc import read_modules
+
+    try:
+        return read_modules(scr_folder / "Project.ini").unknown
+    except FileNotFoundError:
+        return ()
+
+
 def _read_channel_inputs(
     scr_folder: Path, on_warning: Callable[[str], None] | None
 ) -> frozenset[str]:
     """Return the analog inputs in *scr_folder*'s Project.ini, or none if pyclickplc rejects it.
 
-    pyclickplc raises ``ValueError`` for a module that it does not know and for a malformed
-    file. The ladder does not depend on the answer, so the build goes on without analog inputs
-    and calls *on_warning* with what the user needs to know. ``OSError`` is not caught. The
-    build fails, because a file that exists and cannot be read may be readable on a later try.
-    A later build retries: the next save in CLICK, Reload from CLICK, or Retry in the Simulator.
+    pyclickplc raises ``ValueError`` for a malformed file. The ladder does not depend on the
+    answer, so the build goes on without analog inputs and calls *on_warning* with what the
+    user needs to know. pyclickplc skips a module that it does not know. The build then goes
+    on with the analog inputs of the other modules, and also calls *on_warning*. ``OSError``
+    is not caught. The build fails, because a file that exists and cannot be read may be
+    readable on a later try. A later build retries: the next save in CLICK, Reload from
+    CLICK, or Retry in the Simulator.
     """
+    from .sim_hardware import unknown_modules_text
+
     try:
-        return _channel_inputs(scr_folder)
+        inputs = _channel_inputs(scr_folder)
+        unknown = _unknown_modules(scr_folder)
     except ValueError as exc:
         if on_warning is not None:
             on_warning(
@@ -265,6 +284,27 @@ def _read_channel_inputs(
                 "an analog input that a comparison reads as a value that nothing writes."
             )
         return frozenset()
+    if unknown and on_warning is not None:
+        on_warning(f"{unknown_modules_text(unknown)} {_unknown_modules_effect(unknown)}")
+    return inputs
+
+
+def _unknown_modules_effect(unknown: Sequence[UnknownModule]) -> str:
+    """Return what the build does without the analog inputs of the modules in *unknown*."""
+    check = "If you turn on the check Comparison Operand Has No Ladder Writer, Check Program"
+    if any(module.location == "cpu" for module in unknown):
+        # pyclickplc reads no option slot of an unknown CPU.
+        return (
+            "ClickNick reads the analog inputs of only the expansion modules that it knows. "
+            f"{check} may report the analog inputs of the CPU, its option slots and the modules "
+            "that ClickNick does not know as values that nothing writes."
+        )
+    those, assign = ("that module", "assigns") if len(unknown) == 1 else ("those modules", "assign")
+    return (
+        f"ClickNick does not know which addresses {those} {assign} to analog inputs. The build "
+        f"goes on with the analog inputs of the other modules. {check} reports an analog input "
+        f"of {those} that a comparison reads as a value that nothing writes."
+    )
 
 
 #: File in a workspace's csv/ that lists the analog input channels it was generated with.

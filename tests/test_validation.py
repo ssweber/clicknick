@@ -37,6 +37,10 @@ class TestCharactersCp1252Lacks:
     def test_a_character_cp1252_has_is_still_valid(self):
         assert validate_comment("Café 5°C") == (True, "")
 
+    @pytest.mark.parametrize("char", ["é", "€"])
+    def test_a_txt_initial_value_that_cp1252_has_is_valid(self, char):
+        assert validate_row_initial_value(char, DataType.TXT) == (True, "")
+
 
 def _format_only(nickname: str) -> tuple[bool, str]:
     """Check only the format rules, by calling validate_nickname with no duplicates."""
@@ -288,7 +292,7 @@ class TestValidateInitialValue:
         assert is_valid is False
         assert "hex" in error
 
-    # TXT tests (single ASCII char)
+    # TXT tests (a single character that cp1252 has)
     def test_txt_valid(self):
         is_valid, error = validate_initial_value("A", DataType.TXT)
         assert is_valid is True
@@ -302,10 +306,13 @@ class TestValidateInitialValue:
         assert is_valid is False
         assert "single char" in error
 
-    def test_txt_non_ascii(self):
-        is_valid, error = validate_initial_value("\u00e9", DataType.TXT)  # e with accent
-        assert is_valid is False
-        assert "ASCII" in error
+    @pytest.mark.parametrize("char", ["\u00e9", "\u20ac"])  # e with accent, euro sign
+    def test_txt_cp1252_char(self, char):
+        assert validate_initial_value(char, DataType.TXT) == (True, "")
+
+    @pytest.mark.parametrize("char", ["\x80", "\u0142"])  # U+0080, l with stroke
+    def test_txt_not_in_cp1252(self, char):
+        assert validate_initial_value(char, DataType.TXT) == (False, f"Not in cp1252: {char!r}")
 
     # Unknown data type
     def test_unknown_type_accepts_anything(self):

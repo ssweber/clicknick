@@ -32,11 +32,11 @@ from ...widgets.import_csv_dialog import ImportCsvDialog
 from ...widgets.new_tab_dialog import ask_new_tab
 from ..nav_window.outline_logic import outline_filter
 from ..nav_window.window import NavWindow
-from .jump_sidebar import COMBINED_TYPES, JumpSidebar
+from .jump_sidebar import JumpSidebar
 from .panel import AddressPanel
 from .panel_constants import COL_NICKNAME
 from .tab_state import TabState
-from .view_builder import build_unified_view
+from .view_builder import COMBINED_TYPES, build_unified_view
 
 if TYPE_CHECKING:
     from ...data_session import DataSession

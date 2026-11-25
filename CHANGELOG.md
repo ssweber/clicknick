@@ -8,6 +8,15 @@
 
 ## Unreleased
 
+### Changed
+
+- The Simulator's panel now shows the modules that ClickNick knows when CLICK's Project.ini also lists a module that ClickNick does not know. A notice names that module by its position, such as **Expansion 2**, and its module ID. 0.27.0 showed only the X and Y addresses that the program uses.
+
+### Fixed
+
+- Check Program's check Comparison Operand Has No Ladder Writer no longer reports the analog inputs that ClickNick can read when Project.ini also lists a module that ClickNick does not know. 0.27.0 read no analog inputs for such a project.
+- The Address Editor now accepts a Text initial value that is one character outside ASCII, such as `é` or `€`. 0.27.0 showed the error **Must be ASCII**, and Sync wrote nothing while a row had it. ClickNick still shows an error for a character that CLICK cannot hold, such as `ł`.
+
 ## v0.27.0 - 2026-11-25
 
 You can now simulate a program that holds a rung that ClickNick cannot copy from CLICK. The Simulator runs the program up to that rung. 0.26.0 refused to run such a program. Check Program and the Address Editor's filters now stop at that rung too, and name it. Rung comments with a character outside ASCII, such as `é`, `→` or Chinese text, now reach CLICK unchanged when you paste them.

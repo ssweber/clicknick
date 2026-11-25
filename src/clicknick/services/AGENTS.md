@@ -39,10 +39,13 @@ and the nicknames from its database, and generates the workspace again.
 - `clicknick-cli` finds tags by the workspace's names (`project_tag_to_addr_key`).
 - `csv/analog_inputs.json` records the analog inputs that a workspace was generated with. `tag apply`
   regenerates its baseline `tags.py` from them, never from CLICK's Project.ini at the time it runs.
-- If pyclickplc raises `ValueError` while the build reads Project.ini (an unknown module, or a malformed
-  file), the build goes on with no analog inputs. It stores a warning in `AnalysisResult.warning`
-  (`AnalysisService.build_warning`). `ConnectionSession.build_warning_to_report` hands it to the main window
-  once, and `clicknick-cli check` prints it as a `NOTE:` line. `OSError` still fails the build.
+- If pyclickplc raises `ValueError` while the build reads a malformed Project.ini, the build goes on with no
+  analog inputs. pyclickplc skips a module that it does not know, and lists it in `read_modules(...).unknown`.
+  The build then goes on with the analog inputs of the other modules. If the CPU is the unknown module,
+  pyclickplc reads no option slot either, so the build has only the expansion modules' inputs. In both cases
+  the build stores a warning in `AnalysisResult.warning` (`AnalysisService.build_warning`).
+  `ConnectionSession.build_warning_to_report` hands it to the main window once, and `clicknick-cli check`
+  prints it as a `NOTE:` line. `OSError` still fails the build.
 - pyrung leaves every rung after an `undecoded()` marker out of the Program, in the same main program or
   subroutine. The build stores the CLICK rungs that the markers stand in for
   (`AnalysisService.undecoded_rungs`) and pyrung's `undecoded_notice()` (`undecoded_notice`) beside the

@@ -50,6 +50,8 @@ import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
+from pyclickplc.banks import PAIRED_RETENTIVE_TYPES
+
 _ARRAY_PATTERN = re.compile(r"^(_?[A-Za-z]+)(\d+)$")
 
 MEMORY_TYPE_ORDER = [
@@ -302,56 +304,40 @@ def _interleave_timer_entries(
 
     Example: T1, T2, TD1, TD2 -> T1, TD1, T2, TD2
     """
-    # Build lookup for TD and CTD entries by address
-    td_by_addr: dict[int, tuple[str, int, str, int]] = {}
-    ctd_by_addr: dict[int, tuple[str, int, str, int]] = {}
+    # PAIRED_RETENTIVE_TYPES maps TD to T and CTD to CT.
+    data_type_of = {base: data for data, base in PAIRED_RETENTIVE_TYPES.items()}
+    # Build lookup for TD and CTD entries by memory type and address
+    data_entries: dict[tuple[str, int], tuple[str, int, str, int]] = {
+        (entry[0], entry[1]): entry for entry in entries if entry[0] in PAIRED_RETENTIVE_TYPES
+    }
 
     result: list[tuple[str, int, str, int]] = []
-    deferred_td: list[tuple[str, int, str, int]] = []
-    deferred_ctd: list[tuple[str, int, str, int]] = []
-
-    # First pass: collect TD and CTD entries
-    for entry in entries:
-        memory_type = entry[0]
-        address = entry[1]
-        if memory_type == "TD":
-            td_by_addr[address] = entry
-        elif memory_type == "CTD":
-            ctd_by_addr[address] = entry
-
-    # Second pass: build interleaved result
-    seen_td: set[int] = set()
-    seen_ctd: set[int] = set()
+    deferred: dict[str, list[tuple[str, int, str, int]]] = {
+        data: [] for data in PAIRED_RETENTIVE_TYPES
+    }
+    seen: set[tuple[str, int]] = set()
 
     for entry in entries:
         memory_type = entry[0]
         address = entry[1]
 
-        if memory_type == "TD":
-            # Will be inserted after corresponding T, or at end if no T
-            if address not in seen_td:
-                deferred_td.append(entry)
-            continue
-        elif memory_type == "CTD":
-            # Will be inserted after corresponding CT, or at end if no CT
-            if address not in seen_ctd:
-                deferred_ctd.append(entry)
+        if memory_type in deferred:
+            # Will be inserted after the corresponding T or CT, or at end if there is none
+            if (memory_type, address) not in seen:
+                deferred[memory_type].append(entry)
             continue
 
         result.append(entry)
 
-        # If this is T, insert corresponding TD right after
-        if memory_type == "T" and address in td_by_addr:
-            result.append(td_by_addr[address])
-            seen_td.add(address)
-        # If this is CT, insert corresponding CTD right after
-        elif memory_type == "CT" and address in ctd_by_addr:
-            result.append(ctd_by_addr[address])
-            seen_ctd.add(address)
+        # If this is T or CT, insert the corresponding TD or CTD right after
+        data_type = data_type_of.get(memory_type)
+        if data_type is not None and (data_type, address) in data_entries:
+            result.append(data_entries[(data_type, address)])
+            seen.add((data_type, address))
 
     # Append any TD/CTD entries that didn't have a corresponding T/CT
-    result.extend(deferred_td)
-    result.extend(deferred_ctd)
+    for waiting in deferred.values():
+        result.extend(waiting)
 
     return result
 

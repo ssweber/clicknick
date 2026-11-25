@@ -610,11 +610,11 @@ class TestValidateInitialValue:
         assert is_valid is False
         assert "single char" in error
 
-    def test_txt_value_non_ascii_invalid(self):
-        """TXT non-ASCII character is invalid."""
+    def test_txt_value_not_in_cp1252_invalid(self):
+        """A TXT character that cp1252 does not have is invalid."""
         is_valid, error = validate_initial_value("\x80", DataType.TXT)
         assert is_valid is False
-        assert "ASCII" in error
+        assert error == "Not in cp1252: '\\x80'"
 
 
 class TestDataTypeConstants:
