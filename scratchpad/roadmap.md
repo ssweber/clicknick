@@ -35,8 +35,6 @@ for this in next release". Each item says what it needs, as above.
   `_restore_bench` and the patch retry in `simulation_session.py`. The same APIs bring three changes to the
   Simulator: a link on a slot that a range reaches, a dimmed point where no rung touches the address, and a
   placeholder CPU with live switches when no CPU is configured.
-- The refused-link text (waits on pyrung's next release). At the next pyrung pin, run
-  `tests/test_simulation_session.py` on the release.
 - An unknown module (waits on pyclickplc). pyclickplc would read a module that it does not know as unknown,
   instead of raising `ValueError`. This is item 3 of pyclickplc's roadmap.
 
@@ -136,12 +134,14 @@ Do each when a branch next touches its file.
 - These parts of `app.py` are candidates for a later split: the Tools and Repairs menu actions, launching
   Review Changes and Compare with, `_export_pyrung_project`, and the unused `_check_odbc_drivers_and_warn`.
 
-## 9. The undecoded marker (waits on pyrung's release after 0.18.0)
+## 9. The undecoded marker
 
 laddercodec replaces a rung that it cannot decode with a marker rung. The marker rung has the comment
-`UNDECODED: rung N, row R: <error>` and one `Undecoded` instruction that acts as End (Return in a subroutine).
-`encode()` refuses the marker. `write_csv` also writes a marker in place of a rung that no CSV cell reads back
-as CLICK holds it, such as a text compare that reads two ways.
+`UNDECODED: CLICK rung N, row R: <error>` and one `Undecoded` instruction that acts as End (Return in a
+subroutine). The rung and the row count from 1. The comment leaves out `, row R` when no row is known. When
+decoding stopped at the rung, the comment ends with `; decoding stopped, so this marker stands for CLICK rung N
+to the end`. `encode()` refuses the marker. `write_csv` also writes a marker in place of a rung that no CSV cell
+reads back as CLICK holds it, such as a text compare that reads two ways.
 
 The branch `bob/laddercodec-next` did this much:
 
@@ -158,7 +158,7 @@ The branch `bob/laddercodec-next` did this much:
 - `program_save` writes an unreadable finding, and a replacement rung, for three kinds of rung: a rung that
   decodes as a marker, a rung that `write_csv` would write as a marker, and a rung that `write_csv` would split
   into more than one rung. The replacement is laddercodec's marker, or ClickNick's empty stand-in inside a For
-  loop (see the branch `feat/marker-findings` below). The runner showed on CLICK 4.00 that a paste, and a save
+  loop (see the For loop cases below). The runner showed on CLICK 4.00 that a paste, and a save
   before Syntax Check, keep a NOP fed from the rail beside outputs on one rung. One function makes the check
   (`_rung_problems` in `ladder/program.py`).
 - Save Clipboard to CSV refuses the same three kinds of rung. `clicknick-rung load` copies a .bin file that
@@ -167,8 +167,9 @@ The branch `bob/laddercodec-next` did this much:
   (`prepare_rungs_load`).
 - `program_save` writes each subroutine with `stop="return"`.
 
-The branch `feat/marker-findings` needs pyrung 0.18.1, which ClickNick pins. On it, `program_save` writes laddercodec's marker in place of a rung that it cannot read. It still
-records the finding with the rung's number. The planner ruled the For loop cases on 2026-11-21:
+Since #182, `program_save` writes laddercodec's marker in place of a rung that it cannot read. That needs
+pyrung 0.18.1, which ClickNick pins. `program_save` still records the finding with the rung's number. The
+planner ruled the For loop cases on 2026-11-21:
 
 - A rung inside a For loop gets the empty stand-in. pyrung refuses a marker inside a loop, so one such rung
   would fail the whole workspace build.
@@ -177,18 +178,18 @@ records the finding with the rung's number. The planner ruled the For loop cases
   `program_save` reads the loops from the rungs that it writes, as pyrung does.
 - An unreadable `for()` outside a loop gets a marker. At 79fc8a6, pyrung's main refused the `next()` below
   it, whatever `program_save` wrote, and its message named the marker's rung as the one that may have held
-  the `for()`. The paragraph below says what pyrung 0.18.1 does.
+  the `for()`. pyrung 0.18.1 builds this case.
 
-pyrung took the `lone_next` change in #124 (0d59e21). 0.18.1 is the first release that holds it. When pyrung's import finds a `next()` with no `for()` above it, and a marker stands above that
-`next()`, it writes the `next()` as an empty placeholder rung, `with rung(): pass`. It adds `lone_next=[...]`
-to the marker's `undecoded(...)` call, with the `next()` rungs counted from 0. The Program ends at the marker,
-and the workspace builds. pyrung's message for the marker names the `next()` rung. pyrung still refuses a lone
-`next()` with no marker above it, and a marker inside a loop. So the marker for an unreadable `for()` builds.
-A stand-in there would be refused, unless an earlier marker stood above it.
-`test_an_unreadable_for_gets_a_marker_and_the_program_stops_there` pins the marker case. pyrung 0.18.0 fails
-the build with the stand-in that 0.26.0 writes. Its `ladder_to_pyrung` returns source with a `next()` and no
-`for()` above it, and running that source raises a `TypeError` that names no rung. The reviewer of
-`feat/marker-findings` checked this on 2026-11-21.
+pyrung merged the `lone_next` change in its #124 (0d59e21). 0.18.1 is the first release that holds it. When
+pyrung's import finds a `next()` with no `for()` above it, and a marker stands above that `next()`, it writes
+the `next()` as an empty placeholder rung, `with rung(): pass`. It adds `lone_next=[...]` to the marker's
+`undecoded(...)` call, with the `next()` rungs counted from 0. The Program ends at the marker, and the workspace
+builds. pyrung's message for the marker names the `next()` rung. pyrung still refuses a lone `next()` with no
+marker above it, and a marker inside a loop. So the marker for an unreadable `for()` builds. A stand-in there
+would be refused, unless an earlier marker stood above it.
+`test_an_unreadable_for_gets_a_marker_and_the_program_stops_there` pins the marker case. pyrung 0.18.0 fails the
+build with the stand-in that 0.26.0 writes. Its `ladder_to_pyrung` returns source with a `next()` and no `for()`
+above it, and running that source raises a `TypeError` that names no rung.
 
 No branch changes these two cases yet:
 
@@ -198,10 +199,11 @@ No branch changes these two cases yet:
   for CLICK's unreadable rung. After CLICK's copy reads cleanly, Review Changes would propose the placeholder
   as an extra empty rung after the loop. No one has checked that second step.
 - A `for()` that ClickNick reads, a `for()` inside it that it cannot read, and the two `next()` rungs (saved
-  as `-S---M`: S is the stand-in and M the marker) stay refused. The stand-in opens no loop, so the second `next()` has no `for()` above it and no
-  marker above it. The case would build if ClickNick wrote a stand-in in place of the readable inner `next()`
-  that pairs with the unreadable `for()`. It can pair them only while the unreadable rung still shows its
-  `ForLoop`. The refusal also tells the user to "Add the for() rung in CLICK", which CLICK already has.
+  as `-S---M`: S is the stand-in and M the marker) stay refused. The stand-in opens no loop, so the second
+  `next()` has no `for()` above it and no marker above it. The case would build if ClickNick wrote a stand-in
+  in place of the readable inner `next()` that pairs with the unreadable `for()`. It can pair them only while
+  the unreadable rung still shows its `ForLoop`. The refusal also tells the user to "Add the for() rung in
+  CLICK", which CLICK already has.
 
 pyrung's roadmap plans a marker that stops the scan only when a scan reaches it. pyrung could then accept the
 marker inside a loop, and the stand-in could go.
@@ -211,14 +213,13 @@ The Program ends at that call. pyrung 0.18.0 raised `ValueError` there, because 
 in the AF column. These steps are left:
 
 - Drop the empty stand-in rung that a For loop still needs (`_replace_unreadable`, `is_stand_in`, and the
-  refusals in `prepare_rungs_load` and `_placeholder_refusal`). `feat/marker-findings` already writes the marker
+  refusals in `prepare_rungs_load` and `_placeholder_refusal`). Since #182, `program_save` writes the marker
   outside a loop.
-- Check Program lists the marker.
 - When the stand-in goes, check again that Review Changes' whole-program paste (`ProgramChange.merged` when
   CLICK's copy is unreadable) refuses a marker, and that the legacy-encoding record still names the rung.
-  `feat/marker-findings` has tests for both on the marker.
+  #182 has tests for both on the marker.
 - Review Changes refuses a whole copy that leaves out a CLICK rung that ClickNick cannot read
-  (`ProgramChange.dropped_unreadable`, `feat/marker-simulator`). It cannot tell the rung's logic from another
+  (`ProgramChange.dropped_unreadable`, #184). It cannot tell the rung's logic from another
   rung, so two gaps stay. It misses a dropped rung when the user adds another rung in its place: CLICK
   `[R1, M, R3]` against the folder `[R1, NEW, R3]` is a 1:1 replace, and `[R1, R3', R4new]` is a 2:2 one. It
   refuses wrongly when the user writes the logic in place and deletes a rung next to it: `[R1, M, R3, R4]`
@@ -232,7 +233,7 @@ in the AF column. These steps are left:
   would really take, and leaves out skipped differences. The planner schedules it.
 - Follow-up, which needs no pyrung release: a Simulator write after a CLICK save waits about 0.8 s for the
   read of `src/plc` (`read_program_stops`). The worker's Python start and its import of pyrung take most of
-  that time. pyrung's reload alone takes about 0.035 s. The builder of `feat/marker-simulator` measured both
+  that time. pyrung's reload alone takes about 0.035 s. The builder of #184 measured both
   on 2026-11-25. A write skips the read only while `src/plc` has not changed since the last read, and the
   build of a CLICK save writes `src/plc` again. The fix to try: take a snapshot of `src/plc` right after the
   analysis build writes it. While `src/plc` still matches that snapshot, take the stops from that build
