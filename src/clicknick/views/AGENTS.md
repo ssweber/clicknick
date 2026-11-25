@@ -16,6 +16,10 @@ stages them in the store instead.
   on any folder of ladder CSVs. The Workspace's **Review Changes** and `clicknick-cli rung apply` open it on the
   workspace's `csv_output/`. The app keeps one window per folder, and it reloads the window when the folder is
   shown again.
+- `rung apply` writes `csv_output/` with the workspace's `project_to_csv.py`, which `_export_worker` runs.
+  pyrung's export refuses `undecoded()`. The worker then names CLICK's program and rung for each call
+  (`export_stop_refusal`). Its text never tells the user to delete the call, because the whole paste of that
+  program would then delete the rung in CLICK.
 - The window is not modal, because the Address Editor's Sync is part of the same workflow.
 
 ## Where the proposal comes from
@@ -76,6 +80,16 @@ stages them in the store instead.
   - Its rungs were asked for by number.
   - The user clicked **Step Through** for it.
 - A whole copy of a program with no rungs copies nothing. The step is deleting its rungs in CLICK.
+- A program whose CLICK copy ClickNick cannot read is copied whole (`ProgramChange.unreadable`). Two checks
+  can refuse that copy. Review Changes runs both before it shows the prompt, and again at the copy.
+  `_placeholder_refusal` refuses an empty rung or an UNDECODED marker in the folder. `_dropped_refusal`
+  refuses a folder that leaves out a CLICK rung that ClickNick cannot read (`dropped_unreadable`), because the
+  whole paste would delete that rung in CLICK. A difference with fewer folder rungs than CLICK rungs drops
+  each unreadable rung in it.
+- `dropped_unreadable` cannot tell the rung's logic from another rung. It misses a dropped rung when the same
+  difference adds a rung in its place. It refuses wrongly when the user writes the rung's logic in its place
+  and deletes a rung next to it in the same difference. A finding with no rung number makes every rung
+  unequal, so the program is one difference, and a rung added anywhere hides a deleted call.
 
 ## What was pasted
 

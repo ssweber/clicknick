@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import re
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -377,6 +378,9 @@ def _run_export(project_dir: Path) -> Path:
     This removes CSVs that an earlier export left and this one did not write again. A
     subroutine deleted from the source then does not stay in the proposal. On failure it
     raises and leaves the earlier export as it was.
+
+    The script runs in ``_export_worker``. If pyrung refuses the export because the source
+    holds ``undecoded()``, the error names each rung that the call stands in for.
     """
     import subprocess
 
@@ -389,7 +393,7 @@ def _run_export(project_dir: Path) -> Path:
     earlier = {path: path.stat().st_mtime_ns for path in output_dir.rglob("*.csv")}
 
     result = subprocess.run(
-        [headless_python(), str(script)],
+        [headless_python(), "-m", "clicknick.live.rung_commands", "--export", str(script)],
         cwd=str(project_dir),
         env=project_environment(project_dir),
         creationflags=NO_WINDOW,
@@ -408,6 +412,35 @@ def _run_export(project_dir: Path) -> Path:
         except OSError:
             pass  # Already gone, or open elsewhere. A file open elsewhere stays in the proposal.
     return output_dir
+
+
+def _export_worker(script: Path) -> None:
+    """Run the workspace's *script*, ``project_to_csv.py``, as Python runs a script.
+
+    pyrung's export refuses ``undecoded()``. If the program holds one when the export fails,
+    print ``export_stop_refusal`` and exit with code 1. That text names CLICK's program and
+    rung for each call. pyrung's own text leaves out the subroutine's name, and it suggests
+    removing the rung. Any other failure raises as the script raised it.
+    """
+    import runpy
+
+    from pyrung import Program
+    from pyrung.click import LadderExportError
+
+    from ..services.analysis_service import export_stop_refusal, undecoded_rungs_in
+
+    # The script sees the arguments that Python gives a script run on its own
+    sys.argv = [str(script)]
+    try:
+        runpy.run_path(str(script), run_name="__main__")
+    except LadderExportError:
+        # pyrung's generated project_to_csv.py exports the logic of plc.main.
+        logic = getattr(sys.modules.get("plc.main"), "logic", None)
+        rungs = undecoded_rungs_in(logic) if isinstance(logic, Program) else ()
+        if not rungs:
+            raise
+        print(export_stop_refusal(rungs), file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 def _cmd_apply(ctx: DispatchContext, parts: list[str]) -> str:
@@ -436,3 +469,8 @@ def dispatch_rung(ctx: DispatchContext, parts: list[str]) -> str:
     if handler is None:
         raise ValueError(f"unknown rung subcommand {sub!r} (expected: {', '.join(_SUBCOMMANDS)})")
     return handler(ctx, parts[1:])
+
+
+if __name__ == "__main__":
+    if sys.argv[1:2] == ["--export"] and len(sys.argv) == 3:
+        _export_worker(Path(sys.argv[2]))

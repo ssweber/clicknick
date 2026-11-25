@@ -194,6 +194,30 @@ class ProgramChange:
             for number in range(i1 + 1, i2 + 1)
         )
 
+    @property
+    def dropped_unreadable(self) -> tuple[int, ...]:
+        """Return CLICK's rung numbers that ClickNick cannot read and that the proposal drops.
+
+        A rung counts if it sits in a difference that has fewer proposed rungs than CLICK
+        rungs. A whole paste of the program would then delete it in CLICK. That happens when
+        the proposal leaves out the rung's marker. If the marker's comment stays, the comment
+        moves to the next rung and that rung differs too, so the difference replaces two of
+        CLICK's rungs with one.
+
+        A finding with no rung number is not counted, because nothing ties it to a rung. The
+        count does not see a dropped rung if the same difference adds another rung in its
+        place. It counts a rung whose logic the proposal holds if the same difference also
+        drops a rung next to it.
+        """
+        unread = {item.rung for item in self.legacy if item.unreadable and item.rung}
+        return tuple(
+            number
+            for tag, i1, i2, j1, j2 in self.opcodes
+            if tag != "equal" and i2 - i1 > j2 - j1
+            for number in range(i1 + 1, i2 + 1)
+            if number in unread
+        )
+
     def touches(self, selected: Iterable[int]) -> bool:
         """Return whether any of the *selected* proposed rungs is one to paste."""
         return self.unreadable or not set(selected).isdisjoint(self.changed)

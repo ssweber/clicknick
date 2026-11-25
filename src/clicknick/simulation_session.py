@@ -68,7 +68,7 @@ from .services.sim_state import (
 )
 
 if TYPE_CHECKING:
-    from .services.analysis_service import AnalysisService
+    from .services.analysis_service import AnalysisService, UndecodedRung
     from .services.dap_service import DapService
     from .services.project_workspace import PlcSourceWatch
 
@@ -242,6 +242,67 @@ class _SerialWorker:
 
 def _start_thread(target: Callable[[], None], name: str) -> None:
     threading.Thread(target=target, daemon=True, name=name).start()
+
+
+def _default_stops_reader(project_dir: Path) -> tuple[UndecodedRung, ...]:
+    from .services.program_stops import read_program_stops
+
+    return read_program_stops(project_dir)
+
+
+@dataclass(frozen=True)
+class _StopsReading:
+    """Where the program in ``src/plc`` stops, as one read of the source found it."""
+
+    rungs: tuple[UndecodedRung, ...]
+    #: A snapshot of ``src/plc`` taken just before the read, or None if the read failed or the
+    #: snapshot could not be taken
+    source: PlcSourceWatch | None
+    #: Why the read failed, or None if it succeeded
+    error: str | None = None
+
+
+class _StopsRead:
+    """Read where the program in *project_dir* stops, on a thread of its own.
+
+    A launch or a write starts it beside pyrung's load of the same source, so the read adds
+    no wait of its own unless it takes longer than the load. If *earlier* is the last read
+    that succeeded and ``src/plc`` still matches its snapshot, this does not read again. It
+    returns *earlier* instead.
+    """
+
+    def __init__(
+        self,
+        reader: Callable[[Path], tuple[UndecodedRung, ...]],
+        project_dir: Path,
+        earlier: _StopsReading | None = None,
+    ) -> None:
+        self._reading = _StopsReading((), None)
+        self._thread = threading.Thread(
+            target=self._run, args=(reader, project_dir, earlier), daemon=True, name="sim-stops"
+        )
+        self._thread.start()
+
+    def _run(
+        self,
+        reader: Callable[[Path], tuple[UndecodedRung, ...]],
+        project_dir: Path,
+        earlier: _StopsReading | None,
+    ) -> None:
+        if earlier is not None and earlier.source is not None and earlier.source.same():
+            self._reading = earlier
+            return
+        # Take the snapshot first. An edit made during the read then counts as a change.
+        source = _watch_source(project_dir)
+        try:
+            self._reading = _StopsReading(tuple(reader(project_dir)), source)
+        except Exception as exc:
+            self._reading = _StopsReading((), None, str(exc) or type(exc).__name__)
+
+    def result(self) -> _StopsReading:
+        """Wait for the read and return what it found."""
+        self._thread.join()
+        return self._reading
 
 
 def _default_dap_factory(**callbacks: Any) -> DapService:
@@ -511,6 +572,7 @@ class SimulationSession:
         modbus_factory: Callable[..., Any] = _default_modbus_factory,
         layout_reader: Callable[[Path, Iterable[str]], PanelLayout] = _default_layout_reader,
         snapshot_reader: Callable[[Path], Mapping[str, PlcValue]] = _default_snapshot_reader,
+        stops_reader: Callable[[Path], tuple[UndecodedRung, ...]] = _default_stops_reader,
         run_background: Callable[[Callable[[], None], str], None] = _start_thread,
         run_serial: Callable[[Callable[[], None]], None] | None = None,
         send_command: Callable[[str, str], tuple[bool, str]] = _default_send_command,
@@ -529,6 +591,7 @@ class SimulationSession:
         self._modbus_factory = modbus_factory
         self._layout_reader = layout_reader
         self._snapshot_reader = snapshot_reader
+        self._stops_reader = stops_reader
         self._run_background = run_background
         self._worker = _SerialWorker("sim-actions")
         self._run_serial = run_serial or self._worker.submit
@@ -552,6 +615,12 @@ class SimulationSession:
         self._program_generation = -1
         self._program_saves: int | None = None
         self._program_names: tuple[Mapping[str, int], Mapping[int, str]] | None = None
+        # The CLICK rungs that the running program holds as pyrung's undecoded() marker. The
+        # program stops at each one (stop_notice).
+        self._program_stops: tuple[UndecodedRung, ...] = ()
+        # The last read of src/plc that succeeded. A write does not read again while src/plc
+        # still matches the snapshot that this read took.
+        self._stops_reading: _StopsReading | None = None
         # The addresses that a rung in the simulation names, read from its frames, and the tag
         # list and names that they were read from. None until a frame lists the tags.
         self._named: frozenset[str] | None = None
@@ -914,6 +983,23 @@ class SimulationSession:
     def notice(self) -> str | None:
         """Return a message about restored settings. It stays until the user dismisses it."""
         return self._notice
+
+    @property
+    def stop_notice(self) -> str | None:
+        """The notice that the program stops at a rung that ClickNick could not read, or None.
+
+        The workspace holds pyrung's ``undecoded()`` marker in place of such a rung, and
+        pyrung leaves out every rung after it in the same program. The notice names each rung.
+        A launch and a write that goes through read the markers from the ``src/plc`` that
+        pyrung loads (``read_program_stops``), so a hand edit of the markers counts. If that
+        read fails, the notice names the rungs that ClickNick found before (``_adopt_stops``).
+        It is None while no simulation runs.
+        """
+        if self._dap is None or not self._program_stops:
+            return None
+        from .services.analysis_service import simulation_stop_notice
+
+        return simulation_stop_notice(self._program_stops)
 
     @property
     def restored_forces(self) -> int:
@@ -1463,6 +1549,8 @@ class SimulationSession:
         self._links_synced = False
         self._links_refetch = False
         self._program_names = None
+        self._program_stops = ()
+        self._stops_reading = None
         self._named = None
         self._named_from = None
         self._held.clear()
@@ -1526,28 +1614,20 @@ class SimulationSession:
         self._fail(*self._analysis_failure(analysis))
 
     @staticmethod
-    def _unreadable_reason(csv_dir: Path) -> str | None:
+    def _stand_in_reason(csv_dir: Path) -> str | None:
         """Return why the program must not run, or None if it may.
 
-        The program must not run if ``program_save`` replaced a rung that ClickNick cannot read.
-        The CSV holds laddercodec's UNDECODED marker in its place, and pyrung leaves out every
-        rung after the marker in that program. Inside a For loop, the CSV holds an empty
-        stand-in rung. Either way, the simulation would run without the rung and look fine.
-        A finding with no rung number is not a reason. It means that laddercodec could not read
-        the program's CSV back. No rung was replaced, the CSV still holds every rung, and
-        pyrung parses that CSV itself.
+        The program must not run if ``program_save`` put an empty stand-in rung in place of a
+        rung that ClickNick cannot read. It does that inside a For loop and for a ``next()``.
+        The simulation would run the empty rung and look fine. Every other such rung is
+        laddercodec's UNDECODED marker, and the program runs up to it
+        (:attr:`stop_notice`). A finding with no rung number is not a reason either. It means
+        that laddercodec could not read the program's CSV back. No rung was replaced, the CSV
+        still holds every rung, and pyrung parses that CSV itself.
         """
-        from .ladder.program import (
-            describe_legacy_encoding,
-            read_legacy_encodings,
-            stand_in_fix,
-        )
+        from .ladder.program import describe_legacy_encoding, stand_in_findings, stand_in_fix
 
-        found = [
-            item
-            for item in read_legacy_encodings(csv_dir)
-            if item.unreadable and item.rung is not None
-        ]
+        found = stand_in_findings(csv_dir)
         if not found:
             return None
         lines = [f"  {describe_legacy_encoding(item)}" for item in found[:UNREADABLE_LISTED]]
@@ -1567,8 +1647,9 @@ class SimulationSession:
         """Return why the workspace's program cannot run now, as (reason, detail), or None.
 
         A launch, a write and a Restart all run this check first. It needs a conversion that
-        succeeded, a workspace that holds it, a ``run.py``, and no rung that ClickNick cannot
-        read. If a build is under way, the caller waits for it or refuses.
+        succeeded, a workspace that holds it, a ``run.py``, and no stand-in rung
+        (:meth:`_stand_in_reason`). If a build is under way, the caller waits for it or
+        refuses.
         """
         from .services.analysis_service import AnalysisStatus
 
@@ -1597,8 +1678,44 @@ class SimulationSession:
                 "then try again.",
                 None,
             )
-        unreadable = self._unreadable_reason(project_dir / "csv")
-        return None if unreadable is None else (unreadable, None)
+        stand_in = self._stand_in_reason(project_dir / "csv")
+        return None if stand_in is None else (stand_in, None)
+
+    def _adopt_stops(self, reading: _StopsReading) -> bool:
+        """Record where the running program stops, from *reading*. Return whether it changed.
+
+        If the stops changed, send the stop notice to the Console. A launch clears them first,
+        so each launch sends it.
+
+        If the read failed, keep the stops that the program had. If it had none, use the
+        markers in the latest build of CLICK's save. Then send the failure as an error, so
+        that the window shows it.
+        """
+        if reading.error is None:
+            stops = reading.rungs
+            self._stops_reading = reading
+        else:
+            stops = self._program_stops or self._built_stops()
+            self._stops_reading = None
+            text = (
+                f"ClickNick could not read src/plc to find where the program stops: {reading.error}"
+            )
+            if stops:
+                text += (
+                    "\nThe notice about the rungs that the simulation does not run may be out "
+                    "of date."
+                )
+            self._message(text, "error")
+        changed = stops != self._program_stops
+        self._program_stops = stops
+        if changed and (notice := self.stop_notice) is not None:
+            self._message(notice, "progress")
+        return changed
+
+    def _built_stops(self) -> tuple[UndecodedRung, ...]:
+        """Return the rungs that hold a marker in the latest build of CLICK's save."""
+        analysis = self._get_analysis()
+        return analysis.undecoded_rungs if analysis is not None else ()
 
     def _refuse(self, text: str) -> None:
         """Say why a write or Restart did not happen. The simulation runs on as it was."""
@@ -1900,7 +2017,13 @@ class SimulationSession:
         self._message("The simulation stopped unexpectedly.", "error")
         self._emit("status")
 
-    def _on_launched(self, token: int, dap: Any, source: PlcSourceWatch | None) -> None:
+    def _on_launched(
+        self,
+        token: int,
+        dap: Any,
+        source: PlcSourceWatch | None,
+        stops: _StopsReading,
+    ) -> None:
         if token != self._token or self._closed or not self._enabled:
             self._run_background(dap.terminate, "sim-dap-stop")
             return
@@ -1915,6 +2038,9 @@ class SimulationSession:
         self._modbus_info = {}
         # Say in the transcript that it worked, so a "Retrying..." line does not trail off.
         self._message("OK - simulation ready.", "progress")
+        # A launch names the stops even if the program it replaced stopped at the same rungs
+        self._program_stops = ()
+        self._adopt_stops(stops)
         self._set_status(SimStatus.READY)
         self._clear_refusal()
         if self._plc_data_warning is not None:
@@ -2059,6 +2185,7 @@ class SimulationSession:
             # Snapshot the source before pyrung imports it. An edit made while pyrung starts then
             # counts as a change.
             source = _watch_source(project_dir)
+            stops = _StopsRead(self._stops_reader, project_dir)
             dap = self._dap_factory(
                 on_state=lambda state, error: self._on_dap_state_bg(token, state, error),
                 on_scan=lambda _scan: self._on_frame_bg(token),
@@ -2077,7 +2204,8 @@ class SimulationSession:
             except Exception as exc:
                 self._post(lambda error=exc: self._on_launch_failed(token, error))
                 return
-            if not self._post(lambda: self._on_launched(token, dap, source)):
+            read = stops.result()
+            if not self._post(lambda: self._on_launched(token, dap, source, read)):
                 dap.terminate()  # The session closed while it started. Nobody else will stop it.
 
         self._run_background(launch, "sim-dap-launch")
@@ -2210,6 +2338,7 @@ class SimulationSession:
         target: _WriteTarget,
         source: PlcSourceWatch | None,
         listing: _Listing,
+        stops: _StopsReading,
     ) -> None:
         from .services.analysis_service import AnalysisStatus
 
@@ -2249,6 +2378,8 @@ class SimulationSession:
             self._program_source = source
             self._source_changed = False
             self._message("OK - the simulation runs the new program.", "progress")
+            if self._adopt_stops(stops):
+                self._emit("desired")
             if listing.carried:
                 self._set_notice(listing.carried)
                 self._written_notice = listing.carried
@@ -2417,6 +2548,7 @@ class SimulationSession:
         position = self._desired_position
         patches = self._input_patches()
         token = self._token
+        earlier = self._stops_reading
         self._writing = True
         self._message("Writing the program to the simulation...", "progress")
         if echo:
@@ -2425,6 +2557,7 @@ class SimulationSession:
 
         def job() -> None:
             source = _watch_source(project_dir)
+            stops = _StopsRead(self._stops_reader, project_dir, earlier)
             problems: list[str] = []
             unanswered: list[str] = []
 
@@ -2604,7 +2737,8 @@ class SimulationSession:
                 forces, links, bench_wiring, tuple(problems), written, waiting=waiting
             )
             summary = str(body.get("result") or "")
-            self._post(lambda: self._on_written(token, summary, target, source, listing))
+            read = stops.result()
+            self._post(lambda: self._on_written(token, summary, target, source, listing, read))
 
         self._run_serial(job)
 

@@ -125,6 +125,51 @@ class ValidationRun:
     undecoded: tuple[UndecodedRung, ...]
 
 
+def simulation_stop_notice(rungs: Sequence[UndecodedRung]) -> str:
+    """Return the Simulator's notice for a program that stops at *rungs*.
+
+    Return "" if *rungs* is empty. pyrung leaves the rungs after each marker out of the
+    program. The simulation never runs them. The panel lays out the points that the latest
+    build of CLICK's save uses (``known_tag_names()``), and that build leaves out the rungs
+    after its own markers. Until the next write, the build can differ from the program that
+    runs. So the text says only that the panel can leave out a point that only those rungs
+    use.
+    """
+    if not rungs:
+        return ""
+    one = len(rungs) == 1
+    return (
+        f"ClickNick could not read {_listed(rungs)}. The simulation does not run the rungs "
+        f"after {'it in that program' if one else 'each one in its program'}. The PLC runs "
+        "them. If only those rungs use an X or Y point, the panel can leave it out. To "
+        "simulate the rest, paste "
+        f"{'that rung' if one else 'those rungs'} again in CLICK and save."
+    )
+
+
+def export_stop_refusal(rungs: Sequence[UndecodedRung]) -> str:
+    """Return why the workspace cannot be exported while its source holds *rungs* as markers.
+
+    CLICK cannot take pyrung's ``undecoded()``, so pyrung's export refuses it. pyrung's own
+    text suggests removing the rung. The text here does not, because Review Changes would
+    then paste the program without that rung and delete it in CLICK.
+    """
+    one = len(rungs) == 1
+    return (
+        "ClickNick cannot export the workspace. Its src/plc holds undecoded() in place of "
+        f"{_listed(rungs)}, because ClickNick could not read "
+        f"{'that rung' if one else 'those rungs'} from CLICK. CLICK has no instruction for "
+        "undecoded(). "
+        + (
+            "In src/plc, write the rung's logic in place of the call. Or paste the rung again "
+            "in CLICK and save."
+            if one
+            else "In src/plc, write each rung's logic in place of its call. Or paste the rungs "
+            "again in CLICK and save."
+        )
+    )
+
+
 @dataclass
 class AnalysisResult:
     """Cached analysis output."""

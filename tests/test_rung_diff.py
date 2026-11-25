@@ -464,6 +464,55 @@ def test_the_users_own_copy_has_no_empty_rung() -> None:
     assert change.steps() == ()
 
 
+# CLICK's copy of a program in the workspace: rung 2 is the marker for a rung that
+# ClickNick cannot read. The marker's comment sits on that rung.
+_BAD = marker_rung(Undecoded("bad", rung=1, row=0))
+_MARKED = [*_rungs("Y001"), _BAD, *_rungs("Y003", "Y004")]
+
+
+@pytest.mark.parametrize(
+    "after",
+    [
+        _rungs("Y001", "Y003", "Y004"),
+        # Deleting only the undecoded() call leaves its comment on the next rung
+        [
+            *_rungs("Y001"),
+            Rung([["-"] * 31], [Coil("Y003")], _BAD.comment),
+            *_rungs("Y004"),
+        ],
+        _rungs("Y001"),
+    ],
+    ids=["rung-and-comment", "call-only", "with-the-rungs-below"],
+)
+def test_a_proposal_without_the_unreadable_rung_drops_it(after: list[Rung]) -> None:
+    change = compare_rungs(_MARKED, after, [_unreadable(2)])
+
+    assert change.dropped_unreadable == (2,)
+
+
+@pytest.mark.parametrize(
+    ("after", "found"),
+    [
+        (_rungs("Y001", "Y002", "Y003", "Y004"), [_unreadable(2)]),
+        (_rungs("Y001", "Y002", "Y002", "Y003", "Y004"), [_unreadable(2)]),
+        # A deleted rung that ClickNick can read is the user's own edit
+        (_rungs("Y001", "Y002", "Y003"), [_unreadable(2)]),
+        # Nothing ties a finding with no rung number to a rung
+        (
+            _rungs("Y001"),
+            [LegacyEncoding("main.csv", "Main Program", None, "", "", "", unreadable=True)],
+        ),
+    ],
+    ids=["logic-in-place", "two-rungs-in-place", "readable-rung-deleted", "no-rung-number"],
+)
+def test_a_proposal_with_the_unreadable_rungs_logic_drops_nothing(
+    after: list[Rung], found: list[LegacyEncoding]
+) -> None:
+    change = compare_rungs(_MARKED, after, found)
+
+    assert change.dropped_unreadable == ()
+
+
 def test_a_marker_read_from_the_folder_is_listed(tmp_path: Path) -> None:
     """Find laddercodec's marker for a rung in a folder CSV, numbered from 1."""
     current = _bundle(tmp_path / "current", {"main.csv": [*_rungs("Y001"), _STAND_IN]})

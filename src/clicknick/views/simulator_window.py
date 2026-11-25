@@ -585,6 +585,9 @@ class SimulatorWindow(tk.Toplevel):
             if sim.error_detail:
                 actions.append(("Show details", self._show_details))
             messages.append((f"Cannot simulate: {sim.error}", actions))
+        # The banner has no Dismiss button. It stays while the program runs.
+        if sim.stop_notice:
+            messages.append((sim.stop_notice, []))
         info = sim.modbus_info
         if sim.is_ready and info.get("error"):
             messages.append(

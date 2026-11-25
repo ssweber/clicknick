@@ -293,11 +293,36 @@ def _placeholder_refusal(name: str, change: ProgramChange) -> str:
     rung = "those rungs" if len(empty) + len(markers) > 1 else "that rung"
     refusal = f"{head} {what} Paste {rung} from your own copy of the program first."
     if markers:
+        # The text does not offer to delete the marker. A whole paste would then delete
+        # CLICK's rung.
         refusal += (
-            " In this folder, replace each marker with the logic of the rung that it stands for,"
-            " or delete the marker."
+            " In this folder, replace each marker with the logic of the rung that it stands for."
         )
     return refusal
+
+
+def _dropped_refusal(name: str, change: ProgramChange) -> str:
+    """Return why the program may not be copied whole, or an empty string.
+
+    ClickNick pastes a program whole when it cannot read all of CLICK's copy. If the folder
+    leaves out a rung that ClickNick cannot read (``ProgramChange.dropped_unreadable``), the
+    paste deletes that rung in CLICK. The folder's source may have lost the rung's marker,
+    for example when the user deleted pyrung's ``undecoded()`` call.
+    """
+    dropped = change.dropped_unreadable
+    if not dropped:
+        return ""
+    program = next((item.program for item in change.legacy if item.program), Path(name).stem)
+    one = len(dropped) == 1
+    which = f"rung {dropped[0]}" if one else f"rungs {_listed_rungs(dropped)}"
+    return (
+        f"ClickNick cannot read CLICK's {which} of {program}, and this folder leaves "
+        f"{'it' if one else 'them'} out. Copying the program whole would delete "
+        f"{'that rung' if one else 'those rungs'} in CLICK. Write "
+        f"{'the rung' if one else 'each rung'}'s logic where the rung was. Or paste "
+        f"{'the rung' if one else 'the rungs'} again in CLICK and save. To delete "
+        f"{'it' if one else 'them'}, delete {'it' if one else 'them'} in CLICK and save first."
+    )
 
 
 def _change_label(change: ProgramChange) -> str:
@@ -1525,7 +1550,11 @@ class ReviewChangesWindow(tk.Toplevel):
                 )
             if change.legacy:
                 prompt += f"\n{_legacy_note(change)}"
-            if refusal := _placeholder_refusal(name, change) or self._whole_refusal(name):
+            if refusal := (
+                _placeholder_refusal(name, change)
+                or _dropped_refusal(name, change)
+                or self._whole_refusal(name)
+            ):
                 prompt += f"\n{refusal}"
             elif name in self._unplaced:
                 prompt += (
@@ -1874,7 +1903,11 @@ class ReviewChangesWindow(tk.Toplevel):
         try:
             if program is None or program.rungs is None:
                 raise ValueError(program.error if program else "it is not in this folder")
-            refusal = _placeholder_refusal(name, change) if change is not None else ""
+            refusal = (
+                _placeholder_refusal(name, change) or _dropped_refusal(name, change)
+                if change is not None
+                else ""
+            )
             if refusal:
                 raise ValueError(refusal)
             if group is None:

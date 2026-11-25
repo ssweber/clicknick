@@ -7,6 +7,7 @@ subprocess and a fake ModbusService for the Modbus client.
 from __future__ import annotations
 
 import ast
+import re
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -25,7 +26,13 @@ from pyrung import PHYSICAL_KEYS
 
 from clicknick.data.data_source import CsvDataSource
 from clicknick.models.address_row import AddressRow
-from clicknick.services.analysis_service import AnalysisResult, AnalysisService, AnalysisStatus
+from clicknick.services.analysis_service import (
+    AnalysisResult,
+    AnalysisService,
+    AnalysisStatus,
+    UndecodedRung,
+    simulation_stop_notice,
+)
 from clicknick.services.dap_service import DapRequestError
 from clicknick.services.physical_response import response
 from clicknick.services.sim_hardware import build_panel_layout
@@ -479,6 +486,16 @@ class Harness:
         self.saves = 0
         self.snapshot: dict = {}
         self.read_snapshot = lambda _path: dict(self.snapshot)
+        # Where src/plc stops, as read_program_stops would read it, or the error it raises
+        self.stops: tuple[UndecodedRung, ...] | Exception = ()
+        self.stops_reads = 0
+
+        def read_stops(_project_dir: Path) -> tuple[UndecodedRung, ...]:
+            self.stops_reads += 1
+            if isinstance(self.stops, Exception):
+                raise self.stops
+            return self.stops
+
         self.sim = SimulationSession(
             scheduler=self.scheduler,
             get_analysis=lambda: self.analysis,
@@ -489,6 +506,7 @@ class Harness:
             modbus_factory=modbus_factory,
             layout_reader=lambda _path, used: build_panel_layout([CPU], used),
             snapshot_reader=lambda path: self.read_snapshot(path),
+            stops_reader=read_stops,
             run_background=lambda target, _name: target(),
             run_serial=lambda job: job(),
             send_command=send_command,
@@ -598,12 +616,26 @@ def test_guidance_mentions_the_generated_workspace(tmp_path):
     assert "Open the generated workspace" in harness.messages()
 
 
-def _record_unreadable(project_dir: Path, *rungs: int | None, unreadable: bool = True) -> None:
-    from clicknick.ladder.program import LegacyEncoding, write_legacy_encodings
+def _record_unreadable(
+    project_dir: Path, *rungs: int | None, unreadable: bool = True, marker: bool = False
+) -> None:
+    """Save the workspace's ``csv/`` as ``program_save`` does, with findings for *rungs*.
+
+    Conf_Compare's CSV holds an empty stand-in rung at each numbered rung in *rungs*, or
+    laddercodec's UNDECODED marker if *marker* is set. Each other rung is a coil.
+    """
+    from laddercodec import Coil, Rung, Undecoded, marker_rung, write_csv
+
+    from clicknick.ladder.program import (
+        STAND_IN_COMMENT,
+        LegacyEncoding,
+        empty_rung,
+        write_legacy_encodings,
+    )
 
     detail = "ClickNick cannot read this Compare."
     csv_dir = project_dir / "csv"
-    csv_dir.mkdir(exist_ok=True)
+    (csv_dir / "subroutines").mkdir(parents=True, exist_ok=True)
     found = [
         LegacyEncoding(
             "subroutines/Conf_Compare.csv", "Conf_Compare", rung, "Compare", "", detail, unreadable
@@ -611,6 +643,23 @@ def _record_unreadable(project_dir: Path, *rungs: int | None, unreadable: bool =
         for rung in rungs
     ]
     write_legacy_encodings(csv_dir, found)
+    numbered = {rung for rung in rungs if rung is not None}
+    if not numbered:
+        return
+    saved = []
+    for number in range(1, max(numbered) + 2):
+        if number not in numbered:
+            saved.append(Rung([["-"] * 31], [Coil(f"C{number}")], None))
+        elif marker:
+            saved.append(marker_rung(Undecoded(detail, rung=number - 1, row=0)))
+        else:
+            saved.append(empty_rung(STAND_IN_COMMENT))
+    write_csv(csv_dir / "subroutines" / "Conf_Compare.csv", saved)
+
+
+def _stop_at(harness: Harness, *rungs: UndecodedRung) -> None:
+    """Make the workspace's src/plc hold pyrung's undecoded() marker in place of *rungs*."""
+    harness.stops = rungs
 
 
 def test_program_with_a_rung_clicknick_cannot_read_does_not_run(ready):
@@ -665,6 +714,173 @@ def test_a_legacy_encoding_alone_does_not_stop_the_simulation(ready):
     ready.open()
 
     assert ready.sim.status is SimStatus.READY
+
+
+COMPARE_STOP = UndecodedRung("Conf_Compare", 4)
+
+
+def test_a_program_with_a_marker_runs_up_to_it_with_a_notice(ready):
+    _record_unreadable(ready.analysis.project_dir, 4, marker=True)
+    _stop_at(ready, COMPARE_STOP)
+
+    ready.open()
+
+    assert ready.sim.status is SimStatus.READY
+    notice = simulation_stop_notice([COMPARE_STOP])
+    assert notice.startswith(
+        "ClickNick could not read rung 4 of Conf_Compare. The simulation does not run the "
+        "rungs after it in that program. The PLC runs them. If only those rungs use an X or "
+        "Y point, the panel can leave it out."
+    )
+    assert ready.sim.stop_notice == notice
+    assert notice in ready.messages("progress")
+    assert ready.messages("error") == ""
+
+
+def test_the_stop_notice_names_every_rung_where_the_program_stops():
+    notice = simulation_stop_notice([COMPARE_STOP, UndecodedRung("Main Program", 12)])
+
+    assert notice.startswith(
+        "ClickNick could not read rung 4 of Conf_Compare and rung 12 of Main Program. "
+        "The simulation does not run the rungs after each one in its program."
+    )
+    assert notice.endswith("paste those rungs again in CLICK and save.")
+    assert simulation_stop_notice([]) == ""
+
+
+def test_the_stop_notice_ends_with_the_simulation(ready):
+    _stop_at(ready, COMPARE_STOP)
+    ready.open()
+    assert ready.sim.stop_notice
+
+    ready.sim.turn_off()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.stop_notice is None
+
+
+def test_a_write_updates_the_stop_notice(ready):
+    _running_with_settings(ready)
+    assert ready.sim.stop_notice is None
+
+    _rebuild(ready)
+    _record_unreadable(ready.analysis.project_dir, 4, marker=True)
+    _stop_at(ready, COMPARE_STOP)
+    ready.events.clear()
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.stop_notice == simulation_stop_notice([COMPARE_STOP])
+    assert ready.sim.stop_notice in ready.messages("progress")
+    assert any(event.kind == "desired" for event in ready.events)
+
+    _rebuild(ready)
+    _stop_at(ready)  # The user wrote the rung's logic in src/plc
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.stop_notice is None
+
+
+def test_restart_updates_the_stop_notice(ready):
+    _record_unreadable(ready.analysis.project_dir, 4, marker=True)
+    _stop_at(ready, COMPARE_STOP)
+    ready.open()
+    assert ready.sim.stop_notice
+
+    _stop_at(ready)  # The user wrote the rung's logic in src/plc
+    ready.sim.restart()
+    ready.scheduler.run_ready()
+
+    assert len(ready.daps) == 2 and ready.sim.is_ready
+    assert ready.sim.stop_notice is None
+
+
+def test_a_failed_read_of_a_program_without_markers_shows_only_the_error(ready):
+    ready.stops = ValueError("No module named 'plc'")
+
+    ready.open()
+
+    assert ready.sim.is_ready
+    assert ready.sim.stop_notice is None
+    assert ready.messages("error") == (
+        "ClickNick could not read src/plc to find where the program stops: No module named 'plc'"
+    )
+
+
+def test_a_launch_whose_read_fails_names_the_markers_of_the_build(ready):
+    ready.analysis._result = replace(ready.analysis._result, undecoded=(COMPARE_STOP,))
+    _stop_at(ready, COMPARE_STOP)
+    ready.stops = ValueError("reading src/plc took longer than 60 seconds.")
+
+    ready.open()
+
+    assert ready.sim.is_ready
+    assert ready.sim.stop_notice == simulation_stop_notice([COMPARE_STOP])
+    assert ready.messages("error") == (
+        "ClickNick could not read src/plc to find where the program stops: reading src/plc "
+        "took longer than 60 seconds.\nThe notice about the rungs that the simulation does "
+        "not run may be out of date."
+    )
+
+
+def test_a_write_whose_read_fails_keeps_the_stop_notice(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    _record_unreadable(ready.analysis.project_dir, 4, marker=True)
+    _stop_at(ready, COMPARE_STOP)
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    assert ready.sim.stop_notice == simulation_stop_notice([COMPARE_STOP])
+
+    # The build of CLICK's save has no marker, so only the stops of the program can stand in
+    _rebuild(ready)
+    ready.stops = ValueError("reading src/plc took longer than 60 seconds.")
+    ready.events.clear()
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.stop_notice == simulation_stop_notice([COMPARE_STOP])
+    assert ready.messages("error").startswith(
+        "ClickNick could not read src/plc to find where the program stops: reading src/plc "
+        "took longer than 60 seconds.\n"
+    )
+
+    # The failed read leaves nothing to compare with, so the next write reads again
+    _rebuild(ready, same_program=True)
+    ready.stops = ()
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.sim.stop_notice is None
+
+
+def test_a_write_reads_src_plc_again_only_if_it_changed(ready):
+    _running_with_settings(ready)
+    _rebuild(ready)
+    _record_unreadable(ready.analysis.project_dir, 4, marker=True)
+    _stop_at(ready, COMPARE_STOP)
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+    reads = ready.stops_reads
+
+    # A Reload from CLICK writes the same source
+    _rebuild(ready, saved=False, same_program=True)
+    ready.stops = ValueError("src/plc was read again")
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.stops_reads == reads
+    assert ready.sim.stop_notice == simulation_stop_notice([COMPARE_STOP])
+    assert ready.messages("error") == ""
+
+    _rebuild(ready)
+    ready.stops = ()
+    ready.sim.run_time_edit()
+    ready.scheduler.run_ready()
+
+    assert ready.stops_reads == reads + 1
+    assert ready.sim.stop_notice is None
 
 
 def test_launch_starts_the_simulator_in_stop_with_a_modbus_server(ready):
@@ -2050,7 +2266,7 @@ def test_internal_forces_whose_name_moves_are_listed_before_the_write_and_releas
     assert ready.sim.notice == f"Released {notice}"
 
 
-def test_a_write_is_refused_while_a_rung_clicknick_cannot_read_is_in_the_workspace(ready):
+def test_a_write_is_refused_while_a_stand_in_rung_is_in_the_workspace(ready):
     _running_with_settings(ready)
     _rebuild(ready)
     _record_unreadable(ready.analysis.project_dir, 4)
@@ -3074,6 +3290,143 @@ def _assert_x001_unmapped(dap) -> None:
     with pytest.raises(DapRequestError, match=r"X001 is not mapped to a tag"):
         dap.force("X001", True)
     assert dap.list_forces() == {}
+
+
+def _on_pyrung_built(tmp_path, pyrung_dap, monkeypatch, *, unreadable: bool) -> Harness:
+    """Return a harness on pyrung's DAP server for a workspace that a real build wrote.
+
+    CLICK's Main Program is X001 -> C1, then a Compare -> C2, then X002 -> C3. If *unreadable*
+    is set, laddercodec cannot read the Compare, and the build holds undecoded() in its place.
+    The session reads the markers from src/plc as the app does (``read_program_stops``).
+    """
+    from laddercodec import Coil, CompareContact, Contact, Program, Rung, UnknownCondition
+
+    from clicknick.services.program_stops import read_program_stops
+
+    def _rung(first: object, output: str) -> Rung:
+        return Rung([[first, *["-"] * 30]], [Coil(output)], None)
+
+    compare = UnknownCondition(raw=b"Compare") if unreadable else CompareContact("==", "DS1", "1")
+    rungs = [
+        _rung(Contact("X001"), "C1"),
+        _rung(compare, "C2"),
+        _rung(Contact("X002"), "C3"),
+    ]
+    monkeypatch.setattr(
+        "clicknick.ladder.program.decode_program",
+        lambda _data: Program("Main Program", 1, rungs),
+    )
+    monkeypatch.setattr("clicknick.services.analysis_service._channel_inputs", lambda _s: [])
+    scr = tmp_path / "scr"
+    scr.mkdir()
+    (scr / "Scr1.tmp").write_bytes(b"scr")
+    analysis = AnalysisService()
+    assert analysis.build(scr, None, persist_dir=tmp_path / "pyrung_project")
+    assert bool(analysis.undecoded_rungs) is unreadable
+    home = tmp_path / "home"
+    home.mkdir()
+    harness = Harness(home, analysis)
+
+    def factory(**callbacks):
+        dap = pyrung_dap(**callbacks)
+        harness.daps.append(dap)
+        return dap
+
+    harness.sim._dap_factory = factory
+    harness.sim._stops_reader = read_program_stops
+    return harness
+
+
+def _plc_main(harness: Harness) -> Path:
+    return harness.analysis.project_dir / "src" / "plc" / "main.py"
+
+
+MAIN_STOP = UndecodedRung("Main Program", 2)
+
+
+def test_pyrung_runs_a_built_program_up_to_its_marker(tmp_path, pyrung_dap, monkeypatch):
+    """Main Program's rung 2 is a Compare that laddercodec cannot read.
+
+    pyrung runs rung 1 and never runs rung 3.
+    """
+    from pyrung.live import send_command
+
+    harness = _on_pyrung_built(tmp_path, pyrung_dap, monkeypatch, unreadable=True)
+    harness.open()
+
+    assert harness.sim.is_ready, harness.messages()
+    assert harness.sim.stop_notice == simulation_stop_notice([MAIN_STOP])
+    # The panel lists X001, which rung 1 uses, and not X002, which only rung 3 uses
+    assert {"X001"} <= harness.sim._used_io()
+    assert "X002" not in harness.sim._used_io()
+    dap = harness.dap
+    harness.sim.set_switch_position("run")
+    harness.scheduler.run_ready()
+    dap.force("X001", True)
+    dap.force("X002", True)
+    dap.scan(2)
+    assert dap.tag("C1") is True
+    # The program that pyrung runs has no rung 3, so nothing in it names C3
+    assert send_command(dap._test_session, "get C3") == (False, "Unknown tag 'C3'.")
+
+
+def test_a_write_without_the_marker_clears_the_stop_notice(tmp_path, pyrung_dap, monkeypatch):
+    """The user deletes the undecoded() rung in src/plc and writes. CLICK's build still has it."""
+    harness = _on_pyrung_built(tmp_path, pyrung_dap, monkeypatch, unreadable=True)
+    harness.open()
+    assert harness.sim.stop_notice == simulation_stop_notice([MAIN_STOP])
+    main = _plc_main(harness)
+    source = main.read_text(encoding="utf-8")
+    marker = re.search(
+        r"\n    comment\('UNDECODED: [^\n]*\n    with rung\(\):[^\n]*\n[^\n]*\n", source
+    )
+    assert marker is not None, source
+    main.write_text(source.replace(marker.group(0), "\n"), encoding="utf-8")
+
+    harness.sim.write_program()
+    harness.scheduler.run_ready()
+
+    assert "OK - the simulation runs the new program." in harness.messages(), harness.messages()
+    assert harness.analysis.undecoded_rungs == (MAIN_STOP,)
+    assert harness.sim.stop_notice is None
+    dap = harness.dap
+    harness.sim.set_switch_position("run")
+    harness.scheduler.run_ready()
+    dap.force("X002", True)
+    dap.scan(2)
+    assert dap.tag("C3") is True, "rung 3 runs"
+
+
+def test_a_marker_put_in_src_plc_shows_the_stop_notice(tmp_path, pyrung_dap, monkeypatch):
+    """The user restores a src/plc backup that holds a marker. CLICK's build has none.
+
+    A write shows the notice, and a Restart keeps it.
+    """
+    harness = _on_pyrung_built(tmp_path, pyrung_dap, monkeypatch, unreadable=False)
+    harness.open()
+    assert harness.sim.is_ready, harness.messages()
+    assert harness.sim.stop_notice is None
+    main = _plc_main(harness)
+    source = main.read_text(encoding="utf-8")
+    rung_2 = "    with rung(DS1 == 1):  # R2\n        out(C2)\n"
+    assert rung_2 in source, source
+    marker = '    with rung():  # R2\n        undecoded("bad", rung=1, stop="end")\n'
+    main.write_text(
+        "from pyrung.click import undecoded\n" + source.replace(rung_2, marker),
+        encoding="utf-8",
+    )
+
+    harness.sim.write_program()
+    harness.scheduler.run_ready()
+
+    assert harness.analysis.undecoded_rungs == ()
+    assert harness.sim.stop_notice == simulation_stop_notice([MAIN_STOP])
+
+    harness.sim.restart()
+    harness.scheduler.run_ready()
+
+    assert len(harness.daps) == 2 and harness.sim.is_ready, harness.messages()
+    assert harness.sim.stop_notice == simulation_stop_notice([MAIN_STOP])
 
 
 def test_a_restart_on_another_project_starts_a_process_without_its_tags(tmp_path, pyrung_dap):

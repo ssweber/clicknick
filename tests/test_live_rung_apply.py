@@ -231,6 +231,60 @@ def test_failed_export_leaves_the_earlier_one_alone(tmp_path: Path) -> None:
     assert stale.exists()
 
 
+def test_export_of_a_workspace_with_markers_names_each_rung(tmp_path: Path, monkeypatch) -> None:
+    """Build a workspace from CLICK rungs that laddercodec cannot read, then export it.
+
+    pyrung's export refuses undecoded(). ClickNick names CLICK's program and rung for each
+    call, and tells the user not to delete the call.
+    """
+    from laddercodec import Call, Program, UnknownCondition
+
+    from clicknick.services.analysis_service import AnalysisService
+
+    def _rung(output: str, first: object = "-") -> Rung:
+        return Rung([[first, *["-"] * 30]], [Coil(output)], None)
+
+    bad = UnknownCondition(raw=b"Compare")
+    programs = {
+        b"Scr1.tmp": Program(
+            "Main Program",
+            1,
+            [
+                _rung("C1"),
+                Rung([["-"] * 31], [Call("Fill Tank")], None),
+                _rung("C2", bad),
+                _rung("C3"),
+            ],
+        ),
+        b"Scr2.tmp": Program("Fill Tank", 2, [_rung("C10"), _rung("C11", bad)]),
+    }
+    monkeypatch.setattr("clicknick.ladder.program.decode_program", programs.__getitem__)
+    monkeypatch.setattr("clicknick.services.analysis_service._channel_inputs", lambda _s: [])
+    scr = tmp_path / "scr"
+    scr.mkdir()
+    for name in programs:
+        (scr / name.decode()).write_bytes(name)
+    workspace = tmp_path / "pyrung_project"
+    assert AnalysisService().build(scr, None, persist_dir=workspace)
+
+    with pytest.raises(ValueError) as refused:
+        rung_commands._run_export(workspace)
+
+    assert str(refused.value) == (
+        "ClickNick cannot export the workspace. Its src/plc holds undecoded() in place of "
+        "rung 3 of Main Program and rung 2 of Fill Tank, because ClickNick could not read "
+        "those rungs from CLICK. CLICK has no instruction for undecoded(). In src/plc, write "
+        "each rung's logic in place of its call. Or paste the rungs again in CLICK and save."
+    )
+
+
+def test_an_export_that_fails_for_another_reason_keeps_its_traceback(tmp_path: Path) -> None:
+    (tmp_path / "project_to_csv.py").write_text("raise KeyError('lost')\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"(?s)Traceback.*KeyError: 'lost'"):
+        rung_commands._run_export(tmp_path)
+
+
 def test_summary_names_rungs_in_an_old_encoding_and_rungs_that_cannot_be_read() -> None:
     from clicknick.ladder.program import LegacyEncoding
     from clicknick.services.rung_diff import compare_rungs

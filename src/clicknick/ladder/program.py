@@ -757,6 +757,34 @@ def is_stand_in(rung: Rung) -> bool:
     return first in (STAND_IN_COMMENT, *_OLD_STAND_IN_COMMENTS) and is_empty_rung(rung)
 
 
+def stand_in_findings(csv_dir: Path) -> list[LegacyEncoding]:
+    """Return the unreadable-rung findings in *csv_dir* whose rung the CSV holds as a stand-in.
+
+    Each finding names a rung that ``program_save`` could not read. The program's CSV holds
+    an empty stand-in rung (``is_stand_in``) in its place, or laddercodec's UNDECODED marker.
+    If the CSV cannot be read, or has no rung at that number, nothing shows which one it
+    holds. Such a finding is returned too.
+    """
+    found = [
+        item for item in read_legacy_encodings(csv_dir) if item.unreadable and item.rung is not None
+    ]
+    programs: dict[str, list[Rung] | None] = {}
+    stand_ins: list[LegacyEncoding] = []
+    for item in found:
+        if item.file not in programs:
+            try:
+                # program_save already recorded what laddercodec warns about in this CSV
+                with recording():
+                    programs[item.file] = read_csv(csv_dir / item.file, strict=False)
+            except Exception:
+                programs[item.file] = None
+        rungs = programs[item.file]
+        assert item.rung is not None
+        if rungs is None or not 1 <= item.rung <= len(rungs) or is_stand_in(rungs[item.rung - 1]):
+            stand_ins.append(item)
+    return stand_ins
+
+
 def unreadable_copy(file: str, program: str, exc: Exception) -> LegacyEncoding:
     """Return a finding that laddercodec cannot read a whole CSV. *exc* says why.
 
@@ -1039,17 +1067,27 @@ def prepare_rungs_load(
     ]
     if marked:
         numbers = ", ".join(str(number) for number, _af in marked)
+        # The text does not offer to remove the marker. A paste of the program without the
+        # rung would delete the rung in CLICK.
         if len(marked) == 1:
             head = f"Rung {numbers} is an UNDECODED marker. CLICK cannot hold a marker."
+            fix = (
+                "Write the rung's logic in place of its marker. "
+                "Or paste the rung again in CLICK and save."
+            )
         else:
             head = f"Rungs {numbers} are UNDECODED markers. CLICK cannot hold a marker."
+            fix = (
+                "Write each rung's logic in place of its marker. "
+                "Or paste the rungs again in CLICK and save."
+            )
         lines = [f"  rung {number}: {marker_detail(af)}" for number, af in marked]
         raise UnreadableRungError(
             "\n".join(
                 [
                     head,
                     *lines,
-                    "Put the rung's logic in place of its marker, or remove the marker.",
+                    fix,
                 ]
             )
         )

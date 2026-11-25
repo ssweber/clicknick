@@ -4,7 +4,7 @@ Nothing loads this file automatically. The table in the root `AGENTS.md` says wh
 
 These notes cover `simulation_session.py` and the code that it drives: the simulation services
 (`services/dap_service.py`, `services/sim_state.py`, `services/program_carry.py`,
-`services/link_annotation.py`), the Simulator (`views/simulator_window.py`, `views/console_panel.py`) and the
+`services/link_annotation.py`, `services/program_stops.py`), the Simulator (`views/simulator_window.py`, `views/console_panel.py`) and the
 Dataview Editor's link to the simulation.
 
 ## Rules
@@ -170,8 +170,10 @@ The workspace is the pyrung project that ClickNick generates from the connected 
 - The watch tick and each frame compare a build once (`_examine_build`). `program_change` only reads the result.
   It offers nothing for a build that has not been compared yet.
 - One check says whether the workspace's program can run (`_workspace_problem`). It needs a conversion that
-  succeeded, a current workspace, a `run.py`, and no rung that ClickNick cannot read. Start, a write and Restart
-  all use it. If it refuses a write or a Restart, the simulation keeps running and a notice says why.
+  succeeded, a current workspace, a `run.py`, and no empty stand-in rung (`_stand_in_reason`). Start, a write
+  and Restart all use it. If it refuses a write or a Restart, the simulation keeps running and a notice says
+  why. A rung that the workspace holds as pyrung's `undecoded()` marker does not refuse. See "A program that
+  stops at a marker".
 - A write (`_write_program`) is one job on the action worker. The Console refuses commands until the write is
   answered. No write is offered while a Console command runs. The Restart button is disabled until the write is
   answered, and `restart()` refuses with a message meanwhile.
@@ -179,6 +181,42 @@ The workspace is the pyrung project that ClickNick generates from the connected 
   closing the pane in the middle of a command does not hold writes back. While that count is above zero
   (`console_busy`), every pane shows busy and offers Stop. The offer to write says that a Console command is
   still running.
+
+## A program that stops at a marker
+
+When ClickNick cannot read a rung from CLICK, the workspace holds pyrung's `undecoded()` marker in its place.
+Inside a For loop, and for a `next()`, it holds an empty stand-in rung instead (`is_stand_in`).
+
+- pyrung leaves out every rung after a marker in the same main program or subroutine. The simulation runs the
+  program up to the marker. The PLC runs the rest.
+- A stand-in refuses the launch, a write and a Restart. The simulation would run the empty rung and look
+  right. `stand_in_findings` reads the workspace's `csv/` to tell a stand-in from a marker, because both come
+  with the same finding in `legacy_encodings.json`.
+- The session keeps the markers of the program that runs (`_program_stops`). The user can edit `src/plc`, so
+  they come from the source that pyrung loads, not from the analysis build of CLICK's save. A launch and a
+  write each read them (`read_program_stops`, `services/program_stops.py`) on a thread beside pyrung's load
+  (`_StopsRead`). A process of its own imports `plc.main` and lists its markers, as `clicknick-cli check`
+  does. So the app never imports the workspace's code. pyrung's DAP prints its own notice only as Console
+  text, and that text names a subroutine by pyrung's name. Like `PlcSourceWatch`, the read sees `src/plc` as
+  it was at the launch or the write. A later edit is offered as a write.
+- The worker writes its answer to a temporary file, because the workspace's source may print to stdout.
+- The read takes about as long as a Python start that imports pyrung, near 0.8 s. A launch hides it behind
+  pyrung's own start. A write waits for it, and pyrung's reload alone takes a few hundredths of a second. So a
+  write does not read again while `src/plc` and `run.py` match the snapshot that the last good read took
+  (`_stops_reading`, `PlcSourceWatch.same`). It keeps those stops. A launch always reads. A build of a CLICK
+  save writes `src/plc` again, so the write after it still waits for the read.
+- If the read fails or times out, the session keeps the stops that the program had. If it had none, it uses
+  the markers of the latest build (`AnalysisService.undecoded_rungs`). It sends the failure as an error, and
+  the Simulator shows that as a banner. pyrung imports the same source, so its launch or write usually fails
+  too.
+- `stop_notice` names each program and CLICK rung where the program stops. The Simulator shows it as a banner.
+  The banner has no Dismiss button. It stays while the program runs. The session also sends the notice to the
+  Console at each launch, and after a write that changes the rungs.
+- The panel shows the X and Y points that the latest build uses (`_used_io`), plus every point of an
+  installed module. That build leaves out the rungs after its own markers, so a point that only those rungs
+  use drops off the panel. Until the next write, the build can differ from the program that runs. So the
+  notice says only that the panel can leave out such a point. ClickNick does not mark such points. It would
+  have to read the program's CSVs again to list them, and the Simulator draws every point the same way.
 
 ## Carrying forces and links
 
