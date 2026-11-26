@@ -436,9 +436,8 @@ def test_export_of_a_workspace_with_markers_names_each_rung(tmp_path: Path, monk
         "ClickNick cannot export the workspace. Its src/plc holds undecoded() in place of "
         "rung 3 of Main Program and rung 2 of Fill Tank, because ClickNick could not read "
         "those rungs from CLICK. CLICK has no instruction for undecoded(). In src/plc, write "
-        "each rung's logic in place of its call. Or paste the rungs again in CLICK and save. "
-        "Before each paste, click the rung's number in CLICK to select the rung that the paste "
-        "replaces."
+        "each rung's logic in place of its call. Or do this for each of those rungs in CLICK: "
+        "click its number to select the rung, and paste the rung again. Then save."
     )
 
 

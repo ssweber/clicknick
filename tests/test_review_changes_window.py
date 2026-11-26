@@ -2186,15 +2186,15 @@ def _stand_in_window(monkeypatch, click: list, proposed: list, rung: int):
     return window
 
 
-# What a refusal adds after it says to paste CLICK's rungs again. CLICK replaces a rung with
-# a paste only when the rung is selected.
-_SELECT_ONE = (
-    " Before the paste, click the rung's number in CLICK to select the rung that the paste "
-    "replaces."
+# How a refusal says to paste CLICK's rungs again. CLICK replaces a rung with a paste only
+# when the rung is selected, so the click comes before the paste.
+_PASTE_ONE = (
+    " First, click that rung's number in CLICK to select the rung. Then paste the rung again "
+    "from your own copy of the program."
 )
-_SELECT_EACH = (
-    " Before each paste, click the rung's number in CLICK to select the rung that the paste "
-    "replaces."
+_PASTE_EACH = (
+    " First, do this for each of those rungs in CLICK: click its number to select the rung, "
+    "and paste the rung again from your own copy of the program."
 )
 
 
@@ -2206,10 +2206,7 @@ def test_edits_around_a_stand_in_cannot_delete_clicks_rung(monkeypatch, copies) 
     """
     click = [*RUNGS[:2], empty_rung(STAND_IN_COMMENT)]
     window = _stand_in_window(monkeypatch, click, [*_coils("Y009"), empty_rung("")], 3)
-    refusal = (
-        "Rung 2 of Main Program is empty in this folder. CLICK's rung 3 cannot be read. "
-        f"Paste that rung from your own copy of the program first.{_SELECT_ONE}"
-    )
+    refusal = f"Rung 2 of Main Program is empty in this folder. CLICK's rung 3 cannot be read.{_PASTE_ONE}"
 
     assert window._current_steps() == []
     assert _status(window).endswith(refusal)
@@ -2266,8 +2263,8 @@ def test_a_folder_rung_for_an_unreadable_rung_is_refused_before_the_copy(
     click = [RUNGS[0], empty_rung(STAND_IN_COMMENT), *RUNGS[2:]]
     window = _stand_in_window(monkeypatch, click, [RUNGS[0], folder_rung, *RUNGS[2:]], 2)
     refusal = (
-        f"Rung 2 of Main Program {what} in this folder. CLICK's rung 2 cannot be read. "
-        f"Paste that rung from your own copy of the program first.{_SELECT_ONE}{then}"
+        f"Rung 2 of Main Program {what} in this folder. CLICK's rung 2 cannot be read."
+        f"{_PASTE_ONE}{then}"
     )
 
     assert _status(window).endswith(refusal)
@@ -2304,9 +2301,8 @@ def test_empty_rungs_and_markers_in_one_folder_are_named_in_rung_order(
 
     assert copies == []
     assert _status(window) == (
-        f"Could not copy main.csv: {named} CLICK's rung 2 cannot be read. "
-        "Paste those rungs from your own copy of the program first."
-        f"{_SELECT_EACH}{_REPLACE_MARKER}"
+        f"Could not copy main.csv: {named} CLICK's rung 2 cannot be read."
+        f"{_PASTE_EACH}{_REPLACE_MARKER}"
     )
 
 
@@ -2327,8 +2323,9 @@ def test_a_folder_without_clicks_unreadable_rung_is_refused_before_the_copy(
     refusal = (
         "ClickNick cannot read CLICK's rung 2 of Main Program, and this folder leaves it out. "
         "Copying the program whole would delete that rung in CLICK. Write the rung's logic "
-        f"where the rung was. Or paste the rung again in CLICK and save.{_SELECT_ONE} To delete "
-        "the rung in CLICK, click rung 2's number and press Delete. Then save."
+        "where the rung was. Or click that rung's number in CLICK to select the rung. Then "
+        "paste the rung again and save. To delete the rung in CLICK, click rung 2's number and "
+        "press Delete. Then save."
     )
 
     assert _status(window).endswith(refusal)
@@ -2355,8 +2352,8 @@ def test_a_folder_without_two_unreadable_rungs_says_to_delete_the_last_first(
     window._status_var.set(window._step_prompt(MAIN))
 
     assert _status(window).endswith(
-        f"Or paste the rungs again in CLICK and save.{_SELECT_EACH} To delete those rungs in "
-        "CLICK, delete one rung at a time, in this order: rungs 4 and 2. Click each rung's "
+        "Or do this for each of those rungs in CLICK: click its number to select the rung, and "
+        "paste the rung again. Then save. To delete those rungs in CLICK, delete one rung at a time, in this order: rungs 4 and 2. Click each rung's "
         "number and press Delete. Then save."
     )
 

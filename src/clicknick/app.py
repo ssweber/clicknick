@@ -1856,7 +1856,6 @@ class ClickNickApp:
         from .ladder.program import (
             clear_before_paste,
             describe_legacy_encoding,
-            select_before_paste,
             stand_in_fix,
         )
 
@@ -1877,7 +1876,7 @@ class ClickNickApp:
         if unreadable:
             one = len({(item.file, item.rung) for item in unreadable}) == 1
             fix = stand_in_fix(unreadable, one=one)
-            if fix.startswith(("Paste", "Where")):
+            if fix:
                 them = "it" if one else "them"
                 fix += f" Ladder > Compare with > Folder on your own copy lists {them} in red."
             parts.append(
@@ -1899,9 +1898,7 @@ class ClickNickApp:
                 "An older ClickNick pasted these rungs into CLICK in an old encoding. "
                 "CLICK runs them differently from how they read:\n\n"
                 + _listed(legacy)
-                + "\n\nPaste them into CLICK again. "
-                + select_before_paste(one=False)
-                + " Review Changes lists them in red."
+                + "\n\nPaste them into CLICK again. Review Changes lists them in red."
             )
         message = "\n\n".join(parts)
         if not legacy:

@@ -353,9 +353,9 @@ def test_rungs_clicknick_cannot_read_pop_up_without_offering_the_workspace(monke
     assert "  Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
     assert "empty rung" in message
     assert message.endswith(
-        "Paste it again from your own copy of the program, or fix it in CLICK. Before the "
-        "paste, click the rung's number in CLICK to select the rung that the paste replaces. "
-        "Ladder > Compare with > Folder on your own copy lists it in red."
+        "Click that rung's number in CLICK to select the rung. Then paste the rung again from "
+        "your own copy of the program. Or fix it in CLICK. Ladder > Compare with > Folder on "
+        "your own copy lists it in red."
     )
     assert "old encoding" not in message
     app._workspace.review_changes.assert_not_called()
@@ -383,10 +383,10 @@ def test_a_rung_that_syntax_check_splits_is_not_told_to_be_pasted_again(monkeypa
     )
     assert "Paste" not in alone
     assert mixed.endswith(
-        "Where a line does not say what to do, paste the rung again from your own copy of the "
-        "program, or fix it in CLICK. Before each paste, click the rung's number in CLICK to "
-        "select the rung that the paste replaces. Ladder > Compare with > Folder on your own "
-        "copy lists them in red."
+        "Where a line does not say what to do, do this for each of those rungs in CLICK: click "
+        "its number to select the rung, and paste the rung again from your own copy of the "
+        "program. Or fix them in CLICK. Ladder > Compare with > Folder on your own copy lists "
+        "them in red."
     )
 
 
@@ -406,9 +406,9 @@ def test_a_program_csv_laddercodec_cannot_read_pops_up_too(monkeypatch) -> None:
     )
     assert message.endswith(
         "Paste them into CLICK again from your own copy, or fix them in CLICK. "
-        "Ladder > Compare with > Folder on that copy lists them in red. Before you paste a "
-        "program again, delete all its rungs. In CLICK, click rung 1's number and press "
-        "Shift+Down until the last rung is shaded too. Press Delete."
+        "Ladder > Compare with > Folder on that copy lists them in red. To paste a program "
+        "again, first delete all its rungs. In CLICK, click rung 1's number and press "
+        "Shift+Down until the last rung is shaded too. Press Delete. Then paste the program."
     )
     assert "empty rung" not in message
 
@@ -426,9 +426,8 @@ def test_both_kinds_pop_up_together_and_offer_review_changes(monkeypatch) -> Non
     message = ask.call_args.args[1]
     assert "Conf_Compare rung 4" in message
     assert "Main Program rung 12, Math H70000" in message
+    # Review Changes, which the box offers, says how to select each rung
     assert message.endswith(
-        "Paste them into CLICK again. Before each paste, click the rung's number in CLICK to "
-        "select the rung that the paste replaces. Review Changes lists them in red.\n\n"
-        "Open Review Changes now?"
+        "Paste them into CLICK again. Review Changes lists them in red.\n\nOpen Review Changes now?"
     )
     app._workspace.review_changes.assert_called_once_with()

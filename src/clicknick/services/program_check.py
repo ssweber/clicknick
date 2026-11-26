@@ -19,12 +19,12 @@ if TYPE_CHECKING:
 
 def check_stop_notes(rungs: Iterable[UndecodedRung]) -> list[str]:
     """Return a line for each rung in *rungs*. The line says that the checks stop at that rung."""
-    from ..ladder.program import select_before_paste
+    from ..ladder.program import paste_again
 
+    paste = paste_again(one=True, lead="To include the rest, ")
     return [
         f"ClickNick could not read {rung}. In {rung.program}, the checks cover only the rungs "
-        "before it. To include the rest, paste that rung again in CLICK and save. "
-        f"{select_before_paste(one=True)}"
+        f"before it. {paste}"
         for rung in rungs
     ]
 

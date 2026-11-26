@@ -144,11 +144,7 @@ def test_cli_save_lists_rungs_to_paste_again(monkeypatch, scr: Path, written, ca
 
     out = capsys.readouterr().out
     assert "CLICK holds these rungs in an old encoding" in out
-    assert (
-        f"  Main Program rung 12, Math H70000: {DETAIL}\n"
-        "Before each paste, click the rung's number in CLICK to select the rung that the paste "
-        "replaces.\n"
-    ) in out
+    assert f"  Main Program rung 12, Math H70000: {DETAIL}" in out
 
 
 # ---------------------------------------------------------------------------

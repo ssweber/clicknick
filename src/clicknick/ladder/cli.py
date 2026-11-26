@@ -33,7 +33,6 @@ from .program import (
     prepare_bin_load,
     prepare_csv_load,
     program_save,
-    select_before_paste,
     stand_in_fix,
 )
 
@@ -620,7 +619,6 @@ def main() -> None:
                 )
                 for item in legacy:
                     print(f"  {describe_legacy_encoding(item)}")
-                print(select_before_paste(one=False))
             if unreadable:
                 fix = stand_in_fix(
                     unreadable, one=len({(item.file, item.rung) for item in unreadable}) == 1

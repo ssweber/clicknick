@@ -33,8 +33,8 @@ from ..ladder.program import (
     LegacyEncoding,
     delete_rungs,
     describe_legacy_encoding,
+    paste_again,
     prepare_rungs_load,
-    select_before_paste,
 )
 from ..models.address_row import AddressRow
 from ..services.nickname_staging import NicknamePlan, plan_nicknames, stage_nicknames
@@ -319,11 +319,10 @@ def _placeholder_refusal(name: str, change: ProgramChange) -> str:
     else:
         what = f"CLICK's rungs {_listed_rungs(unread)} cannot be read."
     one = len(empty) + len(markers) == 1
-    rung = "that rung" if one else "those rungs"
-    refusal = (
-        f"{head} {what} Paste {rung} from your own copy of the program first. "
-        f"{select_before_paste(one=one)}"
+    paste = paste_again(
+        one=one, lead="First, ", source=" from your own copy of the program", save=False
     )
+    refusal = f"{head} {what} {paste}"
     if markers:
         # The text does not offer to delete the marker. A whole paste would then delete
         # CLICK's rung.
@@ -362,9 +361,8 @@ def _dropped_refusal(name: str, change: ProgramChange) -> str:
         f"ClickNick cannot read CLICK's {which} of {program}, and this folder leaves "
         f"{'it' if one else 'them'} out. Copying the program whole would delete "
         f"{'that rung' if one else 'those rungs'} in CLICK. Write "
-        f"{'the rung' if one else 'each rung'}'s logic where the rung was. Or paste "
-        f"{'the rung' if one else 'the rungs'} again in CLICK and save. "
-        f"{select_before_paste(one=one)} {delete}"
+        f"{'the rung' if one else 'each rung'}'s logic where the rung was. "
+        f"{paste_again(one=one, lead='Or ')} {delete}"
     )
 
 

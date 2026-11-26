@@ -89,13 +89,23 @@ stages them in the store instead.
   Delete. A delete of every rung does not name CLICK's last rung. ClickNick counts only CLICK's last save, and
   CLICK can hold pastes that ClickNick has no record of. A paste into a program with no rungs says to click rung
   1's number first (`_whole_placement`).
-- Each text that tells the user to paste a rung again over CLICK's copy of it says to click the rung's number
-  first (`select_before_paste`). These texts are the refusals in this window and in `prepare_rungs_load`, the
-  analysis notices in `services/`, the Paste Again box and `clicknick-rung program save`. This window's notes
-  about CLICK's rungs in an old encoding, or rungs that ClickNick cannot read, do not say it (`_legacy_note`,
-  `_legacy_line`). The step that pastes the rung or the program says how. Each text that
-  tells the user to paste a whole program again says to delete all its rungs first (`clear_before_paste`). The
-  three helpers live in `ladder/program.py`, which `services/`, the views and the CLIs can all import.
+- Some texts outside a Review Changes step tell the user to paste a rung again over CLICK's copy of it, because
+  ClickNick cannot read that copy. Each one names the steps in order: click the rung's number, paste, then save
+  (`paste_again`). A user who acts as they read would otherwise paste before the click. These texts are this
+  window's refusals, `prepare_rungs_load`'s refusals, the analysis notices in `services/`, the Simulator's
+  refusal to run, the Paste Again box and `clicknick-rung program save`. Each such text about a whole program
+  says to delete all its rungs first, and then paste (`clear_before_paste`). `paste_again`,
+  `clear_before_paste` and `delete_rungs` live in `ladder/program.py`, which `services/`, the views and the CLIs
+  can all import.
+- These texts say neither:
+  - This window's notes on an old encoding or a rung that ClickNick cannot read (`_legacy_note`,
+    `_legacy_line`). The step under each note says how to select the rung, or how to delete the program's rungs.
+  - The text about rungs in an old encoding in the Paste Again box and in `clicknick-rung program save`. The
+    box offers Review Changes, whose steps say how. A finding can also have no rung number. Review Changes then
+    pastes the program whole, and a text about the rung's number would be wrong.
+  - The comment of the empty rung that `program_save` writes in place of a rung that it cannot read, such as
+    one inside a For loop (`_stand_in`, "Paste it again."). The user sees it in `src/plc/` and in the diff.
+    Every message about that rung already says how.
 - The runner also saw Ctrl+Shift+End, pressed from rung 1's number, select every rung. The texts name Shift+Down,
   which the earlier texts named, until a person has tried Ctrl+Shift+End. The roadmap's "Open user checks" asks
   Sam to try it.
