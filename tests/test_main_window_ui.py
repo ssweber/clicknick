@@ -352,7 +352,11 @@ def test_rungs_clicknick_cannot_read_pop_up_without_offering_the_workspace(monke
     assert message.startswith("ClickNick cannot copy these rungs from CLICK as they are:\n")
     assert "  Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
     assert "empty rung" in message
-    assert "Paste it again from your own copy of the program" in message
+    assert message.endswith(
+        "Click that rung's number in CLICK to select the rung. Then paste the rung again from "
+        "your own copy of the program. Or fix it in CLICK. Ladder > Compare with > Folder on "
+        "your own copy lists it in red."
+    )
     assert "old encoding" not in message
     app._workspace.review_changes.assert_not_called()
 
@@ -378,7 +382,13 @@ def test_a_rung_that_syntax_check_splits_is_not_told_to_be_pasted_again(monkeypa
         " each one. Inside a For loop, the workspace holds an empty rung instead."
     )
     assert "Paste" not in alone
-    assert "Where a line does not say what to do, paste the rung again" in mixed
+    assert mixed.endswith(
+        # Rung 2's line says to run Syntax Check, so the paste is only for rung 4
+        "Do this in CLICK for each rung whose line does not say what to do: click its number to "
+        "select the rung, and paste the rung again from your own copy of the program. Or fix the "
+        "rung in CLICK. Ladder > Compare with > Folder on your own copy lists "
+        "them in red."
+    )
 
 
 def test_a_program_csv_laddercodec_cannot_read_pops_up_too(monkeypatch) -> None:
@@ -397,7 +407,9 @@ def test_a_program_csv_laddercodec_cannot_read_pops_up_too(monkeypatch) -> None:
     )
     assert message.endswith(
         "Paste them into CLICK again from your own copy, or fix them in CLICK. "
-        "Ladder > Compare with > Folder on that copy lists them in red."
+        "Ladder > Compare with > Folder on that copy lists them in red. To paste a program "
+        "again, first delete all its rungs. In CLICK, click rung 1's number and press "
+        "Shift+Down until the last rung is shaded too. Press Delete. Then paste the program."
     )
     assert "empty rung" not in message
 
@@ -415,5 +427,8 @@ def test_both_kinds_pop_up_together_and_offer_review_changes(monkeypatch) -> Non
     message = ask.call_args.args[1]
     assert "Conf_Compare rung 4" in message
     assert "Main Program rung 12, Math H70000" in message
-    assert message.endswith("Open Review Changes now?")
+    # Review Changes, which the box offers, says how to select each rung
+    assert message.endswith(
+        "Paste them into CLICK again. Review Changes lists them in red.\n\nOpen Review Changes now?"
+    )
     app._workspace.review_changes.assert_called_once_with()

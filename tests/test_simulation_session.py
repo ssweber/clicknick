@@ -672,7 +672,8 @@ def test_program_with_a_rung_clicknick_cannot_read_does_not_run(ready):
     assert "ClickNick cannot copy this rung from CLICK as it is" in message
     assert "Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
     assert message.endswith(
-        "\nPaste it again from your own copy of the program, or fix it in CLICK."
+        "\nClick that rung's number in CLICK to select the rung. Then paste the rung again from "
+        "your own copy of the program. Or fix it in CLICK."
     )
     assert "CsvWriteError" not in message
 
@@ -685,7 +686,9 @@ def test_several_unreadable_rungs_are_named_together(ready):
     assert "Conf_Compare rung 4" in message
     assert "Conf_Compare rung 5" in message
     assert message.endswith(
-        "\nPaste them again from your own copy of the program, or fix them in CLICK."
+        "\nDo this in CLICK for each rung that ClickNick cannot read: click its number to select "
+        "the rung, and paste the rung again from your own copy of the program. Or fix them in "
+        "CLICK."
     )
 
 
@@ -727,10 +730,11 @@ def test_a_program_with_a_marker_runs_up_to_it_with_a_notice(ready):
 
     assert ready.sim.status is SimStatus.READY
     notice = simulation_stop_notice([COMPARE_STOP])
-    assert notice.startswith(
+    assert notice == (
         "ClickNick could not read rung 4 of Conf_Compare. The simulation does not run the "
         "rungs after it in that program. The PLC runs them. If only those rungs use an X or "
-        "Y point, the panel can leave it out."
+        "Y point, the panel can leave it out. To simulate the rest, click that rung's number in "
+        "CLICK to select the rung. Then paste the rung again and save."
     )
     assert ready.sim.stop_notice == notice
     assert notice in ready.messages("progress")
@@ -744,7 +748,10 @@ def test_the_stop_notice_names_every_rung_where_the_program_stops():
         "ClickNick could not read rung 4 of Conf_Compare and rung 12 of Main Program. "
         "The simulation does not run the rungs after each one in its program."
     )
-    assert notice.endswith("paste those rungs again in CLICK and save.")
+    assert notice.endswith(
+        "To simulate the rest, do this in CLICK for each rung that ClickNick cannot read: click "
+        "its number to select the rung, and paste the rung again. Then save."
+    )
     assert simulation_stop_notice([]) == ""
 
 

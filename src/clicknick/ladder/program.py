@@ -929,14 +929,86 @@ def stand_in_fix(found: Sequence[LegacyEncoding], *, one: bool) -> str:
     told = sum(item.detail.endswith(_SYNTAX_CHECK_FIX) for item in found)
     if told == len(found):
         return ""
-    if told:
-        return (
-            "Where a line does not say what to do, paste the rung again from your own copy "
-            "of the program, or fix it in CLICK."
-        )
+    if not told:
+        paste = paste_again(one=one, own_copy=True, save=False)
+        return f"{paste} Or fix {'it' if one else 'them'} in CLICK."
     if one:
-        return "Paste it again from your own copy of the program, or fix it in CLICK."
-    return "Paste them again from your own copy of the program, or fix them in CLICK."
+        lead = "Where a line does not say what to do, "
+        return f"{paste_again(one=True, lead=lead, own_copy=True, save=False)} Or fix it in CLICK."
+    # Only the rungs whose line gives no fix need the paste
+    paste = paste_again(
+        one=False, which="whose line does not say what to do", own_copy=True, save=False
+    )
+    return f"{paste} Or fix the rung in CLICK."
+
+
+def paste_again(
+    *,
+    one: bool,
+    lead: str = "",
+    which: str = "that ClickNick cannot read",
+    own_copy: bool = False,
+    save: bool = True,
+) -> str:
+    """Return the sentences that tell the user to select a rung in CLICK and paste it again.
+
+    The paste replaces CLICK's rung with the same rung. The text names the steps in the
+    order that the user takes them. The click on the rung's number comes first, because a
+    paste replaces a rung in CLICK only when the rung is selected. A click on the rung's
+    number selects it. With only the cursor in the rung's logic, CLICK inserts the paste
+    above the rung and keeps the rung. CLICK 4.00 was observed to do both.
+
+    *one* is False for a text about several rungs. *lead* starts the first sentence, such
+    as ``"To include the rest, "`` or ``"Or "``. *which* says which rungs a text about
+    several rungs means. If *own_copy* is True, the text says that the paste comes from the
+    user's own copy of the program. If *save* is True, the text ends with the save in CLICK.
+    """
+    source = " from your own copy of the program" if own_copy else ""
+    if one:
+        steps = (
+            "click that rung's number in CLICK to select the rung. "
+            f"Then paste the rung again{source}"
+        )
+        end = " and save." if save else "."
+    else:
+        # The rung list sits sentences away, so the text names the rungs again
+        steps = (
+            f"do this in CLICK for each rung {which}: click its number to select the rung, "
+            f"and paste the rung again{source}"
+        )
+        end = ". Then save." if save else "."
+    text = f"{lead}{steps}{end}"
+    return text[0].upper() + text[1:]
+
+
+def delete_rungs(first: int, last: int | None = None) -> str:
+    """Say how to select and delete CLICK's rungs *first* to *last*.
+
+    The text follows "In CLICK, ". *last* is None for every rung down to the end of the
+    program. Delete in CLICK acts on the selection. A click on a rung's number selects the
+    rung. With only the cursor in the rung's logic, Delete removes one instruction. The
+    first Shift+Down from there selects only the cursor's rung.
+    """
+    if last == first:
+        return f"click rung {first}'s number and press Delete"
+    until = "the last rung" if last is None else f"rung {last}"
+    return (
+        f"click rung {first}'s number and press Shift+Down until {until} is shaded too. "
+        "Press Delete"
+    )
+
+
+def clear_before_paste() -> str:
+    """Return the sentences that say how to delete a program's rungs before a paste of all of it.
+
+    A paste in CLICK replaces at most the one selected rung. CLICK keeps the program's other
+    rungs. After a delete of every rung, a paste adds exactly the pasted rungs. CLICK 4.00
+    was observed to do this.
+    """
+    return (
+        "To paste a program again, first delete all its rungs. "
+        f"In CLICK, {delete_rungs(1)}. Then paste the program."
+    )
 
 
 def describe_legacy_encoding(item: LegacyEncoding, *, program: bool = True) -> str:
@@ -1117,13 +1189,14 @@ def prepare_rungs_load(
     stand_ins = [number for number, rung in enumerate(rungs, start=first_rung) if is_stand_in(rung)]
     if stand_ins:
         numbers = ", ".join(str(number) for number in stand_ins)
-        if len(stand_ins) == 1:
+        one = len(stand_ins) == 1
+        if one:
             what = f"Rung {numbers} is an empty rung that stands in for a rung"
-            fix = "Paste that rung from your own copy of the program, or fix it in CLICK."
         else:
             what = f"Rungs {numbers} are empty rungs that stand in for rungs"
-            fix = "Paste those rungs from your own copy of the program, or fix them in CLICK."
-        raise UnreadableRungError(f"{what} ClickNick cannot read from CLICK. {fix}")
+        paste = paste_again(one=one, own_copy=True, save=False)
+        fix = f"Or fix {'it' if one else 'them'} in CLICK."
+        raise UnreadableRungError(f"{what} ClickNick cannot read from CLICK. {paste} {fix}")
     marked = [
         (number, af)
         for number, rung in enumerate(rungs, start=first_rung)
@@ -1134,25 +1207,20 @@ def prepare_rungs_load(
         numbers = ", ".join(str(number) for number, _af in marked)
         # The text does not offer to remove the marker. A paste of the program without the
         # rung would delete the rung in CLICK.
-        if len(marked) == 1:
+        one = len(marked) == 1
+        if one:
             head = f"Rung {numbers} is an UNDECODED marker. CLICK cannot hold a marker."
-            fix = (
-                "Write the rung's logic in place of its marker. "
-                "Or paste the rung again in CLICK and save."
-            )
+            fix = "Write the rung's logic in place of its marker."
         else:
             head = f"Rungs {numbers} are UNDECODED markers. CLICK cannot hold a marker."
-            fix = (
-                "Write each rung's logic in place of its marker. "
-                "Or paste the rungs again in CLICK and save."
-            )
+            fix = "Write each rung's logic in place of its marker."
         lines = [f"  rung {number}: {marker_detail(af)}" for number, af in marked]
         raise UnreadableRungError(
             "\n".join(
                 [
                     head,
                     *lines,
-                    fix,
+                    f"{fix} {paste_again(one=one, lead='Or ')}",
                 ]
             )
         )

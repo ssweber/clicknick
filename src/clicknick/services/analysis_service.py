@@ -103,13 +103,15 @@ def filter_stop_notice(rungs: Sequence[UndecodedRung]) -> str:
     The Address Editor shows it beside the results of ``input:``, ``upstream:`` and the other
     filters that read the built program.
     """
+    from ..ladder.program import paste_again
+
     if not rungs:
         return ""
-    each, paste = ("it", "that rung") if len(rungs) == 1 else ("each one", "those rungs")
+    one = len(rungs) == 1
     return (
         f"ClickNick could not read {_listed(rungs)}. "
-        f"This filter covers only the rungs before {each}. "
-        f"To include the rest, paste {paste} again in CLICK and save."
+        f"This filter covers only the rungs before {'it' if one else 'each one'}. "
+        + paste_again(one=one, lead="To include the rest, ")
     )
 
 
@@ -136,15 +138,16 @@ def simulation_stop_notice(rungs: Sequence[UndecodedRung]) -> str:
     runs. So the text says only that the panel can leave out a point that only those rungs
     use.
     """
+    from ..ladder.program import paste_again
+
     if not rungs:
         return ""
     one = len(rungs) == 1
     return (
         f"ClickNick could not read {_listed(rungs)}. The simulation does not run the rungs "
         f"after {'it in that program' if one else 'each one in its program'}. The PLC runs "
-        "them. If only those rungs use an X or Y point, the panel can leave it out. To "
-        "simulate the rest, paste "
-        f"{'that rung' if one else 'those rungs'} again in CLICK and save."
+        "them. If only those rungs use an X or Y point, the panel can leave it out. "
+        + paste_again(one=one, lead="To simulate the rest, ")
     )
 
 
@@ -155,6 +158,8 @@ def export_stop_refusal(rungs: Sequence[UndecodedRung]) -> str:
     text suggests removing the rung. The text here does not, because Review Changes would
     then paste the program without that rung and delete it in CLICK.
     """
+    from ..ladder.program import paste_again
+
     one = len(rungs) == 1
     return (
         "ClickNick cannot export the workspace. Its src/plc holds undecoded() in place of "
@@ -162,12 +167,11 @@ def export_stop_refusal(rungs: Sequence[UndecodedRung]) -> str:
         f"{'that rung' if one else 'those rungs'} from CLICK. CLICK has no instruction for "
         "undecoded(). "
         + (
-            "In src/plc, write the rung's logic in place of the call. Or paste the rung again "
-            "in CLICK and save."
+            "In src/plc, write the rung's logic in place of the call. "
             if one
-            else "In src/plc, write each rung's logic in place of its call. Or paste the rungs "
-            "again in CLICK and save."
+            else "In src/plc, write each rung's logic in place of its call. "
         )
+        + paste_again(one=one, lead="Or ")
     )
 
 

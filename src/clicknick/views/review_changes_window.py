@@ -31,7 +31,9 @@ from ..data.data_source import CsvDataSource
 from ..ladder.clipboard import copy_to_clipboard, is_click_v4
 from ..ladder.program import (
     LegacyEncoding,
+    delete_rungs,
     describe_legacy_encoding,
+    paste_again,
     prepare_rungs_load,
 )
 from ..models.address_row import AddressRow
@@ -202,23 +204,6 @@ def _rungs_in_click(numbers: Sequence[int]) -> str:
     return f"rungs {numbers[0]} to {numbers[-1]}"
 
 
-def _delete_rungs(first: int, last: int | None = None) -> str:
-    """Say how to select and delete CLICK's rungs *first* to *last*.
-
-    The text follows "In CLICK, ". *last* is None for every rung down to the end of the
-    program. Delete in CLICK acts on the selection. A click on a rung's number selects the
-    rung. With only the cursor in the rung's logic, Delete removes one instruction. The
-    first Shift+Down from there selects only the cursor's rung.
-    """
-    if last == first:
-        return f"click rung {first}'s number and press Delete"
-    until = "the last rung" if last is None else f"rung {last}"
-    return (
-        f"click rung {first}'s number and press Shift+Down until {until} is shaded too. "
-        "Press Delete"
-    )
-
-
 def _where_to_paste(step: PasteStep) -> str:
     """Say where in CLICK a step's rungs go.
 
@@ -333,8 +318,10 @@ def _placeholder_refusal(name: str, change: ProgramChange) -> str:
         what = f"CLICK's rung {unread[0]} cannot be read."
     else:
         what = f"CLICK's rungs {_listed_rungs(unread)} cannot be read."
-    rung = "those rungs" if len(empty) + len(markers) > 1 else "that rung"
-    refusal = f"{head} {what} Paste {rung} from your own copy of the program first."
+    # The paste replaces CLICK's rungs. With no rung number known, count the folder's rungs.
+    one = len(unread) == 1 if unread else len(empty) + len(markers) == 1
+    paste = paste_again(one=one, lead="First, ", own_copy=True, save=False)
+    refusal = f"{head} {what} {paste}"
     if markers:
         # The text does not offer to delete the marker. A whole paste would then delete
         # CLICK's rung.
@@ -359,22 +346,22 @@ def _dropped_refusal(name: str, change: ProgramChange) -> str:
     one = len(dropped) == 1
     which = f"rung {dropped[0]}" if one else f"rungs {_listed_rungs(dropped)}"
     if one:
-        delete = f"To delete it in CLICK, {_delete_rungs(dropped[0], dropped[0])}. Then save."
+        delete = f"To delete the rung in CLICK, {delete_rungs(dropped[0], dropped[0])}. Then save."
     else:
         # Each delete moves up the rungs below it. From the highest number down, the rungs
         # left to delete keep the numbers that the text names.
         *rest, lowest = sorted(dropped, reverse=True)
         order = f"{', '.join(str(rung) for rung in rest)} and {lowest}"
         delete = (
-            f"To delete them in CLICK, delete one rung at a time, in this order: rungs {order}. "
-            "Click each rung's number and press Delete. Then save."
+            "To delete those rungs in CLICK, delete one rung at a time, in this order: "
+            f"rungs {order}. Click each rung's number and press Delete. Then save."
         )
     return (
         f"ClickNick cannot read CLICK's {which} of {program}, and this folder leaves "
         f"{'it' if one else 'them'} out. Copying the program whole would delete "
         f"{'that rung' if one else 'those rungs'} in CLICK. Write "
-        f"{'the rung' if one else 'each rung'}'s logic where the rung was. Or paste "
-        f"{'the rung' if one else 'the rungs'} again in CLICK and save. {delete}"
+        f"{'the rung' if one else 'each rung'}'s logic where the rung was. "
+        f"{paste_again(one=one, lead='Or ')} {delete}"
     )
 
 
@@ -1045,14 +1032,14 @@ class ReviewChangesWindow(tk.Toplevel):
                 name,
                 f"CLICK's {_rungs_in_click(step.delete)} of {name}",
                 erased,
-                how=_delete_rungs(step.delete[0], step.delete[-1]),
+                how=delete_rungs(step.delete[0], step.delete[-1]),
                 keep=_KEEP_DIFFERENCE,
             )
         return _delete_question(
             name,
             f"every rung of {name} in CLICK",
             erased,
-            how=_delete_rungs(1),
+            how=delete_rungs(1),
             keep="Click Cancel to leave CLICK as it is.",
         )
 
@@ -1292,7 +1279,7 @@ class ReviewChangesWindow(tk.Toplevel):
 
     def _whole_placement(self, name: str) -> str:
         """Say how a whole program goes into CLICK, given what CLICK has of it."""
-        clear_first = f"In CLICK, {_delete_rungs(1)}. Then paste (Ctrl+V)"
+        clear_first = f"In CLICK, {delete_rungs(1)}. Then paste (Ctrl+V)"
         if name in self._unplaced:
             return clear_first  # CLICK holds what was pasted of it before
         change = self._changes.get(name)
@@ -1783,7 +1770,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 if self._asks_before_delete(name, step):
                     action = self._delete_line(name, step)
                 else:
-                    how = _delete_rungs(step.delete[0], step.delete[-1])
+                    how = delete_rungs(step.delete[0], step.delete[-1])
                     action = f'In CLICK, {how}. Then click "Next"'
                 return f"{head}: {what}.\n{action}{legacy}{self._stepped_line(name)}"
             if step.over is not None:
@@ -1813,7 +1800,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 )
             return (
                 f"{name} has no rungs in this folder.\n"
-                f'In CLICK, {_delete_rungs(1)}. Then click "Next"'
+                f'In CLICK, {delete_rungs(1)}. Then click "Next"'
             )
         if self._can_add_subroutine(idx):
             where = (

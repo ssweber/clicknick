@@ -175,11 +175,15 @@ def test_check_stop_notes_name_the_program_and_clicks_rung() -> None:
     from clicknick.services.analysis_service import UndecodedRung
     from clicknick.services.program_check import check_stop_notes
 
+    paste = (
+        "To include the rest, click that rung's number in CLICK to select the rung. Then paste "
+        "the rung again and save."
+    )
     assert check_stop_notes([UndecodedRung("Main Program", 2), UndecodedRung("Fill", 4)]) == [
         "ClickNick could not read rung 2 of Main Program. In Main Program, the checks cover only "
-        "the rungs before it. To include the rest, paste that rung again in CLICK and save.",
+        f"the rungs before it. {paste}",
         "ClickNick could not read rung 4 of Fill. In Fill, the checks cover only the rungs before "
-        "it. To include the rest, paste that rung again in CLICK and save.",
+        f"it. {paste}",
     ]
 
 
@@ -207,6 +211,7 @@ def test_the_cli_check_notes_each_rung_where_the_checks_stop(tmp_path, monkeypat
     lines = capsys.readouterr().out.splitlines()
     assert lines[0] == (
         "NOTE: ClickNick could not read rung 2 of Main Program. In Main Program, the checks cover "
-        "only the rungs before it. To include the rest, paste that rung again in CLICK and save."
+        "only the rungs before it. To include the rest, click that rung's number in CLICK to "
+        "select the rung. Then paste the rung again and save."
     )
     assert lines[1].startswith("Check Program: ")

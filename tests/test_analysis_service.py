@@ -413,12 +413,14 @@ class TestUndecodedRungs:
         assert filter_stop_notice((main,)) == (
             "ClickNick could not read rung 3 of Main Program. "
             "This filter covers only the rungs before it. "
-            "To include the rest, paste that rung again in CLICK and save."
+            "To include the rest, click that rung's number in CLICK to select the rung. "
+            "Then paste the rung again and save."
         )
         assert filter_stop_notice((main, sub)) == (
             "ClickNick could not read rung 3 of Main Program and rung 2 of Fill Tank. "
             "This filter covers only the rungs before each one. "
-            "To include the rest, paste those rungs again in CLICK and save."
+            "To include the rest, do this in CLICK for each rung that ClickNick cannot read: "
+            "click its number to select the rung, and paste the rung again. Then save."
         )
         assert filter_stop_notice((main, sub, other)).startswith(
             "ClickNick could not read rung 3 of Main Program, rung 2 of Fill Tank and rung 7 of "

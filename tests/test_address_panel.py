@@ -207,7 +207,8 @@ def test_analysis_filters_use_the_current_analysis(tk_root, store) -> None:
 
 _STOPPED = (
     "ClickNick could not read rung 3 of Main Program. This filter covers only the rungs before "
-    "it. To include the rest, paste that rung again in CLICK and save."
+    "it. To include the rest, click that rung's number in CLICK to select the rung. Then paste "
+    "the rung again and save."
 )
 
 
