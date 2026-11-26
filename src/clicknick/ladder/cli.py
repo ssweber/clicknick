@@ -25,6 +25,7 @@ from .clipboard import copy_to_clipboard, find_click_hwnd, is_click_v4, read_fro
 from .program import (
     NeedsClickV4Error,
     PrepareResult,
+    clear_before_paste,
     decode_to_csv,
     describe_csv,
     describe_legacy_encoding,
@@ -32,6 +33,7 @@ from .program import (
     prepare_bin_load,
     prepare_csv_load,
     program_save,
+    select_before_paste,
     stand_in_fix,
 )
 
@@ -618,6 +620,7 @@ def main() -> None:
                 )
                 for item in legacy:
                     print(f"  {describe_legacy_encoding(item)}")
+                print(select_before_paste(one=False))
             if unreadable:
                 fix = stand_in_fix(
                     unreadable, one=len({(item.file, item.rung) for item in unreadable}) == 1
@@ -635,6 +638,7 @@ def main() -> None:
                 )
                 for item in copies:
                     print(f"  {describe_legacy_encoding(item)}")
+                print(clear_before_paste())
             return
 
         # program load

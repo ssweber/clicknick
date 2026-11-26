@@ -347,8 +347,14 @@ def test_a_stand_in_in_a_loop_is_never_copied_over_the_rung_it_stands_for(
     )
     rungs = read_csv(out / "main.csv")
 
-    with pytest.raises(UnreadableRungError, match=r"^Rung 2 is an empty rung"):
+    with pytest.raises(UnreadableRungError) as refused:
         prepare_rungs_load(rungs, click_v4=True)
+    # CLICK replaces a rung with a paste only when the rung is selected
+    assert str(refused.value) == (
+        "Rung 2 is an empty rung that stands in for a rung ClickNick cannot read from CLICK. "
+        "Paste that rung from your own copy of the program, or fix it in CLICK. Before the "
+        "paste, click the rung's number in CLICK to select the rung that the paste replaces."
+    )
     with pytest.raises(UnreadableRungError, match=r"^Rung 6 is an empty rung"):
         prepare_rungs_load(rungs[1:2], click_v4=True, first_rung=6)
 
@@ -413,13 +419,16 @@ def test_an_undecoded_marker_in_a_csv_is_never_copied(tmp_path: Path) -> None:
         "  rung 2: laddercodec cannot read this rung: bad bytes.\n"
         "  rung 4: laddercodec cannot read this rung: no end.\n"
         "Write each rung's logic in place of its marker. Or paste the rungs again in CLICK "
-        "and save."
+        "and save. Before each paste, click the rung's number in CLICK to select the rung "
+        "that the paste replaces."
     )
     with pytest.raises(UnreadableRungError) as refused:
         prepare_rungs_load(rungs[1:2], click_v4=True, first_rung=6)
     assert str(refused.value).startswith("Rung 6 is an UNDECODED marker. ")
     assert str(refused.value).endswith(
-        "Write the rung's logic in place of its marker. Or paste the rung again in CLICK and save."
+        "Write the rung's logic in place of its marker. Or paste the rung again in CLICK and "
+        "save. Before the paste, click the rung's number in CLICK to select the rung that the "
+        "paste replaces."
     )
 
 
@@ -1238,6 +1247,9 @@ def test_save_names_a_program_whose_csv_laddercodec_cannot_read_back(
     printed = capsys.readouterr().out
     assert (
         "Paste these programs into CLICK again from your own copy, or fix them in CLICK:\n"
-        f"  Main Program: {found.detail}"
+        f"  Main Program: {found.detail}\n"
+        # A paste replaces at most the selected rung, so CLICK's old rungs must go first
+        "Before you paste a program again, delete all its rungs. In CLICK, click rung 1's "
+        "number and press Shift+Down until the last rung is shaded too. Press Delete.\n"
     ) in printed
     assert "ClickNick cannot copy these rungs" not in printed

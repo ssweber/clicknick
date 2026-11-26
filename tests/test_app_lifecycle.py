@@ -1642,7 +1642,9 @@ def test_check_program_says_where_the_checks_stop(monkeypatch):
 
     assert data.stop_notes == (
         "ClickNick could not read rung 2 of Main Program. In Main Program, the checks cover only "
-        "the rungs before it. To include the rest, paste that rung again in CLICK and save.",
+        "the rungs before it. To include the rest, paste that rung again in CLICK and save. "
+        "Before the paste, click the rung's number in CLICK to select the rung that the paste "
+        "replaces.",
     )
 
 

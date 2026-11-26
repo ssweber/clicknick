@@ -929,14 +929,57 @@ def stand_in_fix(found: Sequence[LegacyEncoding], *, one: bool) -> str:
     told = sum(item.detail.endswith(_SYNTAX_CHECK_FIX) for item in found)
     if told == len(found):
         return ""
+    select = select_before_paste(one=one)
     if told:
         return (
             "Where a line does not say what to do, paste the rung again from your own copy "
-            "of the program, or fix it in CLICK."
+            f"of the program, or fix it in CLICK. {select}"
         )
     if one:
-        return "Paste it again from your own copy of the program, or fix it in CLICK."
-    return "Paste them again from your own copy of the program, or fix them in CLICK."
+        return f"Paste it again from your own copy of the program, or fix it in CLICK. {select}"
+    return f"Paste them again from your own copy of the program, or fix them in CLICK. {select}"
+
+
+def select_before_paste(*, one: bool) -> str:
+    """Return the sentence that says how to select CLICK's rung before a paste over it.
+
+    A paste replaces a rung in CLICK only when the rung is selected, and a click on the
+    rung's number selects it. With only the cursor in the rung's logic, CLICK inserts the
+    paste above the rung and keeps the rung. CLICK 4.00 was observed to do both. *one* is
+    False if the text around the sentence asks for several pastes.
+    """
+    each = "the paste" if one else "each paste"
+    return (
+        f"Before {each}, click the rung's number in CLICK to select the rung that the "
+        "paste replaces."
+    )
+
+
+def delete_rungs(first: int, last: int | None = None) -> str:
+    """Say how to select and delete CLICK's rungs *first* to *last*.
+
+    The text follows "In CLICK, ". *last* is None for every rung down to the end of the
+    program. Delete in CLICK acts on the selection. A click on a rung's number selects the
+    rung. With only the cursor in the rung's logic, Delete removes one instruction. The
+    first Shift+Down from there selects only the cursor's rung.
+    """
+    if last == first:
+        return f"click rung {first}'s number and press Delete"
+    until = "the last rung" if last is None else f"rung {last}"
+    return (
+        f"click rung {first}'s number and press Shift+Down until {until} is shaded too. "
+        "Press Delete"
+    )
+
+
+def clear_before_paste() -> str:
+    """Return the sentences that say how to delete a program's rungs before a paste of all of it.
+
+    A paste in CLICK replaces at most the one selected rung, and CLICK keeps the program's
+    other rungs. After a delete of every rung, a paste adds exactly the pasted rungs. CLICK
+    4.00 was observed to do this.
+    """
+    return f"Before you paste a program again, delete all its rungs. In CLICK, {delete_rungs(1)}."
 
 
 def describe_legacy_encoding(item: LegacyEncoding, *, program: bool = True) -> str:
@@ -1123,7 +1166,8 @@ def prepare_rungs_load(
         else:
             what = f"Rungs {numbers} are empty rungs that stand in for rungs"
             fix = "Paste those rungs from your own copy of the program, or fix them in CLICK."
-        raise UnreadableRungError(f"{what} ClickNick cannot read from CLICK. {fix}")
+        select = select_before_paste(one=len(stand_ins) == 1)
+        raise UnreadableRungError(f"{what} ClickNick cannot read from CLICK. {fix} {select}")
     marked = [
         (number, af)
         for number, rung in enumerate(rungs, start=first_rung)
@@ -1152,7 +1196,7 @@ def prepare_rungs_load(
                 [
                     head,
                     *lines,
-                    fix,
+                    f"{fix} {select_before_paste(one=len(marked) == 1)}",
                 ]
             )
         )

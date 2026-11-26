@@ -1853,7 +1853,12 @@ class ClickNickApp:
         self._dialogs.show(self._show_legacy_encodings)
 
     def _show_legacy_encodings(self) -> None:
-        from .ladder.program import describe_legacy_encoding, stand_in_fix
+        from .ladder.program import (
+            clear_before_paste,
+            describe_legacy_encoding,
+            select_before_paste,
+            stand_in_fix,
+        )
 
         found = self._session.legacy_encodings_to_report() if self._session else ()
         if not found:
@@ -1874,7 +1879,7 @@ class ClickNickApp:
             fix = stand_in_fix(unreadable, one=one)
             if fix.startswith(("Paste", "Where")):
                 them = "it" if one else "them"
-                fix += f" Ladder > Compare with > Folder on that copy lists {them} in red."
+                fix += f" Ladder > Compare with > Folder on your own copy lists {them} in red."
             parts.append(
                 "ClickNick cannot copy these rungs from CLICK as they are:\n\n"
                 + _listed(unreadable)
@@ -1886,14 +1891,17 @@ class ClickNickApp:
                 "ClickNick cannot read these programs in CLICK:\n\n"
                 + _listed(copies)
                 + "\n\nPaste them into CLICK again from your own copy, or fix them in CLICK. "
-                "Ladder > Compare with > Folder on that copy lists them in red."
+                "Ladder > Compare with > Folder on that copy lists them in red. "
+                + clear_before_paste()
             )
         if legacy:
             parts.append(
                 "An older ClickNick pasted these rungs into CLICK in an old encoding. "
                 "CLICK runs them differently from how they read:\n\n"
                 + _listed(legacy)
-                + "\n\nPaste them into CLICK again. Review Changes lists them in red."
+                + "\n\nPaste them into CLICK again. "
+                + select_before_paste(one=False)
+                + " Review Changes lists them in red."
             )
         message = "\n\n".join(parts)
         if not legacy:
