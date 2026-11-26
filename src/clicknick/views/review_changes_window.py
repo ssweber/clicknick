@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import os
 import tkinter as tk
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -48,6 +48,7 @@ from ..services.rung_diff import (
     RenderedDiff,
     carry_skipped,
     compare_bundle,
+    compare_key,
     format_group,
     load_bundle,
     paste_groups,
@@ -187,6 +188,11 @@ def _save_copy_whole(whole: bool) -> None:
         staging.replace(path)
     except OSError:
         pass  # The choice still holds for this window
+
+
+def _compared(rungs: Sequence[Rung] | None) -> list[Hashable] | None:
+    """Return the ``compare_key`` of each of *rungs*, or None if *rungs* is None."""
+    return None if rungs is None else [compare_key(rung) for rung in rungs]
 
 
 def _rungs_in_click(numbers: Sequence[int]) -> str:
@@ -617,8 +623,8 @@ class ReviewChangesWindow(tk.Toplevel):
             return
         carried = pasted & frozenset(change.differences)
         held = basis.merged(frozenset(basis.differences) - pasted)
-        placed = not change.unreadable and held == change.merged(
-            frozenset(change.differences) - carried
+        placed = not change.unreadable and _compared(held) == _compared(
+            change.merged(frozenset(change.differences) - carried)
         )
         if placed and partial:
             begun = basis.steps(old_skipped, pasted)[: partial + 1]
@@ -2353,7 +2359,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 if (
                     name in previous
                     and name in self._programs
-                    and previous[name].rungs == self._programs[name].rungs
+                    and _compared(previous[name].rungs) == _compared(self._programs[name].rungs)
                 )
                 # A deletion marked done stays done while the folder still lacks it
                 or (name in previous_only_in_click and name not in self._programs)

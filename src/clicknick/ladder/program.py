@@ -1282,18 +1282,6 @@ def list_csv_folder(folder: Path) -> list[tuple[str, Path]]:
     return items
 
 
-def rung_fingerprint(rung: Rung) -> tuple[tuple[str, ...], ...]:
-    """Serialize a rung into laddercodec's canonical CSV rows, for comparison.
-
-    The rows do not depend on how the CSV was written (rung index column, header comment).
-    The rows only tell rungs apart, so each warning from laddercodec is passed on.
-    """
-    with recording() as found:
-        rows = csv_rows([rung])
-    pass_on(found)
-    return tuple(tuple(row) for row in rows)
-
-
 def read_csv_comment(csv_path: Path) -> str:
     """Return the first ``# …`` comment line from a CSV, or ``''``."""
     try:

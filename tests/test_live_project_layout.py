@@ -554,7 +554,7 @@ with Program() as logic:
         out(Ready)
 '''
 
-    rungs = _extract_rungs(source)
+    rungs = _extract_rungs(source, {})
 
     assert [rung[0] for rung in rungs] == [1, 2, 3]
     assert rungs[0][3] == "Battery handling"
@@ -570,7 +570,7 @@ with Program() as logic:
         pass
 '''
 
-    summary = _extract_rungs(source)[0][3]
+    summary = _extract_rungs(source, {})[0][3]
 
     assert len(summary) == 88
     assert summary.endswith("...")

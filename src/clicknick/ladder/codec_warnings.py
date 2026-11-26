@@ -121,9 +121,10 @@ def _pass_on(warning: Warning) -> None:
 
 
 def pass_on(found: list[Warning]) -> None:
-    """Pass on every warning in *found*, for a call whose result ClickNick only compares.
+    """Pass on every warning in *found*, for a call whose result ClickNick only shows.
 
-    ``rung_fingerprint`` writes CSV rows only to tell rungs apart, and copies nothing.
+    ``_rung_summary`` in ``services/rung_diff.py`` writes CSV rows only to show a rung in the
+    diff, and copies nothing.
     """
     for warning in found:
         _pass_on(warning)

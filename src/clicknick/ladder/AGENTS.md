@@ -12,9 +12,10 @@ The encoder/decoder core lives in the standalone [`laddercodec`](https://github.
   `sort_warnings`. A laddercodec warning with no rule counts as a rung that ClickNick cannot read. When
   laddercodec adds a warning class, add its rule there. Keep each block to one laddercodec call. One lock
   guards every block, and the Tk thread waits for it while the build worker saves. A call whose result
-  ClickNick only compares, such as `csv_rows` in `rung_fingerprint`, records too and passes everything on
-  (`pass_on`). Never call `sort_warnings`, `pass_on` or `pass_on_legacy` inside a `recording()` block. On
-  the same thread, the block would record a laddercodec warning passed on there a second time.
+  ClickNick only shows, such as `csv_rows` in `_rung_summary` (`services/rung_diff.py`), records too and
+  passes everything on (`pass_on`). Never call `sort_warnings`, `pass_on` or `pass_on_legacy` inside a
+  `recording()` block. On the same thread, the block would record a laddercodec warning passed on there a
+  second time.
 
 `program_save` leaves out each rung comment that laddercodec cannot read (`Rule.COMMENT`). The rung keeps its
 logic. The save records each such comment, by program and CLICK rung number, in `unread_comments.json` beside

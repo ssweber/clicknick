@@ -216,6 +216,119 @@ def plc_source_is_modified(project_dir: Path) -> bool:
     return _source_fingerprint(source) != recorded
 
 
+def exported_source_state_path(project_dir: Path) -> Path:
+    """Return the path of the record of the source that the last export to ``csv_output/`` read."""
+    return project_dir / "csv_output" / "source_state.json"
+
+
+def plc_source_fingerprint(project_dir: Path) -> dict[str, str]:
+    """Return a SHA-256 hash of each file in ``src/plc``, keyed by its path in ``src/plc``.
+
+    Raise ``OSError`` if a file cannot be read.
+    """
+    return _source_fingerprint(plc_source_dir(project_dir))
+
+
+def _manifest_digest(project_dir: Path) -> str | None:
+    """Return the hash of ``csv_output/rung_sources.json``, or None when it cannot be read."""
+    return _file_digest(project_dir / "csv_output" / "rung_sources.json")
+
+
+@contextmanager
+def exported_plc_source_set_aside(project_dir: Path) -> Iterator[bool]:
+    """Move the last export's manifest and its record aside while a new export runs.
+
+    The manifest is ``csv_output/rung_sources.json``. Its record is
+    ``csv_output/source_state.json`` (``record_exported_plc_source``). Each moves to a name
+    that ends in ``.aside``. The block yields True if both are out of the way, and False if
+    either one could not be moved.
+
+    If the block raises, each file that moved goes back, so the earlier CSVs keep the
+    manifest and record that go with them. If the block ends normally, the files aside are
+    deleted. A ``rung_sources.json`` that is there then is one that the export wrote.
+    """
+    paths = (
+        project_dir / "csv_output" / "rung_sources.json",
+        exported_source_state_path(project_dir),
+    )
+    moved: list[tuple[Path, Path]] = []
+    aside = True
+    for path in paths:
+        side = path.with_name(f"{path.name}.aside")
+        try:
+            if path.exists():
+                path.replace(side)
+                moved.append((path, side))
+        except OSError:
+            aside = False
+    try:
+        yield aside
+    except BaseException:
+        for path, side in moved:
+            try:
+                side.replace(path)
+            except OSError:
+                pass  # It stays aside. rung list then reads the markers
+        raise
+    for _path, side in moved:
+        try:
+            side.unlink(missing_ok=True)
+        except OSError:
+            pass  # Nothing reads a file that is aside
+
+
+def record_exported_plc_source(project_dir: Path, files: dict[str, str] | None) -> None:
+    """Record *files*, a ``plc_source_fingerprint``, as the source that the last export read.
+
+    Call this after a successful export that ran inside ``exported_plc_source_set_aside``.
+    The record also holds the hash of ``csv_output/rung_sources.json``. The earlier file was
+    moved aside, so this file is the one that the export wrote. A manifest that something
+    else writes later, such as ``project_to_csv.py`` run by hand, then fails to match the
+    record.
+
+    If *files* is None, if ``csv_output/`` holds no ``rung_sources.json``, or if the record
+    cannot be written, delete the record instead. If that fails too, the earlier record
+    stays. It still matches only the source and the manifest of an earlier export.
+    """
+    state_path = exported_source_state_path(project_dir)
+    staging = state_path.with_suffix(f"{state_path.suffix}.staging")
+    manifest = _manifest_digest(project_dir)
+    payload = {"version": 1, "files": files, "manifest": manifest}
+    try:
+        if files is None:
+            raise OSError("src/plc could not be read")
+        if manifest is None:
+            raise OSError("csv_output holds no rung_sources.json")
+        staging.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        staging.replace(state_path)
+    except OSError:
+        try:
+            state_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def plc_source_is_exported(project_dir: Path) -> bool:
+    """Return whether ``src/plc`` and the manifest are the ones that the last export recorded.
+
+    That is, ``src/plc`` reads the same as when the last export to ``csv_output/`` read it,
+    and ``rung_sources.json`` is the one that export wrote. Return False if no export recorded
+    its source, if the record cannot be read, or if a file cannot be read.
+    """
+    try:
+        state = json.loads(exported_source_state_path(project_dir).read_text(encoding="utf-8"))
+        recorded = state["files"]
+        manifest = state["manifest"]
+        return (
+            isinstance(recorded, dict)
+            and isinstance(manifest, str)
+            and _manifest_digest(project_dir) == manifest
+            and plc_source_fingerprint(project_dir) == recorded
+        )
+    except (OSError, KeyError, TypeError, ValueError):
+        return False
+
+
 def record_generated_plc_source(project_dir: Path) -> Path:
     """Record ``src/plc`` as unedited source generated from CLICK, and return the record's path."""
     source = plc_source_dir(project_dir)
