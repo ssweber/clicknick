@@ -245,7 +245,8 @@ def exported_plc_source_set_aside(project_dir: Path) -> Iterator[bool]:
 
     If the ``with`` body raises, each file that moved goes back. CSVs that the export wrote
     before it failed stay, so the manifest can disagree with them. If the ``with`` body ends
-    normally, the files aside are deleted. A ``rung_sources.json`` that is there then is one that the export wrote.
+    normally, the files aside are deleted. A ``rung_sources.json`` that is there then is one
+    that the export wrote.
     """
     paths = (
         project_dir / "csv_output" / "rung_sources.json",
