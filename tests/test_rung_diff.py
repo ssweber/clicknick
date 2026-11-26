@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -12,9 +13,11 @@ from clicknick.data.data_source import CsvDataSource
 from clicknick.ladder.program import (
     STAND_IN_COMMENT,
     LegacyEncoding,
+    UnreadComment,
     empty_rung,
     unreadable_copy,
     write_legacy_encodings,
+    write_unread_comments,
 )
 from clicknick.services.rung_diff import (
     BundleComparison,
@@ -215,6 +218,123 @@ def test_comparison_outlives_the_folder(tmp_path: Path) -> None:
     (proposed / "main.csv").unlink()
 
     assert compare_bundle(programs, current).changes["main.csv"].changed == (2,)
+
+
+# ---------------------------------------------------------------------------
+# Comments that program_save left out
+# ---------------------------------------------------------------------------
+
+
+def test_a_rung_whose_comment_the_save_left_out_stays_equal_and_readable(tmp_path: Path) -> None:
+    programs = {"main.csv": _rungs("Y001", "Y002"), "subroutines/Fill.csv": _rungs("Y003")}
+    current = _bundle(tmp_path / "current", programs)
+    write_unread_comments(
+        current,
+        [
+            UnreadComment("main.csv", "Main Program", 2),
+            UnreadComment("subroutines/Fill.csv", "Fill", None),
+        ],
+    )
+    proposed = _bundle(tmp_path / "proposed", programs)
+
+    comparison = _compare(proposed, current)
+
+    main, fill = comparison.changes["main.csv"], comparison.changes["subroutines/Fill.csv"]
+    assert not main.differs
+    assert not main.unreadable
+    assert main.unread_comments_before == (2,)
+    assert main.unread_comments_after == ()
+    assert not fill.differs
+    assert fill.unread_comments_before == (None,)
+
+
+def test_the_proposals_own_record_names_the_rungs_that_arrive_without_a_comment(
+    tmp_path: Path,
+) -> None:
+    """Compare with > Other CLICK window copies that window's save with program_save."""
+    current = _bundle(tmp_path / "current", {"main.csv": _rungs("Y001")})
+    proposed = _bundle(tmp_path / "proposed", {"main.csv": _rungs("Y001", "Y002", "Y003")})
+    # Rung 9 is past the proposal's last rung
+    write_unread_comments(
+        proposed,
+        [UnreadComment("main.csv", "Main Program", 2), UnreadComment("main.csv", "Main", 9)],
+    )
+
+    change = _compare(proposed, current).changes["main.csv"]
+
+    assert change.unread_comments_before == ()
+    assert change.unread_comments_after == (2,)
+    [step] = change.steps()
+    assert step == PasteStep((2, 3))
+    assert change.unread_comments_in(step) == ((), (2,))
+
+
+def test_a_step_that_deletes_a_moved_rung_erases_its_unread_comment(tmp_path: Path) -> None:
+    click = _rungs("Y001", "Y002", "Y003", "Y004")
+    current = _bundle(tmp_path / "current", {"main.csv": click})
+    write_unread_comments(current, [UnreadComment("main.csv", "Main Program", 1)])
+    # The user moved rung 1 below rung 3
+    proposed = _bundle(tmp_path / "proposed", {"main.csv": [*click[1:3], click[0], click[3]]})
+
+    change = _compare(proposed, current).changes["main.csv"]
+
+    delete, insert = change.steps()
+    assert delete == PasteStep(delete=(1,), block=0)
+    assert change.unread_comments_in(delete) == ((1,), ())
+    assert insert == PasteStep((3,), above=3, block=1)
+    assert change.unread_comments_in(insert) == ((), ())
+
+
+def test_each_step_of_a_difference_names_the_unread_comments_that_it_erases() -> None:
+    click = _rungs("Y001", "Y002", "Y003", "Y004")
+    change = replace(compare_rungs(click, _rungs("Y001", "Y009")), unread_comments_before=(1, 2, 4))
+
+    paste, delete = change.steps()
+
+    assert paste == PasteStep((2,), over=2)
+    assert change.unread_comments_in(paste) == ((2,), ())
+    assert delete == PasteStep(delete=(3, 4))
+    assert change.unread_comments_in(delete) == ((4,), ())
+
+
+def test_a_program_only_in_click_keeps_its_record(tmp_path: Path) -> None:
+    """The user renamed subroutine Fill. CLICK's copy is deleted with its comment."""
+    current = _bundle(
+        tmp_path / "current",
+        {"main.csv": _rungs("Y001"), "subroutines/Fill.csv": _rungs("Y002", "Y003")},
+    )
+    write_unread_comments(current, [UnreadComment("subroutines/Fill.csv", "Fill", 2)])
+    proposed = _bundle(
+        tmp_path / "proposed",
+        {"main.csv": _rungs("Y001"), "subroutines/Filling.csv": _rungs("Y002", "Y003")},
+    )
+
+    comparison = _compare(proposed, current)
+
+    assert comparison.only_in_click["subroutines/Fill.csv"].unread_comments_before == (2,)
+    assert comparison.unread_comments == {}
+
+
+def test_a_folder_without_main_still_gets_clicks_record(tmp_path: Path) -> None:
+    """Nothing is compared, so every program is copied whole and loses the comment."""
+    current = _bundle(
+        tmp_path / "current",
+        {"main.csv": _rungs("Y001"), "subroutines/Fill.csv": _rungs("Y002", "Y003")},
+    )
+    write_unread_comments(
+        current,
+        [
+            UnreadComment("main.csv", "Main Program", 1),
+            UnreadComment("subroutines/Fill.csv", "Fill", 2),
+        ],
+    )
+    proposed = _bundle(tmp_path / "proposed", {"subroutines/fill.csv": _rungs("Y009")})
+
+    comparison = _compare(proposed, current)
+
+    assert not comparison.compared
+    assert comparison.changes == {}
+    assert comparison.unread_comments == {"subroutines/fill.csv": (2,)}
 
 
 def _legacy(file: str, rung: int | None) -> LegacyEncoding:

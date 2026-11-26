@@ -5,7 +5,7 @@ from __future__ import annotations
 import dataclasses
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -128,6 +128,7 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._changes = {}
     window._only_in_click = {}
     window._missing_in_click = frozenset()
+    window._click_unread = {}
     window._click_compared = False
     window._adding_subroutine = False
     window._compare_note = ""
@@ -2875,3 +2876,419 @@ def test_button_row_has_no_skip(tk_root) -> None:
 
     assert "Copy" in labels
     assert "Skip" not in labels
+
+
+# ---------------------------------------------------------------------------
+# Comments that ClickNick could not read
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def ask(monkeypatch) -> Mock:
+    """Answer Cancel to each question before a copy loses a comment that ClickNick could not read."""
+    answer = Mock(return_value=False)
+    monkeypatch.setattr(f"{MODULE}.messagebox.askokcancel", answer)
+    return answer
+
+
+# The end of the question before a step loses a comment that ClickNick could not read
+KEEP = "To leave CLICK's rungs as they are, click Cancel and untick Take this difference."
+
+
+def _unread(
+    change: ProgramChange, before: tuple[int | None, ...] = (), after: tuple[int | None, ...] = ()
+) -> ProgramChange:
+    """Return *change*, with CLICK's rungs *before* and the folder's rungs *after* recorded.
+
+    ``program_save`` records each rung whose comment it left out, because laddercodec cannot
+    read it.
+    """
+    return dataclasses.replace(change, unread_comments_before=before, unread_comments_after=after)
+
+
+def test_a_step_paste_over_an_edited_rung_asks_before_it_erases_the_comment(
+    monkeypatch, copies, ask
+) -> None:
+    """The user edits the rung's logic. The rung differs, and its step pastes no comment."""
+    click = [RUNGS[0], *_coils("Y009"), *RUNGS[2:]]
+    window = _on_main(monkeypatch, _unread(compare_rungs(click, RUNGS), before=(2,)))
+    assert _action(window) == "Copy r2"
+
+    window._on_action()  # Copy, then Cancel
+
+    assert copies == []
+    assert _action(window) == "Copy r2"
+    assert ask.call_args.kwargs["default"] == messagebox.CANCEL
+    assert ask.call_args.args == (
+        "Unreadable rung comment",
+        "ClickNick could not read the comment on rung 2 of main.csv in CLICK. When you paste, "
+        f"CLICK loses that comment.\n\n{KEEP} Click OK to copy anyway.",
+    )
+
+    ask.return_value = True
+    window._on_action()  # Copy, then OK
+
+    assert copies == [((RUNGS[1],), 2)]
+    assert _action(window) == "Next →"
+
+
+def test_a_step_that_leaves_the_rung_alone_asks_nothing(monkeypatch, copies, ask) -> None:
+    click = [*RUNGS[:2], *_coils("Y009"), RUNGS[3]]
+    window = _on_main(monkeypatch, _unread(compare_rungs(click, RUNGS), before=(2,)))
+
+    window._on_action()  # Copy r3
+
+    assert copies == [((RUNGS[2],), 3)]
+    assert not ask.called
+
+
+def test_a_step_that_deletes_a_moved_rung_asks_before_the_delete(monkeypatch, copies, ask) -> None:
+    """The user moves CLICK's rung 1 below rung 3. The diff deletes it and adds a copy."""
+    click = [RUNGS[2], *RUNGS[:2], RUNGS[3]]
+    change = _unread(compare_rungs(click, RUNGS), before=(1,))
+    assert [opcode[0] for opcode in change.opcodes] == ["delete", "equal", "insert", "equal"]
+    window = _on_main(monkeypatch, change)
+    assert _action(window) == "Delete rung 1…"
+    assert _status(window) == (
+        "main.csv, step 1 of 2: rung 1 is not in the program any more.\nClickNick could not "
+        'read CLICK\'s comment on rung 1. Click "Delete rung 1…" before you delete anything in '
+        "CLICK"
+    )
+
+    window._on_action()  # Delete rung 1…, then Cancel
+
+    assert _action(window) == "Delete rung 1…"
+    assert window._partial == {}
+    assert window._pasted == {}
+    assert ask.call_args.args[1] == (
+        "In this step, you delete CLICK's rung 1 of main.csv. ClickNick could not read the "
+        "comment on rung 1 of main.csv in CLICK. That comment is lost with its rung. If you "
+        "moved that rung, the copy that you paste has no comment.\n\n"
+        f"{KEEP} Click OK, then delete the rung in CLICK and click Next."
+    )
+
+    ask.return_value = True
+    window._on_action()  # Delete rung 1…, then OK
+
+    assert _action(window) == "Next →"
+    assert _status(window).endswith('\nDelete it in CLICK, then click "Next"')
+    window._on_action()  # Next: the moved rung goes in
+    assert _action(window) == "Copy r3"
+    window._on_action()
+    assert copies == [((RUNGS[2],), 3)]
+    assert ask.call_count == 2
+
+
+def test_a_rung_from_another_click_window_asks_before_it_arrives_without_its_comment(
+    monkeypatch, copies, ask
+) -> None:
+    """The other window's copy records the rungs whose comment its save left out."""
+    window = _on_main(monkeypatch, _unread(_rungs_differ(3), after=(3,)))
+    window._source = ProposalSource.other_click("Plant2")
+    assert _action(window) == "Copy r3"
+
+    window._on_action()  # Copy, then Cancel
+
+    assert copies == []
+    assert ask.call_args.args[1] == (
+        "ClickNick could not read the comment on rung 3 of main.csv from Plant2. When you "
+        f"paste, that rung arrives without its comment.\n\n{KEEP} Click OK to copy anyway."
+    )
+
+
+def test_whole_program_steps_through_a_program_with_an_unread_comment(
+    monkeypatch, copies, ask
+) -> None:
+    """A whole paste writes every rung. The steps leave CLICK's rung 1 alone."""
+    window = _on_main(monkeypatch, _unread(_rungs_differ(3), before=(1,)))
+
+    _switch_copy(window, whole=True)
+
+    assert _action(window) == "Copy r3"
+    assert _status(window).endswith(
+        "\nClickNick steps through this program and does not copy it whole. ClickNick could not "
+        "read some of its rung comments, and a whole paste would lose them. The steps leave the "
+        "rungs that match alone"
+    )
+    window._on_action()
+    assert copies == [((RUNGS[2],), 3)]
+    assert not ask.called
+
+
+def test_a_program_with_many_steps_and_an_unread_comment_is_stepped_through(
+    monkeypatch, copies, ask
+) -> None:
+    window = _on_main(monkeypatch, _unread(_seven_steps(), after=(13,)))
+
+    assert window._copied_whole_for_steps("main.csv") == 0
+    assert "main.csv, step 1 of 7" in _status(window)
+    window._on_action()
+    assert copies == [((RUNGS[0],), 1)]
+    assert not ask.called
+
+
+def test_a_whole_paste_of_a_program_that_cannot_be_stepped_asks_first(
+    monkeypatch, copies, ask
+) -> None:
+    """ClickNick cannot read all of CLICK's copy, so only a whole paste can write the program.
+
+    A record with no rung number counts as touched by the whole paste.
+    """
+    detail = "ClickNick cannot read CLICK's copy of this program. laddercodec cannot read it."
+    unreadable = _unreadable(None, instruction="", detail=detail)
+    change = _unread(compare_rungs(RUNGS, RUNGS, [unreadable]), before=(1, None))
+    window = _on_main(monkeypatch, change)
+    assert window._current_step() is None
+
+    window._on_action()  # Copy, then Cancel
+
+    assert copies == []
+    assert ask.call_args.args[1] == (
+        "ClickNick could not read the comment on rung 1 of main.csv in CLICK. ClickNick could "
+        "not read a rung comment in CLICK's copy of main.csv, and it cannot tell which rung "
+        "holds it. When you paste, CLICK loses those comments.\n\nClick Cancel to leave "
+        "CLICK as it is. Click OK to copy anyway."
+    )
+
+    ask.return_value = True
+    window._on_action()  # Copy, then OK
+
+    assert copies == [(RUNGS, 1)]
+
+
+def test_a_whole_paste_after_a_new_export_asks_first(monkeypatch, copies, ask) -> None:
+    """CLICK holds pastes that ClickNick cannot place, so it copies the program whole."""
+    window = _on_main(monkeypatch, _unread(_rungs_differ(3), before=(1,)))
+    window._unplaced.add("main.csv")
+    window._select_row(MAIN)
+    assert _action(window) == "Copy"
+
+    window._on_action()  # Copy, then Cancel
+
+    assert copies == []
+    assert "rung 1 of main.csv in CLICK" in ask.call_args.args[1]
+
+
+def test_a_whole_paste_of_a_program_new_to_click_asks_about_the_folders_rungs(
+    monkeypatch, copies, ask
+) -> None:
+    change = _unread(compare_rungs([], RUNGS), after=(2, 4))
+    window = _on_main(monkeypatch, change, missing=frozenset({"main.csv"}))
+
+    window._on_action()  # Copy, then Cancel
+
+    assert copies == []
+    assert ask.call_args.args[1] == (
+        "ClickNick could not read the comments on rungs 2, 4 of main.csv from bundle. When "
+        "you paste, those rungs arrive without their comments.\n\nClick Cancel to leave "
+        "CLICK as it is. Click OK to copy anyway."
+    )
+
+
+def test_a_question_names_the_comments_on_both_sides(monkeypatch, copies, ask) -> None:
+    """CLICK's rung 2 and the folder's rung 2 each have a comment that ClickNick could not read."""
+    click = [RUNGS[0], *_coils("Y009"), *RUNGS[2:]]
+    window = _on_main(monkeypatch, _unread(compare_rungs(click, RUNGS), before=(2,), after=(2,)))
+
+    window._on_action()  # Copy, then Cancel
+
+    assert ask.call_args.args[1] == (
+        "ClickNick could not read the comment on rung 2 of main.csv in CLICK. When you paste, "
+        "CLICK loses that comment.\n\nClickNick could not read the comment on rung 2 of "
+        "main.csv from bundle. When you paste, that rung arrives without its comment.\n\n"
+        f"{KEEP} Click OK to copy anyway."
+    )
+
+
+def test_a_step_that_deletes_rungs_names_the_one_with_an_unread_comment(
+    monkeypatch, copies, ask
+) -> None:
+    window = _on_main(monkeypatch, _unread(_rungs_removed(3, 4), before=(4,)))
+
+    assert _action(window) == "Delete rungs 3 to 4…"
+    assert _status(window).endswith(
+        'ClickNick could not read CLICK\'s comment on rung 4. Click "Delete rungs 3 to 4…" '
+        "before you delete anything in CLICK"
+    )
+    window._on_action()  # Delete rungs 3 to 4…, then Cancel
+    assert ask.call_args.args[1].startswith(
+        "In this step, you delete CLICK's rungs 3 to 4 of main.csv. ClickNick could not read "
+        "the comment on rung 4 of main.csv in CLICK."
+    )
+    assert ask.call_args.args[1].endswith("delete the rungs in CLICK and click Next.")
+
+
+def _empty_main(window) -> None:
+    """Empty main.csv in the folder, and show its row again."""
+    window._programs["main.csv"] = ProposedProgram("main.csv", Path("main.csv"), (), 0)
+    window._select_row(MAIN)
+
+
+def test_a_whole_copy_of_an_empty_program_asks_before_the_delete(monkeypatch, copies, ask) -> None:
+    """ClickNick cannot read all of CLICK's copy, so the program is copied whole.
+
+    The folder's copy has no rungs, so the user deletes CLICK's rungs, and pastes nothing.
+    """
+    detail = "ClickNick cannot read CLICK's copy of this program. laddercodec cannot read it."
+    unreadable = _unreadable(None, instruction="", detail=detail)
+    change = _unread(compare_rungs(RUNGS, [], [unreadable]), before=(None,))
+    window = _on_main(monkeypatch, change)
+    _empty_main(window)
+    assert _action(window) == "Delete all rungs…"
+    assert _status(window) == (
+        "main.csv has no rungs in this folder.\nClickNick could not read a rung comment in "
+        'CLICK\'s copy of main.csv. Click "Delete all rungs…" before you delete anything in '
+        "CLICK"
+    )
+
+    window._on_action()  # Delete all rungs…, then Cancel
+
+    assert _action(window) == "Delete all rungs…"
+    assert "main.csv" not in window._done
+    assert ask.call_args.args[1] == (
+        "In this step, you delete every rung of main.csv in CLICK. ClickNick could not read a "
+        "rung comment in CLICK's copy of main.csv, and it cannot tell which rung holds it. That "
+        "comment is lost with its rung. If you moved that rung, the copy that you paste has no "
+        "comment.\n\nClick Cancel to leave CLICK as it is. Click OK, then delete the rungs in "
+        "CLICK and click Next."
+    )
+
+    ask.return_value = True
+    window._on_action()  # Delete all rungs…, then OK
+    assert _action(window) == "Next →"
+    window._on_action()  # Next
+    assert "main.csv" in window._done
+    assert copies == []
+
+
+def test_a_whole_copy_of_an_empty_program_after_a_new_export_asks_first(
+    monkeypatch, copies, ask
+) -> None:
+    window = _on_main(monkeypatch, _unread(_rungs_removed(1, 2, 3, 4), before=(2,)))
+    window._unplaced.add("main.csv")
+    _empty_main(window)
+    assert _action(window) == "Delete all rungs…"
+
+    window._on_action()  # Delete all rungs…, then Cancel
+
+    assert "main.csv" not in window._done
+    assert "the comment on rung 2 of main.csv in CLICK" in ask.call_args.args[1]
+
+
+def test_deleting_a_program_only_in_click_asks_first(monkeypatch, ask) -> None:
+    """The user renamed the subroutine. CLICK's copy goes, and the new one has no comment."""
+    session, csv_dir = object(), Path("before/csv")
+    old = _unread(compare_rungs(_coils("Y009", "Y010"), []), before=(2,))
+    window = _window(
+        monkeypatch,
+        SavedProgram(session, generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: _changes(dict.fromkeys(NAMES, False))},
+        only_in_click={"subroutines/old.csv": old},
+    )
+    window._select_row(OLD)
+    assert _action(window) == "Delete program…"
+    assert _status(window) == (
+        "subroutines/old.csv is in CLICK but not in this folder.\nClickNick could not read "
+        'CLICK\'s comment on rung 2. Click "Delete program…" before you delete anything in '
+        "CLICK. To keep the program, untick Delete it in CLICK"
+    )
+
+    window._on_action()  # Delete program…, then Cancel
+
+    assert "subroutines/old.csv" not in window._done
+    assert ask.call_args.args[1] == (
+        "In this step, you delete subroutine old in CLICK. ClickNick could not read the comment "
+        "on rung 2 of subroutines/old.csv in CLICK. That comment is lost with its rung. If you "
+        "renamed the program or moved that rung, the copy that you paste has no comment.\n\n"
+        "To keep the program, click Cancel and untick Delete it in CLICK. Click OK, then "
+        "delete subroutine old in CLICK and click Next."
+    )
+
+    window._on_take()  # Untick Delete it in CLICK
+    assert _action(window) == "Next →"
+    window._on_take()  # Tick it again
+
+    ask.return_value = True
+    window._on_action()  # Delete program…, then OK
+    assert _action(window) == "Next →"
+    window._on_action()  # Next
+    assert "subroutines/old.csv" in window._done
+    assert ask.call_count == 2
+
+
+def test_an_empty_subroutine_from_a_folder_without_main_asks_before_the_delete(
+    monkeypatch, copies, ask
+) -> None:
+    """Nothing is compared, but CLICK's record shows that CLICK has the subroutine."""
+    monkeypatch.setattr(
+        f"{MODULE}.compare_bundle",
+        lambda _programs, _csv_dir: BundleComparison(unread_comments={"subroutines/a.csv": (2,)}),
+    )
+    window = _bare_window(["subroutines/a.csv"])
+    window._programs["subroutines/a.csv"] = ProposedProgram(
+        "subroutines/a.csv", Path("subroutines/a.csv"), (), 0
+    )
+    window._get_saved_program = lambda: SavedProgram(
+        object(), generation=1, csv_dir=Path("workspace/csv"), note=""
+    )
+    window._compare_with_click()
+
+    window._select_row(0)
+
+    assert _action(window) == "Delete all rungs…"
+    assert _status(window) == (
+        "subroutines/a.csv has no rungs in this folder.\nClickNick could not read CLICK's "
+        'comment on rung 2. Click "Delete all rungs…" before you delete anything in CLICK'
+    )
+    assert window._add_sub_btn.configure.call_args.kwargs["state"] == "disabled"
+    window._on_action()  # Delete all rungs…, then Cancel
+    assert ask.called
+    assert "subroutines/a.csv" not in window._done
+
+    ask.return_value = True
+    window._on_action()  # Delete all rungs…, then OK
+
+    assert _action(window) == "Next →"
+    assert _status(window) == (
+        "subroutines/a.csv has no rungs in this folder.\n"
+        'In CLICK, delete all the rungs of the program, then click "Next"'
+    )
+    assert window._add_sub_btn.configure.call_args.kwargs["state"] == "disabled"
+
+
+def test_an_empty_program_already_pasted_asks_nothing(monkeypatch, copies, ask) -> None:
+    """The folder was read again after the paste. CLICK has deleted the rungs already."""
+    change = _unread(_rungs_removed(1, 2, 3, 4), before=(2,))
+    window = _on_main(monkeypatch, change)
+    window._pasted["main.csv"] = frozenset(change.differences)
+    _empty_main(window)
+
+    assert _action(window) == "Next →"
+    assert _status(window).endswith(
+        'Click "Next" to go on, or tick Take this difference to paste one'
+    )
+    window._on_action()  # Next
+    assert "main.csv" in window._done
+    assert not ask.called
+
+
+def test_a_whole_copy_from_a_folder_without_main_asks_first(monkeypatch, copies, ask) -> None:
+    """Nothing is compared without main.csv, but CLICK's record still names the rung."""
+    monkeypatch.setattr(
+        f"{MODULE}.compare_bundle",
+        lambda _programs, _csv_dir: BundleComparison(unread_comments={"subroutines/a.csv": (2,)}),
+    )
+    window = _bare_window(["subroutines/a.csv"])
+    window._get_saved_program = lambda: SavedProgram(
+        object(), generation=1, csv_dir=Path("workspace/csv"), note=""
+    )
+    window._compare_with_click()
+
+    assert window._copy_rungs(0, None) is False
+
+    assert copies == []
+    assert ask.call_args.args[1] == (
+        "ClickNick could not read the comment on rung 2 of subroutines/a.csv in CLICK. When you "
+        "paste, CLICK loses that comment.\n\nClick Cancel to leave CLICK as it is. Click OK to "
+        "copy anyway."
+    )

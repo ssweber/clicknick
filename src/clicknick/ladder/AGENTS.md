@@ -16,6 +16,12 @@ The encoder/decoder core lives in the standalone [`laddercodec`](https://github.
   (`pass_on`). Never call `sort_warnings`, `pass_on` or `pass_on_legacy` inside a `recording()` block. On
   the same thread, the block would record a laddercodec warning passed on there a second time.
 
+`program_save` leaves out each rung comment that laddercodec cannot read (`Rule.COMMENT`). The rung keeps its
+logic. The save records each such comment, by program and CLICK rung number, in `unread_comments.json` beside
+the CSVs (`UnreadComment`). A save that leaves out none removes the file. Review Changes reads the record to ask
+before a paste loses the comment. If laddercodec names no rung of the program, the record has no rung number,
+and the save also writes a finding for the whole program to `legacy_encodings.json`.
+
 For encoder/codec work, **work in the laddercodec repo** (`../laddercodec`).
 
 ## Dependency

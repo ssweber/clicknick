@@ -119,6 +119,13 @@ _COPY_CHANGED = "Changed rungs"
 _COPY_WHOLE = "Whole program"
 # The button that steps through a program that is copied whole because it has many steps
 _STEP_THROUGH = "Step Through"
+# The title of the question before a paste or a delete loses a comment that ClickNick
+# could not read
+_COMMENT_TITLE = "Unreadable rung comment"
+# How to keep CLICK's rungs, in that question about a step
+_KEEP_DIFFERENCE = (
+    "To leave CLICK's rungs as they are, click Cancel and untick Take this difference."
+)
 
 # A folder's nicknames.csv gets its own row. ClickNick stages the nicknames in the Address
 # Editor, and the user Syncs them from there.
@@ -226,6 +233,12 @@ def _listed_rungs(rungs: Sequence[int]) -> str:
     )
 
 
+def _named_rungs(rungs: Sequence[int | None]) -> str:
+    """Return the numbered rungs in *rungs* as ``rung 5`` or ``rungs 2, 5 to 7``."""
+    numbers = sorted({rung for rung in rungs if rung is not None})
+    return f"rung {numbers[0]}" if len(numbers) == 1 else f"rungs {_listed_rungs(numbers)}"
+
+
 def _legacy_note(change: ProgramChange, *, instead: str = "") -> str:
     """Say which of CLICK's rungs hold a legacy encoding or cannot be read, and what to do.
 
@@ -323,6 +336,104 @@ def _dropped_refusal(name: str, change: ProgramChange) -> str:
         f"{'the rung' if one else 'the rungs'} again in CLICK and save. To delete "
         f"{'it' if one else 'them'}, delete {'it' if one else 'them'} in CLICK and save first."
     )
+
+
+def _unread_sentences(rungs: Sequence[int | None], owner: str, copy: str) -> list[str]:
+    """Say which rungs of *owner* hold a comment that ClickNick could not read.
+
+    *owner* names the program and where it is, such as ``main.csv in CLICK``. *copy* names
+    the copy of the program, for a comment whose rung laddercodec did not name.
+    """
+    numbered = {rung for rung in rungs if rung is not None}
+    sentences = []
+    if numbered:
+        comments = "comment" if len(numbered) == 1 else "comments"
+        sentences.append(
+            f"ClickNick could not read the {comments} on {_named_rungs(rungs)} of {owner}."
+        )
+    if None in rungs:
+        sentences.append(
+            f"ClickNick could not read a rung comment in {copy}, and it cannot tell which rung "
+            "holds it."
+        )
+    return sentences
+
+
+def _comment_question(
+    name: str,
+    source: str,
+    erased: Sequence[int | None],
+    arriving: Sequence[int | None],
+    *,
+    whole: bool,
+) -> str:
+    """Return what Review Changes asks before a paste loses comments that ClickNick could not read.
+
+    *erased* holds CLICK's rungs whose comment the paste erases. *arriving* holds the rungs
+    of *name* from *source* that arrive in CLICK without their comment. None in either
+    stands for a comment whose rung laddercodec did not name. *whole* is True for a copy of
+    the whole program.
+    """
+    paragraphs = []
+    if erased:
+        sentences = _unread_sentences(erased, f"{name} in CLICK", f"CLICK's copy of {name}")
+        sentences.append(
+            "When you paste, CLICK loses that comment."
+            if len(set(erased)) == 1
+            else "When you paste, CLICK loses those comments."
+        )
+        paragraphs.append(" ".join(sentences))
+    if arriving:
+        owner = f"{name} from {source}"
+        sentences = _unread_sentences(arriving, owner, owner)
+        sentences.append(
+            "When you paste, that rung arrives without its comment."
+            if len(set(arriving)) == 1
+            else "When you paste, those rungs arrive without their comments."
+        )
+        paragraphs.append(" ".join(sentences))
+    keep = "Click Cancel to leave CLICK as it is." if whole else _KEEP_DIFFERENCE
+    paragraphs.append(f"{keep} Click OK to copy anyway.")
+    return "\n\n".join(paragraphs)
+
+
+def _delete_question(
+    name: str,
+    target: str,
+    erased: Sequence[int | None],
+    *,
+    done: str,
+    keep: str,
+    renamed: bool = False,
+) -> str:
+    """Return what Review Changes asks before the user deletes rungs with an unread comment.
+
+    *target* names what the user deletes in CLICK, and *done* names it again in the last
+    line. *erased* holds the rungs among them whose comment ClickNick could not read. None
+    stands for one whose rung laddercodec did not name. *keep* says how to keep CLICK's
+    rungs. If *renamed* is True, the user deletes a whole program, which may have been
+    renamed.
+    """
+    one = len(set(erased)) == 1
+    moved = "that rung" if one else "those rungs"
+    if renamed:
+        moved = f"renamed the program or moved {moved}"
+    else:
+        moved = f"moved {moved}"
+    copies = (
+        "the copy that you paste has no comment"
+        if one
+        else "the copies that you paste have no comments"
+    )
+    sentences = [
+        f"In this step, you delete {target}.",
+        *_unread_sentences(erased, f"{name} in CLICK", f"CLICK's copy of {name}"),
+        "That comment is lost with its rung."
+        if one
+        else "Those comments are lost with their rungs.",
+        f"If you {moved}, {copies}.",
+    ]
+    return f"{' '.join(sentences)}\n\n{keep} Click OK, then delete {done} in CLICK and click Next."
 
 
 def _change_label(change: ProgramChange) -> str:
@@ -651,6 +762,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self._changes = comparison.changes
         self._only_in_click = comparison.only_in_click
         self._missing_in_click = comparison.missing_in_click
+        self._click_unread = comparison.unread_comments
         self._click_compared = comparison.compared
         self._carry_choices()
         self._items = [
@@ -681,15 +793,18 @@ class ReviewChangesWindow(tk.Toplevel):
     def _can_add_subroutine(self, idx: int | None) -> bool:
         """Return whether the row is a subroutine that CLICK may not have yet.
 
-        Only a comparison that shows CLICK's last save having the subroutine rules this
-        out. If the project is unsaved, or ClickNick could not read CLICK's program, the
-        subroutine may be missing.
+        Two things rule this out. One is a comparison that shows CLICK's last save having
+        the subroutine. The other is a comment in CLICK's copy that ClickNick could not read,
+        because CLICK's last save recorded it. If the project is unsaved, or ClickNick could
+        not read CLICK's program, the subroutine may be missing.
         """
         if idx is None or idx >= len(self._items):
             return False
         name = self._items[idx][0]
         if not name.startswith(_SUBROUTINE_PREFIX) or name in self._unplaced:
             return False  # CLICK holds pastes into it, so it exists
+        if self._unread_comments(name, None)[0]:
+            return False
         return name in self._missing_in_click or not self._click_compared
 
     def _is_nickname_step(self, idx: int | None) -> bool:
@@ -798,6 +913,131 @@ class ReviewChangesWindow(tk.Toplevel):
         again = "it" if len({item.rung for item in stale}) == 1 else "them"
         return f"{line} Paste {again} again."
 
+    def _unread_comments(
+        self, name: str, step: PasteStep | None
+    ) -> tuple[Sequence[int | None], Sequence[int | None]]:
+        """Return the rungs whose unread comment the copy of *step* loses.
+
+        The first sequence holds CLICK's rungs whose comment the copy erases. The second
+        holds the folder's rungs that it pastes without their comment. A whole copy (*step*
+        is None) writes every rung. So it loses every comment that ``program_save`` left out
+        of the program, on either side.
+        """
+        change = self._changes.get(name)
+        if change is None:
+            # A folder without main.csv is not compared. Each program is copied whole.
+            return self._click_unread.get(name, ()), ()
+        if step is None:
+            return change.unread_comments_before, change.unread_comments_after
+        return change.unread_comments_in(step)
+
+    def _has_unread_comments(self, name: str) -> bool:
+        """Return whether a whole copy of the program would lose a comment.
+
+        ``program_save`` left that comment out, because laddercodec cannot read it. The
+        comment is on one of CLICK's rungs, or on a rung in the folder.
+        """
+        return any(self._unread_comments(name, None))
+
+    def _deleted_unread(self, name: str, step: PasteStep | None) -> Sequence[int | None]:
+        """Return CLICK's rungs with an unread comment that the user deletes in this step.
+
+        Three kinds of step only delete rungs in CLICK. One is a step that pastes no rungs.
+        Another is a whole copy of a program with no rungs. The last is a program that is
+        only in CLICK. ClickNick pastes nothing in them, so the action button asks instead.
+        A program whose differences are all pasted or skipped has nothing left to delete.
+        """
+        if self._rest_skipped(name):
+            return ()
+        if name in self._only_in_click:
+            change = self._only_in_click[name]
+            return () if self._kept(name) else change.unread_comments_before
+        if step is not None:
+            return () if step.rungs else self._unread_comments(name, step)[0]
+        if self._empty_whole(name, step):
+            return self._unread_comments(name, None)[0]
+        return ()
+
+    def _asks_before_delete(self, name: str, step: PasteStep | None) -> bool:
+        """Return whether the action button asks before the user deletes rungs in CLICK.
+
+        It asks when one of the rungs has an unread comment, until the user clicks OK.
+        """
+        return not self._copied and bool(self._deleted_unread(name, step))
+
+    def _delete_label(self, name: str, step: PasteStep | None) -> str:
+        """Return the action button's text before a delete that loses an unread comment."""
+        if name in self._only_in_click:
+            return "Delete program…"
+        if step is not None:
+            return f"Delete {_rungs_in_click(step.delete)}…"
+        return "Delete all rungs…"
+
+    def _delete_line(self, name: str, step: PasteStep | None) -> str:
+        """Say which unread comment the delete loses, and which button to click first."""
+        numbered = [rung for rung in self._deleted_unread(name, step) if rung is not None]
+        if numbered:
+            comments = "comment" if len(set(numbered)) == 1 else "comments"
+            what = f"CLICK's {comments} on {_named_rungs(numbered)}"
+        else:
+            what = f"a rung comment in CLICK's copy of {name}"
+        return (
+            f'ClickNick could not read {what}. Click "{self._delete_label(name, step)}" '
+            "before you delete anything in CLICK"
+        )
+
+    def _delete_question(
+        self, name: str, step: PasteStep | None, erased: Sequence[int | None]
+    ) -> str:
+        """Return the question before the user deletes the rungs of *step* in CLICK."""
+        if name in self._only_in_click:
+            what = "the main program" if name == "main.csv" else f"subroutine {Path(name).stem}"
+            return _delete_question(
+                name,
+                f"{what} in CLICK",
+                erased,
+                done=what,
+                keep=f"To keep the program, click Cancel and untick {_DELETE_IN_CLICK}.",
+                renamed=True,
+            )
+        if step is not None:
+            return _delete_question(
+                name,
+                f"CLICK's {_rungs_in_click(step.delete)} of {name}",
+                erased,
+                done="the rung" if len(step.delete) == 1 else "the rungs",
+                keep=_KEEP_DIFFERENCE,
+            )
+        return _delete_question(
+            name,
+            f"every rung of {name} in CLICK",
+            erased,
+            done="the rungs",
+            keep="Click Cancel to leave CLICK as it is.",
+        )
+
+    def _agrees_to_lose_comments(self, name: str, step: PasteStep | None) -> bool:
+        """Ask before a paste or a delete loses a comment that ClickNick could not read.
+
+        Return True if it loses none, or if the user clicks OK. Cancel is the default.
+        """
+        if deleted := self._deleted_unread(name, step):
+            question = self._delete_question(name, step, deleted)
+        else:
+            erased, arriving = self._unread_comments(name, step)
+            if not erased and not arriving:
+                return True
+            question = _comment_question(
+                name, self._source.label, erased, arriving, whole=step is None
+            )
+        return messagebox.askokcancel(
+            _COMMENT_TITLE,
+            question,
+            icon=messagebox.WARNING,
+            default=messagebox.CANCEL,
+            parent=self,
+        )
+
     def _left_out(self, name: str) -> bool:
         """Return whether the folder's CSV of the program could not be read.
 
@@ -860,11 +1100,15 @@ class ReviewChangesWindow(tk.Toplevel):
           step through it, its paste would be slow, or CLICK holds some of its rungs in an
           old encoding. In the last case a whole paste would re-paste the rungs of skipped
           differences from ClickNick's reading of them.
+        - A whole paste would lose a comment that ClickNick could not read
+          (_has_unread_comments). The steps leave the equal rungs alone.
         """
         if self._copy_whole_var.get() or name in self._step_through or name in self._unplaced:
             return 0
         change = self._changes.get(name)
         if change is None or change.legacy or name in self._missing_in_click:
+            return 0
+        if self._has_unread_comments(name):
             return 0
         if self._pasted.get(name) or self._partial.get(name):
             return 0
@@ -924,7 +1168,11 @@ class ReviewChangesWindow(tk.Toplevel):
     ) -> list[PasteStep]:
         if name in self._unplaced:
             return []  # Steps cannot be numbered from what CLICK holds, so copy it whole
-        if self._copy_whole_var.get() and not self._skipped_legacy(name):
+        if (
+            self._copy_whole_var.get()
+            and not self._skipped_legacy(name)
+            and not self._has_unread_comments(name)
+        ):
             return []
         if self._copied_whole_for_steps(name):
             return []
@@ -1388,7 +1636,9 @@ class ReviewChangesWindow(tk.Toplevel):
 
         step = self._current_step()
         name = self._items[self._current_idx][0]
-        if (
+        if self._asks_before_delete(name, step):
+            self._action_btn.configure(state="normal", text=self._delete_label(name, step))
+        elif (
             self._copied
             or self._nothing_to_copy(step)
             or self._empty_whole(name, step)
@@ -1414,6 +1664,11 @@ class ReviewChangesWindow(tk.Toplevel):
                 f"{name} is not in this folder. CLICK keeps the program.\n"
                 f'Click "Next" to go on, or tick {_DELETE_IN_CLICK} to delete it there'
             )
+        if self._asks_before_delete(name, None):
+            return (
+                f"{name} is in CLICK but not in this folder.\n{self._delete_line(name, None)}. "
+                f"To keep the program, untick {_DELETE_IN_CLICK}"
+            )
         stem = Path(name).stem
         what = "main program" if name == "main.csv" else f"subroutine {stem}"
         return (
@@ -1424,15 +1679,22 @@ class ReviewChangesWindow(tk.Toplevel):
 
     def _stepped_line(self, name: str) -> str:
         """Return why the program is stepped through under "Whole program", or an empty string."""
-        kept = self._skipped_legacy(name) if self._copy_whole_var.get() else []
-        if not kept:
+        if not self._copy_whole_var.get():
             return ""
-        which = f"rung {kept[0]}" if len(kept) == 1 else f"rungs {_listed_rungs(kept)}"
-        return (
-            "\nClickNick steps through this program and does not copy it whole. A whole "
-            f"paste would replace CLICK's {which} with ClickNick's reading of the old encoding. "
-            f"You skipped {which} to keep CLICK's own copy"
-        )
+        if kept := self._skipped_legacy(name):
+            which = f"rung {kept[0]}" if len(kept) == 1 else f"rungs {_listed_rungs(kept)}"
+            return (
+                "\nClickNick steps through this program and does not copy it whole. A whole "
+                f"paste would replace CLICK's {which} with ClickNick's reading of the old "
+                f"encoding. You skipped {which} to keep CLICK's own copy"
+            )
+        if self._has_unread_comments(name):
+            return (
+                "\nClickNick steps through this program and does not copy it whole. ClickNick "
+                "could not read some of its rung comments, and a whole paste would lose them. "
+                "The steps leave the rungs that match alone"
+            )
+        return ""
 
     def _step_prompt(self, idx: int) -> str:
         """Return what the current step of the row does."""
@@ -1478,7 +1740,9 @@ class ReviewChangesWindow(tk.Toplevel):
                 else:
                     verb = "is" if len(step.delete) == 1 else "are"
                     what = f"{old} {verb} not in the program any more"
-                if len(step.delete) == 1:
+                if self._asks_before_delete(name, step):
+                    action = self._delete_line(name, step)
+                elif len(step.delete) == 1:
                     action = 'Delete it in CLICK, then click "Next"'
                 else:
                     action = (
@@ -1503,6 +1767,8 @@ class ReviewChangesWindow(tk.Toplevel):
                 'Click "Copy" to copy it to the clipboard anyway'
             )
         if self._empty_whole(name, step):
+            if self._asks_before_delete(name, step):
+                return f"{name} has no rungs in this folder.\n{self._delete_line(name, step)}"
             if self._can_add_subroutine(idx):
                 return (
                     f"{name} has no rungs in this folder.\n"
@@ -1931,6 +2197,8 @@ class ReviewChangesWindow(tk.Toplevel):
                     "then copy again"
                 )
                 return False
+            if not self._agrees_to_lose_comments(name, step):
+                return False
             result = prepare_rungs_load(
                 rungs,
                 click_v4=is_click_v4(click_hwnd),
@@ -2272,6 +2540,13 @@ class ReviewChangesWindow(tk.Toplevel):
             if self._pasted.get(name):
                 self._done.add(name)
             self._advance_to_next()
+            return
+        if self._asks_before_delete(name, step):
+            # The user has not deleted the rungs in CLICK yet, so ask before they do
+            if self._agrees_to_lose_comments(name, step):
+                self._copied = True
+                self._update_action_btn()
+                self._status_var.set(self._step_prompt(idx))
             return
         if (
             not self._copied
@@ -2705,6 +2980,9 @@ class ReviewChangesWindow(tk.Toplevel):
         # Folder items that CLICK's last save lacks. A subroutine among them must be created
         # in CLICK first.
         self._missing_in_click: frozenset[str] = frozenset()
+        # CLICK's rungs whose comment program_save left out, by folder program. A folder
+        # without main.csv has no comparison, so the window reads them from here.
+        self._click_unread: dict[str, tuple[int | None, ...]] = {}
         self._click_compared = False
         self._adding_subroutine = False
         self._compare_note = ""

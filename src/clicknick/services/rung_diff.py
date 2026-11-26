@@ -17,7 +17,7 @@ import json
 import os
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from laddercodec import Rung, read_csv
@@ -31,6 +31,7 @@ from ..ladder.program import (
     list_csv_folder,
     read_csv_comment,
     read_legacy_encodings,
+    read_unread_comments,
     rung_fingerprint,
     unreadable_copy,
 )
@@ -149,6 +150,13 @@ class ProgramChange:
     legacy: tuple[LegacyEncoding, ...] = ()
     # One per difference (each opcode that is not "equal"), in order
     differences: tuple[DifferenceKey, ...] = ()
+    # CLICK's rungs, numbered from 1, whose comment program_save left out because laddercodec
+    # cannot read it. None stands for such a comment whose rung laddercodec did not name.
+    # The rungs compare as they are, so a paste can erase the comment unseen.
+    unread_comments_before: tuple[int | None, ...] = ()
+    # The same for the proposed rungs, when the proposal's folder holds a record from
+    # program_save. A copy of another CLICK window holds one.
+    unread_comments_after: tuple[int | None, ...] = ()
 
     @property
     def unreadable(self) -> bool:
@@ -216,6 +224,31 @@ class ProgramChange:
             if tag != "equal" and i2 - i1 > j2 - j1
             for number in range(i1 + 1, i2 + 1)
             if number in unread
+        )
+
+    def unread_comments_in(self, step: PasteStep) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        """Return the rungs whose unread comment *step* erases, or pastes without.
+
+        The first tuple holds CLICK's rungs that the step pastes over or deletes, numbered as
+        the step numbers them. The second holds the proposed rungs that the step pastes. A
+        record with no rung number is in neither, because no step can tell where it is.
+        """
+        differences = [opcode for opcode in self.opcodes if opcode[0] != "equal"]
+        if step.block >= len(differences):
+            return (), ()
+        tag, i1, i2, _j1, _j2 = differences[step.block]
+        if step.rungs:
+            # A paste replaces CLICK's first rung of the difference, if there is one
+            shown = [(i1 + 1, step.over)] if step.over is not None else []
+        else:
+            # A delete removes the rungs that the paste before it did not replace
+            first = i1 + 2 if tag == "replace" else i1 + 1
+            shown = list(zip(range(first, i2 + 1), step.delete, strict=True))
+        before = set(self.unread_comments_before)
+        after = set(self.unread_comments_after)
+        return (
+            tuple(number for saved, number in shown if saved in before),
+            tuple(number for number in step.rungs if number in after),
         )
 
     def touches(self, selected: Iterable[int]) -> bool:
@@ -401,6 +434,10 @@ class BundleComparison:
     only_in_click: dict[str, ProgramChange] = field(default_factory=dict)
     # Names of proposed programs that CLICK does not have yet, whether readable or not.
     missing_in_click: frozenset[str] = frozenset()
+    # Proposed program name -> CLICK's rungs whose comment program_save left out, as in
+    # ProgramChange.unread_comments_before. It is filled even when nothing was compared,
+    # because a whole copy of the program loses those comments all the same.
+    unread_comments: dict[str, tuple[int | None, ...]] = field(default_factory=dict)
 
 
 def _read_click_copy(
@@ -427,6 +464,19 @@ def _read_click_copy(
     return rungs, found
 
 
+def _unread_comments(csv_dir: Path) -> dict[str, list[int | None]]:
+    """Return the rungs whose comment ``program_save`` left out of *csv_dir*, by program."""
+    found: dict[str, list[int | None]] = {}
+    for item in read_unread_comments(csv_dir):
+        found.setdefault(item.file.casefold(), []).append(item.rung)
+    return found
+
+
+def _in_range(rungs: Sequence[int | None], count: int) -> tuple[int | None, ...]:
+    """Return *rungs* without the numbers past *count*, each once and in order."""
+    return tuple(dict.fromkeys(rung for rung in rungs if rung is None or 1 <= rung <= count))
+
+
 def compare_bundle(programs: Iterable[ProposedProgram], current_dir: Path) -> BundleComparison:
     """Compare a loaded bundle with the program in CLICK.
 
@@ -435,15 +485,28 @@ def compare_bundle(programs: Iterable[ProposedProgram], current_dir: Path) -> Bu
     and ``compared`` is False. Two kinds of CLICK rung count as changed. One is a rung that
     ``program_save`` found in a legacy encoding or could not read. The other is every rung
     of a program whose CLICK copy this function cannot read.
+
+    Each change also lists the rungs whose comment ``program_save`` left out. It reads
+    them from *current_dir*, and from the bundle's folder (where its ``main.csv`` is) if
+    ``program_save`` wrote that folder too. A bundle without ``main.csv`` still gets
+    CLICK's record (``unread_comments``).
     """
     programs = list(programs)
     proposed_names = {program.name.casefold() for program in programs}
+    unread_before = _unread_comments(current_dir)
+    unread = {
+        program.name: tuple(dict.fromkeys(unread_before[program.name.casefold()]))
+        for program in programs
+        if program.name.casefold() in unread_before
+    }
     if _MAIN not in proposed_names:
-        return BundleComparison()
+        return BundleComparison(unread_comments=unread)
+    bundle_dir = next(p.path.parent for p in programs if p.name.casefold() == _MAIN)
 
     legacy: dict[str, list[LegacyEncoding]] = {}
     for item in read_legacy_encodings(current_dir):
         legacy.setdefault(item.file.casefold(), []).append(item)
+    unread_after = _unread_comments(bundle_dir)
 
     current: dict[str, Path] = {}
     only_in_click: dict[str, ProgramChange] = {}
@@ -451,23 +514,39 @@ def compare_bundle(programs: Iterable[ProposedProgram], current_dir: Path) -> Bu
         current[name.casefold()] = path
         if name.casefold() not in proposed_names:
             rungs, found = _read_click_copy(name, path, legacy)
-            only_in_click[name] = compare_rungs(rungs, [], found)
+            only_in_click[name] = replace(
+                compare_rungs(rungs, [], found),
+                unread_comments_before=_in_range(
+                    unread_before.get(name.casefold(), ()), len(rungs)
+                ),
+            )
 
     changes: dict[str, ProgramChange] = {}
     for program in programs:
         if program.rungs is None:
             continue
-        current_path = current.get(program.name.casefold())
+        key = program.name.casefold()
+        current_path = current.get(key)
         if current_path is None:
-            changes[program.name] = compare_rungs([], program.rungs)
-            continue
-        before, found = _read_click_copy(program.name, current_path, legacy)
-        changes[program.name] = compare_rungs(before, program.rungs, found)
+            before: Sequence[Rung] = []
+            change = compare_rungs([], program.rungs)
+        else:
+            before, found = _read_click_copy(program.name, current_path, legacy)
+            change = compare_rungs(before, program.rungs, found)
+        changes[program.name] = replace(
+            change,
+            unread_comments_before=_in_range(unread_before.get(key, ()), len(before)),
+            unread_comments_after=_in_range(unread_after.get(key, ()), len(program.rungs)),
+        )
     missing = frozenset(
         program.name for program in programs if program.name.casefold() not in current
     )
     return BundleComparison(
-        compared=True, changes=changes, only_in_click=only_in_click, missing_in_click=missing
+        compared=True,
+        changes=changes,
+        only_in_click=only_in_click,
+        missing_in_click=missing,
+        unread_comments=unread,
     )
 
 
