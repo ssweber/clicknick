@@ -92,6 +92,14 @@ EDIT_COPY = 0xE122
 # the messages tried (WM_CHAR, WM_SETTEXT, EM_SETTEXTEX), only EM_SETTEXTEX in code page 1200 sets
 # such a character.
 EDIT_RUNG_COMMENTS = 32844
+# This is Program > Add New Subroutine Program (Ctrl+U). It opens the New Subroutine Program dialog
+# and adds a subroutine to the open project. It sends nothing to the PLC.
+ADD_SUBROUTINE = 32842
+# This is Edit > Insert > Insert Rung After Cursor. It adds an empty rung to the ladder offline.
+INSERT_RUNG_AFTER = 32807
+# This is Local Program Information. It opens a dialog that lists the program's step addresses.
+# It reads the open project and sends nothing to the PLC.
+LOCAL_PROGRAM_INFO = 32845
 
 ALLOWED_COMMANDS = {
     PASTE: "Paste",
@@ -122,6 +130,9 @@ ALLOWED_COMMANDS = {
     SEND_DIALOG: "Send...",
     EDIT_COPY: "Copy",
     EDIT_RUNG_COMMENTS: "Edit Rung Comments",
+    ADD_SUBROUTINE: "Add New Subroutine Program",
+    INSERT_RUNG_AFTER: "Insert Rung After Cursor",
+    LOCAL_PROGRAM_INFO: "Local Program Information",
 }
 
 # The class of the IP address control (Send's Server IP Address). It has four Edits as children,
