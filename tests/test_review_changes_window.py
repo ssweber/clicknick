@@ -810,11 +810,14 @@ def test_each_step_says_where_its_rungs_go_in_click(monkeypatch, copies) -> None
 
     assert _action(window) == "Copy r2..4"
     assert "step 1 of 2: r2..4 replaces rung 2" in _status(window)
-    assert "In CLICK, select rung 2 and paste over it (Ctrl+V)" in _status(window)
+    assert (
+        "In CLICK, click rung 2's number to select the rung, and paste over it (Ctrl+V)"
+        in _status(window)
+    )
 
     window._on_action()  # Copy
     assert copies == [(RUNGS[1:], 2)]
-    assert "In CLICK, select rung 2 and paste over it (Ctrl+V), then click" in _status(window)
+    assert "to select the rung, and paste over it (Ctrl+V), then click" in _status(window)
 
     window._on_action()  # Next: the two rungs the paste did not take the place of
     assert _action(window) == "Next →"
@@ -828,13 +831,23 @@ def test_new_rungs_go_over_an_empty_rung(monkeypatch, copies) -> None:
     window = _on_main(monkeypatch, _rungs_differ(1, 3, 4))
 
     assert "step 1 of 2: r1 is new" in _status(window)
-    assert "insert an empty rung above rung 1 and paste over it" in _status(window)
+    assert (
+        "In CLICK, insert an empty rung above rung 1. "
+        "Click the empty rung's number to select it, and paste over it (Ctrl+V)"
+    ) in _status(window)
 
     window._on_action()  # Copy
+    assert (
+        "Click the empty rung's number to select it, and paste over it (Ctrl+V), then click"
+        in _status(window)
+    )
     window._on_action()  # Next
 
     assert "step 2 of 2: r3..4 is new" in _status(window)
-    assert "insert an empty rung after the last rung and paste over it" in _status(window)
+    assert (
+        "In CLICK, insert an empty rung after the last rung. "
+        "Click the empty rung's number to select it, and paste over it (Ctrl+V)"
+    ) in _status(window)
 
 
 def _seven_steps() -> ProgramChange:

@@ -110,7 +110,7 @@ On every CLICK save, ClickNick refreshes `src/plc/` (your ladder as Python), `cs
 Edits to the ladder text go back into CLICK through **Review Changes**. It lists each program that differs from CLICK's last save and shows the rung diff underneath. It then walks you through pasting the differences into CLICK.
 
 1. Click **Review Changes** in the main window (or **Workspace > Review Changes**).
-2. Select a program. Click **Copy** to put just the rungs that differ on the clipboard. The step tells you which rung to select and paste over in CLICK's ladder editor. It also tells you where to add an empty rung for new rungs, and which rungs to delete.
+2. Select a program. Click **Copy** to put just the rungs that differ on the clipboard. The step tells you which rung to select and paste over in CLICK's ladder editor. It also tells you where to add an empty rung for new rungs, and which rungs to delete. To select a rung, click its number at the left of the ladder. CLICK shades the rung. If you only click into the rung's logic, CLICK pastes above the rung and keeps the old rung below. The program then holds both rungs.
 3. Paste in CLICK with <kbd>Ctrl</kbd>+<kbd>V</kbd> and wait for the rungs to appear.
 4. Click **Next** and work down the program in order, so each step's rung numbers match what CLICK shows.
 5. Save in CLICK. Rows turn **Up to date** as CLICK saves what you pasted, and the window closes once CLICK has saved all of it.

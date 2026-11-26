@@ -71,6 +71,11 @@ stages them in the store instead.
   `ProgramChange.steps` turns a program's differences into steps on that basis. It works from the top, so each
   step's rung numbers are the ones that CLICK shows. A step pastes over one rung, pastes over a new empty rung,
   or deletes rungs.
+- A click on a rung's number selects the rung, and CLICK shades it. If the user only clicks into the rung's
+  logic, CLICK inserts the paste above that rung and keeps the rung. Insert Rung After Cursor leaves the cursor
+  on the new empty rung without selecting it, so a paste there also goes above the empty rung. CLICK 4.00 was
+  observed to do both. The status bar shows the same cursor position whether the rung is selected or not. Each
+  step that pastes over a rung says to click the rung's number (`_where_to_paste`).
 - The Copy switch's **Whole program** clears the program in CLICK and pastes it in one piece.
 - You can take or skip each difference. A difference is one non-equal opcode (`DifferenceKey`). If you skip
   it, CLICK keeps its rungs there. Steps are numbered from what CLICK holds given the skips
