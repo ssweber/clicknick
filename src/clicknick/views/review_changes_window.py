@@ -206,12 +206,19 @@ def _where_to_paste(step: PasteStep) -> str:
     """Say where in CLICK a step's rungs go.
 
     CLICK pastes over the selected rung. The first pasted rung replaces it, and the
-    rest go in below it.
+    rest go in below it. A click on a rung's number selects the rung. If the user only
+    clicks into the rung's logic, CLICK inserts the paste above the rung and keeps that rung.
     """
     if step.over is not None:
-        return f"In CLICK, select rung {step.over} and paste over it (Ctrl+V)"
+        return (
+            f"In CLICK, click rung {step.over}'s number to select the rung, "
+            "and paste over it (Ctrl+V)"
+        )
     where = "after the last rung" if step.above is None else f"above rung {step.above}"
-    return f"In CLICK, insert an empty rung {where} and paste over it (Ctrl+V)"
+    return (
+        f"In CLICK, insert an empty rung {where}. "
+        "Click the empty rung's number to select it, and paste over it (Ctrl+V)"
+    )
 
 
 def _fault(found: Sequence[LegacyEncoding]) -> str:
