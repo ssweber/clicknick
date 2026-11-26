@@ -686,9 +686,8 @@ def test_several_unreadable_rungs_are_named_together(ready):
     assert "Conf_Compare rung 4" in message
     assert "Conf_Compare rung 5" in message
     assert message.endswith(
-        "\nDo this in CLICK for each rung that ClickNick cannot read: click its number to select "
-        "the rung, and paste the rung again from your own copy of the program. Or fix them in "
-        "CLICK."
+        "\nDo this in CLICK for each rung in the list: click its number to select the rung, and "
+        "paste the rung again from your own copy of the program. Or fix them in CLICK."
     )
 
 

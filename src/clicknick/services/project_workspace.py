@@ -240,11 +240,11 @@ def exported_plc_source_set_aside(project_dir: Path) -> Iterator[bool]:
 
     The manifest is ``csv_output/rung_sources.json``. Its record is
     ``csv_output/source_state.json`` (``record_exported_plc_source``). Each moves to a name
-    that ends in ``.aside``. The block yields True if both are out of the way, and False if
-    either one could not be moved.
+    that ends in ``.aside``. The context manager yields True if both are out of the way,
+    and False if either one could not be moved.
 
-    If the block raises, each file that moved goes back, so the earlier CSVs keep the
-    manifest and record that go with them. If the block ends normally, the files aside are
+    If the ``with`` body raises, each file that moved goes back, so the earlier CSVs keep the
+    manifest and record that go with them. If the ``with`` body ends normally, the files aside are
     deleted. A ``rung_sources.json`` that is there then is one that the export wrote.
     """
     paths = (

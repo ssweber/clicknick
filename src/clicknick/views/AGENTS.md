@@ -93,12 +93,12 @@ stages them in the store instead.
   ClickNick cannot read that copy. Each one names the steps in order: click the rung's number, then paste
   (`paste_again`). A user who acts as they read would otherwise paste before the click. Most of these texts
   also end with the save. A text that sends the user to their own copy of the program leaves the save out. A
-  text about several rungs says which rungs again, such as "each rung that ClickNick cannot read", because
-  the list of rungs can be sentences away. These texts are this window's refusals, `prepare_rungs_load`'s refusals, the analysis notices in `services/`, the Simulator's
-  refusal to run, the Paste Again box and `clicknick-rung program save`. Each such text about a whole program
-  says to delete all its rungs first, and then paste (`clear_before_paste`). `paste_again`,
-  `clear_before_paste` and `delete_rungs` live in `ladder/program.py`, which `services/`, the views and the CLIs
-  can all import.
+  text about several rungs says which rungs again, such as "each rung that ClickNick cannot read" or "each rung
+  in the list" (`which`), because the list of rungs can be sentences away. These texts are this window's
+  refusals, `prepare_rungs_load`'s refusals, the analysis notices in `services/`, the Simulator's refusal to
+  run, the Paste Again box and `clicknick-rung program save`. Each such text about a whole program says to
+  delete all its rungs first, and then paste (`clear_before_paste`). `paste_again`, `clear_before_paste` and
+  `delete_rungs` live in `ladder/program.py`, which `services/`, the views and the CLIs can all import.
 - These texts say neither:
   - This window's notes on an old encoding or a rung that ClickNick cannot read (`_legacy_note`,
     `_legacy_line`). The step under each note says how to select the rung, or how to delete the program's rungs.

@@ -2196,6 +2196,9 @@ _PASTE_EACH = (
     " First, do this in CLICK for each rung that ClickNick cannot read: click its number to "
     "select the rung, and paste the rung again from your own copy of the program."
 )
+_PASTE_EACH_STAND_IN = _PASTE_EACH.replace(
+    "that ClickNick cannot read", "that an empty rung or marker in this folder stands in for"
+)
 
 
 def test_edits_around_a_stand_in_cannot_delete_clicks_rung(monkeypatch, copies) -> None:
@@ -2308,16 +2311,20 @@ def test_empty_rungs_and_markers_in_one_folder_are_named_in_rung_order(
 
 
 @pytest.mark.parametrize(
-    ("legacy", "what"),
+    ("legacy", "what", "paste"),
     [
-        ([_unreadable(2), _unreadable(4)], "CLICK's rungs 2, 4 cannot be read."),
+        ([_unreadable(2), _unreadable(4)], "CLICK's rungs 2, 4 cannot be read.", _PASTE_EACH),
         # With no rung number, the folder's empty rungs say how many rungs to paste
-        ([_unreadable(None)], "ClickNick cannot read CLICK's copy of the program."),
+        (
+            [_unreadable(None)],
+            "ClickNick cannot read CLICK's copy of the program.",
+            _PASTE_EACH_STAND_IN,
+        ),
     ],
     ids=["two-in-click", "no-rung-number"],
 )
 def test_several_rungs_to_paste_get_the_step_for_each_rung(
-    monkeypatch, copies, legacy: list[LegacyEncoding], what: str
+    monkeypatch, copies, legacy: list[LegacyEncoding], what: str, paste: str
 ) -> None:
     click = [RUNGS[0], _MARKER, RUNGS[2], _MARKER]
     proposed = [RUNGS[0], empty_rung(""), RUNGS[2], empty_rung("")]
@@ -2331,7 +2338,7 @@ def test_several_rungs_to_paste_get_the_step_for_each_rung(
     assert copies == []
     assert _status(window) == (
         f"Could not copy main.csv: Rungs 2, 4 of Main Program are empty in this folder. "
-        f"{what}{_PASTE_EACH}"
+        f"{what}{paste}"
     )
 
 

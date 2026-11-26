@@ -54,9 +54,23 @@ from clicknick.ladder.program import (
     read_legacy_encodings,
     read_unread_comments,
     stand_in_findings,
+    stand_in_fix,
 )
 
 DETAIL = "ClickNick cannot read this Compare."
+
+
+def test_the_fix_for_several_rungs_names_the_rungs_in_the_list() -> None:
+    """Some listed rungs are ones that ClickNick can read but cannot copy unchanged."""
+    found = [
+        LegacyEncoding("main.csv", "Main Program", number, "Compare", "", DETAIL, True)
+        for number in (2, 4)
+    ]
+
+    assert stand_in_fix(found, one=False) == (
+        "Do this in CLICK for each rung in the list: click its number to select the rung, and "
+        "paste the rung again from your own copy of the program. Or fix them in CLICK."
+    )
 
 
 def _rung(coil: str, first=None, comment: str | None = None) -> Rung:

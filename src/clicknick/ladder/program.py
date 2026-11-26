@@ -930,7 +930,7 @@ def stand_in_fix(found: Sequence[LegacyEncoding], *, one: bool) -> str:
     if told == len(found):
         return ""
     if not told:
-        paste = paste_again(one=one, own_copy=True, save=False)
+        paste = paste_again(one=one, which="in the list", own_copy=True, save=False)
         return f"{paste} Or fix {'it' if one else 'them'} in CLICK."
     if one:
         lead = "Where a line does not say what to do, "
