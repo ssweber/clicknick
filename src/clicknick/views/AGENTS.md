@@ -17,6 +17,13 @@ stages them in the store instead.
   workspace's `csv_output/`. The app keeps one window per folder, and it reloads the window when the folder is
   shown again.
 - `rung apply` writes `csv_output/` with the workspace's `project_to_csv.py`, which `_export_worker` runs.
+  While an export runs, `_run_export` moves `csv_output/rung_sources.json` and `csv_output/source_state.json`
+  aside. If the export fails, it moves them back. If it succeeds, it records in `source_state.json` the hash of
+  each file in `src/plc`, as it read them before the export ran, and the hash of the `rung_sources.json` that
+  the export wrote. `rung list <file>` runs no export. It numbers the rungs from the last export's
+  `rung_sources.json` if `src/plc` and the manifest still match that record. Otherwise it reads the `# Rn`
+  markers. It says so in a note, unless `src/plc` is as ClickNick generated it, because the markers are right
+  then.
   pyrung's export refuses `undecoded()`. The worker then names CLICK's program and rung for each call
   (`export_stop_refusal`). Its text never tells the user to delete the call, because the whole paste of that
   program would then delete the rung in CLICK.
@@ -45,8 +52,9 @@ stages them in the store instead.
 ## The comparison
 
 - `services/rung_diff.py` is the one comparison of a CSV bundle with CLICK's last save (`csv/`). It finds which
-  programs differ, which rungs differ, and the diff text. It compares rungs by `rung_fingerprint`. The diff text
-  shows the rungs that differ as pyrung source. Pyrung source plays no part in the comparison.
+  programs differ, which rungs differ, and the diff text. It compares rungs by `compare_key`. The window
+  calls the same function wherever it asks whether two rungs are the same. The diff text shows the rungs
+  that differ as pyrung source. Pyrung source plays no part in the comparison.
 - ClickNick reads the folder once (`load_bundle`) and compares and copies from memory. A CLICK save generates
   the workspace again and deletes `csv_output/`, and the window must still know whether what it pasted landed.
 - Given the workspace source (`source_dir`), the diff shows that source through the exporter's

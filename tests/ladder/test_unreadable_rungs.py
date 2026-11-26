@@ -1180,17 +1180,17 @@ def test_two_threads_never_record_at_once() -> None:
     assert warnings.showwarning is showwarning
 
 
-def test_a_fingerprint_passes_on_what_laddercodec_warns(monkeypatch) -> None:
-    from clicknick.ladder.program import rung_fingerprint
+def test_a_rung_summary_passes_on_what_laddercodec_warns(monkeypatch) -> None:
+    from clicknick.services.rung_diff import _rung_summary
 
     def csv_rows(_rungs, **_kwargs):
         warnings.warn(_NewWarning(0), stacklevel=1)
-        return [["R", "-"]]
+        return [["R", "out(C1)"]]
 
-    monkeypatch.setattr("clicknick.ladder.program.csv_rows", csv_rows)
+    monkeypatch.setattr("clicknick.services.rung_diff.csv_rows", csv_rows)
 
     with pytest.warns(_NewWarning):
-        assert rung_fingerprint(_rung("C1")) == (("R", "-"),)
+        assert _rung_summary(_rung("C1")) == "  out(C1)"
 
 
 # ---------------------------------------------------------------------------

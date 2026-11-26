@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import tkinter as tk
+from collections.abc import Sequence
 from pathlib import Path
 from tkinter import messagebox, ttk
 from types import SimpleNamespace
@@ -2483,6 +2484,42 @@ def test_a_new_export_keeps_a_step_half_done(monkeypatch, copies) -> None:
 
     assert window._current_step() == PasteStep(delete=(5, 6))
     assert "step 2 of 3" in _status(window)
+
+
+def _compare_without_comments(monkeypatch) -> None:
+    """Make the diff and the window compare rungs by a ``compare_key`` that ignores comments."""
+
+    def key(rung: Rung) -> object:
+        return (rung.conditions, rung.instructions)
+
+    monkeypatch.setattr("clicknick.services.rung_diff.compare_key", key)
+    monkeypatch.setattr(f"{MODULE}.compare_key", key)
+
+
+def _recommented(rungs: Sequence[Rung]) -> list[Rung]:
+    return [Rung(rung.conditions, rung.instructions, comment="edited") for rung in rungs]
+
+
+def test_a_new_export_places_what_was_pasted_by_compare_key(monkeypatch, copies) -> None:
+    _compare_without_comments(monkeypatch)
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._on_action()  # Copy r1
+    window._on_action()  # Next: CLICK holds Y001 Y002, not saved
+
+    _export(window, _recommented(RUNGS))  # Only the comments differ
+
+    assert window._unplaced == set()
+    assert _action(window) == "Copy r3..4"
+
+
+def test_a_new_export_keeps_a_program_done_by_compare_key(monkeypatch, copies) -> None:
+    _compare_without_comments(monkeypatch)
+    window = _exported(monkeypatch, _without(1, 3, 4), RUNGS)
+    window._done = {"main.csv"}
+
+    _export(window, _recommented(RUNGS))  # Only the comments differ
+
+    assert "main.csv" in window._done
 
 
 def test_a_paste_the_new_export_takes_back_is_pasted_over_until_click_saves(

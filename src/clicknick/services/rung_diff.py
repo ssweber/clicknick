@@ -5,8 +5,8 @@ each. ``clicknick-cli rung apply`` uses it to decide what to report. A bundle is
 like ``program_save`` output: ``main.csv`` plus ``subroutines/*.csv``. Its programs are
 named the way ``list_csv_folder`` names them.
 
-Rungs are compared as CLICK would hold them (``rung_fingerprint``). pyrung source is used
-only to show a difference.
+Two rungs are the same rung when their ``compare_key`` values are equal. pyrung source is
+used only to show a difference.
 """
 
 from __future__ import annotations
@@ -16,12 +16,13 @@ import difflib
 import json
 import os
 import re
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Collection, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from laddercodec import Rung, read_csv
+from laddercodec import Rung, csv_rows, read_csv
 
+from ..ladder.codec_warnings import pass_on, recording
 from ..ladder.program import (
     LegacyEncoding,
     count_csv_rungs,
@@ -32,7 +33,6 @@ from ..ladder.program import (
     read_csv_comment,
     read_legacy_encodings,
     read_unread_comments,
-    rung_fingerprint,
     unreadable_copy,
 )
 
@@ -96,6 +96,16 @@ def load_bundle(folder: Path) -> list[ProposedProgram]:
 # ---------------------------------------------------------------------------
 
 
+def compare_key(rung: Rung) -> Hashable:
+    """Return what Review Changes compares for *rung*.
+
+    Two rungs are the same rung when their keys are equal. The key is *rung* itself, so
+    laddercodec's ``Rung ==`` decides. It compares the conditions, the instructions and the
+    comment text. It leaves out the comment's RTF bytes.
+    """
+    return rung
+
+
 @dataclass(frozen=True)
 class DifferenceKey:
     """Names one difference of a program by its content, not its position.
@@ -105,9 +115,9 @@ class DifferenceKey:
     compared again.
     """
 
-    # The fingerprints of CLICK's rungs and of the proposed rungs in the difference
-    before: tuple[tuple[tuple[str, ...], ...], ...]
-    after: tuple[tuple[tuple[str, ...], ...], ...]
+    # The compare_key of each of CLICK's rungs and of each proposed rung in the difference
+    before: tuple[Hashable, ...]
+    after: tuple[Hashable, ...]
     # How many earlier differences of the program hold the same rungs. This makes the
     # same change in two places two different keys.
     occurrence: int = 0
@@ -351,10 +361,10 @@ def compare_rungs(
     item with no rung number makes every rung of the program unequal. A *legacy* item
     numbered past CLICK's last rung is ignored.
     """
-    before_prints = [rung_fingerprint(rung) for rung in before]
-    after_prints = [rung_fingerprint(rung) for rung in after]
-    before_keys: list[object] = list(before_prints)
-    after_keys: list[object] = list(after_prints)
+    before_compared = [compare_key(rung) for rung in before]
+    after_compared = [compare_key(rung) for rung in after]
+    before_keys: list[object] = list(before_compared)
+    after_keys: list[object] = list(after_compared)
     legacy = [item for item in legacy if item.rung is None or 1 <= item.rung <= len(before)]
     stale = {item.rung - 1 for item in legacy if item.rung is not None}
     if any(item.rung is None for item in legacy):
@@ -371,7 +381,7 @@ def compare_rungs(
     for tag, i1, i2, j1, j2 in opcodes:
         if tag == "equal":
             continue
-        content = (tuple(before_prints[i1:i2]), tuple(after_prints[j1:j2]))
+        content = (tuple(before_compared[i1:i2]), tuple(after_compared[j1:j2]))
         occurrence = seen[content] = seen.get(content, -1) + 1
         differences.append(DifferenceKey(*content, occurrence))
     return ProgramChange(
@@ -802,7 +812,7 @@ def _source_chunks(source: str) -> list[_SourceChunk]:
 
     Return an empty list if the source does not parse. Every ``with rung()`` block that
     is not ``rung().continued()`` starts a chunk. A chunk's number comes from its ``# Rn``
-    marker, if it has one. Rungs are compared by fingerprint, so that number is only for
+    marker, if it has one. Rungs are compared by ``compare_key``, so that number is only for
     display.
     """
     try:
@@ -889,11 +899,28 @@ def _chunks_by_rung(
     return result
 
 
+def rung_start_lines(source: str, rung_lines: Mapping[int, Sequence[int]]) -> dict[int, int]:
+    """Return the line of each rung's ``with rung()`` statement in *source*, by rung number.
+
+    *rung_lines* is one program's part of the exporter's manifest, as ``BundleSources.lines``
+    returns it. If it is empty, the ``# Rn`` markers give the numbers. A rung with no source
+    line in *source* has no entry. The lines count from 1.
+    """
+    return {
+        number: chunks[0].marker_line
+        for number, chunks in _chunks_by_rung(source, rung_lines).items()
+    }
+
+
 def _rung_summary(rung: Rung) -> str:
     """Return a summary of a rung that has no source: its instructions, then its comment."""
+    # The rows are only shown, so each warning from laddercodec is passed on
+    with recording() as found:
+        rows = csv_rows([rung])
+    pass_on(found)
     instructions = "; ".join(
         row[-1]
-        for row in rung_fingerprint(rung)
+        for row in rows
         # Skip comment rows, blank outputs, and pins (".reset()") of the instruction above
         if row[0] != "#" and row[-1] and not row[-1].startswith(".")
     )

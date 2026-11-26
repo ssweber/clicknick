@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import re
 import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,11 +20,16 @@ if TYPE_CHECKING:
 from ..services.project_workspace import (
     NO_WINDOW,
     WorkspaceBusyError,
+    exported_plc_source_set_aside,
     headless_python,
     plc_source_dir,
+    plc_source_fingerprint,
+    plc_source_is_exported,
+    plc_source_is_modified,
     project_environment,
+    record_exported_plc_source,
 )
-from ..services.rung_diff import comment_summary
+from ..services.rung_diff import BundleSources, comment_summary, rung_start_lines
 
 _SUBROUTINE_NAME_RE = re.compile(r'@subroutine\("([^"]+)"\)')
 
@@ -123,11 +129,11 @@ def _preceding_comment_summaries(
     source: str,
     markers: list[tuple[int, int]],
 ) -> dict[int, str]:
-    """Map rung marker lines to same-level ``comment(...)`` summaries.
+    """Map rung start lines to same-level ``comment(...)`` summaries.
 
     Pyrung emits CLICK comment rows immediately before the rung or section they
-    introduce. ``# Rn`` remains the rung identity; these summaries are only
-    labels for ``rung list`` output.
+    introduce. The summaries are only labels for ``rung list`` output. They play no
+    part in how the rungs are numbered.
     """
     try:
         tree = ast.parse(source)
@@ -162,47 +168,89 @@ def _preceding_comment_summaries(
     return result
 
 
-def _extract_rungs(source: str) -> list[tuple[int, int, int, str]]:
-    """Extract rung boundaries from pyrung source.
+def _extract_rungs(
+    source: str, rung_lines: Mapping[int, Sequence[int]]
+) -> list[tuple[int, int | None, int | None, str]]:
+    """Return the rungs of one program's *source*, in order of rung number.
 
-    Returns list of (rung_number, start_line, end_line, first_comment).
-    Detects ``# RN`` markers on ``with rung():`` lines.
+    Each rung is (rung number, start line, end line, comment summary). The lines count from 0,
+    and the end line is the start line of the next rung in the file, or the end of the file.
+    *rung_lines* is the program's part of the exporter's manifest, as ``BundleSources.lines``
+    returns it. It gives the rung numbers, as it does in Review Changes. If it is empty, the
+    ``# Rn`` markers give them. A rung that the manifest lists with no line in *source*, such
+    as a rung that a helper module builds, has no start line, no end line and no summary.
     """
     lines = source.splitlines()
-    rung_marker = re.compile(r"#\s*R(\d+)\s*$")
-    markers: list[tuple[int, int, int, str]] = []
-
-    for i, line in enumerate(lines):
-        m = rung_marker.search(line)
-        if m:
-            rung_num = int(m.group(1))
-            comment = ""
-            if i + 1 < len(lines):
-                next_line = lines[i + 1].strip()
-                if next_line.startswith("#"):
-                    comment = next_line.lstrip("# ")
-                elif next_line.startswith('"""') or next_line.startswith("'"):
-                    comment = next_line.strip("\"' ")
-            indent = len(line) - len(line.lstrip())
-            markers.append((rung_num, i, indent, comment))
-
+    starts = {number: line - 1 for number, line in rung_start_lines(source, rung_lines).items()}
+    numbers = sorted({*rung_lines, *starts})
+    heads = sorted(set(starts.values()))
     preceding = _preceding_comment_summaries(
         source,
-        [(line_index + 1, indent) for _, line_index, indent, _ in markers],
+        [
+            (line_index + 1, len(lines[line_index]) - len(lines[line_index].lstrip()))
+            for line_index in heads
+        ],
     )
-    rungs = [
-        (rung_num, line_index, 0, preceding.get(line_index + 1, fallback))
-        for rung_num, line_index, _, fallback in markers
-    ]
 
-    for idx in range(len(rungs) - 1):
-        num, start, _, comment = rungs[idx]
-        rungs[idx] = (num, start, rungs[idx + 1][1], comment)
-    if rungs:
-        num, start, _, comment = rungs[-1]
-        rungs[-1] = (num, start, len(lines), comment)
-
+    rungs: list[tuple[int, int | None, int | None, str]] = []
+    for number in numbers:
+        start = starts.get(number)
+        if start is None:
+            rungs.append((number, None, None, ""))
+            continue
+        end = next((head for head in heads if head > start), len(lines))
+        comment = ""
+        if start + 1 < len(lines):
+            next_line = lines[start + 1].strip()
+            if next_line.startswith("#"):
+                comment = next_line.lstrip("# ")
+            elif next_line.startswith('"""') or next_line.startswith("'"):
+                comment = next_line.strip("\"' ")
+        rungs.append((number, start, end, preceding.get(start + 1, comment)))
     return rungs
+
+
+def _rung_numbering(
+    project_dir: Path, path: Path, file_stem: str, source: str
+) -> tuple[Mapping[int, Sequence[int]], str]:
+    """Return the rung lines that number the rungs of *source*, and a note for ``rung list``.
+
+    The rung lines come from the last export's ``rung_sources.json`` if ``src/plc`` reads the
+    same as when that export read it, and nothing has written the manifest since. Otherwise
+    they are an empty dict, and ``rung list`` reads the ``# Rn`` markers. The markers are
+    also used when the manifest gives a rung a line in *source* that no ``with rung()``
+    block holds. The note is empty when the numbers match what ``rung apply --select``
+    counts. That is when they come from the export, or when ``src/plc`` is as ClickNick
+    generated it.
+    """
+    name = path.name
+    outside = False
+    if plc_source_is_exported(project_dir):
+        rung_lines = BundleSources.workspace(
+            plc_source_dir(project_dir), project_dir / "csv_output"
+        ).lines(_program_name(project_dir, file_stem))
+        starts = rung_start_lines(source, rung_lines)
+        outside = any(lines and number not in starts for number, lines in rung_lines.items())
+        if rung_lines and not outside:
+            return rung_lines, ""
+    try:
+        if not plc_source_is_modified(project_dir):
+            return {}, ""
+    except OSError:
+        pass  # A file could not be read, so nothing shows that the markers are right
+    if outside:
+        return {}, (
+            f"NOTE: These numbers come from the # R1, # R2, ... comments in {name}. The last "
+            f"export ties a rung to a line of {name} that is not inside a with rung() block, so "
+            "rung list cannot use that export. The comments can be out of date, so rung apply "
+            "--select may count the rungs differently."
+        )
+    return {}, (
+        f"NOTE: These numbers come from the # R1, # R2, ... comments in {name}. Those "
+        "comments can be out of date, so rung apply --select may count the rungs differently. "
+        "To number them as rung apply does, run rung apply or open Review Changes, then run "
+        "rung list again."
+    )
 
 
 def _cmd_list(ctx: DispatchContext, parts: list[str]) -> str:
@@ -214,19 +262,23 @@ def _cmd_list(ctx: DispatchContext, parts: list[str]) -> str:
 
     path = _resolve_file(project_dir, file_stem)
     source = path.read_text(encoding="utf-8")
-    rungs = _extract_rungs(source)
+    rung_lines, note = _rung_numbering(project_dir, path, file_stem, source)
+    rungs = _extract_rungs(source, rung_lines)
 
     if not rungs:
         return f"{file_stem}: no rungs found"
 
-    lines = []
+    lines = [note] if note else []
+    lines.append(f"{file_stem}: {len(rungs)} rungs")
     for rung_num, start, end, comment in rungs:
-        row_count = end - start
-        desc = f"  R{rung_num}: {row_count} lines"
+        if start is None or end is None:
+            lines.append(f"  R{rung_num}: no source line in this file")
+            continue
+        desc = f"  R{rung_num}: {end - start} lines"
         if comment:
             desc += f"  # {comment}"
         lines.append(desc)
-    return f"{file_stem}: {len(rungs)} rungs\n" + "\n".join(lines)
+    return "\n".join(lines)
 
 
 def _program_name(project_dir: Path, stem: str) -> str:
@@ -376,8 +428,14 @@ def _run_export(project_dir: Path) -> Path:
 
     Used by ``rung apply`` to produce the proposed ladder and nickname CSVs.
     This removes CSVs that an earlier export left and this one did not write again. A
-    subroutine deleted from the source then does not stay in the proposal. On failure it
-    raises and leaves the earlier export as it was.
+    subroutine deleted from the source then does not stay in the proposal.
+
+    While the script runs, the earlier ``rung_sources.json`` and its record are set aside
+    (``exported_plc_source_set_aside``). On success this records the ``src/plc`` that it read
+    and the ``rung_sources.json`` that the script wrote (``record_exported_plc_source``), for
+    ``rung list``. On failure or a timeout it raises, and puts the earlier manifest and
+    record back. The CSVs, the manifest and the record then all come from the earlier
+    export.
 
     The script runs in ``_export_worker``. If pyrung refuses the export because the source
     holds ``undecoded()``, the error names each rung that the call stands in for.
@@ -391,26 +449,35 @@ def _run_export(project_dir: Path) -> Path:
         )
     output_dir = project_dir / "csv_output"
     earlier = {path: path.stat().st_mtime_ns for path in output_dir.rglob("*.csv")}
+    # Hash src/plc before the export runs. An edit during the export then fails to match
+    # the record, and rung list reads the markers.
+    try:
+        read: dict[str, str] | None = plc_source_fingerprint(project_dir)
+    except OSError:
+        read = None  # Without a record, rung list reads the markers
 
-    result = subprocess.run(
-        [headless_python(), "-m", "clicknick.live.rung_commands", "--export", str(script)],
-        cwd=str(project_dir),
-        env=project_environment(project_dir),
-        creationflags=NO_WINDOW,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if result.returncode != 0:
-        raise ValueError(
-            result.stderr.strip() or f"project_to_csv.py exited with code {result.returncode}"
+    with exported_plc_source_set_aside(project_dir) as aside:
+        result = subprocess.run(
+            [headless_python(), "-m", "clicknick.live.rung_commands", "--export", str(script)],
+            cwd=str(project_dir),
+            env=project_environment(project_dir),
+            creationflags=NO_WINDOW,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
+        if result.returncode != 0:
+            raise ValueError(
+                result.stderr.strip() or f"project_to_csv.py exited with code {result.returncode}"
+            )
     for path, written in earlier.items():
         try:
             if path.stat().st_mtime_ns == written:
                 path.unlink()
         except OSError:
             pass  # Already gone, or open elsewhere. A file open elsewhere stays in the proposal.
+    # If rung_sources.json or its record could not be moved aside, write no record
+    record_exported_plc_source(project_dir, read if aside else None)
     return output_dir
 
 

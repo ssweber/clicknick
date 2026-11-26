@@ -2527,11 +2527,9 @@ class Run:
         into ``DIR/pasted.csv``, and returns that file. ``added_end`` in the result
         says which of the two happened. The run is refused if *csv* cannot be read, or if
         laddercodec does not read the new file as *csv*'s rungs and then an unconditional
-        end(). The rungs are compared by ``rung_fingerprint``.
+        end(). The rungs are compared with laddercodec's ``Rung ==``.
         """
         from laddercodec import read_csv
-
-        from clicknick.ladder.program import rung_fingerprint
 
         try:
             rungs = read_csv(csv)
@@ -2548,7 +2546,7 @@ class Run:
             added = read_csv(pasted)
         except Exception as exc:
             raise Refused(f"cannot read {pasted}, which is {csv.name} with end(): {exc}") from exc
-        kept = [rung_fingerprint(r) for r in added[:-1]] == [rung_fingerprint(r) for r in rungs]
+        kept = added[:-1] == rungs
         if len(added) != len(rungs) + 1 or not kept or not ends_unconditionally(added):
             raise Refused(
                 f"laddercodec reads {len(added)} rung(s) in {pasted}, which is {csv.name} with "
@@ -5719,14 +5717,12 @@ class Run:
         """
         from laddercodec import read_csv
 
-        from clicknick.ladder.program import is_empty_rung, rung_fingerprint
+        from clicknick.ladder.program import is_empty_rung
 
         assert self.paste_csv is not None
         pasted = read_csv(self.paste_csv)
         saved = read_csv(main_csv)
-        same = [rung_fingerprint(r) for r in pasted] == [
-            rung_fingerprint(r) for r in saved[: len(pasted)]
-        ]
+        same = pasted == saved[: len(pasted)]
         self.result["rungs"] = {"pasted": len(pasted), "saved_main": len(saved), "same": same}
         self.log(
             f"the saved main program has {len(saved)} rung(s), and {len(pasted)} were pasted. "

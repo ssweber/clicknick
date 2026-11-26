@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import ANY, Mock
 
@@ -10,6 +14,15 @@ from laddercodec import Coil, Rung, write_csv
 
 from clicknick.live import rung_commands
 from clicknick.live.dispatch import DispatchContext, dispatch
+from clicknick.services.project_workspace import (
+    exported_source_state_path,
+    plc_source_dir,
+    plc_source_fingerprint,
+    plc_source_is_exported,
+    record_exported_plc_source,
+    record_generated_plc_source,
+)
+from clicknick.services.rung_diff import BundleSources
 
 CLICK = {
     "main.csv": ["Y001", "Y002"],
@@ -220,6 +233,155 @@ def test_export_drops_csvs_it_did_not_write_again(tmp_path: Path) -> None:
     assert not stale.exists()
 
 
+# A project_to_csv.py that writes a rung_sources.json with one rung for each with rung() line
+_MANIFEST_SCRIPT = """\
+import json
+from pathlib import Path
+
+here = Path(__file__).parent
+main = here / "src" / "plc" / "main.py"
+starts = [
+    number
+    for number, line in enumerate(main.read_text(encoding="utf-8").splitlines(), start=1)
+    if "with rung()" in line
+]
+sources = [
+    {"source_file": str(main), "source_line": line, "end_line": line + 1} for line in starts
+]
+(here / "csv_output").mkdir(exist_ok=True)
+(here / "csv_output" / "rung_sources.json").write_text(
+    json.dumps(
+        {
+            "version": 1,
+            "main": [
+                {"rung": rung, "sources": [source]}
+                for rung, source in enumerate(sources, start=1)
+            ],
+            "subroutines": {},
+        }
+    ),
+    encoding="utf-8",
+)
+"""
+
+
+def _manifest_workspace(project_dir: Path, source: str, script: str = _MANIFEST_SCRIPT) -> Path:
+    """Write a workspace whose main.py holds *source*, and return main.py."""
+    main = project_dir / "src" / "plc" / "main.py"
+    main.parent.mkdir(parents=True)
+    main.write_text(source, encoding="utf-8")
+    (project_dir / "project_to_csv.py").write_text(script, encoding="utf-8")
+    return main
+
+
+def test_export_records_the_source_that_it_read(tmp_path: Path) -> None:
+    main = _manifest_workspace(tmp_path, "with rung():\n    pass\n")
+
+    rung_commands._run_export(tmp_path)
+
+    assert plc_source_is_exported(tmp_path)
+    main.write_text("with rung():\n    out(Y001)\n", encoding="utf-8")
+    assert not plc_source_is_exported(tmp_path)
+
+
+def test_export_records_the_source_as_it_read_it_before_the_export_ran(tmp_path: Path) -> None:
+    edits_main = _MANIFEST_SCRIPT + 'main.write_text("with rung():\\n    out(Y001)\\n")\n'
+    _manifest_workspace(tmp_path, "with rung():\n    pass\n", edits_main)
+
+    rung_commands._run_export(tmp_path)
+
+    assert not plc_source_is_exported(tmp_path)
+
+
+def test_an_export_that_writes_no_manifest_leaves_no_record(tmp_path: Path) -> None:
+    main = _manifest_workspace(tmp_path, "with rung():\n    pass\n")
+    rung_commands._run_export(tmp_path)
+    manifest = tmp_path / "csv_output" / "rung_sources.json"
+    assert manifest.is_file()
+    main.write_text("with rung():\n    out(Y001)\n", encoding="utf-8")
+    (tmp_path / "project_to_csv.py").write_text("pass\n", encoding="utf-8")
+
+    rung_commands._run_export(tmp_path)
+
+    assert not manifest.exists()
+    assert not exported_source_state_path(tmp_path).exists()
+    assert not plc_source_is_exported(tmp_path)
+
+
+_TWO_RUNGS = "with rung():\n    pass\nwith rung():\n    pass\n"
+
+
+def _exported_twice(tmp_path: Path, second_script: str) -> tuple[bytes, bytes]:
+    """Export ``_TWO_RUNGS``, edit main.py, and export again with *second_script*.
+
+    Return the manifest and the record that the first export wrote.
+    """
+    main = _manifest_workspace(tmp_path, _TWO_RUNGS)
+    rung_commands._run_export(tmp_path)
+    manifest = (tmp_path / "csv_output" / "rung_sources.json").read_bytes()
+    record = exported_source_state_path(tmp_path).read_bytes()
+    main.write_text("with rung():\n    pass\n" + _TWO_RUNGS, encoding="utf-8")
+    (tmp_path / "project_to_csv.py").write_text(second_script, encoding="utf-8")
+    return manifest, record
+
+
+def test_a_failed_export_puts_back_the_earlier_manifest_and_record(tmp_path: Path) -> None:
+    # The script writes another manifest, and then fails
+    writes_then_fails = _MANIFEST_SCRIPT + "raise SystemExit('broken')\n"
+    manifest, record = _exported_twice(tmp_path, writes_then_fails)
+
+    with pytest.raises(ValueError, match="broken"):
+        rung_commands._run_export(tmp_path)
+
+    assert (tmp_path / "csv_output" / "rung_sources.json").read_bytes() == manifest
+    assert exported_source_state_path(tmp_path).read_bytes() == record
+    assert not list((tmp_path / "csv_output").glob("*.aside"))
+
+
+def test_an_export_that_times_out_puts_back_the_earlier_manifest_and_record(
+    tmp_path: Path, monkeypatch
+) -> None:
+    manifest, record = _exported_twice(tmp_path, _MANIFEST_SCRIPT)
+
+    def _times_out(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", _times_out)
+    with pytest.raises(subprocess.TimeoutExpired):
+        rung_commands._run_export(tmp_path)
+
+    assert (tmp_path / "csv_output" / "rung_sources.json").read_bytes() == manifest
+    assert exported_source_state_path(tmp_path).read_bytes() == record
+
+
+def test_an_export_writes_no_record_if_the_manifest_cannot_be_set_aside(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _exported_twice(tmp_path, _MANIFEST_SCRIPT)
+    replace = Path.replace
+
+    def _locked(path: Path, target):
+        if path.name == "rung_sources.json":
+            raise PermissionError("in use")
+        return replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", _locked)
+    rung_commands._run_export(tmp_path)
+
+    assert not exported_source_state_path(tmp_path).exists()
+    assert not plc_source_is_exported(tmp_path)
+
+
+def test_review_changes_reads_the_earlier_manifest_after_a_failed_export(tmp_path: Path) -> None:
+    _exported_twice(tmp_path, "raise SystemExit('broken')\n")
+
+    with pytest.raises(ValueError, match="broken"):
+        rung_commands._run_export(tmp_path)
+
+    sources = BundleSources.workspace(plc_source_dir(tmp_path), tmp_path / "csv_output")
+    assert sources.lines("main.csv") == {1: [1], 2: [3]}
+
+
 def test_failed_export_leaves_the_earlier_one_alone(tmp_path: Path) -> None:
     main, stale = _earlier_export(tmp_path)
     (tmp_path / "project_to_csv.py").write_text("raise SystemExit('broken')\n", encoding="utf-8")
@@ -359,4 +521,184 @@ def test_an_unknown_program_is_named(tmp_path: Path) -> None:
 
     assert str(caught.value) == (
         "There is no program named 'nosuch'. Run 'rung list' to see the names."
+    )
+
+
+# ---------------------------------------------------------------------------
+# rung list
+# ---------------------------------------------------------------------------
+
+# A rung was added in the workspace without a marker, so the markers below it are stale
+_EDITED_MAIN = """\
+with Program() as logic:
+    with rung():  # R1
+        out(A)
+
+    with rung():
+        out(Added)
+
+    with rung():  # R2
+        out(B)
+"""
+
+_MARKERS_NOTE = (
+    "NOTE: These numbers come from the # R1, # R2, ... comments in main.py. Those comments can "
+    "be out of date, so rung apply --select may count the rungs differently. To number them as "
+    "rung apply does, run rung apply or open Review Changes, then run rung list again.\n"
+)
+
+
+def _source(path: Path, line: int) -> dict:
+    return {"source_file": str(path), "source_line": line, "end_line": line + 1}
+
+
+def _manifest(main: Path, *lines: int) -> dict:
+    """Return a manifest that gives main's rungs 1, 2 and so on the source *lines*.
+
+    A line of 0 stands for a rung with no source line in main.py.
+    """
+    return {
+        "version": 1,
+        "main": [
+            {"rung": rung, "sources": [_source(main, line)] if line else []}
+            for rung, line in enumerate(lines, start=1)
+        ],
+        "subroutines": {},
+    }
+
+
+def _listed(
+    tmp_path: Path,
+    monkeypatch,
+    manifest: dict | None,
+    *,
+    exported: str = _EDITED_MAIN,
+    generated: str | None = None,
+    restored: bool = False,
+) -> str:
+    """Return the reply to ``rung list main``, for a main.py that holds ``_EDITED_MAIN``.
+
+    The last export wrote *manifest* as ``rung_sources.json`` from a main.py that held
+    *exported*. If *manifest* is None, there was no export. *generated* is what main.py held
+    when ClickNick last generated the workspace, or None if there is no record of it. If
+    *restored* is set, main.py is dated a second before the export, as a restore leaves it.
+    """
+    main = tmp_path / "src" / "plc" / "main.py"
+    main.parent.mkdir(parents=True)
+    if generated is not None:
+        main.write_text(generated, encoding="utf-8")
+        record_generated_plc_source(tmp_path)
+    if manifest is not None:
+        main.write_text(exported, encoding="utf-8")
+        written = tmp_path / "csv_output" / "rung_sources.json"
+        written.parent.mkdir()
+        written.write_text(json.dumps(manifest), encoding="utf-8")
+        record_exported_plc_source(tmp_path, plc_source_fingerprint(tmp_path))
+    main.write_text(_EDITED_MAIN, encoding="utf-8")
+    if restored:
+        exported_at = (tmp_path / "csv_output" / "rung_sources.json").stat().st_mtime_ns
+        os.utime(main, ns=(exported_at - 10**9, exported_at - 10**9))
+
+    return _list_main(tmp_path, monkeypatch)
+
+
+def _list_main(project_dir: Path, monkeypatch) -> str:
+    """Return the reply to ``rung list main``, and fail if it runs the export."""
+
+    def _no_export(project_dir: Path) -> Path:
+        raise AssertionError("rung list ran the export")
+
+    monkeypatch.setattr(rung_commands, "_run_export", _no_export)
+    return dispatch(
+        DispatchContext(store=_Store(), analysis=_Analysis(project_dir)), "rung list main"
+    )
+
+
+def test_rung_list_numbers_the_rungs_from_an_export_of_the_source_as_it_is(
+    tmp_path: Path, monkeypatch
+) -> None:
+    main = tmp_path / "src" / "plc" / "main.py"
+
+    reply = _listed(tmp_path, monkeypatch, _manifest(main, 2, 5, 8, 0))
+
+    assert reply.startswith(
+        "main: 4 rungs\n"
+        "  R1: 3 lines\n"
+        "  R2: 3 lines\n"
+        "  R3: 2 lines\n"
+        "  R4: no source line in this file"
+    )
+
+
+def test_rung_list_reads_the_markers_when_the_source_changed_since_the_export(
+    tmp_path: Path, monkeypatch
+) -> None:
+    main = tmp_path / "src" / "plc" / "main.py"
+    manifest = _manifest(main, 2, 5, 8)
+    before = _EDITED_MAIN.replace("out(Added)", "out(Other)")
+
+    reply = _listed(tmp_path, monkeypatch, manifest, exported=before)
+
+    assert reply.startswith(f"{_MARKERS_NOTE}main: 2 rungs\n  R1: 6 lines\n  R2: 2 lines")
+
+
+def test_rung_list_reads_the_markers_after_a_restore_puts_back_an_older_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A restore puts back main.py with its old time.
+
+    That time is older than the export of the file that main.py replaced.
+    """
+    main = tmp_path / "src" / "plc" / "main.py"
+    manifest = _manifest(main, 2, 5, 8)
+    before = _EDITED_MAIN.replace("out(Added)", "out(Other)")
+
+    reply = _listed(tmp_path, monkeypatch, manifest, exported=before, restored=True)
+
+    assert reply.startswith(f"{_MARKERS_NOTE}main: 2 rungs\n")
+
+
+def test_rung_list_reads_the_markers_after_project_to_csv_runs_by_hand(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The source goes back to what rung apply exported, but the manifest is from another source."""
+    main = _manifest_workspace(tmp_path, _EDITED_MAIN)
+    rung_commands._run_export(tmp_path)
+    main.write_text("with Program() as logic:\n" + _EDITED_MAIN, encoding="utf-8")
+    subprocess.run([sys.executable, "project_to_csv.py"], cwd=tmp_path, check=True)
+    main.write_text(_EDITED_MAIN, encoding="utf-8")
+
+    reply = _list_main(tmp_path, monkeypatch)
+
+    assert reply.startswith(f"{_MARKERS_NOTE}main: 2 rungs\n  R1: 6 lines\n  R2: 2 lines")
+
+
+def test_rung_list_reads_the_markers_without_an_export(tmp_path: Path, monkeypatch) -> None:
+    reply = _listed(tmp_path, monkeypatch, None)
+
+    assert reply.startswith(f"{_MARKERS_NOTE}main: 2 rungs\n  R1: 6 lines\n  R2: 2 lines")
+
+
+def test_rung_list_shows_no_note_for_the_source_as_clicknick_generated_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    reply = _listed(tmp_path, monkeypatch, None, generated=_EDITED_MAIN)
+
+    assert reply.startswith("main: 2 rungs\n  R1: 6 lines\n  R2: 2 lines")
+
+
+def test_rung_list_reads_the_markers_when_the_export_names_a_line_outside_every_rung(
+    tmp_path: Path, monkeypatch
+) -> None:
+    main = tmp_path / "src" / "plc" / "main.py"
+
+    # Line 1 is the with Program() line, which no with rung() block holds
+    reply = _listed(tmp_path, monkeypatch, _manifest(main, 2, 5, 1))
+
+    assert reply.startswith(
+        "NOTE: These numbers come from the # R1, # R2, ... comments in main.py. The last export "
+        "ties a rung to a line of main.py that is not inside a with rung() block, so rung list "
+        "cannot use that export. The comments can be out of date, so rung apply --select may "
+        "count the rungs differently.\n"
+        "main: 2 rungs\n"
     )

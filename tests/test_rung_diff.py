@@ -714,6 +714,25 @@ def test_dropped_rung_is_removed_with_nothing_to_paste() -> None:
     assert change.removed == (2,)
 
 
+def test_rungs_are_compared_by_their_compare_key(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "clicknick.services.rung_diff.compare_key", lambda rung: (rung.comment or "").casefold()
+    )
+
+    change = compare_rungs(_commented("A", "B"), _commented("a", "C"))
+
+    assert change.opcodes[0] == ("equal", 0, 1, 0, 1)
+    assert change.changed == (2,)
+    assert [(key.before, key.after) for key in change.differences] == [(("b",), ("c",))]
+
+
+def test_rungs_that_differ_only_in_their_comment_bytes_are_the_same() -> None:
+    before = [Rung([["-"] * 31], [Coil("Y001")], comment="Pump", comment_rtf=b"{\\rtf1 Pump}")]
+    after = [Rung([["-"] * 31], [Coil("Y001")], comment="Pump", comment_rtf=None)]
+
+    assert not compare_rungs(before, after).differs
+
+
 def test_same_rungs_do_not_differ() -> None:
     change = compare_rungs(_rungs("Y001", "Y002"), _rungs("Y001", "Y002"))
 
