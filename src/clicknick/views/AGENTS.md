@@ -66,8 +66,9 @@ stages them in the store instead.
 - The Copy switch's **Whole program** clears the program in CLICK and pastes it in one piece.
 - You can take or skip each difference. A difference is one non-equal opcode (`DifferenceKey`). If you skip
   it, CLICK keeps its rungs there. Steps are numbered from what CLICK holds given the skips
-  (`steps(skipped, pasted)`). **Whole program** copies `merged(skipped)`. The exception is a program whose
-  skipped difference keeps CLICK's legacy-encoded rungs. The window steps through that program.
+  (`steps(skipped, pasted)`). **Whole program** copies `merged(skipped)`. There are two exceptions. One is a
+  program whose skipped difference keeps CLICK's legacy-encoded rungs. The other is a program with a comment
+  that ClickNick could not read (see "Comments that ClickNick could not read"). The window steps through both.
 - A difference locks once its step is done ("Next"), not when it is copied. Every difference of a program
   locks while one of its steps is half done.
 - Choices last only as long as the window. `carry_skipped` moves them onto the comparison after a CLICK save.
@@ -79,6 +80,7 @@ stages them in the store instead.
   - A step of it is done.
   - Its rungs were asked for by number.
   - The user clicked **Step Through** for it.
+  - It has a comment that ClickNick could not read (`_has_unread_comments`).
 - A whole copy of a program with no rungs copies nothing. The step is deleting its rungs in CLICK.
 - A program whose CLICK copy ClickNick cannot read is copied whole (`ProgramChange.unreadable`). Two checks
   can refuse that copy. Review Changes runs both before it shows the prompt, and again at the copy.
@@ -90,6 +92,36 @@ stages them in the store instead.
   difference adds a rung in its place. It refuses wrongly when the user writes the rung's logic in its place
   and deletes a rung next to it in the same difference. A finding with no rung number makes every rung
   unequal, so the program is one difference, and a rung added anywhere hides a deleted call.
+
+## Comments that ClickNick could not read
+
+- `program_save` leaves out each rung comment that laddercodec cannot read, and records it in
+  `unread_comments.json` (see `ladder/AGENTS.md`). The rung's logic stays, so the rung compares equal to a
+  proposed rung with the same logic. The diff then never shows that a paste erases the comment.
+- `compare_bundle` reads the record from CLICK's folder. It also reads the record from the proposal's
+  folder, if that folder holds one. A copy of another CLICK window holds one. `ProgramChange` lists the
+  rungs in `unread_comments_before` (CLICK's) and `unread_comments_after` (the proposal's).
+- `compare_bundle` also lists CLICK's record for a program that is only in CLICK, and for each program
+  of a folder without `main.csv` (`BundleComparison.unread_comments`). Nothing is compared for that folder,
+  but each of its programs is copied whole.
+- A paste or a delete in Review Changes loses such a comment in these cases:
+  - A step pastes over or deletes CLICK's rung (`unread_comments_in`). A pure delete counts, because the
+    rung may have moved.
+  - A step pastes the proposed rung.
+  - A whole copy writes the program. A record with no rung number counts only here and in the next two.
+  - The user deletes CLICK's rungs, because the program is copied whole and has no rungs (`_empty_whole`).
+  - The user deletes a program that is only in CLICK. The program may have been renamed.
+- Under **Whole program**, and for a program of `_MANY_STEPS` steps or more, the window steps through a
+  program that has such a record (`_has_unread_comments`). The steps leave the equal rungs alone.
+- Every other paste or delete that loses such a comment asks first (`_agrees_to_lose_comments`), with
+  Cancel as the default. The question names each rung. For CLICK's rung, it says that CLICK loses the
+  comment. For a proposed rung, it says that the rung arrives without the comment from the proposal's
+  source. Each question also says how to keep what CLICK has.
+- A delete copies nothing, so there is no Copy to ask at (`_deleted_unread`). The button reads "Delete
+  rung N…", "Delete all rungs…" or "Delete program…" until the user clicks OK (`_asks_before_delete`). The
+  question says that the user deletes the rungs in CLICK and then clicks "Next". It also says that a moved or
+  renamed copy has no comment. After OK, the button reads "Next".
+- The guard does not cover a paste made outside Review Changes, such as with `clicknick-rung`.
 
 ## What was pasted
 

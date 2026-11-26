@@ -345,11 +345,13 @@ def _overlay_onto_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     # Review Changes steps through those rungs and pastes them again. Once CLICK has saved
     # them again, the active workspace has no such file. A copy left in the mirror would make
     # Review Changes paste rungs that CLICK has already converted, so the copy is deleted.
-    from ..ladder.program import LEGACY_ENCODINGS_FILE
+    # csv/unread_comments.json lists the rung comments that the save left out. A copy left in
+    # the mirror would make Review Changes ask about comments that CLICK no longer holds.
+    from ..ladder.program import LEGACY_ENCODINGS_FILE, UNREAD_COMMENTS_FILE
 
-    legacy_record = Path("csv") / LEGACY_ENCODINGS_FILE
-    if not (source / legacy_record).is_file():
-        (mirror / legacy_record).unlink(missing_ok=True)
+    for record in (LEGACY_ENCODINGS_FILE, UNREAD_COMMENTS_FILE):
+        if not (source / "csv" / record).is_file():
+            (mirror / "csv" / record).unlink(missing_ok=True)
     for relative in MIRROR_OWNED_FILES:
         source_file = source / relative
         if source_file.is_file():
@@ -376,9 +378,9 @@ def _overlay_onto_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
 def sync_workspace_to_mirror(source: Path, mirror: Path) -> MirrorSyncResult:
     """Overlay the active workspace onto a mirror without deleting target files.
 
-    The one exception is ``csv/legacy_encodings.json``, which is deleted from the mirror
-    if the active workspace has none. A mirror whose ``src/plc`` holds work beyond its
-    last generation keeps that tree. The tree is snapshotted to the mirror's
+    The exceptions are ``csv/legacy_encodings.json`` and ``csv/unread_comments.json``. Each
+    is deleted from the mirror if the active workspace has none. A mirror whose ``src/plc``
+    holds work beyond its last generation keeps that tree. The tree is snapshotted to the mirror's
     ``backup/src/plc`` (the backup there moves to ``backup/older``) and left in place, and
     the next build regenerates it. A mirror that took the active workspace's unedited
     ``src/plc`` is recorded as that generation. If the active workspace's ``src/plc``

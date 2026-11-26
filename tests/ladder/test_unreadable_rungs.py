@@ -40,8 +40,10 @@ from clicknick.ladder.cli import main
 from clicknick.ladder.program import (
     LEGACY_ENCODINGS_FILE,
     STAND_IN_COMMENT,
+    UNREAD_COMMENTS_FILE,
     LegacyEncoding,
     UnreadableRungError,
+    UnreadComment,
     decode_to_csv,
     describe_legacy_encoding,
     is_marker,
@@ -50,6 +52,7 @@ from clicknick.ladder.program import (
     prepare_rungs_load,
     program_save,
     read_legacy_encodings,
+    read_unread_comments,
     stand_in_findings,
 )
 
@@ -903,6 +906,33 @@ def test_a_comment_that_laddercodec_cannot_read_is_left_out_of_the_save(
 
     assert found == []
     assert read_csv(out / "main.csv") == [_rung("C1"), _rung("C2")]
+    # Review Changes reads the record to ask before a paste erases the comment in CLICK
+    assert read_unread_comments(out) == (UnreadComment("main.csv", "Main Program", 2),)
+
+
+def test_a_comment_with_no_rung_is_recorded_and_the_program_is_pasted_whole(
+    tmp_path: Path, monkeypatch
+) -> None:
+    rung = _rung("C1", comment="UNDECODED comment: bad RTF")
+    # laddercodec names a rung that the program does not have
+    warning = UndecodedCommentWarning(7, "bad RTF", "Main Program")
+
+    out, found = _save_one_program(tmp_path, monkeypatch, [rung], (warning,))
+
+    assert [(item.rung, item.unreadable) for item in found] == [(None, True)]
+    assert read_unread_comments(out) == (UnreadComment("main.csv", "Main Program", None),)
+
+
+def test_a_save_that_leaves_out_no_comment_removes_the_record(tmp_path: Path, monkeypatch) -> None:
+    rung = _rung("C1", comment="UNDECODED comment: bad RTF")
+    warning = UndecodedCommentWarning(0, "bad RTF", "Main Program")
+    out, _found = _save_one_program(tmp_path, monkeypatch, [rung], (warning,))
+    assert (out / UNREAD_COMMENTS_FILE).is_file()
+
+    _save_one_program(tmp_path, monkeypatch, [_rung("C1", comment="Mixer start")])
+
+    assert not (out / UNREAD_COMMENTS_FILE).exists()
+    assert read_unread_comments(out) == ()
 
 
 class _NewWarning(UserWarning):
@@ -1016,6 +1046,8 @@ def test_a_comment_that_laddercodec_reads_in_part_is_left_out_of_the_save(tmp_pa
     [rung] = read_csv(out / "main.csv")
     assert rung.comment is None
     assert rung.instructions == (Coil("Y001"),)
+    assert [(item.file, item.rung) for item in read_unread_comments(out)] == [("main.csv", 1)]
+    assert read_unread_comments(out) == tuple(result.unread_comments)
 
 
 def test_a_bin_load_passes_on_warnings_other_than_a_marker(monkeypatch) -> None:

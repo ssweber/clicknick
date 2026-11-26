@@ -79,6 +79,9 @@ _ROWS_INDEX_RE = re.compile(r"^rungs\[[0-9]+\]:? *")
 
 # Written beside a CSV bundle when CLICK holds rungs in a form an older laddercodec wrote
 LEGACY_ENCODINGS_FILE = "legacy_encodings.json"
+# Written beside a CSV bundle when program_save leaves out a rung comment that laddercodec
+# cannot read
+UNREAD_COMMENTS_FILE = "unread_comments.json"
 # First line of the comment on the empty rung that program_save writes for a rung that it
 # cannot copy as it is, when the rung is inside a For loop or holds a next(). Earlier releases
 # of ClickNick wrote it for every such rung, so a folder that they saved can hold it anywhere.
@@ -135,6 +138,23 @@ class LegacyEncoding:
     unreadable: bool = False
 
 
+@dataclass(frozen=True)
+class UnreadComment:
+    """A rung comment that laddercodec cannot read, so ``program_save`` left it out of the CSV.
+
+    The CSV holds the rung's logic with no comment. The rung compares equal to a proposed
+    rung with the same logic and no comment. So Review Changes reads these records to ask
+    before a paste that erases the comment in CLICK.
+    """
+
+    # The bundle names the program main.csv or subroutines/<stem>.csv
+    file: str
+    program: str
+    # CLICK numbers rungs from 1. None means that laddercodec did not say which rung holds
+    # the comment.
+    rung: int | None
+
+
 @dataclass
 class SaveResult:
     """Result of program_save(): decoded Scr*.tmp files into a CSV bundle."""
@@ -145,6 +165,8 @@ class SaveResult:
     total_rungs: int
     # Also written to LEGACY_ENCODINGS_FILE beside the CSVs
     legacy_encodings: list[LegacyEncoding] = field(default_factory=list)
+    # Also written to UNREAD_COMMENTS_FILE beside the CSVs
+    unread_comments: list[UnreadComment] = field(default_factory=list)
 
 
 @dataclass
@@ -683,7 +705,7 @@ def _closes_loop(rung: Rung) -> bool:
 
 def _replace_unreadable(
     file: str, prog: Program, notes: Sequence[Note], *, stop: UndecodedStop
-) -> tuple[list[Rung], list[LegacyEncoding]]:
+) -> tuple[list[Rung], list[LegacyEncoding], list[UnreadComment]]:
     """Return *prog*'s rungs, with a marker or a stand-in for each rung that the CSV cannot hold.
 
     A rung that the CSV cannot hold gets an empty stand-in (``_stand_in``) if it is inside a
@@ -698,11 +720,14 @@ def _replace_unreadable(
 
     A rung whose comment laddercodec cannot read (``Rule.COMMENT``) keeps its logic, and
     loses its comment, with no finding. 0.25.0 did the same. A comment that laddercodec reads
-    only in part is left out too.
+    only in part is left out too. The third list records each comment that is left out. If
+    the note names no rung, the record has no rung number either. Such a note also gives a
+    finding for the whole program.
     """
     noted: dict[int, list[tuple[str, str]]] = {}
     comments: set[int] = set()
     found: list[LegacyEncoding] = []
+    unnamed: list[UnreadComment] = []
     for note in notes:
         known = note.rung is not None and 0 <= note.rung < len(prog.rungs)
         if note.rule is Rule.RUNG and known:
@@ -711,6 +736,8 @@ def _replace_unreadable(
             comments.add(note.rung)
         elif note.reported or note.rule is Rule.COMMENT:
             found.append(_whole_program(file, prog.name, note.detail))
+            if note.rule is Rule.COMMENT:
+                unnamed.append(UnreadComment(file, prog.name, None))
     rungs: list[Rung] = []
     # How many of pyrung's For loops are open at this rung
     depth = 0
@@ -744,7 +771,8 @@ def _replace_unreadable(
             LegacyEncoding(file, prog.name, index + 1, name, "", detail, unreadable=True)
             for name, detail in problems
         )
-    return rungs, found
+    unread = [UnreadComment(file, prog.name, index + 1) for index in sorted(comments)]
+    return rungs, found, [*unread, *unnamed]
 
 
 def is_stand_in(rung: Rung) -> bool:
@@ -848,6 +876,36 @@ def _write_program(
     return _read_back(path, file, prog.name)
 
 
+def write_unread_comments(csv_dir: Path, comments: Sequence[UnreadComment]) -> None:
+    """Record *comments* beside the bundle in *csv_dir*, or remove the record if there are none."""
+    path = csv_dir / UNREAD_COMMENTS_FILE
+    if not comments:
+        path.unlink(missing_ok=True)
+        return
+    text = json.dumps([asdict(item) for item in comments], indent=2)
+    path.write_text(text + "\n", encoding="utf-8")
+
+
+def read_unread_comments(csv_dir: Path) -> tuple[UnreadComment, ...]:
+    """Read the comments that ``program_save`` left out of *csv_dir*'s bundle.
+
+    Return an empty tuple if it left none out, or if the record cannot be read.
+    """
+    try:
+        payload = json.loads((csv_dir / UNREAD_COMMENTS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ()
+    found: list[UnreadComment] = []
+    for item in payload if isinstance(payload, list) else ():
+        try:
+            entry = UnreadComment(**item)
+        except TypeError:
+            continue
+        if isinstance(entry.file, str) and (entry.rung is None or isinstance(entry.rung, int)):
+            found.append(entry)
+    return tuple(found)
+
+
 def write_legacy_encodings(csv_dir: Path, found: Sequence[LegacyEncoding]) -> None:
     """Record *found* beside the bundle in *csv_dir*, or remove the record if *found* is empty."""
     path = csv_dir / LEGACY_ENCODINGS_FILE
@@ -933,7 +991,9 @@ def program_save(
     listed there too. Its CSV holds laddercodec's UNDECODED marker in its place, so
     every other rung keeps CLICK's number. Inside a For loop, the CSV holds an empty
     rung (STAND_IN_COMMENT) in place of the marker. A CSV that laddercodec cannot read
-    back is listed there too.
+    back is listed there too. Each rung comment that laddercodec cannot read is left out
+    of its CSV and listed in UNREAD_COMMENTS_FILE beside the CSVs. A save that leaves out
+    none removes that file.
 
     Raises FileNotFoundError if no Scr*.tmp files found.
     Raises ValueError if no main program (prog_idx=1) found.
@@ -972,7 +1032,9 @@ def program_save(
     main_prog, main_notes = main_progs[0]
     main_csv = dest / "main.csv"
     legacy_encodings = _program_findings("main.csv", main_prog, main_notes)
-    main_rungs, unreadable = _replace_unreadable("main.csv", main_prog, main_notes, stop="end")
+    main_rungs, unreadable, unread_comments = _replace_unreadable(
+        "main.csv", main_prog, main_notes, stop="end"
+    )
     legacy_encodings.extend(unreadable)
     legacy_encodings.extend(
         _write_program(
@@ -991,14 +1053,16 @@ def program_save(
             file = f"subroutines/{stem}.csv"
             legacy_encodings.extend(_program_findings(file, prog, notes))
             # In a subroutine, an UNDECODED marker returns to the caller
-            rungs, unreadable = _replace_unreadable(file, prog, notes, stop="return")
+            rungs, unreadable, left_out = _replace_unreadable(file, prog, notes, stop="return")
             legacy_encodings.extend(unreadable)
+            unread_comments.extend(left_out)
             legacy_encodings.extend(
                 _write_program(csv_path, file, prog, rungs, unreadable, index=index, stop="return")
             )
             subroutine_csvs.append(csv_path)
 
     write_legacy_encodings(dest, legacy_encodings)
+    write_unread_comments(dest, unread_comments)
     total_rungs = sum(len(prog.rungs) for prog, _ in decoded)
 
     return SaveResult(
@@ -1007,6 +1071,7 @@ def program_save(
         programs=infos,
         total_rungs=total_rungs,
         legacy_encodings=legacy_encodings,
+        unread_comments=unread_comments,
     )
 
 

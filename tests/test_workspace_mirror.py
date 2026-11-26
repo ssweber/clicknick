@@ -585,12 +585,13 @@ def test_a_locator_that_is_not_an_object_reads_as_empty(tmp_path: Path, content:
     assert find_project_configs("Machine", locator) == [config]
 
 
-def test_sync_removes_the_mirrors_legacy_record_once_the_workspace_has_none(
-    tmp_path: Path,
+@pytest.mark.parametrize("name", ["legacy_encodings.json", "unread_comments.json"])
+def test_sync_removes_the_mirrors_record_once_the_workspace_has_none(
+    tmp_path: Path, name: str
 ) -> None:
     source = _write_workspace(tmp_path / "active")
     record_generated_plc_source(source)
-    record = Path("csv") / "legacy_encodings.json"
+    record = Path("csv") / name
     (source / record).write_text("[]", encoding="utf-8")
     mirror = tmp_path / "Example Workspace"
     sync_workspace_to_mirror(source, mirror)

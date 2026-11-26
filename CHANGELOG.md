@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- Review Changes now asks before a paste or a delete erases a rung comment that ClickNick could not read from CLICK. Most often, such a comment holds a character outside ASCII in a font whose script is not Western or Chinese GB2312. The question names each rung, and Cancel is the default. Review Changes also asks before you paste a rung from another CLICK window whose comment ClickNick could not read. That rung arrives without its comment. Under **Whole program**, Review Changes steps through such a program instead, so the rungs that match keep their comments. 0.27.0 lost these comments without a word.
 - Check Program's check Comparison Operand Has No Ladder Writer no longer reports the analog inputs that ClickNick can read when Project.ini also lists a module that ClickNick does not know. 0.27.0 read no analog inputs for such a project.
 - The Address Editor now accepts a Text initial value that is one character outside ASCII, such as `é` or `€`. 0.27.0 showed the error **Must be ASCII**, and Sync wrote nothing while a row had it. ClickNick still shows an error for a character that CLICK cannot hold, such as `ł`.
 
