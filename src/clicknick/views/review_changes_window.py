@@ -320,7 +320,8 @@ def _placeholder_refusal(name: str, change: ProgramChange) -> str:
         what = f"CLICK's rungs {_listed_rungs(unread)} cannot be read."
     # The paste replaces CLICK's rungs. With no rung number known, count the folder's rungs.
     one = len(unread) == 1 if unread else len(empty) + len(markers) == 1
-    # With no rung number known, "cannot read" would mean every rung
+    # With no rung number, the text says that ClickNick cannot read the whole program. "Each
+    # rung that ClickNick cannot read" would then mean every rung.
     which = (
         "that ClickNick cannot read"
         if unread

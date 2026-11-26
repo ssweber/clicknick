@@ -93,8 +93,9 @@ stages them in the store instead.
   ClickNick cannot read that copy. Each one names the steps in order: click the rung's number, then paste
   (`paste_again`). A user who acts as they read would otherwise paste before the click. Most of these texts
   also end with the save. A text that sends the user to their own copy of the program leaves the save out. A
-  text about several rungs says which rungs again, such as "each rung that ClickNick cannot read" or "each rung
-  in the list" (`which`), because the list of rungs can be sentences away. These texts are this window's
+  text about several rungs names the rungs again in its step, such as "each rung that ClickNick cannot read" or
+  "each rung in the list". The step can be sentences away from the list. `paste_again` takes these words as
+  `which`. These texts are this window's
   refusals, `prepare_rungs_load`'s refusals, the analysis notices in `services/`, the Simulator's refusal to
   run, the Paste Again box and `clicknick-rung program save`. Each such text about a whole program says to
   delete all its rungs first, and then paste (`clear_before_paste`). `paste_again`, `clear_before_paste` and

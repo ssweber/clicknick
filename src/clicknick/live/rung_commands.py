@@ -434,9 +434,8 @@ def _run_export(project_dir: Path) -> Path:
     (``exported_plc_source_set_aside``). On success this records the ``src/plc`` that it read
     and the ``rung_sources.json`` that the script wrote (``record_exported_plc_source``), for
     ``rung list``. On failure or a timeout it raises, and puts the earlier manifest and
-    record back. The script may have written some CSVs before it failed. Those stay, and so
-    do the earlier CSVs that it did not write. The failure does not remove any CSV. Only
-    the manifest and the record are the earlier export's.
+    record back. It removes no CSV. The CSVs that the script wrote before it failed stay,
+    beside the earlier CSVs that it did not write again.
 
     The script runs in ``_export_worker``. If pyrung refuses the export because the source
     holds ``undecoded()``, the error names each rung that the call stands in for.
