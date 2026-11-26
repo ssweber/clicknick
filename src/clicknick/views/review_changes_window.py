@@ -202,6 +202,23 @@ def _rungs_in_click(numbers: Sequence[int]) -> str:
     return f"rungs {numbers[0]} to {numbers[-1]}"
 
 
+def _delete_rungs(first: int, last: int | None = None) -> str:
+    """Say how to select and delete CLICK's rungs *first* to *last*.
+
+    The text follows "In CLICK, ". *last* is None for every rung down to the end of the
+    program. Delete in CLICK acts on the selection. A click on a rung's number selects the
+    rung. With only the cursor in the rung's logic, Delete removes one instruction. The
+    first Shift+Down from there selects only the cursor's rung.
+    """
+    if last == first:
+        return f"click rung {first}'s number and press Delete"
+    until = "the last rung" if last is None else f"rung {last}"
+    return (
+        f"click rung {first}'s number and press Shift+Down until {until} is shaded too. "
+        "Press Delete"
+    )
+
+
 def _where_to_paste(step: PasteStep) -> str:
     """Say where in CLICK a step's rungs go.
 
@@ -341,13 +358,23 @@ def _dropped_refusal(name: str, change: ProgramChange) -> str:
     program = next((item.program for item in change.legacy if item.program), Path(name).stem)
     one = len(dropped) == 1
     which = f"rung {dropped[0]}" if one else f"rungs {_listed_rungs(dropped)}"
+    if one:
+        delete = f"To delete it in CLICK, {_delete_rungs(dropped[0], dropped[0])}. Then save."
+    else:
+        # Each delete moves up the rungs below it. From the highest number down, the rungs
+        # left to delete keep the numbers that the text names.
+        *rest, lowest = sorted(dropped, reverse=True)
+        order = f"{', '.join(str(rung) for rung in rest)} and {lowest}"
+        delete = (
+            f"To delete them in CLICK, delete one rung at a time, in this order: rungs {order}. "
+            "Click each rung's number and press Delete. Then save."
+        )
     return (
         f"ClickNick cannot read CLICK's {which} of {program}, and this folder leaves "
         f"{'it' if one else 'them'} out. Copying the program whole would delete "
         f"{'that rung' if one else 'those rungs'} in CLICK. Write "
         f"{'the rung' if one else 'each rung'}'s logic where the rung was. Or paste "
-        f"{'the rung' if one else 'the rungs'} again in CLICK and save. To delete "
-        f"{'it' if one else 'them'}, delete {'it' if one else 'them'} in CLICK and save first."
+        f"{'the rung' if one else 'the rungs'} again in CLICK and save. {delete}"
     )
 
 
@@ -415,17 +442,17 @@ def _delete_question(
     target: str,
     erased: Sequence[int | None],
     *,
-    done: str,
+    how: str,
     keep: str,
     renamed: bool = False,
 ) -> str:
     """Return what Review Changes asks before the user deletes rungs with an unread comment.
 
-    *target* names what the user deletes in CLICK, and *done* names it again in the last
-    line. *erased* holds the rungs among them whose comment ClickNick could not read. None
-    stands for one whose rung laddercodec did not name. *keep* says how to keep CLICK's
-    rungs. If *renamed* is True, the user deletes a whole program, which may have been
-    renamed.
+    *target* names what the user deletes in CLICK. *how* says how to delete it, and follows
+    "In CLICK, " in the last line. *erased* holds the rungs among them whose comment
+    ClickNick could not read. None stands for one whose rung laddercodec did not name.
+    *keep* says how to keep CLICK's rungs. If *renamed* is True, the user deletes a whole
+    program, which may have been renamed.
     """
     one = len(set(erased)) == 1
     moved = "that rung" if one else "those rungs"
@@ -446,7 +473,7 @@ def _delete_question(
         else "Those comments are lost with their rungs.",
         f"If you {moved}, {copies}.",
     ]
-    return f"{' '.join(sentences)}\n\n{keep} Click OK, then delete {done} in CLICK and click Next."
+    return f"{' '.join(sentences)}\n\n{keep} Click OK. In CLICK, {how}. Then click Next."
 
 
 def _change_label(change: ProgramChange) -> str:
@@ -1009,7 +1036,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 name,
                 f"{what} in CLICK",
                 erased,
-                done=what,
+                how=f"delete {what}",
                 keep=f"To keep the program, click Cancel and untick {_DELETE_IN_CLICK}.",
                 renamed=True,
             )
@@ -1018,14 +1045,14 @@ class ReviewChangesWindow(tk.Toplevel):
                 name,
                 f"CLICK's {_rungs_in_click(step.delete)} of {name}",
                 erased,
-                done="the rung" if len(step.delete) == 1 else "the rungs",
+                how=_delete_rungs(step.delete[0], step.delete[-1]),
                 keep=_KEEP_DIFFERENCE,
             )
         return _delete_question(
             name,
             f"every rung of {name} in CLICK",
             erased,
-            done="the rungs",
+            how=_delete_rungs(1),
             keep="Click Cancel to leave CLICK as it is.",
         )
 
@@ -1265,20 +1292,20 @@ class ReviewChangesWindow(tk.Toplevel):
 
     def _whole_placement(self, name: str) -> str:
         """Say how a whole program goes into CLICK, given what CLICK has of it."""
-        clear_first = (
-            "In CLICK, select all of its rungs (Shift+Up/Down) and delete them, then paste (Ctrl+V)"
-        )
+        clear_first = f"In CLICK, {_delete_rungs(1)}. Then paste (Ctrl+V)"
         if name in self._unplaced:
             return clear_first  # CLICK holds what was pasted of it before
         change = self._changes.get(name)
         if change is None:
             return (
-                "In CLICK, if the program has rungs, select all of them (Shift+Up/Down) and "
-                "delete them, then paste (Ctrl+V)"
+                "In CLICK, click rung 1's number. If the program has rungs, press Shift+Down "
+                "until the last rung is shaded too, and press Delete. Then paste (Ctrl+V)"
             )
         # A copy ClickNick cannot read may hold rungs even when none could be counted
         if not (change.before or change.unreadable) or name in self._missing_in_click:
-            return "In CLICK, paste into the program's ladder (Ctrl+V)"
+            # In a program with no rungs, a click lower down the ladder can select an empty
+            # rung below rung 1. CLICK then keeps the empty rungs above the paste.
+            return "In CLICK, click rung 1's number in the program's ladder. Then paste (Ctrl+V)"
         return clear_first
 
     def _click_label(self, name: str) -> str:
@@ -1755,12 +1782,9 @@ class ReviewChangesWindow(tk.Toplevel):
                     what = f"{old} {verb} not in the program any more"
                 if self._asks_before_delete(name, step):
                     action = self._delete_line(name, step)
-                elif len(step.delete) == 1:
-                    action = 'Delete it in CLICK, then click "Next"'
                 else:
-                    action = (
-                        'Select them in CLICK (Shift+Up/Down) and delete them, then click "Next"'
-                    )
+                    how = _delete_rungs(step.delete[0], step.delete[-1])
+                    action = f'In CLICK, {how}. Then click "Next"'
                 return f"{head}: {what}.\n{action}{legacy}{self._stepped_line(name)}"
             if step.over is not None:
                 what = f"{label} replaces rung {step.over}"
@@ -1789,7 +1813,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 )
             return (
                 f"{name} has no rungs in this folder.\n"
-                'In CLICK, delete all the rungs of the program, then click "Next"'
+                f'In CLICK, {_delete_rungs(1)}. Then click "Next"'
             )
         if self._can_add_subroutine(idx):
             where = (

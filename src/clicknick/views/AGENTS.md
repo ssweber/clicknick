@@ -76,6 +76,22 @@ stages them in the store instead.
   on the new empty rung without selecting it, so a paste there also goes above the empty rung. CLICK 4.00 was
   observed to do both. The status bar shows the same cursor position whether the rung is selected or not. Each
   step that pastes over a rung says to click the rung's number (`_where_to_paste`).
+- Delete in CLICK also acts on the selection. With a rung selected, it deletes the rung. With only the cursor in
+  the rung's logic, it deletes the instruction under the cursor, and the rung stays. From a selected rung, each
+  Shift+Down adds the next rung. From the cursor in the logic, the first Shift+Down selects only the cursor's
+  rung, so a selection started there ends one rung short. After a delete of every rung, nothing is selected and
+  the cursor is at 1:1:A. A paste there adds exactly the pasted rungs. A paste into a new subroutine does the
+  same. In a program with no rungs, a click lower down the number column can select empty rung 2 or 3. A paste
+  there keeps the empty rungs above it. CLICK 4.00 was observed to do all of this, with keys and clicks that the
+  runner sent.
+- Each step that deletes rungs says to click the first rung's number and press Shift+Down until the last rung is
+  shaded too (`_delete_rungs`). For one rung, the text says to click its number and press Delete. A delete of
+  every rung does not name CLICK's last rung. ClickNick counts only CLICK's last save, and CLICK can hold pastes
+  that ClickNick has no record of. A paste into a program with no rungs says to click rung 1's number first
+  (`_whole_placement`).
+- The runner also saw Ctrl+Shift+End, pressed from rung 1's number, select every rung. The texts name Shift+Down,
+  which the earlier texts named, until a person has tried Ctrl+Shift+End. The roadmap's "Open user checks" asks
+  Sam to try it.
 - The Copy switch's **Whole program** clears the program in CLICK and pastes it in one piece.
 - You can take or skip each difference. A difference is one non-equal opcode (`DifferenceKey`). If you skip
   it, CLICK keeps its rungs there. Steps are numbered from what CLICK holds given the skips

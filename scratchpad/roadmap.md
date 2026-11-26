@@ -337,6 +337,9 @@ can automate. Items marked (runner) the runner can answer. When a check is walke
   of a comment that holds `é` as a byte in a font of a charset other than 0 or 134. The 0.26.1 CHANGELOG tells
   you to replace a comment that laddercodec reads only in part with ASCII text. If CLICK writes `é` in one of the
   two forms that laddercodec reads, that advice can allow accented Western text too.
+- Q18 (Sam): in CLICK, click rung 1's number and press Ctrl+Shift+End. Is every rung shaded? The runner saw it
+  select every rung, but no person has pressed it. If yes, Review Changes can name Ctrl+Shift+End in the text that
+  says to delete a whole program before the paste.
 - CLICK's **Export Nicknames** was seen to leave out a nickname that ClickNick wrote, before 0.26.0. If it
   happens again, note the CLICK version, and whether the project was saved or reopened before the export.
 

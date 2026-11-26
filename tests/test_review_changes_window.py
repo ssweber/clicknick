@@ -601,7 +601,7 @@ def test_whole_program_switch_copies_the_program_in_one_step(monkeypatch, copies
     _switch_copy(window, whole=True)
     assert _action(window) == "Copy"
     assert "the whole program replaces what CLICK has. The program has 4 rungs" in _status(window)
-    clear_first = "select all of its rungs (Shift+Up/Down) and delete them, then paste"
+    clear_first = _WHOLE
     assert clear_first in _status(window)
 
     window._on_action()
@@ -611,6 +611,25 @@ def test_whole_program_switch_copies_the_program_in_one_step(monkeypatch, copies
 
     window._on_action()  # Next
     assert window._done == {"main.csv"}
+
+
+def test_a_whole_copy_does_not_name_clicks_last_rung_after_a_copy(monkeypatch, copies) -> None:
+    """After a paste that CLICK has not saved, CLICK holds more rungs than its last save.
+
+    A Copy without Next leaves no record of the paste, so the text cannot name CLICK's count.
+    """
+    window = _on_main(monkeypatch, _rungs_differ(3, 4))  # CLICK's last save holds 2 rungs
+    _switch_copy(window, whole=True)
+    window._on_action()  # Copy, then paste in CLICK: CLICK holds 4 rungs
+    window._select_row(MAIN)  # Click the row to copy it again
+
+    assert _WHOLE in _status(window)
+
+    window = _on_main(monkeypatch, _rungs_differ(1, 3))
+    window._on_action()  # Copy r1, then paste over an empty rung: CLICK holds 3 rungs
+    _switch_copy(window, whole=True)  # Before Next
+
+    assert _WHOLE in _status(window)
 
 
 def test_copy_switch_is_remembered_for_the_next_window(monkeypatch, _own_preferences) -> None:
@@ -735,10 +754,13 @@ def test_sheet_selection_follows_the_current_step(monkeypatch, copies) -> None:
 def test_program_click_lacks_is_copied_whole(monkeypatch, copies) -> None:
     window = _on_main(monkeypatch, _rungs_differ(1, 2, 3, 4), missing=frozenset({"main.csv"}))
     assert _action(window) == "Copy"
+    where = "In CLICK, click rung 1's number in the program's ladder. Then paste (Ctrl+V)"
+    assert where in _status(window)
 
     window._on_action()
 
     assert copies == [(RUNGS, 1)]
+    assert where in _status(window)
 
 
 def test_selected_rungs_take_the_differences_holding_them(monkeypatch, copies) -> None:
@@ -795,7 +817,10 @@ def test_removed_rungs_are_a_step_with_nothing_to_copy(monkeypatch, copies) -> N
     assert window._current_idx == MAIN
     assert _action(window) == "Next →"
     assert "step 1 of 1: rungs 2 to 3 are not in the program any more" in _status(window)
-    assert "Select them in CLICK (Shift+Up/Down) and delete them" in _status(window)
+    assert (
+        "In CLICK, click rung 2's number and press Shift+Down until rung 3 is shaded "
+        'too. Press Delete. Then click "Next"'
+    ) in _status(window)
 
     window._on_action()
 
@@ -1713,7 +1738,8 @@ def test_old_copies_left_after_pasting_stale_rungs_are_named_as_such(monkeypatch
     status = _status(window)
     assert status.startswith(
         "main.csv, step 2 of 2: CLICK's old copies of these rungs are now below the pasted"
-        " ones, at rungs 5 to 6.\nSelect them in CLICK"
+        " ones, at rungs 5 to 6.\nIn CLICK, click rung 5's number and press Shift+Down until "
+        'rung 6 is shaded too. Press Delete. Then click "Next"'
     )
     assert "not in the program any more" not in status
     assert status.endswith(
@@ -2004,7 +2030,16 @@ def _unreadable(rung: int | None, instruction: str = "Compare", detail: str = _R
     return LegacyEncoding("main.csv", "Main Program", rung, instruction, "", detail, True)
 
 
-_WHOLE = "In CLICK, select all of its rungs (Shift+Up/Down) and delete them, then paste (Ctrl+V)"
+_WHOLE = (
+    "In CLICK, click rung 1's number and press Shift+Down until the last rung is shaded too. "
+    "Press Delete. Then paste (Ctrl+V)"
+)
+
+
+_DELETE_ALL = (
+    "In CLICK, click rung 1's number and press Shift+Down until the last rung is shaded too. "
+    'Press Delete. Then click "Next"'
+)
 
 
 def _red(window) -> set[int]:
@@ -2100,13 +2135,13 @@ def test_click_copy_no_read_accepts_is_deleted_whole_before_the_paste(monkeypatc
     assert status.startswith(
         "main.csv: the whole program replaces what CLICK has. The program has 4 rungs."
     )
-    assert "select all of its rungs (Shift+Up/Down) and delete them, then paste" in status
+    assert _WHOLE in status
     assert _action(window) == "Copy"
 
     window._on_action()
 
     assert copies == [(RUNGS, 1)]
-    assert "and delete them, then paste (Ctrl+V)" in _status(window)
+    assert _WHOLE in _status(window)
 
 
 def test_a_program_only_in_click_that_cannot_be_read_is_one_to_delete(monkeypatch) -> None:
@@ -2279,8 +2314,8 @@ def test_a_folder_without_clicks_unreadable_rung_is_refused_before_the_copy(
     refusal = (
         "ClickNick cannot read CLICK's rung 2 of Main Program, and this folder leaves it out. "
         "Copying the program whole would delete that rung in CLICK. Write the rung's logic "
-        "where the rung was. Or paste the rung again in CLICK and save. To delete it, "
-        "delete it in CLICK and save first."
+        "where the rung was. Or paste the rung again in CLICK and save. To delete it in "
+        "CLICK, click rung 2's number and press Delete. Then save."
     )
 
     assert _status(window).endswith(refusal)
@@ -2289,6 +2324,32 @@ def test_a_folder_without_clicks_unreadable_rung_is_refused_before_the_copy(
 
     assert copies == []
     assert _status(window) == f"Could not copy main.csv: {refusal}"
+
+
+def test_a_folder_without_two_unreadable_rungs_says_to_delete_the_last_first(
+    monkeypatch, copies
+) -> None:
+    """Each delete in CLICK moves up the rungs below it, so the text starts at the last rung."""
+    click = [RUNGS[0], _MARKER, RUNGS[2], _MARKER]
+    proposed = [RUNGS[0], RUNGS[2]]
+    change = compare_rungs(click, proposed, [_unreadable(2), _unreadable(4)])
+    assert change.dropped_unreadable == (2, 4)
+    window = _on_main(monkeypatch, change)
+    window._programs["main.csv"] = ProposedProgram(
+        "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
+    )
+    window._update_action_btn()
+    window._status_var.set(window._step_prompt(MAIN))
+
+    assert _status(window).endswith(
+        "Or paste the rungs again in CLICK and save. To delete them in CLICK, delete one rung "
+        "at a time, in this order: rungs 4 and 2. Click each rung's number and press Delete. "
+        "Then save."
+    )
+
+    window._on_action()
+
+    assert copies == []
 
 
 def test_a_folder_with_the_unreadable_rungs_logic_is_copied(monkeypatch, copies) -> None:
@@ -2476,7 +2537,7 @@ def test_a_new_export_that_changes_a_pasted_rung_copies_the_program_whole(
     assert window._current_step() is None
     assert _action(window) == "Copy"
     status = _status(window)
-    assert "select all of its rungs (Shift+Up/Down) and delete them, then paste" in status
+    assert _WHOLE in status
     assert "cannot number the changed rungs, so it copies main.csv whole" in status
     window._on_action()
     assert copies[-1] == (tuple(edited), 1)
@@ -2548,7 +2609,7 @@ def test_a_paste_the_new_export_takes_back_is_pasted_over_until_click_saves(
     assert not window._settled()
     assert window._click_label("main.csv") == "Pasted, not saved"
     assert _action(window) == "Copy"
-    assert "select all of its rungs (Shift+Up/Down) and delete them" in _status(window)
+    assert _WHOLE in _status(window)
     window._on_action()
     assert copies[-1] == (tuple(_without(1)), 1)
 
@@ -2587,7 +2648,7 @@ def test_a_whole_paste_without_a_comparison_is_not_stepped_through_after_a_new_e
     # Not "Copy r1, r4": CLICK holds r1 pasted
     assert window._current_step() is None
     assert _action(window) == "Copy"
-    assert "select all of its rungs (Shift+Up/Down) and delete them" in _status(window)
+    assert _WHOLE in _status(window)
     window._on_action()
     assert copies[-1] == (tuple(edited), 1)
 
@@ -2829,9 +2890,13 @@ def test_without_a_comparison_a_whole_copy_says_to_clear_the_program_first(
     window = _window(monkeypatch, SavedProgram(object(), generation=1, note="Could not read"), {})
     window._select_row(MAIN)
 
-    assert "if the program has rungs, select all of them (Shift+Up/Down)" in _status(window)
+    clear_first = (
+        "In CLICK, click rung 1's number. If the program has rungs, press Shift+Down "
+        "until the last rung is shaded too, and press Delete. Then paste (Ctrl+V)"
+    )
+    assert clear_first in _status(window)
     window._on_action()
-    assert "if the program has rungs, select all of them" in _status(window)
+    assert clear_first in _status(window)
 
 
 def test_a_whole_copy_of_no_rungs_says_to_delete_them_in_click(monkeypatch, copies) -> None:
@@ -2839,7 +2904,7 @@ def test_a_whole_copy_of_no_rungs_says_to_delete_them_in_click(monkeypatch, copi
     _switch_copy(window, whole=True)
 
     assert _action(window) == "Next →"
-    assert 'In CLICK, delete all the rungs of the program, then click "Next"' in _status(window)
+    assert _DELETE_ALL in _status(window)
     window._on_action()  # Next
 
     assert copies == []
@@ -2865,7 +2930,7 @@ def test_a_program_pasted_into_whose_new_export_has_no_rungs_says_to_delete_them
     _export(window, [])
 
     assert _action(window) == "Next →"
-    assert 'In CLICK, delete all the rungs of the program, then click "Next"' in _status(window)
+    assert _DELETE_ALL in _status(window)
     window._on_action()
     assert window._done == {"main.csv"}
 
@@ -3014,14 +3079,16 @@ def test_a_step_that_deletes_a_moved_rung_asks_before_the_delete(monkeypatch, co
         "In this step, you delete CLICK's rung 1 of main.csv. ClickNick could not read the "
         "comment on rung 1 of main.csv in CLICK. That comment is lost with its rung. If you "
         "moved that rung, the copy that you paste has no comment.\n\n"
-        f"{KEEP} Click OK, then delete the rung in CLICK and click Next."
+        f"{KEEP} Click OK. In CLICK, click rung 1's number and press Delete. Then click Next."
     )
 
     ask.return_value = True
     window._on_action()  # Delete rung 1…, then OK
 
     assert _action(window) == "Next →"
-    assert _status(window).endswith('\nDelete it in CLICK, then click "Next"')
+    assert _status(window).endswith(
+        '\nIn CLICK, click rung 1\'s number and press Delete. Then click "Next"'
+    )
     window._on_action()  # Next: the moved rung goes in
     assert _action(window) == "Copy r3"
     window._on_action()
@@ -3165,7 +3232,10 @@ def test_a_step_that_deletes_rungs_names_the_one_with_an_unread_comment(
         "In this step, you delete CLICK's rungs 3 to 4 of main.csv. ClickNick could not read "
         "the comment on rung 4 of main.csv in CLICK."
     )
-    assert ask.call_args.args[1].endswith("delete the rungs in CLICK and click Next.")
+    assert ask.call_args.args[1].endswith(
+        "Click OK. In CLICK, click rung 3's number and press Shift+Down until rung 4 is "
+        "shaded too. Press Delete. Then click Next."
+    )
 
 
 def _empty_main(window) -> None:
@@ -3199,8 +3269,9 @@ def test_a_whole_copy_of_an_empty_program_asks_before_the_delete(monkeypatch, co
         "In this step, you delete every rung of main.csv in CLICK. ClickNick could not read a "
         "rung comment in CLICK's copy of main.csv, and it cannot tell which rung holds it. That "
         "comment is lost with its rung. If you moved that rung, the copy that you paste has no "
-        "comment.\n\nClick Cancel to leave CLICK as it is. Click OK, then delete the rungs in "
-        "CLICK and click Next."
+        "comment.\n\nClick Cancel to leave CLICK as it is. Click OK. In CLICK, click rung "
+        "1's number and press Shift+Down until the last rung is shaded too. Press Delete. "
+        "Then click Next."
     )
 
     ask.return_value = True
@@ -3250,8 +3321,8 @@ def test_deleting_a_program_only_in_click_asks_first(monkeypatch, ask) -> None:
         "In this step, you delete subroutine old in CLICK. ClickNick could not read the comment "
         "on rung 2 of subroutines/old.csv in CLICK. That comment is lost with its rung. If you "
         "renamed the program or moved that rung, the copy that you paste has no comment.\n\n"
-        "To keep the program, click Cancel and untick Delete it in CLICK. Click OK, then "
-        "delete subroutine old in CLICK and click Next."
+        "To keep the program, click Cancel and untick Delete it in CLICK. Click OK. In "
+        "CLICK, delete subroutine old. Then click Next."
     )
 
     window._on_take()  # Untick Delete it in CLICK
@@ -3299,10 +3370,7 @@ def test_an_empty_subroutine_from_a_folder_without_main_asks_before_the_delete(
     window._on_action()  # Delete all rungs…, then OK
 
     assert _action(window) == "Next →"
-    assert _status(window) == (
-        "subroutines/a.csv has no rungs in this folder.\n"
-        'In CLICK, delete all the rungs of the program, then click "Next"'
-    )
+    assert _status(window) == (f"subroutines/a.csv has no rungs in this folder.\n{_DELETE_ALL}")
     assert window._add_sub_btn.configure.call_args.kwargs["state"] == "disabled"
 
 
