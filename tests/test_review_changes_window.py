@@ -2193,8 +2193,8 @@ _PASTE_ONE = (
     "from your own copy of the program."
 )
 _PASTE_EACH = (
-    " First, do this for each of those rungs in CLICK: click its number to select the rung, "
-    "and paste the rung again from your own copy of the program."
+    " First, do this in CLICK for each rung that ClickNick cannot read: click its number to "
+    "select the rung, and paste the rung again from your own copy of the program."
 )
 
 
@@ -2294,6 +2294,7 @@ def test_a_folder_rung_for_an_unreadable_rung_is_refused_before_the_copy(
 def test_empty_rungs_and_markers_in_one_folder_are_named_in_rung_order(
     monkeypatch, copies, proposed: list[Rung], named: str
 ) -> None:
+    """CLICK has one rung that ClickNick cannot read, so the paste is of that one rung."""
     click = [RUNGS[0], empty_rung(STAND_IN_COMMENT), *RUNGS[2:]]
     window = _stand_in_window(monkeypatch, click, proposed, 2)
 
@@ -2302,7 +2303,35 @@ def test_empty_rungs_and_markers_in_one_folder_are_named_in_rung_order(
     assert copies == []
     assert _status(window) == (
         f"Could not copy main.csv: {named} CLICK's rung 2 cannot be read."
-        f"{_PASTE_EACH}{_REPLACE_MARKER}"
+        f"{_PASTE_ONE}{_REPLACE_MARKER}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("legacy", "what"),
+    [
+        ([_unreadable(2), _unreadable(4)], "CLICK's rungs 2, 4 cannot be read."),
+        # With no rung number, the folder's empty rungs say how many rungs to paste
+        ([_unreadable(None)], "ClickNick cannot read CLICK's copy of the program."),
+    ],
+    ids=["two-in-click", "no-rung-number"],
+)
+def test_several_rungs_to_paste_get_the_step_for_each_rung(
+    monkeypatch, copies, legacy: list[LegacyEncoding], what: str
+) -> None:
+    click = [RUNGS[0], _MARKER, RUNGS[2], _MARKER]
+    proposed = [RUNGS[0], empty_rung(""), RUNGS[2], empty_rung("")]
+    window = _on_main(monkeypatch, compare_rungs(click, proposed, legacy))
+    window._programs["main.csv"] = ProposedProgram(
+        "main.csv", Path("main.csv"), tuple(proposed), len(proposed)
+    )
+
+    window._on_action()
+
+    assert copies == []
+    assert _status(window) == (
+        f"Could not copy main.csv: Rungs 2, 4 of Main Program are empty in this folder. "
+        f"{what}{_PASTE_EACH}"
     )
 
 
@@ -2352,9 +2381,10 @@ def test_a_folder_without_two_unreadable_rungs_says_to_delete_the_last_first(
     window._status_var.set(window._step_prompt(MAIN))
 
     assert _status(window).endswith(
-        "Or do this for each of those rungs in CLICK: click its number to select the rung, and "
-        "paste the rung again. Then save. To delete those rungs in CLICK, delete one rung at a time, in this order: rungs 4 and 2. Click each rung's "
-        "number and press Delete. Then save."
+        "Or do this in CLICK for each rung that ClickNick cannot read: click its number to "
+        "select the rung, and paste the rung again. Then save. To delete those rungs in CLICK, "
+        "delete one rung at a time, in this order: rungs 4 and 2. Click each rung's number and "
+        "press Delete. Then save."
     )
 
     window._on_action()

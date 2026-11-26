@@ -90,9 +90,11 @@ stages them in the store instead.
   CLICK can hold pastes that ClickNick has no record of. A paste into a program with no rungs says to click rung
   1's number first (`_whole_placement`).
 - Some texts outside a Review Changes step tell the user to paste a rung again over CLICK's copy of it, because
-  ClickNick cannot read that copy. Each one names the steps in order: click the rung's number, paste, then save
-  (`paste_again`). A user who acts as they read would otherwise paste before the click. These texts are this
-  window's refusals, `prepare_rungs_load`'s refusals, the analysis notices in `services/`, the Simulator's
+  ClickNick cannot read that copy. Each one names the steps in order: click the rung's number, then paste
+  (`paste_again`). A user who acts as they read would otherwise paste before the click. Most of these texts
+  also end with the save. A text that sends the user to their own copy of the program leaves the save out. A
+  text about several rungs says which rungs again, such as "each rung that ClickNick cannot read", because
+  the list of rungs can be sentences away. These texts are this window's refusals, `prepare_rungs_load`'s refusals, the analysis notices in `services/`, the Simulator's
   refusal to run, the Paste Again box and `clicknick-rung program save`. Each such text about a whole program
   says to delete all its rungs first, and then paste (`clear_before_paste`). `paste_again`,
   `clear_before_paste` and `delete_rungs` live in `ladder/program.py`, which `services/`, the views and the CLIs

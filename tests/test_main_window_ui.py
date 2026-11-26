@@ -383,9 +383,10 @@ def test_a_rung_that_syntax_check_splits_is_not_told_to_be_pasted_again(monkeypa
     )
     assert "Paste" not in alone
     assert mixed.endswith(
-        "Where a line does not say what to do, do this for each of those rungs in CLICK: click "
-        "its number to select the rung, and paste the rung again from your own copy of the "
-        "program. Or fix them in CLICK. Ladder > Compare with > Folder on your own copy lists "
+        # Rung 2's line says to run Syntax Check, so the paste is only for rung 4
+        "Do this in CLICK for each rung whose line does not say what to do: click its number to "
+        "select the rung, and paste the rung again from your own copy of the program. Or fix the "
+        "rung in CLICK. Ladder > Compare with > Folder on your own copy lists "
         "them in red."
     )
 

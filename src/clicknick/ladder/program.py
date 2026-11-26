@@ -929,29 +929,41 @@ def stand_in_fix(found: Sequence[LegacyEncoding], *, one: bool) -> str:
     told = sum(item.detail.endswith(_SYNTAX_CHECK_FIX) for item in found)
     if told == len(found):
         return ""
-    lead = "Where a line does not say what to do, " if told else ""
-    paste = paste_again(one=one, lead=lead, source=_OWN_COPY, save=False)
-    return f"{paste} Or fix {'it' if one else 'them'} in CLICK."
+    if not told:
+        paste = paste_again(one=one, own_copy=True, save=False)
+        return f"{paste} Or fix {'it' if one else 'them'} in CLICK."
+    if one:
+        lead = "Where a line does not say what to do, "
+        return f"{paste_again(one=True, lead=lead, own_copy=True, save=False)} Or fix it in CLICK."
+    # Only the rungs whose line gives no fix need the paste
+    paste = paste_again(
+        one=False, which="whose line does not say what to do", own_copy=True, save=False
+    )
+    return f"{paste} Or fix the rung in CLICK."
 
 
-# Where the user pastes a rung from when ClickNick cannot read CLICK's copy of it
-_OWN_COPY = " from your own copy of the program"
+def paste_again(
+    *,
+    one: bool,
+    lead: str = "",
+    which: str = "that ClickNick cannot read",
+    own_copy: bool = False,
+    save: bool = True,
+) -> str:
+    """Return the sentences that tell the user to select a rung in CLICK and paste it again.
 
-
-def paste_again(*, one: bool, lead: str = "", source: str = "", save: bool = True) -> str:
-    """Return the sentences that say how to paste CLICK's rung again over itself.
-
-    The text names the steps in the order that the user takes them. The click on the rung's
-    number comes first, because a paste replaces a rung in CLICK only when the rung is
-    selected. A click on the rung's number selects it. With only the cursor in the rung's
-    logic, CLICK inserts the paste above the rung and keeps the rung. CLICK 4.00 was
-    observed to do both.
+    The paste replaces CLICK's rung with the same rung. The text names the steps in the
+    order that the user takes them. The click on the rung's number comes first, because a
+    paste replaces a rung in CLICK only when the rung is selected. A click on the rung's
+    number selects it. With only the cursor in the rung's logic, CLICK inserts the paste
+    above the rung and keeps the rung. CLICK 4.00 was observed to do both.
 
     *one* is False for a text about several rungs. *lead* starts the first sentence, such
-    as ``"To include the rest, "`` or ``"Or "``. *source* follows "paste the rung again",
-    such as ``" from your own copy of the program"``. If *save* is True, the text ends with
-    the save in CLICK.
+    as ``"To include the rest, "`` or ``"Or "``. *which* says which rungs a text about
+    several rungs means. If *own_copy* is True, the text says that the paste comes from the
+    user's own copy of the program. If *save* is True, the text ends with the save in CLICK.
     """
+    source = " from your own copy of the program" if own_copy else ""
     if one:
         steps = (
             "click that rung's number in CLICK to select the rung. "
@@ -959,8 +971,9 @@ def paste_again(*, one: bool, lead: str = "", source: str = "", save: bool = Tru
         )
         end = " and save." if save else "."
     else:
+        # The rung list sits sentences away, so the text names the rungs again
         steps = (
-            "do this for each of those rungs in CLICK: click its number to select the rung, "
+            f"do this in CLICK for each rung {which}: click its number to select the rung, "
             f"and paste the rung again{source}"
         )
         end = ". Then save." if save else "."
@@ -1181,7 +1194,7 @@ def prepare_rungs_load(
             what = f"Rung {numbers} is an empty rung that stands in for a rung"
         else:
             what = f"Rungs {numbers} are empty rungs that stand in for rungs"
-        paste = paste_again(one=one, source=_OWN_COPY, save=False)
+        paste = paste_again(one=one, own_copy=True, save=False)
         fix = f"Or fix {'it' if one else 'them'} in CLICK."
         raise UnreadableRungError(f"{what} ClickNick cannot read from CLICK. {paste} {fix}")
     marked = [

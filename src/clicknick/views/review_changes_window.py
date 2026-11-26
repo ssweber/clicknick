@@ -318,10 +318,9 @@ def _placeholder_refusal(name: str, change: ProgramChange) -> str:
         what = f"CLICK's rung {unread[0]} cannot be read."
     else:
         what = f"CLICK's rungs {_listed_rungs(unread)} cannot be read."
-    one = len(empty) + len(markers) == 1
-    paste = paste_again(
-        one=one, lead="First, ", source=" from your own copy of the program", save=False
-    )
+    # The paste replaces CLICK's rungs. With no rung number known, count the folder's rungs.
+    one = len(unread) == 1 if unread else len(empty) + len(markers) == 1
+    paste = paste_again(one=one, lead="First, ", own_copy=True, save=False)
     refusal = f"{head} {what} {paste}"
     if markers:
         # The text does not offer to delete the marker. A whole paste would then delete

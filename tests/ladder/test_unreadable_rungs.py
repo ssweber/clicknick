@@ -419,8 +419,9 @@ def test_an_undecoded_marker_in_a_csv_is_never_copied(tmp_path: Path) -> None:
         "Rungs 2, 4 are UNDECODED markers. CLICK cannot hold a marker.\n"
         "  rung 2: laddercodec cannot read this rung: bad bytes.\n"
         "  rung 4: laddercodec cannot read this rung: no end.\n"
-        "Write each rung's logic in place of its marker. Or do this for each of those rungs "
-        "in CLICK: click its number to select the rung, and paste the rung again. Then save."
+        "Write each rung's logic in place of its marker. Or do this in CLICK for each rung that "
+        "ClickNick cannot read: click its number to select the rung, and paste the rung again. "
+        "Then save."
     )
     with pytest.raises(UnreadableRungError) as refused:
         prepare_rungs_load(rungs[1:2], click_v4=True, first_rung=6)
