@@ -357,6 +357,49 @@ def test_simulator_without_cpu_shows_the_placeholder(simulator, ready):
     )
 
 
+def _placeholder_text_bottom(win):
+    texts = [
+        item
+        for item in win._canvas.find_all()
+        if win._canvas.type(item) == "text"
+        and win._canvas.itemcget(item, "text").startswith(
+            ("No CPU configured", "CLICK's Project.ini lists")
+        )
+    ]
+    assert len(texts) == 1
+    return win._canvas.bbox(texts[0])[3]
+
+
+def test_hardware_card_is_tall_enough_for_a_long_error(simulator, ready):
+    from pyclickplc import UnknownModule
+
+    from clicknick.services.sim_hardware import build_panel_layout
+    from clicknick.views.simulator_window import MARGIN
+
+    unknown = (
+        UnknownModule("cpu", 0, -1),
+        *(UnknownModule("slot", slot, -1) for slot in range(1, 7)),
+    )
+    ready.sim._layout_reader = lambda _path, used: build_panel_layout((), used, unknown)
+    win = simulator(ready)
+
+    assert win._placeholder_height() > 230  # the old fixed height is too small
+    card_bottom = MARGIN + win._placeholder_height()
+    assert _placeholder_text_bottom(win) <= card_bottom
+    assert float(win._canvas.cget("scrollregion").split()[3]) >= card_bottom
+
+
+def test_no_cpu_card_is_tall_enough_for_its_text(simulator, ready):
+    from clicknick.services.sim_hardware import build_panel_layout
+    from clicknick.views.simulator_window import MARGIN
+
+    ready.sim._layout_reader = lambda _p, used: build_panel_layout((), used)
+    win = simulator(ready)
+
+    assert _placeholder_text_bottom(win) <= MARGIN + win._placeholder_height()
+    assert win._placeholder_height() >= 200
+
+
 def _canvas_texts(win):
     return [
         win._canvas.itemcget(item, "text")
