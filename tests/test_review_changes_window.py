@@ -77,13 +77,13 @@ def _own_preferences(monkeypatch, tmp_path: Path) -> Path:
 class _Var:
     """A Tk variable without Tk."""
 
-    def __init__(self, value: bool) -> None:
+    def __init__(self, value: bool | str) -> None:
         self.value = value
 
-    def get(self) -> bool:
+    def get(self) -> bool | str:
         return self.value
 
-    def set(self, value: bool) -> None:
+    def set(self, value: bool | str) -> None:
         self.value = value
 
 
@@ -160,7 +160,8 @@ def _bare_window(folder_names: list[str] = NAMES):
     window._prev_btn = Mock()
     window._next_btn = Mock()
     window._add_sub_btn = Mock()
-    window._status_var = Mock()
+    window._status_var = Mock(wraps=_Var(""))
+    window._prompt_shown = ""
     window._show_nicks_var = Mock()
     window._get_mdb_path = lambda: None
     window._get_click_hwnd = lambda: 0
@@ -1346,6 +1347,101 @@ def test_a_subroutine_with_an_unread_comment_picked_before_main_waits_for_main(
         f"subroutines/old.csv is in CLICK but not in this folder.\nIn CLICK, {_DELETE_OLD}"
     )
     assert _action(window) == "Next →"
+
+
+_BEFORE, _AFTER = Path("before/csv"), Path("after/csv")
+_MAIN_DIFFERS = {"subroutines/a.csv": False, "subroutines/b.csv": False, "main.csv": True}
+
+
+def _main_then_old_window(monkeypatch, old: ProgramChange, main_after: bool):
+    """Return a window where only main.csv differs and CLICK also has subroutines/old.csv.
+
+    In the save that ``_click_saves`` makes, main.csv still differs if *main_after* is True.
+    """
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=_BEFORE, note=""),
+        {
+            _BEFORE: _changes(_MAIN_DIFFERS),
+            _AFTER: _changes({**_MAIN_DIFFERS, "main.csv": main_after}),
+        },
+        only_in_click={"subroutines/old.csv": old},
+    )
+    return window
+
+
+def _click_saves(window) -> None:
+    session = window.current.session
+    _change(window, SavedProgram(session, generation=2, save_count=1, csv_dir=_AFTER, note=""))
+
+
+def _old_with_unread_comment() -> ProgramChange:
+    return _unread(compare_rungs(_coils("Y009", "Y010"), []), before=(2,))
+
+
+_WAITS_FOR_MAIN = (
+    "subroutines/old.csv is in CLICK but not in this folder.\nDo the steps of main.csv first. "
+    "Then come back to delete subroutine old. To keep the program, untick Delete it in CLICK"
+)
+_ASKS_FIRST = (
+    "subroutines/old.csv is in CLICK but not in this folder.\nClickNick could not read CLICK's "
+    'comment on rung 2. Click "Delete program…" before you delete anything in CLICK. To keep '
+    "the program, untick Delete it in CLICK"
+)
+
+
+def test_a_save_that_shows_main_still_differs_makes_the_delete_wait_again(
+    monkeypatch, copies
+) -> None:
+    window = _main_then_old_window(monkeypatch, _old_with_unread_comment(), main_after=True)
+    window._on_action()  # Copy main.csv
+    window._on_action()  # Next: main.csv is done, and the delete comes next
+    assert window._current_idx == OLD
+    assert _status(window) == _ASKS_FIRST
+
+    _click_saves(window)  # CLICK saved without main's paste
+
+    assert window._current_idx == OLD
+    assert _status(window) == _WAITS_FOR_MAIN
+    window._action_btn.configure.assert_called_with(state="disabled", text="Delete program…")
+
+
+def test_a_save_that_shows_main_matches_lets_the_delete_go_on(monkeypatch) -> None:
+    window = _main_then_old_window(monkeypatch, _old_with_unread_comment(), main_after=False)
+    window._select_row(OLD)
+    assert _status(window) == _WAITS_FOR_MAIN
+
+    _click_saves(window)  # CLICK saved with main's paste
+
+    assert window._current_idx == OLD
+    assert _status(window) == _ASKS_FIRST
+    window._action_btn.configure.assert_called_with(state="normal", text="Delete program…")
+
+
+def test_a_save_that_shows_main_matches_drops_do_main_first(monkeypatch) -> None:
+    window = _main_then_old_window(monkeypatch, compare_rungs(_coils("Y009"), []), main_after=False)
+    window._select_row(OLD)
+    assert _status(window).startswith(
+        "subroutines/old.csv is in CLICK but not in this folder.\nDo the steps of main.csv first."
+    )
+
+    _click_saves(window)
+
+    assert _status(window) == (
+        f"subroutines/old.csv is in CLICK but not in this folder.\nIn CLICK, {_DELETE_OLD}"
+    )
+    window._action_btn.configure.assert_called_with(state="normal", text="Next →")
+
+
+def test_a_save_keeps_a_message_that_is_not_the_step(monkeypatch) -> None:
+    window = _main_then_old_window(monkeypatch, compare_rungs(_coils("Y009"), []), main_after=False)
+    window._select_row(OLD)
+    window._status_var.set("Could not bring CLICK to the front. Try again")
+
+    _click_saves(window)
+
+    assert _status(window) == "Could not bring CLICK to the front. Try again"
+    window._action_btn.configure.assert_called_with(state="normal", text="Next →")
 
 
 def test_a_program_kept_in_click_does_not_hold_the_window_open(monkeypatch) -> None:

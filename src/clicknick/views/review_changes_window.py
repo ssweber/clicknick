@@ -1767,6 +1767,22 @@ class ReviewChangesWindow(tk.Toplevel):
             )
         return ""
 
+    def _show_step_prompt(self, idx: int) -> None:
+        """Show the row's step in the status line, and remember the text shown."""
+        self._prompt_shown = self._step_prompt(idx)
+        self._status_var.set(self._prompt_shown)
+
+    def _refresh_step(self, idx: int) -> None:
+        """Bring the row's button and step up to date after CLICK's program changed.
+
+        A row's step can depend on other rows. The step of a program only in CLICK says to
+        do main's steps first while main has steps to do. The status line keeps any other
+        text, such as an error from a Copy.
+        """
+        self._update_action_btn()
+        if self._status_var.get() == self._prompt_shown:
+            self._show_step_prompt(idx)
+
     def _step_prompt(self, idx: int) -> str:
         """Return what the current step of the row does."""
         name, _path, rung_count, _ = self._items[idx]
@@ -1907,7 +1923,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self._flipped_in_click ^= {name}
         idx = self._current_idx
         if idx is not None and self._items[idx][0] == name:
-            self._status_var.set(self._step_prompt(idx))
+            self._show_step_prompt(idx)
         self._update_highlights()
         self._update_action_btn()
         self._show_diff(keep_scroll=True)
@@ -1918,7 +1934,7 @@ class ReviewChangesWindow(tk.Toplevel):
         idx = self._current_idx
         if idx is not None and self._is_nickname_step(idx):
             self._copied = False
-            self._status_var.set(self._step_prompt(idx))
+            self._show_step_prompt(idx)
         self._update_highlights()
         self._update_action_btn()
         self._show_diff(keep_scroll=True)
@@ -1986,7 +2002,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self._follow_in_sheet(idx)
         self._update_highlights()
         self._update_action_btn()
-        self._status_var.set(self._step_prompt(idx))
+        self._show_step_prompt(idx)
         self._show_diff()
 
     def _all_done(self) -> None:
@@ -2048,7 +2064,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 # staging to do again
                 self._copied = False
             if not self._copied:
-                self._status_var.set(self._step_prompt(idx))
+                self._show_step_prompt(idx)
             self._update_action_btn()
         elif idx is None and self._needs_paste(_NICKNAMES_NAME):
             self._advance_to_first_pending()
@@ -2151,7 +2167,7 @@ class ReviewChangesWindow(tk.Toplevel):
         idx = self._current_idx
         if idx is not None and self._items[idx][0] == name:
             self._copied = False  # The clipboard still holds the earlier choice
-            self._status_var.set(self._step_prompt(idx))
+            self._show_step_prompt(idx)
         self._update_notice()
         self._update_highlights()
         self._update_action_btn()
@@ -2529,6 +2545,8 @@ class ReviewChangesWindow(tk.Toplevel):
             self._advance_to_first_pending()
         elif steps != old_steps:
             self._select_row(idx)
+        else:
+            self._refresh_step(idx)
 
     def _watch_saved_program(self) -> None:
         if not self.winfo_exists():
@@ -2616,7 +2634,7 @@ class ReviewChangesWindow(tk.Toplevel):
             if self._agrees_to_lose_comments(name, step):
                 self._copied = True
                 self._update_action_btn()
-                self._status_var.set(self._step_prompt(idx))
+                self._show_step_prompt(idx)
             return
         if (
             not self._copied
@@ -2635,7 +2653,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 self._copied = False
                 self._view_name, self._view_block = name, next_step.block
                 self._update_action_btn()
-                self._status_var.set(self._step_prompt(idx))
+                self._show_step_prompt(idx)
                 self._show_diff()
                 return
         # "Next": mark the row done and advance. The nicknames are done once CLICK's
@@ -3008,6 +3026,8 @@ class ReviewChangesWindow(tk.Toplevel):
         self._done: set[str] = set()
         self._current_idx: int | None = None
         self._copied: bool = False
+        # The last step that the status line showed (_show_step_prompt)
+        self._prompt_shown = ""
         # Program name -> the rung numbers asked for. After the comparison, the differences
         # that hold those rungs are taken and the others are skipped.
         self._selection: dict[str, list[int]] = {}
