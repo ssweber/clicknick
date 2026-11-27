@@ -7,6 +7,8 @@ import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
+from pyclickplc.banks import BANKS
+
 from .view_builder import COMBINED_TYPES
 
 
@@ -225,21 +227,38 @@ DISPLAY_TEXT = {
     "T/TD": "T\nTD",  # Stacked vertically
     "CT/CTD": "CT\nCTD",  # Stacked vertically
 }
-# Address range jump points for types with large ranges
-ADDRESS_JUMPS = {
-    "X": [1, 101, 201, 301, 401, 501, 601, 701, 801],
-    "Y": [1, 101, 201, 301, 401, 501, 601, 701, 801],
-    "C": [1, 501, 1001, 1501],
-    "T/TD": [1, 101, 201, 301, 401],
-    "CT/CTD": [1, 101, 201, 301, 401],
-    "SC": [1, 101, 201, 301, 401, 501, 601, 701, 801, 901],
-    "DS": [1, 501, 1001, 1501, 2001, 2501, 3001, 3501, 4001],
-    "DD": [1, 101, 201, 301, 401, 501, 601, 701, 801, 901],
-    "DH": [1, 101, 201, 301, 401],
-    "DF": [1, 101, 201, 301, 401],
-    "SD": [1, 101, 201, 301, 401, 501, 601, 701, 801, 901],
-    "TXT": [1, 101, 201, 301, 401, 501, 601, 701, 801, 901],
+# Distance between jump points for the types that have no slots. The jumps start at 1 and stop at the
+# bank's last address.
+JUMP_STEPS = {
+    "C": 500,
+    "T/TD": 100,
+    "CT/CTD": 100,
+    "SC": 100,
+    "DS": 500,
+    "DD": 100,
+    "DH": 100,
+    "DF": 100,
+    "SD": 100,
+    "TXT": 100,
 }
+
+
+def _jump_addresses(type_name: str) -> list[int] | None:
+    """Return the addresses that the jump menu of *type_name* offers, or None for no menu.
+
+    X and Y jump to the first address of each slot. Every other type jumps every
+    `JUMP_STEPS[type_name]` addresses. Every jump lies inside the type's bank in pyclickplc.
+    """
+    if type_name in ("X", "Y"):
+        return [start for start, _end in BANKS[type_name].valid_ranges]
+    step = JUMP_STEPS.get(type_name)
+    if step is None:
+        return None
+    last = min(BANKS[t].max_addr for t in COMBINED_TYPES.get(type_name, (type_name,)))
+    return list(range(1, last + 1, step))
+
+
+ADDRESS_JUMPS = {t: a for t in SIDEBAR_TYPES if (a := _jump_addresses(t)) is not None}
 
 
 class JumpSidebar(ttk.Frame):
