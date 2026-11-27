@@ -32,6 +32,7 @@ from ..ladder.clipboard import copy_to_clipboard, is_click_v4
 from ..ladder.program import (
     LegacyEncoding,
     delete_rungs,
+    delete_subroutine,
     describe_legacy_encoding,
     paste_again,
     prepare_rungs_load,
@@ -1032,7 +1033,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 name,
                 f"{what} in CLICK",
                 erased,
-                how=f"delete {what}",
+                how=delete_subroutine(what),
                 keep=f"To keep the program, click Cancel and untick {_DELETE_IN_CLICK}.",
                 renamed=True,
             )
@@ -1673,7 +1674,8 @@ class ReviewChangesWindow(tk.Toplevel):
         step = self._current_step()
         name = self._items[self._current_idx][0]
         if self._asks_before_delete(name, step):
-            self._action_btn.configure(state="normal", text=self._delete_label(name, step))
+            state = "disabled" if self._delete_waits_for_main(name) else "normal"
+            self._action_btn.configure(state=state, text=self._delete_label(name, step))
         elif (
             self._copied
             or self._nothing_to_copy(step)
@@ -1700,16 +1702,51 @@ class ReviewChangesWindow(tk.Toplevel):
                 f"{name} is not in this folder. CLICK keeps the program.\n"
                 f'Click "Next" to go on, or tick {_DELETE_IN_CLICK} to delete it there'
             )
+        if self._delete_waits_for_main(name):
+            return (
+                f"{name} is in CLICK but not in this folder.\n{self._main_first()}Then come back "
+                f"to delete subroutine {Path(name).stem}. To keep the program, untick "
+                f"{_DELETE_IN_CLICK}"
+            )
         if self._asks_before_delete(name, None):
             return (
                 f"{name} is in CLICK but not in this folder.\n{self._delete_line(name, None)}. "
                 f"To keep the program, untick {_DELETE_IN_CLICK}"
             )
         return (
-            f"{name} is in CLICK but not in this folder.\n"
-            f'Delete the subroutine {Path(name).stem} in CLICK, then click "Next". '
-            f"To keep it, untick {_DELETE_IN_CLICK}"
+            f"{name} is in CLICK but not in this folder.\n{self._subroutine_delete_lead()}"
+            f"{delete_subroutine(f'subroutine {Path(name).stem}')}. "
+            f'Then click "Next". To keep the subroutine, untick {_DELETE_IN_CLICK}'
         )
+
+    def _main_first(self) -> str:
+        """Return the sentence that says to do main's steps first, or an empty string.
+
+        The rows of programs only in CLICK come after main's row, but the user can click
+        one sooner. While main still has steps to do, each text that tells the user to
+        delete such a program says to do those steps first. A change to CLICK's main program
+        by hand would move the rungs that main's steps name.
+        """
+        main = next((other for other in self._programs if other.casefold() == "main.csv"), None)
+        if main is None or not self._needs_paste(main):
+            return ""
+        return f"Do the steps of {main} first. "
+
+    def _delete_waits_for_main(self, name: str) -> bool:
+        """Return whether the question before the delete of *name* waits for main's steps.
+
+        The user clicks OK only once main is done. A click on main's row forgets that OK,
+        so an OK given before main's steps would be asked for again.
+        """
+        return (
+            name in self._only_in_click
+            and self._asks_before_delete(name, None)
+            and bool(self._main_first())
+        )
+
+    def _subroutine_delete_lead(self) -> str:
+        """Return the words before the steps that delete a program only in CLICK."""
+        return f"{first}Then, in CLICK, " if (first := self._main_first()) else "In CLICK, "
 
     def _stepped_line(self, name: str) -> str:
         """Return why the program is stepped through under "Whole program", or an empty string."""
@@ -1729,6 +1766,22 @@ class ReviewChangesWindow(tk.Toplevel):
                 "The steps leave the rungs that match alone"
             )
         return ""
+
+    def _show_step_prompt(self, idx: int) -> None:
+        """Show the row's step in the status line, and remember the text shown."""
+        self._prompt_shown = self._step_prompt(idx)
+        self._status_var.set(self._prompt_shown)
+
+    def _refresh_step(self, idx: int) -> None:
+        """Bring the row's button and step up to date after CLICK's program changed.
+
+        A row's step can depend on other rows. The step of a program only in CLICK says to
+        do main's steps first while main has steps to do. The status line keeps any other
+        text, such as an error from a Copy.
+        """
+        self._update_action_btn()
+        if self._status_var.get() == self._prompt_shown:
+            self._show_step_prompt(idx)
 
     def _step_prompt(self, idx: int) -> str:
         """Return what the current step of the row does."""
@@ -1870,7 +1923,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self._flipped_in_click ^= {name}
         idx = self._current_idx
         if idx is not None and self._items[idx][0] == name:
-            self._status_var.set(self._step_prompt(idx))
+            self._show_step_prompt(idx)
         self._update_highlights()
         self._update_action_btn()
         self._show_diff(keep_scroll=True)
@@ -1881,7 +1934,7 @@ class ReviewChangesWindow(tk.Toplevel):
         idx = self._current_idx
         if idx is not None and self._is_nickname_step(idx):
             self._copied = False
-            self._status_var.set(self._step_prompt(idx))
+            self._show_step_prompt(idx)
         self._update_highlights()
         self._update_action_btn()
         self._show_diff(keep_scroll=True)
@@ -1890,7 +1943,8 @@ class ReviewChangesWindow(tk.Toplevel):
         """Stage the folder's nicknames in the Address Editor and open it on them, ready to Sync."""
         store = self._get_project_store()
         if store is None or self._nickname_rows is None:
-            self._status_var.set(self._nicknames_prompt())
+            if self._current_idx is not None:
+                self._show_step_prompt(self._current_idx)  # The nicknames row is current
             return
         plan = plan_nicknames(
             self._nickname_rows, store.visible_state, fields=self._nickname_fields
@@ -1949,7 +2003,7 @@ class ReviewChangesWindow(tk.Toplevel):
         self._follow_in_sheet(idx)
         self._update_highlights()
         self._update_action_btn()
-        self._status_var.set(self._step_prompt(idx))
+        self._show_step_prompt(idx)
         self._show_diff()
 
     def _all_done(self) -> None:
@@ -2011,7 +2065,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 # staging to do again
                 self._copied = False
             if not self._copied:
-                self._status_var.set(self._step_prompt(idx))
+                self._show_step_prompt(idx)
             self._update_action_btn()
         elif idx is None and self._needs_paste(_NICKNAMES_NAME):
             self._advance_to_first_pending()
@@ -2114,7 +2168,7 @@ class ReviewChangesWindow(tk.Toplevel):
         idx = self._current_idx
         if idx is not None and self._items[idx][0] == name:
             self._copied = False  # The clipboard still holds the earlier choice
-            self._status_var.set(self._step_prompt(idx))
+            self._show_step_prompt(idx)
         self._update_notice()
         self._update_highlights()
         self._update_action_btn()
@@ -2492,6 +2546,8 @@ class ReviewChangesWindow(tk.Toplevel):
             self._advance_to_first_pending()
         elif steps != old_steps:
             self._select_row(idx)
+        else:
+            self._refresh_step(idx)
 
     def _watch_saved_program(self) -> None:
         if not self.winfo_exists():
@@ -2573,11 +2629,13 @@ class ReviewChangesWindow(tk.Toplevel):
             self._advance_to_next()
             return
         if self._asks_before_delete(name, step):
+            if self._delete_waits_for_main(name):
+                return  # The button is disabled until main's steps are done
             # The user has not deleted the rungs in CLICK yet, so ask before they do
             if self._agrees_to_lose_comments(name, step):
                 self._copied = True
                 self._update_action_btn()
-                self._status_var.set(self._step_prompt(idx))
+                self._show_step_prompt(idx)
             return
         if (
             not self._copied
@@ -2596,7 +2654,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 self._copied = False
                 self._view_name, self._view_block = name, next_step.block
                 self._update_action_btn()
-                self._status_var.set(self._step_prompt(idx))
+                self._show_step_prompt(idx)
                 self._show_diff()
                 return
         # "Next": mark the row done and advance. The nicknames are done once CLICK's
@@ -2969,6 +3027,8 @@ class ReviewChangesWindow(tk.Toplevel):
         self._done: set[str] = set()
         self._current_idx: int | None = None
         self._copied: bool = False
+        # The last step that the status line showed (_show_step_prompt)
+        self._prompt_shown = ""
         # Program name -> the rung numbers asked for. After the comparison, the differences
         # that hold those rungs are taken and the others are skipped.
         self._selection: dict[str, list[int]] = {}

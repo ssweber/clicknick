@@ -1009,6 +1009,22 @@ def delete_rungs(first: int, last: int | None = None) -> str:
     )
 
 
+def delete_subroutine(which: str) -> str:
+    """Say how to delete a subroutine in CLICK.
+
+    The text follows "In CLICK, ". *which* names the subroutine, such as
+    ``"subroutine Fill"`` or ``"the subroutine"``. The user makes sure that the main
+    program no longer calls the subroutine. Then the user right-clicks the subroutine in
+    CLICK's list of programs and clicks Delete in the menu. A user of CLICK gave these
+    steps. No one has checked what CLICK does when the main program still calls the
+    subroutine.
+    """
+    return (
+        f"make sure that the main program no longer calls {which}. After that, right-click "
+        f"{which} in the list of programs and click Delete"
+    )
+
+
 def clear_before_paste() -> str:
     """Return the sentences that say how to delete a program's rungs before a paste of all of it.
 
