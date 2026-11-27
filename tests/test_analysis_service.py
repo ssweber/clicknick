@@ -141,7 +141,7 @@ class TestBuildTagAddrKeyMap:
         assert len(tag_to_key) == len(key_to_tag)
 
     def test_pyrung_reads_a_row_at_every_address_that_the_snapshot_can_hold(self, tmp_path):
-        """pyrung refuses a row whose Address or Data Type CLICK would not write.
+        """pyclickplc's ``read_csv`` refuses a row whose Address or Data Type CLICK would not write.
 
         Each address here has its bank's type, as CLICK's SC_.mdb gives it. The comments keep
         a space or a tab at their ends, and hold a comma, a double quote and a line break. The
