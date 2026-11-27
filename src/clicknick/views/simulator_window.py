@@ -1231,7 +1231,21 @@ class SimulatorWindow(tk.Toplevel):
         )
 
     def _placeholder_height(self) -> float:
-        return 230.0 if self._simulation.layout_error else 200.0
+        """Return the card's height.
+
+        The height fits the wrapped text, but is at least 230 px with a layout error and 200 px
+        without.
+        """
+        minimum = 230.0 if self._simulation.layout_error else 200.0
+        probe = self._canvas.create_text(
+            0, 0, text=self._placeholder_text(), anchor="nw", font=_FONT_SMALL,
+            width=self._card_w - 20,
+        )  # fmt: skip
+        try:
+            _left, top, _right, bottom = self._canvas.bbox(probe)
+        finally:
+            self._canvas.delete(probe)
+        return max(minimum, HEADER_H + 10 + (bottom - top) + 10)
 
     def _draw_placeholder(self, x: float, y: float) -> None:
         if self._simulation.layout_error:

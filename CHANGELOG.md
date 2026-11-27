@@ -15,6 +15,7 @@
 
 ### Fixed
 
+- The Simulator's Hardware card now grows to fit a long message, such as one that names an unknown CPU and six unknown modules. 0.27.0 drew the end of the text below the card.
 - When ClickNick cannot copy some rungs from CLICK as they are, the Simulator's refusal to start now says that Ladder > Compare with > Folder on your own copy lists them in red. When the list is long, the Simulator shows only some of the rungs, and 0.27.0 gave no way to find the rest.
 - The Address Editor's jump menus now offer only addresses that exist. CTD and CT no longer list 301 and 401, and X and Y now list 21, the first address of the PLUS CPU's slot 1. 0.27.0 scrolled from CT 301 to the first row with address 301 of another type.
 - Review Changes now asks before a paste or a delete erases a rung comment that ClickNick could not read from CLICK. Most often, such a comment holds a character outside ASCII in a font whose script is not Western or Chinese GB2312. The question names each rung, and Cancel is the default. Review Changes also asks before you paste a rung from another CLICK window whose comment ClickNick could not read. That rung arrives without its comment. Under **Whole program**, Review Changes steps through such a program instead, so the rungs that match keep their comments. 0.27.0 lost these comments without a word.
