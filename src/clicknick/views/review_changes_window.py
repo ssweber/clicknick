@@ -1943,7 +1943,8 @@ class ReviewChangesWindow(tk.Toplevel):
         """Stage the folder's nicknames in the Address Editor and open it on them, ready to Sync."""
         store = self._get_project_store()
         if store is None or self._nickname_rows is None:
-            self._status_var.set(self._nicknames_prompt())
+            if self._current_idx is not None:
+                self._show_step_prompt(self._current_idx)  # The nicknames row is current
             return
         plan = plan_nicknames(
             self._nickname_rows, store.visible_state, fields=self._nickname_fields

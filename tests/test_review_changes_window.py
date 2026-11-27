@@ -1673,10 +1673,13 @@ def test_nicknames_wait_for_clicks_database(tmp_path: Path) -> None:
     window._start()
     assert _label(window) == "needs CLICK's database"
 
+    window._prompt_shown = ""  # As if another message had replaced the step
     window._on_action()
 
     assert "Connect to the CLICK project" in _status(window)
     window._open_staged_nicknames.assert_not_called()
+    # The text shown is the row's step, so a CLICK save can bring it up to date
+    assert window._prompt_shown == _status(window)
 
 
 def test_staging_opens_the_address_editor_and_leaves_click_alone(tmp_path: Path) -> None:
