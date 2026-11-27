@@ -7717,15 +7717,25 @@ def test_new_stops_when_the_saved_project_names_no_cpu(tmp_path, setup, monkeypa
 
 
 @pytest.mark.parametrize(
-    ("old", "new", "listed"),
+    ("changes", "listed"),
     [
-        ("Key3_10=8192", "Key3_10=-1", "Option slot 0 (module ID -1)"),
-        ("Key3_1=198", "Key3_1=999", "CPU (module ID 999)"),
+        (
+            [("Key3_10=8192", "Key3_10=-1")],
+            "lists a module that pyclickplc does not know: Option slot 0 (module ID -1)",
+        ),
+        (
+            [("Key3_1=198", "Key3_1=999")],
+            "lists a module that pyclickplc does not know: CPU (module ID 999)",
+        ),
+        (
+            [("Key3_10=8192", "Key3_10=-1"), ("Key3_2=0", "Key3_2=-1")],
+            "lists modules that pyclickplc does not know: Option slot 0 (module ID -1), Expansion 1 (module ID -1)",
+        ),
     ],
-    ids=["slot", "cpu"],
+    ids=["slot", "cpu", "several"],
 )
 def test_new_stops_when_the_saved_project_lists_an_unknown_module(
-    tmp_path, setup, monkeypatch, old, new, listed
+    tmp_path, setup, monkeypatch, changes, listed
 ):
     # -1 and 999 are not CLICK module IDs, so pyclickplc's catalog never has them
     _, exe = setup
@@ -7736,17 +7746,14 @@ def test_new_stops_when_the_saved_project_lists_an_unknown_module(
         write(saved)
         assert fake.main is not None
         ini = fake.temp_dir(fake.main.hwnd) / "Project.ini"
-        ini.write_bytes(ini.read_bytes().replace(old.encode(), new.encode()))
+        data = ini.read_bytes()
+        for old, new in changes:
+            data = data.replace(old.encode(), new.encode())
+        ini.write_bytes(data)
 
     monkeypatch.setattr(fake, "_write_sec21", write_unknown)
     code, result = run_command(fake, tmp_path, exe, "new", "--cpu", "C2-03CPU")
-    assert_aborted(
-        fake,
-        tmp_path / "out",
-        code,
-        result,
-        f"lists modules that pyclickplc does not know: {listed}",
-    )
+    assert_aborted(fake, tmp_path / "out", code, result, listed)
     assert result["step"] == "check"
 
 
