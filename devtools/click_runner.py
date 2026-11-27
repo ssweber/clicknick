@@ -304,7 +304,8 @@ User Account Setup. If it shows, the runner presses its Cancel, and the project'
 has no password. Once the main window is alone, the runner saves the project as
 ``DIR/<model>.ckp`` and copies CLICK's Scr*.tmp files and Project.ini into ``DIR/click/``.
 pyclickplc's ``read_modules`` then reads the CPU and modules from that Project.ini. The run
-stops if that Project.ini names a CPU other than ``--cpu``.
+stops if that Project.ini names a CPU other than ``--cpu``. The run also stops if the Project.ini
+lists a module whose ID pyclickplc does not know.
 
 ``new --cpu none`` makes a project with no CPU. In Select a CPU Module, the runner presses
 Cancel. CLICK then shows Startup again, with the main window still disabled behind it. The
@@ -3083,7 +3084,12 @@ class Run:
                 f"{position_name(m.location, m.position)} (module ID {m.module_id})"
                 for m in modules.unknown
             )
-            raise Aborted(f"{ini} lists modules that pyclickplc does not know: {listed}")
+            noun = (
+                "a module that pyclickplc does not know"
+                if len(modules.unknown) == 1
+                else "modules that pyclickplc does not know"
+            )
+            raise Aborted(f"{ini} lists {noun}: {listed}")
         if saved == model:
             return
         if model is None:
