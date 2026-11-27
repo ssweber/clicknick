@@ -51,7 +51,7 @@ while he is away, and only on a CLICK that it started itself (Sam, 2026-11-15). 
 on 2026-11-18, until he writes "StopRuns". The runner never writes to the PLC. On 2026-11-25, Sam also
 approved the PLC cases that other sessions ask for, until the same "StopRuns". Such a case writes to the
 conformance PLC only with `plc_write.py` under round b1's rules, or with round b12's `write_dialog.py`, and
-uses one CLICK at a time. Any other write to the PLC, and any change to those rules, still needs Sam's go.
+uses one CLICK at a time. Both rounds are in `../clicknick-wt/buildbot/jobs/plc-questions/`. Any other write to the PLC, and any change to those rules, still needs Sam's go.
 The PLC login is `admin` (prefilled) / `123click`, which is deliberately not secret.
 
 Jobs waiting, from the plan's item 4 and the other sessions:
@@ -102,12 +102,13 @@ Do each when a branch next touches its file.
 - A notice about an unreadable rung in a subroutine uses pyrung's name for the subroutine. When main does not
   call the subroutine by name, pyrung falls back to the CSV file name, which can differ from CLICK's name
   after `_slugify` or a " (2)" suffix. Carry `prog.name` with the marker to fix it.
-- Review Changes and `rung apply` name a subroutine that is only in CLICK by its CSV file stem in the delete
-  step. The stem can differ from CLICK's name in the same way.
-- Review Changes refuses nothing when the folder's main.csv calls a subroutine that the folder lacks. It offers
-  main's paste with the Call and the delete of the subroutine. pyrung refuses to convert such a folder, so the
-  diff shows the rungs by their instructions. Whether Review Changes should warn is not decided. The planner
-  decides.
+- `review_changes_window.py`: Review Changes names a subroutine that is only in CLICK by its CSV file stem in
+  the delete step. `rung apply` lists it by the stem in its "only in CLICK" line. The stem can differ from
+  CLICK's name for the reason in the first bullet of this list.
+- `review_changes_window.py`, a decision first: Review Changes refuses nothing when the folder's main.csv calls
+  a subroutine that the folder lacks. It offers to paste main with the call and to delete the subroutine. For
+  a folder that is not the workspace's, pyrung refuses to convert the CSVs to source, and the diff shows each
+  rung's instructions. Whether Review Changes should warn is not decided. The planner decides.
 - The Address Editor sets its filter notice only in `_apply_filters`. When a build finishes, it recomputes
   neither the notice nor the rows, so a notice can name a rung that the new build no longer has.
 - `tests/test_live_server.py` (`_session_in`, the "folder gone" case) sets the private `AnalysisService._status`
@@ -348,7 +349,7 @@ can automate. Items marked (runner) the runner can answer. When a check is walke
 - Q18 (Sam): in CLICK, click rung 1's number and press Ctrl+Shift+End. Is every rung shaded? The runner saw it
   select every rung, but no person has pressed it. If yes, Review Changes can name Ctrl+Shift+End in the text that
   says to delete a whole program before the paste.
-- Q19 (Sam): in CLICK, delete a subroutine that the main program still calls. Does CLICK refuse, warn, or delete
+- Q19 (the runner or Sam): in CLICK, delete a subroutine that the main program still calls. Does CLICK refuse, warn, or delete
   it and leave the Call in main? Review Changes tells you to remove every call from main before you delete a
   subroutine, and says nothing about what happens if you don't. The answer may add a sentence to that step.
 - CLICK's **Export Nicknames** was seen to leave out a nickname that ClickNick wrote, before 0.26.0. If it
