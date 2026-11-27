@@ -51,8 +51,9 @@ while he is away, and only on a CLICK that it started itself (Sam, 2026-11-15). 
 on 2026-11-18, until he writes "StopRuns". The runner never writes to the PLC. On 2026-11-25, Sam also
 approved the PLC cases that other sessions ask for, until the same "StopRuns". Such a case writes to the
 conformance PLC only with `plc_write.py` under round b1's rules, or with round b12's `write_dialog.py`, and
-uses one CLICK at a time. Both rounds are in `../clicknick-wt/buildbot/jobs/plc-questions/`. Any other write to the PLC, and any change to those rules, still needs Sam's go.
-The PLC login is `admin` (prefilled) / `123click`, which is deliberately not secret.
+uses one CLICK at a time. Both rounds are in `../clicknick-wt/buildbot/jobs/plc-questions/`. Any other
+write to the PLC, and any change to those rules, still needs Sam's go. The PLC login is `admin` (prefilled) /
+`123click`, which is deliberately not secret.
 
 Jobs waiting, from the plan's item 4 and the other sessions:
 - The encoding of the Address.csv that CLICK 3.43 and 2.x write, once the branch `probe/click-export-mdb`
@@ -349,9 +350,10 @@ can automate. Items marked (runner) the runner can answer. When a check is walke
 - Q18 (Sam): in CLICK, click rung 1's number and press Ctrl+Shift+End. Is every rung shaded? The runner saw it
   select every rung, but no person has pressed it. If yes, Review Changes can name Ctrl+Shift+End in the text that
   says to delete a whole program before the paste.
-- Q19 (the runner or Sam): in CLICK, delete a subroutine that the main program still calls. Does CLICK refuse, warn, or delete
-  it and leave the Call in main? Review Changes tells you to remove every call from main before you delete a
-  subroutine, and says nothing about what happens if you don't. The answer may add a sentence to that step.
+- Q19 (the runner or Sam): in CLICK, delete a subroutine that the main program still calls. Does CLICK
+  refuse, warn, or delete it and leave the Call in main? Review Changes tells you to remove every call from
+  main before you delete a subroutine, and says nothing about what happens if you don't. The answer may add a
+  sentence to that step.
 - CLICK's **Export Nicknames** was seen to leave out a nickname that ClickNick wrote, before 0.26.0. If it
   happens again, note the CLICK version, and whether the project was saved or reopened before the export.
 
