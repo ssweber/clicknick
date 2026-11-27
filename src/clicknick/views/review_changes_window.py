@@ -440,13 +440,11 @@ def _delete_question(
     how: str,
     keep: str,
     renamed: bool = False,
-    lead: str = "In CLICK, ",
 ) -> str:
     """Return what Review Changes asks before the user deletes rungs with an unread comment.
 
     *target* names what the user deletes in CLICK. *how* says how to delete it, and follows
-    *lead* in the last line. A caller whose user must do something else first puts that in
-    *lead*, and ends it with "in CLICK, ". *erased* holds the rungs among them whose comment
+    "In CLICK, " in the last line. *erased* holds the rungs among them whose comment
     ClickNick could not read. None stands for one whose rung laddercodec did not name.
     *keep* says how to keep CLICK's rungs. If *renamed* is True, the user deletes a whole
     program, which may have been renamed.
@@ -470,7 +468,7 @@ def _delete_question(
         else "Those comments are lost with their rungs.",
         f"If you {moved}, {copies}.",
     ]
-    return f"{' '.join(sentences)}\n\n{keep} Click OK. {lead}{how}. Then click Next."
+    return f"{' '.join(sentences)}\n\n{keep} Click OK. In CLICK, {how}. Then click Next."
 
 
 def _change_label(change: ProgramChange) -> str:
@@ -1038,7 +1036,6 @@ class ReviewChangesWindow(tk.Toplevel):
                 how=delete_subroutine(what),
                 keep=f"To keep the program, click Cancel and untick {_DELETE_IN_CLICK}.",
                 renamed=True,
-                lead=self._subroutine_delete_lead(),
             )
         if step is not None:
             return _delete_question(
@@ -1677,7 +1674,8 @@ class ReviewChangesWindow(tk.Toplevel):
         step = self._current_step()
         name = self._items[self._current_idx][0]
         if self._asks_before_delete(name, step):
-            self._action_btn.configure(state="normal", text=self._delete_label(name, step))
+            state = "disabled" if self._delete_waits_for_main(name) else "normal"
+            self._action_btn.configure(state=state, text=self._delete_label(name, step))
         elif (
             self._copied
             or self._nothing_to_copy(step)
@@ -1704,10 +1702,16 @@ class ReviewChangesWindow(tk.Toplevel):
                 f"{name} is not in this folder. CLICK keeps the program.\n"
                 f'Click "Next" to go on, or tick {_DELETE_IN_CLICK} to delete it there'
             )
+        if self._delete_waits_for_main(name):
+            return (
+                f"{name} is in CLICK but not in this folder.\n{self._main_first()}Then come back "
+                f"to delete subroutine {Path(name).stem}. To keep the program, untick "
+                f"{_DELETE_IN_CLICK}"
+            )
         if self._asks_before_delete(name, None):
             return (
-                f"{name} is in CLICK but not in this folder.\n{self._main_first()}"
-                f"{self._delete_line(name, None)}. To keep the program, untick {_DELETE_IN_CLICK}"
+                f"{name} is in CLICK but not in this folder.\n{self._delete_line(name, None)}. "
+                f"To keep the program, untick {_DELETE_IN_CLICK}"
             )
         return (
             f"{name} is in CLICK but not in this folder.\n{self._subroutine_delete_lead()}"
@@ -1719,14 +1723,26 @@ class ReviewChangesWindow(tk.Toplevel):
         """Return the sentence that says to do main's steps first, or an empty string.
 
         The rows of programs only in CLICK come after main's row, but the user can click
-        one sooner. While main still has steps to do, the texts that delete such a program
-        say to do those steps first. A change to CLICK's main program by hand would move
-        the rungs that main's steps name.
+        one sooner. While main still has steps to do, each text that tells the user to
+        delete such a program says to do those steps first. A change to CLICK's main program
+        by hand would move the rungs that main's steps name.
         """
         main = next((other for other in self._programs if other.casefold() == "main.csv"), None)
         if main is None or not self._needs_paste(main):
             return ""
         return f"Do the steps of {main} first. "
+
+    def _delete_waits_for_main(self, name: str) -> bool:
+        """Return whether the question before the delete of *name* waits for main's steps.
+
+        The user clicks OK only once main is done. A click on main's row forgets that OK,
+        so an OK given before main's steps would be asked for again.
+        """
+        return (
+            name in self._only_in_click
+            and self._asks_before_delete(name, None)
+            and bool(self._main_first())
+        )
 
     def _subroutine_delete_lead(self) -> str:
         """Return the words before the steps that delete a program only in CLICK."""
@@ -2594,6 +2610,8 @@ class ReviewChangesWindow(tk.Toplevel):
             self._advance_to_next()
             return
         if self._asks_before_delete(name, step):
+            if self._delete_waits_for_main(name):
+                return  # The button is disabled until main's steps are done
             # The user has not deleted the rungs in CLICK yet, so ask before they do
             if self._agrees_to_lose_comments(name, step):
                 self._copied = True

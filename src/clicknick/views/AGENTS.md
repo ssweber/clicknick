@@ -199,9 +199,11 @@ stages them in the store instead.
   still calls the subroutine.
 - Main is the last of the folder's rows. The rows of programs only in CLICK come after it. So "Next" reaches
   each delete after main's steps. The user can still click the row sooner. While main still has steps to do, the
-  step's prompt and the question before a delete that loses an unread comment say to do main's steps first
-  (`_main_first`). When main differs, `rung apply` says to paste main's changes first. A change to CLICK's main
-  program by hand would move the rungs that main's steps name.
+  step's prompt says to do main's steps first (`_main_first`). If the delete loses a comment that ClickNick
+  could not read, the "Delete program…" button stays disabled until then (`_delete_waits_for_main`). A click on
+  main's row forgets the user's OK, so an OK given sooner would be asked for again. When main differs,
+  `rung apply` says to paste main's changes first. A change to CLICK's main program by hand would move the rungs
+  that main's steps name.
 - If the folder's main still calls a subroutine that the folder lacks, Review Changes refuses nothing. It pastes
   main with the call and offers to delete the subroutine. For a folder that is not the workspace's, pyrung
   refuses to convert the folder's CSVs to source. The diff shows each of the folder's rungs by its instructions

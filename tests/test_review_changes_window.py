@@ -1298,10 +1298,13 @@ def test_a_main_file_named_in_capitals_is_main(monkeypatch) -> None:
     )
 
 
-def test_a_subroutine_with_an_unread_comment_picked_before_main_says_to_do_main_first(
-    monkeypatch, ask
+def test_a_subroutine_with_an_unread_comment_picked_before_main_waits_for_main(
+    monkeypatch, ask, copies
 ) -> None:
-    """The status line and the question before the delete both send the user to main first."""
+    """The question before the delete waits until main.csv is done.
+
+    A click on main's row forgets an OK, so an OK given sooner would be asked for again.
+    """
     window = _only_in_click_window(monkeypatch)
     window._only_in_click["subroutines/old.csv"] = _unread(
         compare_rungs(_coils("Y009", "Y010"), []), before=(2,)
@@ -1311,22 +1314,38 @@ def test_a_subroutine_with_an_unread_comment_picked_before_main_says_to_do_main_
 
     assert _status(window) == (
         "subroutines/old.csv is in CLICK but not in this folder.\nDo the steps of main.csv "
-        'first. ClickNick could not read CLICK\'s comment on rung 2. Click "Delete program…" '
-        "before you delete anything in CLICK. To keep the program, untick Delete it in CLICK"
+        "first. Then come back to delete subroutine old. To keep the program, untick Delete it "
+        "in CLICK"
     )
+    window._action_btn.configure.assert_called_with(state="disabled", text="Delete program…")
+    window._on_action()
+    ask.assert_not_called()
+
+    window._select_row(MAIN)
+    window._on_action()  # Copy
+    window._on_action()  # Next: main.csv is done, and the delete comes next
+
+    assert len(copies) == 1
+    assert window._current_idx == OLD
+    assert _status(window) == (
+        "subroutines/old.csv is in CLICK but not in this folder.\nClickNick could not read "
+        'CLICK\'s comment on rung 2. Click "Delete program…" before you delete anything in '
+        "CLICK. To keep the program, untick Delete it in CLICK"
+    )
+    window._action_btn.configure.assert_called_with(state="normal", text="Delete program…")
 
     ask.return_value = True
     window._on_action()  # Delete program…, then OK
 
     assert ask.call_args.args[1].endswith(
-        "Click OK. Do the steps of main.csv first. Then, in CLICK, make sure that the main "
-        "program no longer calls subroutine old. After that, right-click subroutine old in the "
-        "list of programs and click Delete. Then click Next."
+        "Click OK. In CLICK, make sure that the main program no longer calls subroutine old. "
+        "After that, right-click subroutine old in the list of programs and click Delete. Then "
+        "click Next."
     )
     assert _status(window) == (
-        "subroutines/old.csv is in CLICK but not in this folder.\n"
-        f"Do the steps of main.csv first. Then, in CLICK, {_DELETE_OLD}"
+        f"subroutines/old.csv is in CLICK but not in this folder.\nIn CLICK, {_DELETE_OLD}"
     )
+    assert _action(window) == "Next →"
 
 
 def test_a_program_kept_in_click_does_not_hold_the_window_open(monkeypatch) -> None:
