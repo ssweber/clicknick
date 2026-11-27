@@ -828,9 +828,10 @@ class ReviewChangesWindow(tk.Toplevel):
         """Return whether the row is a subroutine that CLICK may not have yet.
 
         Two things rule this out. One is a comparison that shows CLICK's last save having
-        the subroutine. The other is a comment in CLICK's copy that ClickNick could not read,
-        because CLICK's last save recorded it. If the project is unsaved, or ClickNick could
-        not read CLICK's program, the subroutine may be missing.
+        the subroutine. The other is a record, in ClickNick's copy of CLICK's last save, of a
+        comment that ClickNick could not read. The record exists, so CLICK's last save held the
+        subroutine. If the project is unsaved, or ClickNick could not read CLICK's program,
+        the subroutine may be missing.
         """
         if idx is None or idx >= len(self._items):
             return False
