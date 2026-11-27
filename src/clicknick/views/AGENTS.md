@@ -193,6 +193,8 @@ stages them in the store instead.
   deleting it in CLICK. "Next" marks it done, and a CLICK save that still has it makes it a step again. If you
   untick **Delete it in CLICK**, the window keeps the program (`_kept`). A kept program does not hold the window
   open.
+- CLICK's main program is never only in CLICK, because a folder without `main.csv` is not compared. To empty
+  CLICK's main program, the user puts in the folder a `main.csv` that holds only the header row.
 - **Stage nicknames** stages the fields that the file sets as one edit in the store
   (`services/nickname_staging.py`). It stages only the addresses that the file lists. Then it opens the Address
   Editor on Changed with **Sync and Close**. The row compares the file with the store's visible rows to find

@@ -1026,7 +1026,8 @@ class ReviewChangesWindow(tk.Toplevel):
     ) -> str:
         """Return the question before the user deletes the rungs of *step* in CLICK."""
         if name in self._only_in_click:
-            what = "the main program" if name == "main.csv" else f"subroutine {Path(name).stem}"
+            # Only a subroutine can be only in CLICK. A folder without main.csv is not compared.
+            what = f"subroutine {Path(name).stem}"
             return _delete_question(
                 name,
                 f"{what} in CLICK",
@@ -1704,12 +1705,10 @@ class ReviewChangesWindow(tk.Toplevel):
                 f"{name} is in CLICK but not in this folder.\n{self._delete_line(name, None)}. "
                 f"To keep the program, untick {_DELETE_IN_CLICK}"
             )
-        stem = Path(name).stem
-        what = "main program" if name == "main.csv" else f"subroutine {stem}"
         return (
             f"{name} is in CLICK but not in this folder.\n"
-            f'Delete the {what} in CLICK, then click "Next". To keep it, untick '
-            f"{_DELETE_IN_CLICK}"
+            f'Delete the subroutine {Path(name).stem} in CLICK, then click "Next". '
+            f"To keep it, untick {_DELETE_IN_CLICK}"
         )
 
     def _stepped_line(self, name: str) -> str:
