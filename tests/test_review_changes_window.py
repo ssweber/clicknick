@@ -1201,13 +1201,58 @@ def test_clicking_a_program_only_in_click_makes_its_deletion_the_step(monkeypatc
 
     assert window._current_idx == OLD
     assert _inserted(window)[-1] == ("-R1  out(Y009)  # Y009\n", "removed")
-    assert 'Delete the subroutine old in CLICK, then click "Next"' in _status(window)
     assert _action(window) == "Next →"
     window._take_chk.configure.assert_called_with(text="Delete it in CLICK", state="normal")
 
     window._on_action()  # Next: deleted
 
     assert "subroutines/old.csv" in window._done
+
+
+# How Review Changes says to delete subroutines/old.csv in CLICK
+_DELETE_OLD = (
+    "make sure that the main program no longer calls subroutine old. After that, right-click "
+    'subroutine old in the list of programs and click Delete. Then click "Next". To keep the '
+    "subroutine, untick Delete it in CLICK"
+)
+
+
+def test_the_step_that_deletes_a_subroutine_says_how(monkeypatch) -> None:
+    """main.csv matches CLICK, so the step goes straight to the delete."""
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=Path("before/csv"), note=""),
+        {Path("before/csv"): _changes(dict.fromkeys(NAMES, False))},
+        only_in_click={"subroutines/old.csv": compare_rungs(_coils("Y009"), [])},
+    )
+
+    window._select_row(OLD)
+
+    assert _status(window) == (
+        f"subroutines/old.csv is in CLICK but not in this folder.\nIn CLICK, {_DELETE_OLD}"
+    )
+
+
+def test_a_subroutine_picked_before_main_says_to_do_main_first(monkeypatch, copies) -> None:
+    """The user clicks the row while main.csv still has steps that renumber CLICK's main."""
+    window = _only_in_click_window(monkeypatch)
+
+    window._select_row(OLD)
+
+    assert _status(window) == (
+        "subroutines/old.csv is in CLICK but not in this folder.\n"
+        f"Do the steps of main.csv first. Then, in CLICK, {_DELETE_OLD}"
+    )
+
+    window._select_row(MAIN)
+    window._on_action()  # Copy
+    window._on_action()  # Next: main.csv is done, and the delete comes next
+
+    assert len(copies) == 1
+    assert window._current_idx == OLD
+    assert _status(window) == (
+        f"subroutines/old.csv is in CLICK but not in this folder.\nIn CLICK, {_DELETE_OLD}"
+    )
 
 
 def test_a_program_kept_in_click_does_not_hold_the_window_open(monkeypatch) -> None:
@@ -3369,7 +3414,8 @@ def test_deleting_a_program_only_in_click_asks_first(monkeypatch, ask) -> None:
         "on rung 2 of subroutines/old.csv in CLICK. That comment is lost with its rung. If you "
         "renamed the program or moved that rung, the copy that you paste has no comment.\n\n"
         "To keep the program, click Cancel and untick Delete it in CLICK. Click OK. In "
-        "CLICK, delete subroutine old. Then click Next."
+        "CLICK, make sure that the main program no longer calls subroutine old. After that, "
+        "right-click subroutine old in the list of programs and click Delete. Then click Next."
     )
 
     window._on_take()  # Untick Delete it in CLICK

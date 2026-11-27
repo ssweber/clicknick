@@ -32,6 +32,7 @@ from ..ladder.clipboard import copy_to_clipboard, is_click_v4
 from ..ladder.program import (
     LegacyEncoding,
     delete_rungs,
+    delete_subroutine,
     describe_legacy_encoding,
     paste_again,
     prepare_rungs_load,
@@ -1032,7 +1033,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 name,
                 f"{what} in CLICK",
                 erased,
-                how=f"delete {what}",
+                how=delete_subroutine(what),
                 keep=f"To keep the program, click Cancel and untick {_DELETE_IN_CLICK}.",
                 renamed=True,
             )
@@ -1705,10 +1706,17 @@ class ReviewChangesWindow(tk.Toplevel):
                 f"{name} is in CLICK but not in this folder.\n{self._delete_line(name, None)}. "
                 f"To keep the program, untick {_DELETE_IN_CLICK}"
             )
+        # The row comes after main's, but the user can click it sooner. A change to CLICK's
+        # main program by hand would move the rungs that main's steps name.
+        main = next((other for other in self._programs if other.casefold() == "main.csv"), None)
+        if main is not None and self._needs_paste(main):
+            lead = f"Do the steps of {main} first. Then, in CLICK, "
+        else:
+            lead = "In CLICK, "
         return (
             f"{name} is in CLICK but not in this folder.\n"
-            f'Delete the subroutine {Path(name).stem} in CLICK, then click "Next". '
-            f"To keep it, untick {_DELETE_IN_CLICK}"
+            f"{lead}{delete_subroutine(f'subroutine {Path(name).stem}')}. "
+            f'Then click "Next". To keep the subroutine, untick {_DELETE_IN_CLICK}'
         )
 
     def _stepped_line(self, name: str) -> str:

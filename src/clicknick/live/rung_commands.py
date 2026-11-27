@@ -324,6 +324,7 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
 
     Return the reply and the number of rungs that the proposal changes.
     """
+    from ..ladder.program import delete_subroutine
     from ..services.rung_diff import (
         WORKSPACE_SOURCE,
         BundleSources,
@@ -376,7 +377,8 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
         if comparison.only_in_click:
             only = ", ".join(Path(name).stem for name in sorted(comparison.only_in_click))
             lines.append(
-                f"only in CLICK: {only}. Delete a program in CLICK if you no longer use it."
+                f"only in CLICK: {only}. To delete a subroutine that you no longer use, do this "
+                f"in CLICK: {delete_subroutine('it')}."
             )
         if ctx.show_proposal is not None:
             ctx.show_proposal(proposal_dir, source_dir, None, None, bool(lines))

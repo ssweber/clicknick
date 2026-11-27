@@ -193,6 +193,17 @@ stages them in the store instead.
   deleting it in CLICK. "Next" marks it done, and a CLICK save that still has it makes it a step again. If you
   untick **Delete it in CLICK**, the window keeps the program (`_kept`). A kept program does not hold the window
   open.
+- The step says to make sure that CLICK's main program no longer calls the subroutine, and then to right-click
+  the subroutine in CLICK's list of programs and click Delete (`delete_subroutine` in `ladder/program.py`).
+  `clicknick-cli rung apply` gives the same steps. No one has checked what CLICK does when its main program
+  still calls the subroutine.
+- The rows of programs only in CLICK come after the folder's rows, and main comes last of those. So "Next"
+  reaches each delete after main's steps. The user can still click the row sooner. While main still has steps
+  to do, the prompt says to do them first, because a change to CLICK's main program by hand would move the rungs
+  that main's steps name.
+- If the folder's main still calls a subroutine that the folder lacks, Review Changes refuses nothing. It pastes
+  main with the call and offers to delete the subroutine. pyrung refuses to convert such a folder, unless it is
+  the workspace's. The diff then shows the folder's rungs by their instructions.
 - CLICK's main program is never only in CLICK, because a folder without `main.csv` is not compared. To empty
   CLICK's main program, the user puts in the folder a `main.csv` that holds only the header row.
 - **Stage nicknames** stages the fields that the file sets as one edit in the store
