@@ -1632,7 +1632,12 @@ class SimulationSession:
         that laddercodec could not read the program's CSV back. No rung was replaced, the CSV
         still holds every rung, and pyrung parses that CSV itself.
         """
-        from .ladder.program import describe_legacy_encoding, stand_in_findings, stand_in_fix
+        from .ladder.program import (
+            compare_lists_in_red,
+            describe_legacy_encoding,
+            stand_in_findings,
+            stand_in_fix,
+        )
 
         found = stand_in_findings(csv_dir)
         if not found:
@@ -1648,6 +1653,7 @@ class SimulationSession:
             f"ClickNick cannot copy {head}, so the simulation would run without {without}.\n"
             + "\n".join(lines)
             + (f"\n{fix}" if fix else "")
+            + f"\n{compare_lists_in_red(one=one)}"
         )
 
     def _workspace_problem(self, analysis: AnalysisService | None) -> tuple[str, str | None] | None:

@@ -942,6 +942,17 @@ def stand_in_fix(found: Sequence[LegacyEncoding], *, one: bool) -> str:
     return f"{paste} Or fix the rung in CLICK."
 
 
+def compare_lists_in_red(*, one: bool) -> str:
+    """Return the sentence that says where Review Changes lists unreadable rungs in red.
+
+    A list of rungs in a box or in the Simulator may be cut. Ladder > Compare with > Folder
+    asks for a folder of ladder CSVs, and opens Review Changes on it. The folder is the
+    user's own copy of the program. *one* is True for a text about one rung.
+    """
+    them = "it" if one else "them"
+    return f"Ladder > Compare with > Folder on your own copy lists {them} in red."
+
+
 def paste_again(
     *,
     one: bool,

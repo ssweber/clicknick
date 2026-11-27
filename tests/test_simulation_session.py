@@ -673,7 +673,8 @@ def test_program_with_a_rung_clicknick_cannot_read_does_not_run(ready):
     assert "Conf_Compare rung 4, Compare: ClickNick cannot read this Compare." in message
     assert message.endswith(
         "\nClick that rung's number in CLICK to select the rung. Then paste the rung again from "
-        "your own copy of the program. Or fix it in CLICK."
+        "your own copy of the program. Or fix it in CLICK.\n"
+        "Ladder > Compare with > Folder on your own copy lists it in red."
     )
     assert "CsvWriteError" not in message
 
@@ -687,8 +688,20 @@ def test_several_unreadable_rungs_are_named_together(ready):
     assert "Conf_Compare rung 5" in message
     assert message.endswith(
         "\nDo this in CLICK for each rung in the list: click its number to select the rung, and "
-        "paste the rung again from your own copy of the program. Or fix them in CLICK."
+        "paste the rung again from your own copy of the program. Or fix them in CLICK.\n"
+        "Ladder > Compare with > Folder on your own copy lists them in red."
     )
+
+
+def test_a_list_cut_at_ten_rungs_says_where_the_rest_are_listed(ready):
+    _record_unreadable(ready.analysis.project_dir, *range(1, 13))
+    ready.open()
+
+    message = ready.messages("error")
+    assert "  Conf_Compare rung 10, " in message
+    assert "rung 11" not in message
+    assert "\n  ...and 2 more\n" in message
+    assert message.endswith("\nLadder > Compare with > Folder on your own copy lists them in red.")
 
 
 def test_once_the_rung_is_pasted_again_the_simulation_runs(ready):
