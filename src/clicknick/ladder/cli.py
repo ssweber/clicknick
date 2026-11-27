@@ -626,10 +626,12 @@ def main() -> None:
                 print(
                     "\nClickNick cannot copy these rungs from CLICK as they are. Each program's"
                     " CSV holds an UNDECODED marker in place of each of these rungs. Inside a"
-                    " For loop, the CSV holds an empty rung instead." + (f" {fix}" if fix else "")
+                    " For loop, the CSV holds an empty rung instead."
                 )
                 for item in unreadable:
                     print(f"  {describe_legacy_encoding(item)}")
+                if fix:
+                    print(fix)
             if copies:
                 print(
                     "\nPaste these programs into CLICK again from your own copy, or fix them in CLICK:"

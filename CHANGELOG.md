@@ -10,10 +10,12 @@
 
 ### Changed
 
+- `clicknick-rung program save` now prints the list of rungs it cannot copy before the step to take. 0.27.0 printed the step first.
 - The Simulator's panel now shows the modules that ClickNick knows when CLICK's Project.ini also lists a module that ClickNick does not know. A notice names that module by its position, such as **Expansion 2**, and its module ID. 0.27.0 showed only the X and Y addresses that the program uses.
 
 ### Fixed
 
+- When ClickNick cannot copy some rungs from CLICK as they are, the Simulator's refusal to start now says that Ladder > Compare with > Folder on your own copy lists them in red. When the list is long, the Simulator shows only some of the rungs, and 0.27.0 gave no way to find the rest.
 - The Address Editor's jump menus now offer only addresses that exist. CTD and CT no longer list 301 and 401, and X and Y now list 21, the first address of the PLUS CPU's slot 1. 0.27.0 scrolled from CT 301 to the first row with address 301 of another type.
 - Review Changes now asks before a paste or a delete erases a rung comment that ClickNick could not read from CLICK. Most often, such a comment holds a character outside ASCII in a font whose script is not Western or Chinese GB2312. The question names each rung, and Cancel is the default. Review Changes also asks before you paste a rung from another CLICK window whose comment ClickNick could not read. That rung arrives without its comment. Under **Whole program**, Review Changes steps through such a program instead, so the rungs that match keep their comments. 0.27.0 lost these comments without a word.
 - Review Changes now says how to select the rung that a step pastes over: click the rung's number. The step for new rungs now says the same about the empty rung that you insert. The step that pastes into a program with no rungs now says to click rung 1's number first. 0.27.0 said only "select rung N", and "paste into the program's ladder" for a program with no rungs. If you clicked into the rung's logic instead, CLICK pasted above the rung and kept the old rung below it. The program then held both rungs. If you clicked lower down the ladder of a program with no rungs, CLICK could keep empty rungs above the pasted ones.

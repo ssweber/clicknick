@@ -1855,6 +1855,7 @@ class ClickNickApp:
     def _show_legacy_encodings(self) -> None:
         from .ladder.program import (
             clear_before_paste,
+            compare_lists_in_red,
             describe_legacy_encoding,
             stand_in_fix,
         )
@@ -1877,8 +1878,7 @@ class ClickNickApp:
             one = len({(item.file, item.rung) for item in unreadable}) == 1
             fix = stand_in_fix(unreadable, one=one)
             if fix:
-                them = "it" if one else "them"
-                fix += f" Ladder > Compare with > Folder on your own copy lists {them} in red."
+                fix += f" {compare_lists_in_red(one=one)}"
             parts.append(
                 "ClickNick cannot copy these rungs from CLICK as they are:\n\n"
                 + _listed(unreadable)

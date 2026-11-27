@@ -257,6 +257,17 @@ def test_cli_save_lists_the_rungs_to_paste_again(scr: Path, monkeypatch, capsys)
     assert "old encoding" not in out
 
 
+def test_cli_save_prints_the_rung_list_before_the_step(scr: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr("sys.argv", ["clicknick-cli", "program", "save", str(scr)])
+
+    main()
+
+    out = capsys.readouterr().out
+    listed = out.index(f"  Conf_Compare rung 2, Compare: {DETAIL}")
+    step = out.index("Do this in CLICK for each rung in the list")
+    assert listed < step
+
+
 # ---------------------------------------------------------------------------
 # The clipboard
 # ---------------------------------------------------------------------------
