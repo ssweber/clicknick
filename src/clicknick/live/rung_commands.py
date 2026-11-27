@@ -365,10 +365,12 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
         }
         changed: list[str] = []
         staged_rungs = 0
+        main_differs = False
         for program in programs:
             change = comparison.changes.get(program.name)
             if change is None or not change.differs:
                 continue
+            main_differs = main_differs or program.name.casefold() == "main.csv"
             staged_rungs += len(change.changed) + len(change.removed)
             stem = stems.get(program.name.casefold(), Path(program.name).stem)
             new = program.name in comparison.missing_in_click
@@ -376,9 +378,16 @@ def _open_proposal(ctx: DispatchContext, parts: list[str]) -> tuple[str, int]:
         lines = ["changed files:", *changed] if changed else []
         if comparison.only_in_click:
             only = ", ".join(Path(name).stem for name in sorted(comparison.only_in_click))
+            # A change to CLICK's main program by hand would move the rungs that main's
+            # steps in Review Changes name.
+            lead = (
+                "first paste main's changes in Review Changes. Then, in CLICK, "
+                if main_differs
+                else "do this in CLICK: "
+            )
             lines.append(
-                f"only in CLICK: {only}. To delete a subroutine that you no longer use, do this "
-                f"in CLICK: {delete_subroutine('it')}."
+                f"only in CLICK: {only}. To delete a subroutine that you no longer use, "
+                f"{lead}{delete_subroutine('the subroutine')}."
             )
         if ctx.show_proposal is not None:
             ctx.show_proposal(proposal_dir, source_dir, None, None, bool(lines))

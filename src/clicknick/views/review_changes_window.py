@@ -440,11 +440,13 @@ def _delete_question(
     how: str,
     keep: str,
     renamed: bool = False,
+    lead: str = "In CLICK, ",
 ) -> str:
     """Return what Review Changes asks before the user deletes rungs with an unread comment.
 
     *target* names what the user deletes in CLICK. *how* says how to delete it, and follows
-    "In CLICK, " in the last line. *erased* holds the rungs among them whose comment
+    *lead* in the last line. A caller whose user must do something else first puts that in
+    *lead*, and ends it with "in CLICK, ". *erased* holds the rungs among them whose comment
     ClickNick could not read. None stands for one whose rung laddercodec did not name.
     *keep* says how to keep CLICK's rungs. If *renamed* is True, the user deletes a whole
     program, which may have been renamed.
@@ -468,7 +470,7 @@ def _delete_question(
         else "Those comments are lost with their rungs.",
         f"If you {moved}, {copies}.",
     ]
-    return f"{' '.join(sentences)}\n\n{keep} Click OK. In CLICK, {how}. Then click Next."
+    return f"{' '.join(sentences)}\n\n{keep} Click OK. {lead}{how}. Then click Next."
 
 
 def _change_label(change: ProgramChange) -> str:
@@ -1036,6 +1038,7 @@ class ReviewChangesWindow(tk.Toplevel):
                 how=delete_subroutine(what),
                 keep=f"To keep the program, click Cancel and untick {_DELETE_IN_CLICK}.",
                 renamed=True,
+                lead=self._subroutine_delete_lead(),
             )
         if step is not None:
             return _delete_question(
@@ -1703,21 +1706,31 @@ class ReviewChangesWindow(tk.Toplevel):
             )
         if self._asks_before_delete(name, None):
             return (
-                f"{name} is in CLICK but not in this folder.\n{self._delete_line(name, None)}. "
-                f"To keep the program, untick {_DELETE_IN_CLICK}"
+                f"{name} is in CLICK but not in this folder.\n{self._main_first()}"
+                f"{self._delete_line(name, None)}. To keep the program, untick {_DELETE_IN_CLICK}"
             )
-        # The row comes after main's, but the user can click it sooner. A change to CLICK's
-        # main program by hand would move the rungs that main's steps name.
-        main = next((other for other in self._programs if other.casefold() == "main.csv"), None)
-        if main is not None and self._needs_paste(main):
-            lead = f"Do the steps of {main} first. Then, in CLICK, "
-        else:
-            lead = "In CLICK, "
         return (
-            f"{name} is in CLICK but not in this folder.\n"
-            f"{lead}{delete_subroutine(f'subroutine {Path(name).stem}')}. "
+            f"{name} is in CLICK but not in this folder.\n{self._subroutine_delete_lead()}"
+            f"{delete_subroutine(f'subroutine {Path(name).stem}')}. "
             f'Then click "Next". To keep the subroutine, untick {_DELETE_IN_CLICK}'
         )
+
+    def _main_first(self) -> str:
+        """Return the sentence that says to do main's steps first, or an empty string.
+
+        The rows of programs only in CLICK come after main's row, but the user can click
+        one sooner. While main still has steps to do, the texts that delete such a program
+        say to do those steps first. A change to CLICK's main program by hand would move
+        the rungs that main's steps name.
+        """
+        main = next((other for other in self._programs if other.casefold() == "main.csv"), None)
+        if main is None or not self._needs_paste(main):
+            return ""
+        return f"Do the steps of {main} first. "
+
+    def _subroutine_delete_lead(self) -> str:
+        """Return the words before the steps that delete a program only in CLICK."""
+        return f"{first}Then, in CLICK, " if (first := self._main_first()) else "In CLICK, "
 
     def _stepped_line(self, name: str) -> str:
         """Return why the program is stepped through under "Whole program", or an empty string."""

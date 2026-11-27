@@ -1013,10 +1013,11 @@ def delete_subroutine(which: str) -> str:
     """Say how to delete a subroutine in CLICK.
 
     The text follows "In CLICK, ". *which* names the subroutine, such as
-    ``"subroutine Fill"`` or ``"it"``. CLICK deletes a subroutine from the menu that opens
-    when the user right-clicks it in CLICK's list of programs. The first step keeps the
-    main program from calling a subroutine that CLICK no longer has. No one has checked
-    what CLICK does when the main program still calls the subroutine.
+    ``"subroutine Fill"`` or ``"the subroutine"``. The user makes sure that the main
+    program no longer calls the subroutine. Then the user right-clicks the subroutine in
+    CLICK's list of programs and clicks Delete in the menu. A user of CLICK gave these
+    steps. No one has checked what CLICK does when the main program still calls the
+    subroutine.
     """
     return (
         f"make sure that the main program no longer calls {which}. After that, right-click "

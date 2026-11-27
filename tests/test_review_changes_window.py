@@ -174,11 +174,12 @@ def _window(
     missing: frozenset[str] = frozenset(),
     only_in_click: dict[str, ProgramChange] | None = None,
     only_in_click_by_dir: dict[Path, dict[str, ProgramChange]] | None = None,
+    folder_names: list[str] = NAMES,
 ):
     """A window without Tk widgets, comparing against canned results per CSV folder.
 
     *only_in_click_by_dir* gives a folder its own programs only in CLICK; the
-    rest have *only_in_click*.
+    rest have *only_in_click*. *folder_names* lists the folder's programs.
     """
     monkeypatch.setattr(
         f"{MODULE}.compare_bundle",
@@ -189,7 +190,7 @@ def _window(
             missing_in_click=missing,
         ),
     )
-    window = _bare_window()
+    window = _bare_window(folder_names)
     window.current = program
     window._get_saved_program = lambda: window.current
     window._compare_with_click()
@@ -1234,7 +1235,7 @@ def test_the_step_that_deletes_a_subroutine_says_how(monkeypatch) -> None:
 
 
 def test_a_subroutine_picked_before_main_says_to_do_main_first(monkeypatch, copies) -> None:
-    """The user clicks the row while main.csv still has steps that renumber CLICK's main."""
+    """The user clicks the row while main.csv still has steps to do."""
     window = _only_in_click_window(monkeypatch)
 
     window._select_row(OLD)
@@ -1252,6 +1253,79 @@ def test_a_subroutine_picked_before_main_says_to_do_main_first(monkeypatch, copi
     assert window._current_idx == OLD
     assert _status(window) == (
         f"subroutines/old.csv is in CLICK but not in this folder.\nIn CLICK, {_DELETE_OLD}"
+    )
+
+
+def _skip_main(window) -> None:
+    window._skipped["main.csv"] = frozenset(window._changes["main.csv"].differences)
+
+
+def _leave_out_main(window) -> None:
+    window._programs["main.csv"] = ProposedProgram("main.csv", Path("main.csv"), None, 0)
+
+
+@pytest.mark.parametrize("main_state", [_skip_main, _leave_out_main])
+def test_a_main_with_nothing_to_paste_does_not_hold_up_the_delete(monkeypatch, main_state) -> None:
+    """main.csv differs, but every difference is skipped or its CSV could not be read."""
+    window = _only_in_click_window(monkeypatch)
+    main_state(window)
+    assert not window._needs_paste("main.csv")
+
+    window._select_row(OLD)
+
+    assert _status(window) == (
+        f"subroutines/old.csv is in CLICK but not in this folder.\nIn CLICK, {_DELETE_OLD}"
+    )
+
+
+def test_a_main_file_named_in_capitals_is_main(monkeypatch) -> None:
+    """load_bundle keeps the name Main.csv, and compare_bundle compares it as main."""
+    names = ["subroutines/a.csv", "Main.csv"]
+    csv_dir = Path("before/csv")
+    window = _window(
+        monkeypatch,
+        SavedProgram(object(), generation=1, csv_dir=csv_dir, note=""),
+        {csv_dir: _changes(dict.fromkeys(names, True))},
+        only_in_click={"subroutines/old.csv": compare_rungs(_coils("Y009"), [])},
+        folder_names=names,
+    )
+
+    window._select_row(len(names))
+
+    assert _status(window) == (
+        "subroutines/old.csv is in CLICK but not in this folder.\n"
+        f"Do the steps of Main.csv first. Then, in CLICK, {_DELETE_OLD}"
+    )
+
+
+def test_a_subroutine_with_an_unread_comment_picked_before_main_says_to_do_main_first(
+    monkeypatch, ask
+) -> None:
+    """The status line and the question before the delete both send the user to main first."""
+    window = _only_in_click_window(monkeypatch)
+    window._only_in_click["subroutines/old.csv"] = _unread(
+        compare_rungs(_coils("Y009", "Y010"), []), before=(2,)
+    )
+
+    window._select_row(OLD)
+
+    assert _status(window) == (
+        "subroutines/old.csv is in CLICK but not in this folder.\nDo the steps of main.csv "
+        'first. ClickNick could not read CLICK\'s comment on rung 2. Click "Delete program…" '
+        "before you delete anything in CLICK. To keep the program, untick Delete it in CLICK"
+    )
+
+    ask.return_value = True
+    window._on_action()  # Delete program…, then OK
+
+    assert ask.call_args.args[1].endswith(
+        "Click OK. Do the steps of main.csv first. Then, in CLICK, make sure that the main "
+        "program no longer calls subroutine old. After that, right-click subroutine old in the "
+        "list of programs and click Delete. Then click Next."
+    )
+    assert _status(window) == (
+        "subroutines/old.csv is in CLICK but not in this folder.\n"
+        f"Do the steps of main.csv first. Then, in CLICK, {_DELETE_OLD}"
     )
 
 

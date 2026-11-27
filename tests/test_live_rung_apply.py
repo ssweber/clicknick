@@ -111,14 +111,31 @@ def test_reports_every_program_that_differs_and_opens_review_changes(
     # The files come in the order Review Changes walks them: subroutines before main.
     assert "changed files:\n  rinse_cycle: new, 1 rung\n  main: R2\n" in reply
     assert (
-        "only in CLICK: Fill. To delete a subroutine that you no longer use, do this in CLICK: "
-        "make sure that the main program no longer calls it. After that, right-click it in the "
-        "list of programs and click Delete."
+        "only in CLICK: Fill. To delete a subroutine that you no longer use, first paste main's "
+        "changes in Review Changes. Then, in CLICK, make sure that the main program no longer "
+        "calls the subroutine. After that, right-click the subroutine in the list of programs "
+        "and click Delete."
     ) in reply
     assert staged == [2]
     ctx.show_proposal.assert_called_once_with(
         tmp_path / "csv_output", tmp_path / "src" / "plc", None, None, True
     )
+
+
+def test_a_subroutine_only_in_click_beside_an_unchanged_main_goes_straight_to_click(
+    project,
+) -> None:
+    ctx, propose, _staged = project
+    propose({"main.csv": CLICK["main.csv"]})  # The proposal has no Fill
+
+    reply = dispatch(ctx, "rung apply")
+
+    assert "changed files:" not in reply
+    assert (
+        "\nonly in CLICK: Fill. To delete a subroutine that you no longer use, do this in CLICK: "
+        "make sure that the main program no longer calls the subroutine. After that, right-click "
+        "the subroutine in the list of programs and click Delete.\n"
+    ) in reply
 
 
 def test_unchanged_proposal_only_refreshes_an_open_window(project, tmp_path: Path) -> None:
